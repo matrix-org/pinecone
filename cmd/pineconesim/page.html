@@ -1,0 +1,198 @@
+<html>
+    <head>
+        <title>Pinecone Sim</title>
+        <script type="text/javascript" src="https://visjs.github.io/vis-network/standalone/umd/vis-network.min.js"></script>
+        <style type='text/css'>
+        body {
+            font-family: -apple-system, sans-serif;
+        }
+        .row {
+            display: flex;
+            justify-content: space-between;
+            flex-direction: row;
+            flex-wrap: nowrap;
+            padding: 1em;
+        }
+        .column {
+            flex-direction: column;
+        }
+        .column#left {
+            order: 1;
+            width: auto;
+            padding-right: 2em;
+        }
+        .column#right {
+            order: 2;
+            flex-shrink: 100;
+        }
+
+        #main.row #left.column, 
+        #main.row #right.column {
+            height: calc(100vh - 100px);
+            overflow-y: scroll;
+        }
+
+        #main.row div#canvas {
+            height: calc(100vh - 100px);
+            background-color: #f6f6f6;
+        }
+        #main.row div#left {
+            order: 1;
+            flex-basis: auto;
+        }
+        #main.row div#right {
+            order: 2;
+            flex-basis: 100%;
+        }
+
+        #title div#right a {
+            color: black;
+            text-decoration: none;
+
+            padding: 0.3em;
+            margin-left: 0.1em;
+            margin-right: 0.1em;
+
+            border: 1px solid black;
+            border-radius: 0.5em;
+        }
+
+        td, th {
+            text-align: center;
+            padding-left: 4px;
+            padding-right: 4px;
+        }
+        </style>
+    </head>
+    <body>
+        <div class="row" id="title">
+            <div class="column" id="left">
+                <strong>Pinecone Simulator</strong> is running with {{.NodeCount}} nodes
+            </div>
+            <div class="column" id="right">
+                Topology view: 
+                <a href="/?view=physical">Physical</a>
+                <a href="/?view=logical">Logical</a>
+            </div>
+        </div>
+        <div class="row" id="main">
+            <div class="column" id="left">
+                <h4>Statistics</h4>
+                <table>
+                    <tr>
+                        <td>Total number of paths:</td>
+                        <td>{{.PathCount}}</td>
+                    </tr>
+                    <tr>
+                        <td>Average stretch of paths:</td>
+                        <td>{{.AvgStretch}}</td>
+                    </tr>
+                    <tr>
+                        <td>DHT full convergence:</td>
+                        <td>{{.DHTConvergence}}</td>
+                    </tr>
+                    <tr>
+                        <td>Path full convergence:</td>
+                        <td>{{.PathConvergence}}</td>
+                    </tr>
+                </table>
+
+                <h4>Node Summary</h4>
+                <table>
+                    <tr>
+                        <th>Name</th>
+                        <th>Port</th>
+                        <th>Coords</th>
+                        <th>Root</th>
+                        <th>↓</th>
+                        <th>Key</th>
+                        <th>↑</th>
+                    </tr>
+                    {{range .Nodes}}
+                    {{if not .IsExternal}}<tr>
+                        <td>{{.Name}}</td>
+                        <td><code>{{.Port}}</code></td>
+                        <td><code>{{.Coords}}</code></td>
+                        <td><code>{{.Root}}</code></td>
+                        <td><code>{{.Predecessor}}</code></td>
+                        <td><code>{{.Key}}</code></td>
+                        <td><code>{{.Successor}}</code></td>
+                    {{end}}</tr>{{end}}
+                </table>
+
+                <h4>Tree Building</h4>
+                <table>
+                    <tr>
+                        <th>Root Key</th>
+                        <th>Convergence</th>
+                    </tr>
+                    {{range .Roots}}<tr>
+                        <td><code>{{.Name}}</code></td>
+                        <td>{{.References}}%</td>
+                    </tr>{{end}}
+                </table>
+
+                <h4>Path Lengths</h4>
+                <table>
+                    <tr>
+                        <th>From</th>
+                        <th>To</th>
+                        <th>Actual</th>
+                        <th>Observed</th>
+                        <th>Stretch</th>
+                    </th>
+                    {{range .Dists}}<tr>
+                        <td>{{.From}}</td>
+                        <td>{{.To}}</td>
+                        <td>{{.Real}}</td>
+                        <td>{{.Observed}}</td>
+                        <td>{{.Stretch}}</td>
+                    </tr>{{end}}
+                </table>
+            </div>
+            <div class="column" id="right">
+                <div id="canvas" />
+            </div>
+        </div>
+
+        <script>
+            var nodes = new vis.DataSet([
+                {{range .Nodes}}
+                    {{if .IsRoot}}
+                        { id: "{{.Name}}", label: "{{.Name}}", color: "#63cfa1" },
+                    {{else if .IsExternal}}
+                        { id: "{{.Name}}", label: "{{.Name}}", color: "#dddddd" },
+                    {{else}}
+                        { id: "{{.Name}}", label: "{{.Name}}", color: "#9fc2f7" },
+                    {{end}}
+                {{end}}
+            ]);
+            var edges = new vis.DataSet([
+                {{range .Links}}
+                    {{if .Enabled}}
+                        { from: "{{.From}}", to: "{{.To}}", color: "black" },
+                   // {{else}}
+                   //     { from: "{{.From}}", to: "{{.To}}", color: "lightgrey", dashes: true },
+                    {{end}}
+                {{end}}
+            ]);
+            var container = document.getElementById("canvas");
+            var data = {
+              nodes: nodes,
+              edges: edges,
+            };
+            var options = {
+                interaction:{
+                    dragView: true,
+                    zoomView: true,
+                },
+                physics:{
+                    enabled: true,
+                }
+            };
+            var network = new vis.Network(container, data, options);
+      </script>
+      </body>
+      </html>
+    </body>
+</html>
