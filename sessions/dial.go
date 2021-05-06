@@ -15,6 +15,7 @@
 package sessions
 
 import (
+	"bytes"
 	"context"
 	"crypto/ed25519"
 	"crypto/tls"
@@ -100,7 +101,7 @@ func (q *Sessions) DialContext(ctx context.Context, network, addrstr string) (ne
 			if !ok {
 				return fmt.Errorf("expected ed25519 public key")
 			}
-			if !public.Equal(pk) {
+			if !bytes.Equal(public, pk) {
 				return fmt.Errorf("remote side returned incorrect public key")
 			}
 			return nil
