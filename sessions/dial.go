@@ -18,6 +18,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/hex"
 	"fmt"
 	"net"
@@ -87,11 +88,15 @@ func (q *Sessions) DialContext(ctx context.Context, network, addrstr string) (ne
 		GetClientCertificate: func(info *tls.CertificateRequestInfo) (*tls.Certificate, error) {
 			return q.tlsCert, nil
 		},
-		VerifyConnection: func(state tls.ConnectionState) error {
-			if c := len(state.PeerCertificates); c != 1 {
+		VerifyPeerCertificate: func(rawCerts [][]byte, _ [][]*x509.Certificate) error {
+			if c := len(rawCerts); c != 1 {
 				return fmt.Errorf("expected exactly one peer certificate but got %d", c)
 			}
-			public, ok := state.PeerCertificates[0].PublicKey.(ed25519.PublicKey)
+			cert, err := x509.ParseCertificate(rawCerts[0])
+			if err != nil {
+				return fmt.Errorf("x509.ParseCertificate: %w", err)
+			}
+			public, ok := cert.PublicKey.(ed25519.PublicKey)
 			if !ok {
 				return fmt.Errorf("expected ed25519 public key")
 			}
