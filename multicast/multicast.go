@@ -238,7 +238,6 @@ func (m *Multicast) advertise(intf *multicastInterface, conn net.PacketConn, add
 		)
 		if err != nil {
 			//m.log.Println("conn.WriteTo:", err)
-			intf.cancel()
 			continue
 		}
 	}
