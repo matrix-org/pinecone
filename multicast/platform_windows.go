@@ -12,20 +12,32 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// +build !linux,!darwin,!netbsd,!freebsd,!openbsd,!dragonflybsd,!windows
+// +build windows
 
 package multicast
 
 import (
 	"fmt"
 	"syscall"
+
+	"golang.org/x/sys/windows"
 )
 
 func (m *Multicast) multicastStarted() {
 }
 
 func (m *Multicast) udpOptions(network string, address string, c syscall.RawConn) error {
-	return nil
+	var reuseport error
+	control := c.Control(func(fd uintptr) {
+		reuseport = windows.SetsockoptInt(windows.Handle(fd), windows.SOL_SOCKET, windows.SO_REUSEADDR, 1)
+	})
+
+	switch {
+	case reuseport != nil:
+		return fmt.Errorf("SO_REUSEPORT: %w", reuseport)
+	default:
+		return control
+	}
 }
 
 func (m *Multicast) tcpOptions(network string, address string, c syscall.RawConn) error {
