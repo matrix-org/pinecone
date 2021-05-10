@@ -28,11 +28,11 @@ type SourceAddr struct {
 	types.SwitchPorts
 }
 
-func (a *SourceAddr) Network() string {
+func (a SourceAddr) Network() string {
 	return "ps"
 }
 
-func (a *SourceAddr) String() string {
+func (a SourceAddr) String() string {
 	return fmt.Sprintf("path %v", a.SwitchPorts)
 }
 
@@ -42,11 +42,11 @@ type GreedyAddr struct {
 	types.SwitchPorts
 }
 
-func (a *GreedyAddr) Network() string {
+func (a GreedyAddr) Network() string {
 	return "pg"
 }
 
-func (a *GreedyAddr) String() string {
+func (a GreedyAddr) String() string {
 	return fmt.Sprintf("coords %v", a.SwitchPorts)
 }
 
@@ -63,16 +63,16 @@ func (r *Router) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
 	frame := <-r.recv
 	switch frame.Type {
 	case types.TypeGreedy:
-		addr = &GreedyAddr{frame.Source}
+		addr = GreedyAddr{frame.Source}
 
 	case types.TypeSource:
-		addr = &SourceAddr{frame.Source} // TODO: should get the remainder of the path
+		addr = SourceAddr{frame.Source} // TODO: should get the remainder of the path
 
 	case types.TypeVirtualSnakeBootstrap:
-		addr = &frame.SourceKey
+		addr = frame.SourceKey
 
 	case types.TypeVirtualSnake:
-		addr = &frame.SourceKey
+		addr = frame.SourceKey
 
 	default:
 		r.log.Println("Not expecting non-source/non-greedy frame")
@@ -98,7 +98,7 @@ func (r *Router) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 	}()
 
 	switch ga := addr.(type) {
-	case *GreedyAddr:
+	case GreedyAddr:
 		select {
 		case <-timer.C:
 			return 0, fmt.Errorf("router appears to be deadlocked")
@@ -112,7 +112,7 @@ func (r *Router) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 			return len(p), nil
 		}
 
-	case *SourceAddr:
+	case SourceAddr:
 		select {
 		case <-timer.C:
 			return 0, fmt.Errorf("router appears to be deadlocked")
@@ -125,14 +125,14 @@ func (r *Router) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 			return len(p), nil
 		}
 
-	case *types.PublicKey:
+	case types.PublicKey:
 		select {
 		case <-timer.C:
 			return 0, fmt.Errorf("router appears to be deadlocked")
 		case r.send <- types.Frame{
 			Version:        types.Version0,
 			Type:           types.TypeVirtualSnake,
-			DestinationKey: *ga,
+			DestinationKey: ga,
 			SourceKey:      r.PublicKey(),
 			Payload:        p,
 		}:
@@ -148,8 +148,7 @@ func (r *Router) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 // LocalAddr returns a net.Addr containing the greedy routing
 // coordinates for this node.
 func (r *Router) LocalAddr() net.Addr {
-	public := r.PublicKey()
-	return &public
+	return r.PublicKey()
 }
 
 // SetDeadline is not implemented.

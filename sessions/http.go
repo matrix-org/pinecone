@@ -27,22 +27,26 @@ type HTTP struct {
 }
 
 func (q *Sessions) HTTP() *HTTP {
+	t := &http.Transport{
+		DisableKeepAlives: false,
+		Dial:              q.Dial,
+		DialTLS:           q.DialTLS,
+		DialContext:       q.DialContext,
+		DialTLSContext:    q.DialTLSContext,
+	}
+
 	h := &HTTP{
 		httpServer: &http.Server{
 			IdleTimeout: time.Second * 30,
 		},
-		httpMux: &http.ServeMux{},
-		httpTransport: &http.Transport{
-			Dial:           q.Dial,
-			DialTLS:        q.DialTLS,
-			DialContext:    q.DialContext,
-			DialTLSContext: q.DialTLSContext,
-		},
+		httpMux:       &http.ServeMux{},
+		httpTransport: t,
 	}
 
 	h.httpServer.Handler = h.httpMux
 	h.httpClient = &http.Client{
-		Transport: h.httpTransport,
+		Transport: t,
+		Timeout:   time.Second * 30,
 	}
 
 	go h.httpServer.Serve(q) // nolint:errcheck

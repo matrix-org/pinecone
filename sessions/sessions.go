@@ -26,21 +26,25 @@ import (
 	"log"
 	"math/big"
 	"net"
+	"sync"
 	"time"
 
 	"github.com/matrix-org/pinecone/router"
 	"github.com/neilalexander/utp"
+	"go.uber.org/atomic"
 )
 
 type Sessions struct {
-	r            *router.Router
-	log          *log.Logger        // logger
-	context      context.Context    // router context
-	cancel       context.CancelFunc // shut down the router
-	streams      chan net.Conn      // accepted connections
-	tlsCert      *tls.Certificate   //
-	tlsServerCfg *tls.Config        //
-	utpSocket    *utp.Socket        //
+	r             *router.Router
+	log           *log.Logger                // logger
+	context       context.Context            // router context
+	cancel        context.CancelFunc         // shut down the router
+	streams       chan net.Conn              // accepted connections
+	sessions      map[net.Addr]*atomic.Int32 // open sessions
+	sessionsMutex sync.RWMutex               // protects sessions
+	tlsCert       *tls.Certificate           //
+	tlsServerCfg  *tls.Config                //
+	utpSocket     *utp.Socket                //
 }
 
 func NewSessions(log *log.Logger, r *router.Router) *Sessions {
@@ -55,13 +59,36 @@ func NewSessions(log *log.Logger, r *router.Router) *Sessions {
 		context:   ctx,
 		cancel:    cancel,
 		streams:   make(chan net.Conn, 16),
+		sessions:  make(map[net.Addr]*atomic.Int32),
 		utpSocket: s,
 	}
+
+	s.OnAttach(func(remote net.Addr) {
+		q.sessionsMutex.Lock()
+		defer q.sessionsMutex.Unlock()
+		r := remote
+		if _, ok := q.sessions[r]; !ok {
+			q.sessions[r] = &atomic.Int32{}
+		}
+		c := q.sessions[r].Inc()
+		log.Println("Attach:", r, c, q.sessions)
+	})
+	s.OnDetach(func(remote net.Addr) {
+		q.sessionsMutex.Lock()
+		defer q.sessionsMutex.Unlock()
+		r := remote
+		c := q.sessions[r].Dec()
+		if c == 0 {
+			delete(q.sessions, r)
+		}
+		log.Println("Detach:", r, c, q.sessions)
+	})
 
 	q.tlsCert = q.generateTLSCertificate()
 	q.tlsServerCfg = &tls.Config{
 		Certificates: []tls.Certificate{*q.tlsCert},
 		ClientAuth:   tls.RequireAnyClientCert,
+		MinVersion:   tls.VersionTLS13,
 	}
 
 	go q.listener()

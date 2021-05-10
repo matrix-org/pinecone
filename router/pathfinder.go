@@ -49,9 +49,9 @@ func (p *pathfinder) pathfind(ctx context.Context, addr net.Addr) (net.Addr, err
 	searchContext := p.newPathfind(ctx, addr)
 
 	switch a := addr.(type) {
-	case *GreedyAddr:
+	case GreedyAddr:
 		if a.SwitchPorts.EqualTo(p.r.Coords()) {
-			return &SourceAddr{types.SwitchPorts{}}, nil
+			return SourceAddr{types.SwitchPorts{}}, nil
 		}
 		select {
 		case p.r.send <- types.Frame{
@@ -76,14 +76,14 @@ func (p *pathfinder) pathfind(ctx context.Context, addr net.Addr) (net.Addr, err
 					p.r.simulator.ReportDistance(p.r.id, id, int64(len(returnPath)))
 				}
 			}
-			return &SourceAddr{returnPath}, nil
+			return SourceAddr{returnPath}, nil
 		case <-searchContext.ctx.Done():
 			return nil, searchContext.ctx.Err()
 		}
 
 	case types.PublicKey:
 		if a.EqualTo(p.r.PublicKey()) {
-			return &SourceAddr{types.SwitchPorts{}}, nil
+			return SourceAddr{types.SwitchPorts{}}, nil
 		}
 		select {
 		case p.r.send <- types.Frame{
@@ -108,7 +108,7 @@ func (p *pathfinder) pathfind(ctx context.Context, addr net.Addr) (net.Addr, err
 					p.r.simulator.ReportDistance(p.r.id, id, int64(len(returnPath)))
 				}
 			}
-			return &SourceAddr{returnPath}, nil
+			return SourceAddr{returnPath}, nil
 		case <-searchContext.ctx.Done():
 			return nil, searchContext.ctx.Err()
 		}

@@ -178,8 +178,7 @@ func (r *Router) IsRoot() bool {
 // Addr returns a net.Addr instance that addresses this node
 // using greedy routing.
 func (r *Router) Addr() net.Addr {
-	public := r.PublicKey()
-	return &public
+	return r.PublicKey()
 }
 
 // Pathfind takes a GreedyAddr (for greedy routing) or a types.PublicKey

@@ -72,10 +72,12 @@ func (q *Sessions) DialContext(ctx context.Context, network, addrstr string) (ne
 		fallthrough
 
 	default:
-		a := &types.PublicKey{}
+		a := types.PublicKey{}
 		copy(a[:], pk)
 		addr = a
 	}
+
+	fmt.Println("DIALLING SESSION")
 
 	session, err := q.utpSocket.DialAddrContext(
 		ctx, addr,
@@ -86,6 +88,7 @@ func (q *Sessions) DialContext(ctx context.Context, network, addrstr string) (ne
 
 	session = tls.Client(session, &tls.Config{
 		InsecureSkipVerify: true,
+		MinVersion:         tls.VersionTLS13,
 		GetClientCertificate: func(info *tls.CertificateRequestInfo) (*tls.Certificate, error) {
 			return q.tlsCert, nil
 		},
