@@ -30,6 +30,7 @@ import (
 	"time"
 
 	"github.com/matrix-org/pinecone/router"
+	"github.com/matrix-org/pinecone/types"
 	"github.com/neilalexander/utp"
 	"go.uber.org/atomic"
 )
@@ -66,22 +67,17 @@ func NewSessions(log *log.Logger, r *router.Router) *Sessions {
 	s.OnAttach(func(remote net.Addr) {
 		q.sessionsMutex.Lock()
 		defer q.sessionsMutex.Unlock()
-		r := remote
-		if _, ok := q.sessions[r]; !ok {
-			q.sessions[r] = &atomic.Int32{}
+		if _, ok := q.sessions[remote]; !ok {
+			q.sessions[remote] = &atomic.Int32{}
 		}
-		c := q.sessions[r].Inc()
-		log.Println("Attach:", r, c, q.sessions)
+		q.sessions[remote].Inc()
 	})
 	s.OnDetach(func(remote net.Addr) {
 		q.sessionsMutex.Lock()
 		defer q.sessionsMutex.Unlock()
-		r := remote
-		c := q.sessions[r].Dec()
-		if c == 0 {
-			delete(q.sessions, r)
+		if q.sessions[remote].Dec() == 0 {
+			delete(q.sessions, remote)
 		}
-		log.Println("Detach:", r, c, q.sessions)
 	})
 
 	q.tlsCert = q.generateTLSCertificate()
@@ -97,14 +93,15 @@ func NewSessions(log *log.Logger, r *router.Router) *Sessions {
 
 func (q *Sessions) Sessions() []ed25519.PublicKey {
 	var sessions []ed25519.PublicKey
-	//for _, s := range q.sessions {
-	//sessions = append(sessions, s.RemoteAddr())
-	/*
-		if certs := s.ConnectionState().PeerCertificates; len(certs) > 0 {
-			sessions = append(sessions, certs[0].PublicKey.(ed25519.PublicKey))
+	q.sessionsMutex.RLock()
+	defer q.sessionsMutex.RUnlock()
+	for s := range q.sessions {
+		switch s.(type) {
+		case types.PublicKey:
+			sessions = append(sessions, s[:])
+		default:
 		}
-	*/
-	//}
+	}
 	return sessions
 }
 

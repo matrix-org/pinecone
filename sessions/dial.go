@@ -77,8 +77,6 @@ func (q *Sessions) DialContext(ctx context.Context, network, addrstr string) (ne
 		addr = a
 	}
 
-	fmt.Println("DIALLING SESSION")
-
 	session, err := q.utpSocket.DialAddrContext(
 		ctx, addr,
 	)
