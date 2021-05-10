@@ -96,9 +96,9 @@ func (q *Sessions) Sessions() []ed25519.PublicKey {
 	q.sessionsMutex.RLock()
 	defer q.sessionsMutex.RUnlock()
 	for s := range q.sessions {
-		switch s.(type) {
+		switch k := s.(type) {
 		case types.PublicKey:
-			sessions = append(sessions, s[:])
+			sessions = append(sessions, k[:])
 		default:
 		}
 	}
