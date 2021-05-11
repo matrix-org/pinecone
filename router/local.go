@@ -85,10 +85,10 @@ func (r *Router) reader(conn net.Conn) {
 			case types.TypeVirtualSnake:
 				// If the frame doesn't appear as if it's meant to be for
 				// us then we'll drop it.
-				if !frame.DestinationKey.EqualTo(r.PublicKey()) {
+				/*if !frame.DestinationKey.EqualTo(r.PublicKey()) {
 					r.log.Println("Router received frame that isn't for us")
 					continue
-				}
+				}*/
 				r.recv <- frame
 
 			case types.TypeSource:

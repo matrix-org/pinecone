@@ -232,6 +232,8 @@ func (t *virtualSnake) getVirtualSnakeNextHop(from *Peer, destKey types.PublicKe
 	}
 	if bootstrap {
 		return types.SwitchPorts{bestPort}
+	} else if PortCount-canlength == 0 {
+		return types.SwitchPorts{0} // TODO: EXPERIMENTAL! Remove this!
 	} else {
 		return candidates[canlength:]
 	}
