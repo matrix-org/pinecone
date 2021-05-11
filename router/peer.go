@@ -376,6 +376,19 @@ func (p *Peer) writer() {
 		select {
 		case <-p.context.Done():
 			return
+		case frame := <-p.protoOut:
+			if frame != nil {
+				_ = send(frame)
+			}
+		case frame := <-p.trafficOut:
+			if frame != nil {
+				_ = send(frame)
+			}
+		default:
+		}
+		select {
+		case <-p.context.Done():
+			return
 		case frame := <-p.trafficOut:
 			if frame != nil {
 				_ = send(frame)
