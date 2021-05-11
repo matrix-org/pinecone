@@ -107,7 +107,7 @@ func (r *Router) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 			Type:        types.TypeGreedy,
 			Destination: ga.SwitchPorts,
 			Source:      r.Coords(),
-			Payload:     p,
+			Payload:     append([]byte{}, p...),
 		}:
 			return len(p), nil
 		}
@@ -120,7 +120,7 @@ func (r *Router) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 			Version:     types.Version0,
 			Type:        types.TypeSource,
 			Destination: ga.SwitchPorts,
-			Payload:     p,
+			Payload:     append([]byte{}, p...),
 		}:
 			return len(p), nil
 		}
@@ -134,7 +134,7 @@ func (r *Router) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 			Type:           types.TypeVirtualSnake,
 			DestinationKey: ga,
 			SourceKey:      r.PublicKey(),
-			Payload:        p,
+			Payload:        append([]byte{}, p...),
 		}:
 			return len(p), nil
 		}

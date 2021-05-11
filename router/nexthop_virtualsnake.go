@@ -220,9 +220,9 @@ func (t *virtualSnake) getVirtualSnakeNextHop(from *Peer, destKey types.PublicKe
 		// Finally, look at our direct peers, in case of any of our direct
 		// peers end up being a better path than anything else we've come up
 		// with so far.
-		peer.mutex.RLock()
+		//peer.mutex.RLock()
 		peerKey := peer.public
-		peer.mutex.RUnlock()
+		//peer.mutex.RUnlock()
 		switch {
 		case !bootstrap && peerKey.EqualTo(destKey):
 			newCandidate(peerKey, peer.port)
@@ -235,7 +235,7 @@ func (t *virtualSnake) getVirtualSnakeNextHop(from *Peer, destKey types.PublicKe
 	} else if PortCount-canlength == 0 {
 		return types.SwitchPorts{0} // TODO: EXPERIMENTAL! Remove this!
 	} else {
-		return candidates[canlength:]
+		return types.SwitchPorts{bestPort} // candidates[canlength:]
 	}
 }
 
