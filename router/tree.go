@@ -111,21 +111,17 @@ func (t *spanningTree) Coords() types.SwitchPorts {
 }
 
 func (t *spanningTree) Ancestors() ([]types.PublicKey, types.SwitchPortID) {
-	t.rootMutex.RLock()
-	defer t.rootMutex.RUnlock()
-	if t.root == nil || (t.root != nil && time.Since(t.root.at) > announcementTimeout) {
+	root := t.Root()
+	if root == nil {
 		return nil, 0
 	}
 	port, ok := t.parent.Load().(types.SwitchPortID)
 	if !ok || port == 0 {
 		return nil, 0
 	}
-	ancestors := make([]types.PublicKey, len(t.root.Signatures)+1)
-	if t.root != nil {
-		ancestors = append(ancestors, t.root.RootPublicKey)
-		for _, sig := range t.root.Signatures {
-			ancestors = append(ancestors, sig.PublicKey)
-		}
+	ancestors := make([]types.PublicKey, 0, len(root.Signatures))
+	for _, sig := range root.Signatures {
+		ancestors = append(ancestors, sig.PublicKey)
 	}
 	return ancestors, port
 }
