@@ -34,7 +34,7 @@ const announcementThreshold = announcementInterval / 2
 
 // announcementInterval is the frequency at which this
 // node will send root announcements to other peers.
-const announcementInterval = time.Second * 15
+const announcementInterval = time.Second * 24
 
 // announcementTimeout is the amount of time that must
 // pass without receiving a root announcement before we
@@ -365,10 +365,10 @@ func (t *spanningTree) Update(p *Peer, a *types.SwitchAnnouncement) error {
 		t.rootMutex.Lock()
 		t.root = newRoot
 		t.rootMutex.Unlock()
+	}
 
-		if p.port == t.updateCoordinates() {
-			t.advertise.Dispatch()
-		}
+	if p.port == t.updateCoordinates() {
+		t.advertise.Dispatch()
 	}
 
 	return nil
