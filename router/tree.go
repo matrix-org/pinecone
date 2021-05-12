@@ -365,10 +365,10 @@ func (t *spanningTree) Update(p *Peer, a *types.SwitchAnnouncement) error {
 		t.rootMutex.Lock()
 		t.root = newRoot
 		t.rootMutex.Unlock()
+	}
 
-		if p.port == t.updateCoordinates() {
-			t.advertise.Dispatch()
-		}
+	if p.port == t.updateCoordinates() {
+		t.advertise.Dispatch()
 	}
 
 	return nil
