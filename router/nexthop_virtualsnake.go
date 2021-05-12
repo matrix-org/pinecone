@@ -90,6 +90,9 @@ func (v *virtualSnake) maintain() {
 			v.maintainInterval.Inc()
 		}
 
+		v.ascendingMutex.RLock()
+		ascending := v.ascending
+		v.ascendingMutex.RUnlock()
 		v.descendingMutex.RLock()
 		descending := v.descending
 		v.descendingMutex.RUnlock()
@@ -102,10 +105,10 @@ func (v *virtualSnake) maintain() {
 		switch {
 		// TODO: case for when the root has changed?
 		// TODO: case for when our parent has changed?
-		case descending == nil:
+		case ascending == nil || descending == nil:
 			v.maintainInterval.Store(0)
 			fallthrough
-		default: // case descending != nil && time.Since(descending.LastSeen) >= virtualSnakeNeighExpiryPeriod:
+		default:
 			if !v.r.PublicKey().EqualTo(v.r.RootPublicKey()) {
 				ts, err := util.SignedTimestamp(v.r.private)
 				if err != nil {
@@ -159,10 +162,71 @@ func (t *virtualSnake) portWasDisconnected(port types.SwitchPortID) {
 
 // getVirtualSnakeBootstrapNextHop will return the most relevant port
 // for a given destination public key.
-func (t *virtualSnake) getVirtualSnakeNextHop(from *Peer, destKey types.PublicKey, bootstrap bool) types.SwitchPorts {
-	if from.port != 0 && destKey.EqualTo(t.r.public) {
-		// The traffic didn't originate locally and appears to be for us.
-		// Send it straight to the router.
+func (t *virtualSnake) getVirtualSnakeBootstrapNextHop(from *Peer, destKey types.PublicKey) types.SwitchPorts {
+	ancestors, rootPort := t.r.tree.Ancestors()
+	rootKey := t.r.RootPublicKey()
+	if util.LessThan(rootKey, destKey) {
+		return nil
+	}
+	bestKey, bestPort := t.r.public, types.SwitchPortID(0)
+	newCandidate := func(key types.PublicKey, port types.SwitchPortID) {
+		bestKey, bestPort = key, port
+	}
+
+	// Check the root key
+	if from.port == 0 || bestKey.EqualTo(destKey) || util.DHTOrdered(bestKey, destKey, rootKey) {
+		newCandidate(rootKey, rootPort)
+	}
+
+	// Check our direct ancestors between us and the root
+	if len(ancestors) > 0 {
+		for _, ancestorKey := range ancestors[1:] {
+			switch {
+			case util.DHTOrdered(destKey, ancestorKey, bestKey):
+				newCandidate(ancestorKey, rootPort)
+			}
+		}
+	}
+
+	// Check our DHT entries
+	t.tableMutex.RLock()
+	for dhtKey, entry := range t.table {
+		if time.Since(entry.LastSeen) > virtualSnakePathExpiryPeriod {
+			continue
+		}
+		switch {
+		case util.DHTOrdered(destKey, dhtKey, bestKey):
+			// If the DHT entry routes to a key that is closer to the
+			// destination than our current best node then use that
+			// instead.
+			newCandidate(dhtKey, entry.SourcePort)
+		}
+	}
+	t.tableMutex.RUnlock()
+
+	// Check our direct peers
+	for _, peer := range t.r.activePorts() {
+		peer.mutex.RLock()
+		peerKey := peer.public
+		peer.mutex.RUnlock()
+		switch {
+		case util.DHTOrdered(destKey, peerKey, bestKey):
+			// If the peer is closer to the destination than our current
+			// best node then use that instead.
+			newCandidate(peerKey, peer.port)
+		}
+	}
+
+	if from.port == 0 && bestPort == 0 {
+		return nil
+	}
+	return types.SwitchPorts{bestPort}
+}
+
+// getVirtualSnakeBootstrapNextHop will return the most relevant port
+// for a given destination public key.
+func (t *virtualSnake) getVirtualSnakeNextHop(from *Peer, destKey types.PublicKey) types.SwitchPorts {
+	if destKey.EqualTo(t.r.public) {
 		return types.SwitchPorts{0}
 	}
 	rootKey := t.r.RootPublicKey()
@@ -173,13 +237,9 @@ func (t *virtualSnake) getVirtualSnakeNextHop(from *Peer, destKey types.PublicKe
 		return nil
 	}
 	bestKey, bestPort := t.r.public, types.SwitchPortID(0)
-	var candidates types.SwitchPorts
-	var canlength int
-	if !bootstrap {
-		candidates, canlength = make(types.SwitchPorts, PortCount), PortCount
-	}
+	candidates, canlength := make(types.SwitchPorts, PortCount), PortCount
 	newCandidate := func(key types.PublicKey, port types.SwitchPortID) {
-		if !bootstrap && port != bestPort {
+		if port != bestPort {
 			canlength--
 			candidates[canlength] = port
 		}
@@ -191,7 +251,7 @@ func (t *virtualSnake) getVirtualSnakeNextHop(from *Peer, destKey types.PublicKe
 	if ancestors, rootPort := t.r.tree.Ancestors(); rootPort != 0 {
 		for _, ancestorKey := range ancestors {
 			switch {
-			case !bootstrap && (util.DHTOrdered(bestKey, ancestorKey, destKey) || ancestorKey.EqualTo(destKey)):
+			case util.DHTOrdered(bestKey, ancestorKey, destKey) || ancestorKey.EqualTo(destKey):
 				newCandidate(ancestorKey, rootPort)
 			case !util.LessThan(destKey, bestKey) && util.LessThan(destKey, ancestorKey):
 				newCandidate(ancestorKey, rootPort)
@@ -209,7 +269,7 @@ func (t *virtualSnake) getVirtualSnakeNextHop(from *Peer, destKey types.PublicKe
 			continue
 		}
 		switch {
-		case !bootstrap && destKey.EqualTo(dhtKey):
+		case destKey.EqualTo(dhtKey):
 			newCandidate(dhtKey, entry.SourcePort)
 		case util.DHTOrdered(destKey, dhtKey, bestKey):
 			newCandidate(dhtKey, entry.SourcePort)
@@ -224,103 +284,37 @@ func (t *virtualSnake) getVirtualSnakeNextHop(from *Peer, destKey types.PublicKe
 		peerKey := peer.public
 		peer.mutex.RUnlock()
 		switch {
-		case !bootstrap && peerKey.EqualTo(destKey):
+		case peerKey.EqualTo(destKey):
 			newCandidate(peerKey, peer.port)
 		case util.DHTOrdered(destKey, peerKey, bestKey):
 			newCandidate(peerKey, peer.port)
 		}
 	}
-	if bootstrap {
-		return types.SwitchPorts{bestPort}
-	} else if PortCount-canlength == 0 {
-		return types.SwitchPorts{0} // TODO: Experimental - remove soon.
-	} else {
-		return candidates[canlength:]
-	}
+	return candidates[canlength:]
 }
 
 // handleBootstrap is called in response to an incoming bootstrap
 // packet. It will update the descending information and send a setup
 // message if needed.
 func (t *virtualSnake) handleBootstrap(from *Peer, rx *types.Frame) {
+	if rx.DestinationKey.EqualTo(t.r.public) {
+		return
+	}
 	// Check if the packet has a valid signed timestamp.
 	if !util.VerifySignedTimestamp(rx.DestinationKey, rx.Payload) {
 		return
 	}
-	var send *types.Frame
-	defer func() {
-		// When we reach the end of handleBootstrap, if a response packet
-		// has been built, then send it into the network. Doing this in a
-		// defer means we can defer the mutex unlocks but still not hold
-		// them for longer than needed.
-		if send != nil {
-			t.r.send <- *send
-		}
-	}()
-	t.descendingMutex.Lock()
-	defer t.descendingMutex.Unlock()
-	switch {
-	case rx.DestinationKey.EqualTo(t.r.public):
-		// We received a bootstrap from ourselves. This shouldn't happen,
-		// so either another node has forwarded it to us incorrectly, or
-		// a routing loop has occurred somewhere. Don't act on the bootstrap
-		// in that case.
-	case t.descending != nil && t.descending.PublicKey.EqualTo(rx.DestinationKey):
-		// We've received another bootstrap from our direct descending node.
-		// Just refresh the record and then send back an acknowledgement.
-		t.descending.Coords = rx.Source
-		t.descending.Port = from.port
-		t.descending.LastSeen = time.Now()
-		ts, err := util.SignedTimestamp(t.r.private)
-		if err != nil {
-			return
-		}
-		send = &types.Frame{
-			Destination:    rx.Source,
-			DestinationKey: rx.DestinationKey,
-			Source:         t.r.Coords(),
-			SourceKey:      t.r.PublicKey(),
-			Type:           types.TypeVirtualSnakeBootstrapACK,
-			Payload:        ts,
-		}
-	case t.descending != nil && time.Since(t.descending.LastSeen) >= virtualSnakeNeighExpiryPeriod:
-		// We already have a direct descending node, but we haven't seen it
-		// recently, so it's quite possible that it has disappeared. We'll
-		// therefore handle this bootstrap instead. If the original node comes
-		// back later and is closer to us then we'll end up using it again.
-		fallthrough
-	case t.descending == nil && util.LessThan(rx.DestinationKey, t.r.public):
-		// We don't know about a descending node and at the moment we don't know
-		// any better candidates, so we'll accept a bootstrap from a node with a
-		// key lower than ours (so that it matches descending order).
-		fallthrough
-	case t.descending != nil && util.DHTOrdered(t.descending.PublicKey, rx.DestinationKey, t.r.public):
-		// We know about a descending node already but it turns out that this
-		// new node that we've received a bootstrap from is actually closer to
-		// us than the previous node. We'll update our record to use the new
-		// node instead and then send back a bootstrap ACK.
-		t.descending = &virtualSnakeNeighbour{
-			PublicKey: rx.DestinationKey,
-			Port:      from.port,
-			LastSeen:  time.Now(),
-			Coords:    rx.Source,
-		}
-		ts, err := util.SignedTimestamp(t.r.private)
-		if err != nil {
-			return
-		}
-		send = &types.Frame{
-			Destination:    rx.Source,
-			DestinationKey: rx.DestinationKey,
-			Source:         t.r.Coords(),
-			SourceKey:      t.r.PublicKey(),
-			Type:           types.TypeVirtualSnakeBootstrapACK,
-			Payload:        ts,
-		}
-	default:
-		// The bootstrap conditions weren't met. This might just be because
-		// there's a node out there that hasn't converged to a closer node
-		// yet, so we'll just ignore the bootstrap.
+	ts, err := util.SignedTimestamp(t.r.private)
+	if err != nil {
+		return
+	}
+	t.r.send <- types.Frame{
+		Destination:    rx.Source,
+		DestinationKey: rx.DestinationKey,
+		Source:         t.r.Coords(),
+		SourceKey:      t.r.PublicKey(),
+		Type:           types.TypeVirtualSnakeBootstrapACK,
+		Payload:        ts,
 	}
 }
 
@@ -409,7 +403,7 @@ func (t *virtualSnake) handleBootstrapACK(from *Peer, rx *types.Frame) {
 // that the setup packet isn't necessarily destined for us directly, but is
 // instead called for every setup packet being transited through this node.
 // It will update the routing table with the new path.
-func (t *virtualSnake) handleSetup(from *Peer, rx *types.Frame, nextHops []types.SwitchPortID) {
+func (t *virtualSnake) handleSetup(from *Peer, rx *types.Frame, nextHops types.SwitchPorts) {
 	if rx.SourceKey.EqualTo(t.r.public) {
 		return
 	}
@@ -438,5 +432,49 @@ func (t *virtualSnake) handleSetup(from *Peer, rx *types.Frame, nextHops []types
 	t.table[rx.SourceKey] = virtualSnakeEntry{
 		LastSeen:   time.Now(),
 		SourcePort: from.port,
+	}
+
+	// If we're at the destination of the setup then update our predecessor
+	// with information from the bootstrap.
+	if nextHops.EqualTo(types.SwitchPorts{0}) {
+		t.descendingMutex.Lock()
+		defer t.descendingMutex.Unlock()
+		switch {
+		case rx.SourceKey.EqualTo(t.r.public):
+			// We received a bootstrap from ourselves. This shouldn't happen,
+			// so either another node has forwarded it to us incorrectly, or
+			// a routing loop has occurred somewhere. Don't act on the bootstrap
+			// in that case.
+		case t.descending != nil && t.descending.PublicKey.EqualTo(rx.SourceKey):
+			// We've received another bootstrap from our direct descending node.
+			// Just refresh the record and then send back an acknowledgement.
+			fallthrough
+		case t.descending != nil && time.Since(t.descending.LastSeen) >= virtualSnakeNeighExpiryPeriod:
+			// We already have a direct descending node, but we haven't seen it
+			// recently, so it's quite possible that it has disappeared. We'll
+			// therefore handle this bootstrap instead. If the original node comes
+			// back later and is closer to us then we'll end up using it again.
+			fallthrough
+		case t.descending == nil && util.LessThan(rx.SourceKey, t.r.public):
+			// We don't know about a descending node and at the moment we don't know
+			// any better candidates, so we'll accept a bootstrap from a node with a
+			// key lower than ours (so that it matches descending order).
+			fallthrough
+		case t.descending != nil && util.DHTOrdered(t.descending.PublicKey, rx.SourceKey, t.r.public):
+			// We know about a descending node already but it turns out that this
+			// new node that we've received a bootstrap from is actually closer to
+			// us than the previous node. We'll update our record to use the new
+			// node instead and then send back a bootstrap ACK.
+			t.descending = &virtualSnakeNeighbour{
+				PublicKey: rx.SourceKey,
+				Port:      from.port,
+				LastSeen:  time.Now(),
+				Coords:    rx.Source,
+			}
+		default:
+			// The bootstrap conditions weren't met. This might just be because
+			// there's a node out there that hasn't converged to a closer node
+			// yet, so we'll just ignore the bootstrap.
+		}
 	}
 }
