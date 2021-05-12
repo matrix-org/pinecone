@@ -119,8 +119,12 @@ func (t *spanningTree) Ancestors() ([]types.PublicKey, types.SwitchPortID) {
 	if !ok || port == 0 {
 		return nil, 0
 	}
-	ancestors := make([]types.PublicKey, 0, len(root.Signatures))
-	for _, sig := range root.Signatures {
+	ancestors := make([]types.PublicKey, 0, 1+len(root.Signatures))
+	ancestors = append(ancestors, root.RootPublicKey)
+	if len(root.Signatures) == 0 {
+		return ancestors, port
+	}
+	for _, sig := range root.Signatures[1:] {
 		ancestors = append(ancestors, sig.PublicKey)
 	}
 	return ancestors, port
