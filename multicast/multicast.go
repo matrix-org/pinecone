@@ -64,14 +64,16 @@ func NewMulticast(
 		id:  hex.EncodeToString(public[:]),
 	}
 	m.tcpLC = net.ListenConfig{
-		Control: m.tcpOptions,
+		Control:   m.tcpOptions,
+		KeepAlive: time.Second,
 	}
 	m.udpLC = net.ListenConfig{
 		Control: m.udpOptions,
 	}
 	m.dialer = net.Dialer{
-		Control: m.tcpOptions,
-		Timeout: time.Second * 5,
+		Control:   m.tcpOptions,
+		Timeout:   time.Second * 5,
+		KeepAlive: time.Second,
 	}
 	return m
 }
@@ -219,7 +221,7 @@ func (m *Multicast) advertise(intf *multicastInterface, conn net.PacketConn, add
 	tcpaddr, _ := m.listener.Addr().(*net.TCPAddr)
 	portBytes := make([]byte, 2)
 	binary.BigEndian.PutUint16(portBytes, uint16(tcpaddr.Port))
-	ticker := time.NewTicker(time.Second * 5)
+	ticker := time.NewTicker(time.Second * 3)
 	first := make(chan struct{}, 1)
 	first <- struct{}{}
 	ourPublicKey := m.r.PublicKey()

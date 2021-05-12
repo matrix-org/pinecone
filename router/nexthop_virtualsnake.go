@@ -125,17 +125,34 @@ func (v *virtualSnake) maintain() {
 	}
 }
 
+// portWasDisconnected is called by the router when a peer connects
+// allowing us to start a new bootstrap.
+func (t *virtualSnake) rootNodeChanged(root types.PublicKey) {
+	t.ascendingMutex.Lock()
+	t.ascending = nil
+	t.ascendingMutex.Unlock()
+	t.descendingMutex.Lock()
+	t.descending = nil
+	t.descendingMutex.Unlock()
+	t.maintainNow.Dispatch()
+}
+
+// portWasDisconnected is called by the router when a peer connects
+// allowing us to start a new bootstrap.
+func (t *virtualSnake) portWasConnected(port types.SwitchPortID) {
+	t.maintainNow.Dispatch()
+}
+
 // portWasDisconnected is called by the router when a peer disconnects
 // allowing us to clean up the virtual snake state.
 func (t *virtualSnake) portWasDisconnected(port types.SwitchPortID) {
+	defer t.maintainNow.Dispatch()
 	// Check if our descending node was routable via the disconnected
 	// port. If they were, clear the entry so that the maintain function
 	// will send new bootstraps to find the next descending node.
 	t.descendingMutex.Lock()
 	if p := t.descending; p != nil && p.Port == port {
-		t.maintainInterval.Store(0)
 		t.descending = nil
-		t.maintainNow.Dispatch()
 	}
 	t.descendingMutex.Unlock()
 	// Check if our ascending node was routable via the disconnected
@@ -144,7 +161,6 @@ func (t *virtualSnake) portWasDisconnected(port types.SwitchPortID) {
 	t.ascendingMutex.Lock()
 	if s := t.ascending; s != nil && s.Port == port {
 		t.ascending = nil
-		t.maintainNow.Dispatch()
 	}
 	t.ascendingMutex.Unlock()
 	// Finally, check if any of our routing table entries are
