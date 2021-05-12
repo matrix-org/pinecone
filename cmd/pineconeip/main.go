@@ -15,12 +15,14 @@
 package main
 
 import (
+	"context"
 	"crypto/ed25519"
 	"flag"
 	"fmt"
 	"log"
 	"net"
 	"os"
+	"time"
 
 	"net/http"
 	_ "net/http/pprof"
@@ -34,6 +36,14 @@ func main() {
 	pk, sk, err := ed25519.GenerateKey(nil)
 	if err != nil {
 		panic(err)
+	}
+
+	dialer := net.Dialer{
+		Timeout:   time.Second * 5,
+		KeepAlive: time.Second * 3,
+	}
+	listener := net.ListenConfig{
+		KeepAlive: time.Second * 3,
 	}
 
 	logger := log.New(os.Stdout, "", 0)
@@ -59,7 +69,7 @@ func main() {
 
 	if connect != nil && *connect != "" {
 		go func() {
-			conn, err := net.Dial("tcp", *connect)
+			conn, err := dialer.Dial("tcp", *connect)
 			if err != nil {
 				panic(err)
 			}
@@ -74,7 +84,7 @@ func main() {
 	}
 
 	go func() {
-		listener, err := net.Listen("tcp", *listen)
+		listener, err := listener.Listen(context.Background(), "tcp", *listen)
 		if err != nil {
 			panic(err)
 		}
