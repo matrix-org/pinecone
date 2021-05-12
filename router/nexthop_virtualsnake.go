@@ -159,7 +159,7 @@ func (t *virtualSnake) portWasDisconnected(port types.SwitchPortID) {
 
 // getVirtualSnakeBootstrapNextHop will return the most relevant port
 // for a given destination public key.
-func (t *virtualSnake) getVirtualSnakeNextHop(from *Peer, destKey types.PublicKey, bootstrap bool) types.SwitchPorts {
+func (t *virtualSnake) getVirtualSnakeBootstrapNextHop(from *Peer, destKey types.PublicKey) types.SwitchPorts {
 	if from.port != 0 && destKey.EqualTo(t.r.public) {
 		// The traffic didn't originate locally and appears to be for us.
 		// Send it straight to the router.
@@ -173,13 +173,70 @@ func (t *virtualSnake) getVirtualSnakeNextHop(from *Peer, destKey types.PublicKe
 		return nil
 	}
 	bestKey, bestPort := t.r.public, types.SwitchPortID(0)
-	var candidates types.SwitchPorts
-	var canlength int
-	if !bootstrap {
-		candidates, canlength = make(types.SwitchPorts, PortCount), PortCount
-	}
 	newCandidate := func(key types.PublicKey, port types.SwitchPortID) {
-		if !bootstrap && port != bestPort {
+		bestKey, bestPort = key, port
+	}
+	// Start by looking through all ancestors. This includes the root
+	// node. These routes are effectively ascending paths to higher
+	// public keys.
+	if ancestors, rootPort := t.r.tree.Ancestors(); rootPort != 0 {
+		for _, ancestorKey := range ancestors {
+			switch {
+			case !util.LessThan(destKey, bestKey) && util.LessThan(destKey, ancestorKey):
+				newCandidate(ancestorKey, rootPort)
+			}
+		}
+	}
+	t.tableMutex.RLock()
+	// Next, look at the routing table. This includes source-side paths
+	// from setups only.
+	for dhtKey, entry := range t.table {
+		if time.Since(entry.LastSeen) > virtualSnakePathExpiryPeriod {
+			// The routing table entry hasn't been refreshed recently so we'll
+			// ignore it. This will eventually get picked up and removed from
+			// the routing table.
+			continue
+		}
+		switch {
+		case util.DHTOrdered(destKey, dhtKey, bestKey):
+			newCandidate(dhtKey, entry.SourcePort)
+		}
+	}
+	t.tableMutex.RUnlock()
+	for _, peer := range t.r.activePorts() {
+		// Finally, look at our direct peers, in case of any of our direct
+		// peers end up being a better path than anything else we've come up
+		// with so far.
+		peer.mutex.RLock()
+		peerKey := peer.public
+		peer.mutex.RUnlock()
+		switch {
+		case util.DHTOrdered(destKey, peerKey, bestKey):
+			newCandidate(peerKey, peer.port)
+		}
+	}
+	return types.SwitchPorts{bestPort}
+}
+
+// getVirtualSnakeBootstrapNextHop will return the most relevant port
+// for a given destination public key.
+func (t *virtualSnake) getVirtualSnakeNextHop(from *Peer, destKey types.PublicKey) types.SwitchPorts {
+	if from.port != 0 && destKey.EqualTo(t.r.public) {
+		// The traffic didn't originate locally and appears to be for us.
+		// Send it straight to the router.
+		return types.SwitchPorts{0}
+	}
+	rootKey := t.r.RootPublicKey()
+	if util.LessThan(rootKey, destKey) {
+		// The destination key is higher than the root key - this should
+		// be impossible since the root node should be the highest end of
+		// the snake. We will therefore just drop the packet.
+		return nil
+	}
+	bestKey, bestPort := t.r.public, types.SwitchPortID(0)
+	candidates, canlength := make(types.SwitchPorts, PortCount), PortCount
+	newCandidate := func(key types.PublicKey, port types.SwitchPortID) {
+		if port != bestPort {
 			canlength--
 			candidates[canlength] = port
 		}
@@ -191,7 +248,7 @@ func (t *virtualSnake) getVirtualSnakeNextHop(from *Peer, destKey types.PublicKe
 	if ancestors, rootPort := t.r.tree.Ancestors(); rootPort != 0 {
 		for _, ancestorKey := range ancestors {
 			switch {
-			case !bootstrap && (util.DHTOrdered(bestKey, ancestorKey, destKey) || ancestorKey.EqualTo(destKey)):
+			case util.DHTOrdered(bestKey, ancestorKey, destKey) || ancestorKey.EqualTo(destKey):
 				newCandidate(ancestorKey, rootPort)
 			case !util.LessThan(destKey, bestKey) && util.LessThan(destKey, ancestorKey):
 				newCandidate(ancestorKey, rootPort)
@@ -209,7 +266,7 @@ func (t *virtualSnake) getVirtualSnakeNextHop(from *Peer, destKey types.PublicKe
 			continue
 		}
 		switch {
-		case !bootstrap && destKey.EqualTo(dhtKey):
+		case destKey.EqualTo(dhtKey):
 			newCandidate(dhtKey, entry.SourcePort)
 		case util.DHTOrdered(destKey, dhtKey, bestKey):
 			newCandidate(dhtKey, entry.SourcePort)
@@ -224,17 +281,13 @@ func (t *virtualSnake) getVirtualSnakeNextHop(from *Peer, destKey types.PublicKe
 		peerKey := peer.public
 		peer.mutex.RUnlock()
 		switch {
-		case !bootstrap && peerKey.EqualTo(destKey):
+		case peerKey.EqualTo(destKey):
 			newCandidate(peerKey, peer.port)
 		case util.DHTOrdered(destKey, peerKey, bestKey):
 			newCandidate(peerKey, peer.port)
 		}
 	}
-	if bootstrap {
-		return types.SwitchPorts{bestPort}
-	} else {
-		return candidates[canlength:]
-	}
+	return candidates[canlength:]
 }
 
 // handleBootstrap is called in response to an incoming bootstrap

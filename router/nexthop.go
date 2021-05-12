@@ -37,7 +37,7 @@ func (p *Peer) getNextHops(frame *types.Frame, from types.SwitchPortID) types.Sw
 		}
 
 	case types.TypeVirtualSnakeBootstrap:
-		nextHops := p.r.snake.getVirtualSnakeNextHop(p, frame.DestinationKey, true)
+		nextHops := p.r.snake.getVirtualSnakeBootstrapNextHop(p, frame.DestinationKey)
 		if nextHops.EqualTo(types.SwitchPorts{0}) {
 			p.r.snake.handleBootstrap(p, frame)
 		} else {
@@ -58,7 +58,7 @@ func (p *Peer) getNextHops(frame *types.Frame, from types.SwitchPortID) types.Sw
 		return nextHops
 
 	case types.TypeVirtualSnake, types.TypeVirtualSnakePathfind:
-		return p.r.snake.getVirtualSnakeNextHop(p, frame.DestinationKey, false)
+		return p.r.snake.getVirtualSnakeNextHop(p, frame.DestinationKey)
 
 	case types.TypeGreedy, types.TypePathfind, types.TypeDHTRequest, types.TypeDHTResponse:
 		return p.r.getGreedyRoutedNextHop(p, frame)
