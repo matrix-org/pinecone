@@ -233,9 +233,6 @@ func (t *virtualSnake) getVirtualSnakeBootstrapNextHop(from *Peer, destKey types
 		}
 	}
 
-	if from.port == 0 && bestPort == 0 {
-		return nil
-	}
 	return types.SwitchPorts{bestPort}
 }
 
