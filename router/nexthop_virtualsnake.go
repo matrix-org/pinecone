@@ -189,9 +189,22 @@ func (t *virtualSnake) getVirtualSnakeBootstrapNextHop(from *Peer, destKey types
 		bestKey, bestPort = key, port
 	}
 
-	// Check the root key
-	if from.port == 0 || bestKey.EqualTo(destKey) || util.DHTOrdered(bestKey, destKey, rootKey) {
+	// Check the root key, as a last-resort we will use it
+	// to climb up towards the root
+	if from.port == 0 || util.LessThan(bestKey, destKey) {
 		newCandidate(rootKey, rootPort)
+	}
+
+	// Special rules for if the bootstrap originated locally
+	if from.port == 0 {
+		// Check our ascending node, if we have one
+		t.ascendingMutex.RLock()
+		if asc := t.ascending; asc != nil && time.Since(asc.LastSeen) <= virtualSnakeNeighExpiryPeriod {
+			if util.LessThan(destKey, asc.PublicKey) {
+				newCandidate(asc.PublicKey, asc.Port)
+			}
+		}
+		t.ascendingMutex.RUnlock()
 	}
 
 	// Check our direct ancestors between us and the root
