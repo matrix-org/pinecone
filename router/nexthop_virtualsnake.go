@@ -129,9 +129,15 @@ func (v *virtualSnake) maintain() {
 // allowing us to start a new bootstrap.
 func (t *virtualSnake) rootNodeChanged(root types.PublicKey) {
 	t.ascendingMutex.Lock()
+	if t.ascending != nil {
+		t.clearRoutingEntriesForPublicKey(t.ascending.PublicKey)
+	}
 	t.ascending = nil
 	t.ascendingMutex.Unlock()
 	t.descendingMutex.Lock()
+	if t.descending != nil {
+		t.clearRoutingEntriesForPublicKey(t.descending.PublicKey)
+	}
 	t.descending = nil
 	t.descendingMutex.Unlock()
 	t.maintainNow.Dispatch()
@@ -152,6 +158,7 @@ func (t *virtualSnake) portWasDisconnected(port types.SwitchPortID) {
 	// will send new bootstraps to find the next descending node.
 	t.descendingMutex.Lock()
 	if p := t.descending; p != nil && p.Port == port {
+		t.clearRoutingEntriesForPublicKey(t.descending.PublicKey)
 		t.descending = nil
 	}
 	t.descendingMutex.Unlock()
@@ -160,6 +167,7 @@ func (t *virtualSnake) portWasDisconnected(port types.SwitchPortID) {
 	// re-populated the next time we bootstrap.
 	t.ascendingMutex.Lock()
 	if s := t.ascending; s != nil && s.Port == port {
+		t.clearRoutingEntriesForPublicKey(t.ascending.PublicKey)
 		t.ascending = nil
 	}
 	t.ascendingMutex.Unlock()
@@ -167,13 +175,7 @@ func (t *virtualSnake) portWasDisconnected(port types.SwitchPortID) {
 	// via the port in question. If they were then let's nuke those
 	// too, otherwise we'll be trying to route traffic into black
 	// holes.
-	t.tableMutex.Lock()
-	for key, value := range t.table {
-		if value.SourcePort == port {
-			delete(t.table, key)
-		}
-	}
-	t.tableMutex.Unlock()
+	t.clearRoutingEntriesForPort(port)
 }
 
 // getVirtualSnakeBootstrapNextHop will return the most relevant port
@@ -317,6 +319,26 @@ func (t *virtualSnake) getVirtualSnakeNextHop(from *Peer, destKey types.PublicKe
 		}
 	}
 	return candidates[canlength:]
+}
+
+func (t *virtualSnake) clearRoutingEntriesForPort(port types.SwitchPortID) {
+	t.tableMutex.Lock()
+	defer t.tableMutex.Unlock()
+	for k, v := range t.table {
+		if v.SourcePort == port {
+			delete(t.table, k)
+		}
+	}
+}
+
+func (t *virtualSnake) clearRoutingEntriesForPublicKey(key types.PublicKey) {
+	t.tableMutex.Lock()
+	defer t.tableMutex.Unlock()
+	for k := range t.table {
+		if k == key {
+			delete(t.table, k)
+		}
+	}
 }
 
 // handleBootstrap is called in response to an incoming bootstrap
