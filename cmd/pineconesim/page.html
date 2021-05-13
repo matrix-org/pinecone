@@ -71,8 +71,8 @@
             </div>
             <div class="column" id="right">
                 Topology view: 
-                <a href="/?view=physical">Physical</a>
-                <a href="/?view=logical">Logical</a>
+                <a href="?view=physical">Physical</a>
+                <a href="?view=logical">Logical</a>
             </div>
         </div>
         <div class="row" id="main">
@@ -188,6 +188,9 @@
                 },
                 physics:{
                     enabled: true,
+                    barnesHut: {
+                        theta: 1,
+                    }
                 }
             };
             var network = new vis.Network(container, data, options);

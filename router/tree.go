@@ -295,10 +295,9 @@ func (t *spanningTree) Remove(p *Peer) {
 func (t *spanningTree) Update(p *Peer, a *types.SwitchAnnouncement) error {
 	// Unless the key is really stronger than our current root key,
 	// throttle how quickly we will act upon root updates.
-	if last := p.lastAnnouncement(); last != nil && time.Since(last.at) < announcementThreshold {
-		if a.RootPublicKey.CompareTo(t.Root().RootPublicKey) < 0 {
-			return fmt.Errorf("rejecting update (too soon)")
-		}
+	var timeSinceLastUpdate time.Duration
+	if last := p.lastAnnouncement(); last != nil {
+		timeSinceLastUpdate = time.Since(last.at)
 	}
 
 	// Check that there are no routing loops in the update.
@@ -319,9 +318,20 @@ func (t *spanningTree) Update(p *Peer, a *types.SwitchAnnouncement) error {
 
 	// Store the announcement against the peer. This lets us ultimately
 	// calculate what the coordinates of that peer are later.
-	p.announcement = &rootAnnouncementWithTime{
-		SwitchAnnouncement: a,
-		at:                 time.Now(),
+	if a.RootPublicKey.CompareTo(t.Root().RootPublicKey) >= 0 {
+		p.announcement = &rootAnnouncementWithTime{
+			SwitchAnnouncement: a,
+			at:                 time.Now(),
+		}
+	}
+
+	// If the announcement is from the same root, or a weaker one, and
+	// hasn't waited for the threshold to pass, then we'll stop here,
+	// otherwise we will end up flooding downstream nodes.
+	if timeSinceLastUpdate != 0 && timeSinceLastUpdate < announcementThreshold {
+		if a.RootPublicKey.CompareTo(t.Root().RootPublicKey) < 0 {
+			return fmt.Errorf("ignoring update (too soon)")
+		}
 	}
 
 	t.rootMutex.RLock()
@@ -365,10 +375,12 @@ func (t *spanningTree) Update(p *Peer, a *types.SwitchAnnouncement) error {
 		t.rootMutex.Lock()
 		t.root = newRoot
 		t.rootMutex.Unlock()
-	}
 
-	if p.port == t.updateCoordinates() {
-		t.advertise.Dispatch()
+		if p.port == t.updateCoordinates() {
+			t.advertise.Dispatch()
+		}
+
+		go t.r.snake.rootNodeChanged(newRoot.RootPublicKey)
 	}
 
 	return nil

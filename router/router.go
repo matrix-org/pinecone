@@ -373,6 +373,7 @@ func (r *Router) Connect(conn net.Conn, public types.PublicKey, zone string, pee
 		r.log.Printf("Connected port %d to %s (zone %q)\n", i, conn.RemoteAddr(), zone)
 		go r.callbacks.onConnected(i, public, peertype)
 		r.active.Store(hex.EncodeToString(public[:])+zone, i)
+		r.snake.portWasConnected(i)
 		return i, nil
 	}
 	return 0, fmt.Errorf("no free switch ports")
