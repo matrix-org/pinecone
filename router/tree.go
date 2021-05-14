@@ -371,6 +371,9 @@ func (t *spanningTree) Update(p *Peer, a *types.SwitchAnnouncement) error {
 	}
 
 	// If the root has changed then let's do something about it.
+	if newRoot.RootPublicKey != oldRoot.RootPublicKey {
+		go t.r.snake.rootNodeChanged(newRoot.RootPublicKey)
+	}
 	if newRoot != oldRoot {
 		t.rootMutex.Lock()
 		t.root = newRoot
@@ -379,8 +382,6 @@ func (t *spanningTree) Update(p *Peer, a *types.SwitchAnnouncement) error {
 		if p.port == t.updateCoordinates() {
 			t.advertise.Dispatch()
 		}
-
-		go t.r.snake.rootNodeChanged(newRoot.RootPublicKey)
 	}
 
 	return nil

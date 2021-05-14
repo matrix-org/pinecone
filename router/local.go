@@ -91,6 +91,9 @@ func (r *Router) reader(conn net.Conn) {
 				}
 				r.recv <- frame
 
+			case types.TypeVirtualSnakeTeardown:
+				r.recv <- frame
+
 			case types.TypeSource:
 				// Check if the source path seems to be finished.
 				if len(frame.Destination) > 0 {

@@ -52,6 +52,9 @@ func (p *Peer) getNextHops(frame *types.Frame, from types.SwitchPortID) types.Sw
 			return nextHops
 		}
 
+	case types.TypeVirtualSnakeTeardown:
+		return p.r.snake.getVirtualSnakeTeardownNextHop(p, frame)
+
 	case types.TypeVirtualSnakeSetup:
 		nextHops := p.r.getGreedyRoutedNextHop(p, frame)
 		defer p.r.snake.handleSetup(p, frame, nextHops)

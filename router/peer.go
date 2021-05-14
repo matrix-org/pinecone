@@ -224,6 +224,10 @@ func (p *Peer) reader() {
 				coordsLen := int(binary.BigEndian.Uint16(header[4:6]))
 				expecting = 10 + coordsLen + (ed25519.PublicKeySize * 2) + payloadLen
 
+			case types.TypeVirtualSnakeTeardown:
+				payloadLen := int(binary.BigEndian.Uint16(header[2:4]))
+				expecting = 8 + payloadLen + ed25519.PublicKeySize
+
 			case types.TypeVirtualSnake, types.TypeVirtualSnakePathfind:
 				payloadLen := int(binary.BigEndian.Uint16(header[2:4]))
 				expecting = 8 + payloadLen + (ed25519.PublicKeySize * 2)
@@ -300,7 +304,7 @@ func (p *Peer) reader() {
 								continue
 							}
 
-						case types.TypeDHTRequest, types.TypeDHTResponse, types.TypeVirtualSnakeBootstrap, types.TypeVirtualSnakeBootstrapACK, types.TypeVirtualSnakeSetup:
+						case types.TypeDHTRequest, types.TypeDHTResponse, types.TypeVirtualSnakeBootstrap, types.TypeVirtualSnakeBootstrapACK, types.TypeVirtualSnakeSetup, types.TypeVirtualSnakeTeardown:
 							select {
 							case dest.protoOut <- frame.Borrow():
 								dest.statistics.txProtoSuccessful.Inc()

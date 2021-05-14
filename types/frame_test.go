@@ -242,6 +242,53 @@ func TestMarshalUnmarshalSNEKSetupFrame(t *testing.T) {
 	}
 }
 
+func TestMarshalUnmarshalSNEKTeardownFrame(t *testing.T) {
+	pk1, _, _ := ed25519.GenerateKey(nil)
+	input := Frame{
+		Version: Version0,
+		Type:    TypeVirtualSnakeTeardown,
+	}
+	copy(input.DestinationKey[:], pk1)
+	expected := []byte{
+		0x70, 0x69, 0x6e, 0x65, // magic bytes
+		0,                              // version 0
+		byte(TypeVirtualSnakeTeardown), // type greedy
+		0, 0,                           // payload length
+	}
+	expected = append(expected, pk1...)
+	buf := make([]byte, 65535)
+	n, err := input.MarshalBinary(buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != len(expected) {
+		t.Fatalf("wrong marshalled length, \ngot %d, \nexpected %d", n, len(expected))
+	}
+	if !bytes.Equal(buf[:n], expected) {
+		t.Fatalf("wrong marshalled output, \ngot %v, \nexpected %v", buf[:n], expected)
+	}
+
+	t.Log("Got: ", buf[:n])
+	t.Log("Want:", expected)
+
+	var output Frame
+	if _, err := output.UnmarshalBinary(buf[:n]); err != nil {
+		t.Fatal(err)
+	}
+	if output.Version != input.Version {
+		t.Fatal("wrong version")
+	}
+	if output.Type != input.Type {
+		t.Fatal("wrong version")
+	}
+	if !output.Destination.EqualTo(input.Destination) {
+		t.Fatal("wrong path")
+	}
+	if !bytes.Equal(input.Payload, output.Payload) {
+		t.Fatal("wrong payload")
+	}
+}
+
 func TestMarshalUnmarshalSNEKFrame(t *testing.T) {
 	pk1, _, _ := ed25519.GenerateKey(nil)
 	pk2, _, _ := ed25519.GenerateKey(nil)

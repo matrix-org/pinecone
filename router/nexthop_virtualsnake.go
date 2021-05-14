@@ -25,8 +25,7 @@ import (
 )
 
 const virtualSnakeSetupInterval = time.Second * 16
-const virtualSnakePathExpiryPeriod = virtualSnakeSetupInterval * 2
-const virtualSnakeNeighExpiryPeriod = virtualSnakePathExpiryPeriod * 2
+const virtualSnakeNeighExpiryPeriod = time.Minute * 10
 
 type virtualSnake struct {
 	r                *Router
@@ -43,8 +42,9 @@ type virtualSnake struct {
 type virtualSnakeTable map[types.PublicKey]virtualSnakeEntry
 
 type virtualSnakeEntry struct {
-	SourcePort types.SwitchPortID
-	LastSeen   time.Time
+	SourcePort      types.SwitchPortID
+	DestinationPort types.SwitchPortID
+	LastSeen        time.Time
 }
 
 type virtualSnakeNeighbour struct {
@@ -128,18 +128,6 @@ func (v *virtualSnake) maintain() {
 // portWasDisconnected is called by the router when a peer connects
 // allowing us to start a new bootstrap.
 func (t *virtualSnake) rootNodeChanged(root types.PublicKey) {
-	t.ascendingMutex.Lock()
-	if t.ascending != nil {
-		t.clearRoutingEntriesForPublicKey(t.ascending.PublicKey)
-	}
-	t.ascending = nil
-	t.ascendingMutex.Unlock()
-	t.descendingMutex.Lock()
-	if t.descending != nil {
-		t.clearRoutingEntriesForPublicKey(t.descending.PublicKey)
-	}
-	t.descending = nil
-	t.descendingMutex.Unlock()
 	t.maintainNow.Dispatch()
 }
 
@@ -153,25 +141,7 @@ func (t *virtualSnake) portWasConnected(port types.SwitchPortID) {
 // allowing us to clean up the virtual snake state.
 func (t *virtualSnake) portWasDisconnected(port types.SwitchPortID) {
 	defer t.maintainNow.Dispatch()
-	// Check if our descending node was routable via the disconnected
-	// port. If they were, clear the entry so that the maintain function
-	// will send new bootstraps to find the next descending node.
-	t.descendingMutex.Lock()
-	if p := t.descending; p != nil && p.Port == port {
-		t.clearRoutingEntriesForPublicKey(t.descending.PublicKey)
-		t.descending = nil
-	}
-	t.descendingMutex.Unlock()
-	// Check if our ascending node was routable via the disconnected
-	// port. If they were then clear the entry too, it will get
-	// re-populated the next time we bootstrap.
-	t.ascendingMutex.Lock()
-	if s := t.ascending; s != nil && s.Port == port {
-		t.clearRoutingEntriesForPublicKey(t.ascending.PublicKey)
-		t.ascending = nil
-	}
-	t.ascendingMutex.Unlock()
-	// Finally, check if any of our routing table entries are
+	// Check if any of our routing table entries are
 	// via the port in question. If they were then let's nuke those
 	// too, otherwise we'll be trying to route traffic into black
 	// holes.
@@ -222,9 +192,6 @@ func (t *virtualSnake) getVirtualSnakeBootstrapNextHop(from *Peer, destKey types
 	// Check our DHT entries
 	t.tableMutex.RLock()
 	for dhtKey, entry := range t.table {
-		if time.Since(entry.LastSeen) > virtualSnakePathExpiryPeriod {
-			continue
-		}
 		switch {
 		case util.DHTOrdered(destKey, dhtKey, bestKey):
 			// If the DHT entry routes to a key that is closer to the
@@ -290,12 +257,6 @@ func (t *virtualSnake) getVirtualSnakeNextHop(from *Peer, destKey types.PublicKe
 	// Next, look at the routing table. This includes source-side paths
 	// from setups only.
 	for dhtKey, entry := range t.table {
-		if time.Since(entry.LastSeen) > virtualSnakePathExpiryPeriod {
-			// The routing table entry hasn't been refreshed recently so we'll
-			// ignore it. This will eventually get picked up and removed from
-			// the routing table.
-			continue
-		}
 		switch {
 		case destKey.EqualTo(dhtKey):
 			newCandidate(dhtKey, entry.SourcePort)
@@ -321,23 +282,54 @@ func (t *virtualSnake) getVirtualSnakeNextHop(from *Peer, destKey types.PublicKe
 	return candidates[canlength:]
 }
 
-func (t *virtualSnake) clearRoutingEntriesForPort(port types.SwitchPortID) {
+func (t *virtualSnake) getVirtualSnakeTeardownNextHop(from *Peer, rx *types.Frame) types.SwitchPorts {
+	t.ascendingMutex.Lock()
+	if asc := t.ascending; asc != nil && asc.PublicKey == rx.DestinationKey {
+		t.ascending = nil
+		t.maintainNow.Dispatch()
+	}
+	t.ascendingMutex.Unlock()
+	t.descendingMutex.Lock()
+	if desc := t.descending; desc != nil && desc.PublicKey == rx.DestinationKey {
+		t.ascending = nil
+		t.maintainNow.Dispatch()
+	}
+	t.descendingMutex.Unlock()
 	t.tableMutex.Lock()
 	defer t.tableMutex.Unlock()
 	for k, v := range t.table {
-		if v.SourcePort == port {
+		if k == rx.DestinationKey {
 			delete(t.table, k)
+			if from.port == v.SourcePort {
+				return types.SwitchPorts{v.DestinationPort}
+			} else {
+				return types.SwitchPorts{v.SourcePort}
+			}
 		}
+	}
+	return types.SwitchPorts{}
+}
+
+func (t *virtualSnake) clearRoutingEntriesForPort(port types.SwitchPortID) {
+	t.tableMutex.RLock()
+	var key types.PublicKey
+	for k, v := range t.table {
+		if v.DestinationPort == port || v.SourcePort == port {
+			key = k
+			break
+		}
+	}
+	t.tableMutex.RUnlock()
+	t.r.send <- types.Frame{
+		Type:           types.TypeVirtualSnakeTeardown,
+		DestinationKey: key,
 	}
 }
 
-func (t *virtualSnake) clearRoutingEntriesForPublicKey(key types.PublicKey) {
-	t.tableMutex.Lock()
-	defer t.tableMutex.Unlock()
-	for k := range t.table {
-		if k == key {
-			delete(t.table, k)
-		}
+func (t *virtualSnake) clearRoutingEntriesForPublicKey(pk types.PublicKey) {
+	t.r.send <- types.Frame{
+		Type:           types.TypeVirtualSnakeTeardown,
+		DestinationKey: pk,
 	}
 }
 
@@ -423,6 +415,9 @@ func (t *virtualSnake) handleBootstrapACK(from *Peer, rx *types.Frame) {
 		// new node that we've received a bootstrap from is actually closer to
 		// us than the previous node. We'll update our record to use the new
 		// node instead and then send a new path setup message to it.
+		if t.ascending != nil && rx.SourceKey != t.ascending.PublicKey {
+			t.clearRoutingEntriesForPublicKey(t.ascending.PublicKey)
+		}
 		t.ascending = &virtualSnakeNeighbour{
 			PublicKey: rx.SourceKey,
 			Port:      from.port,
@@ -452,20 +447,6 @@ func (t *virtualSnake) handleBootstrapACK(from *Peer, rx *types.Frame) {
 // instead called for every setup packet being transited through this node.
 // It will update the routing table with the new path.
 func (t *virtualSnake) handleSetup(from *Peer, rx *types.Frame, nextHops types.SwitchPorts) {
-	if rx.SourceKey.EqualTo(t.r.public) {
-		return
-	}
-
-	t.tableMutex.Lock()
-	defer t.tableMutex.Unlock()
-
-	// Evict old entries.
-	for k, v := range t.table {
-		if time.Since(v.LastSeen) > virtualSnakePathExpiryPeriod {
-			delete(t.table, k)
-		}
-	}
-
 	// Check if the setup packet has a valid signed timestamp.
 	if !util.VerifySignedTimestamp(rx.SourceKey, rx.Payload) {
 		return
@@ -477,10 +458,16 @@ func (t *virtualSnake) handleSetup(from *Peer, rx *types.Frame, nextHops types.S
 	// bound the routing table safely, we may want to make sure that we have
 	// a reasonable spread of routes across keyspace so that we don't create
 	// any obvious routing holes.
-	t.table[rx.SourceKey] = virtualSnakeEntry{
+	entry := virtualSnakeEntry{
 		LastSeen:   time.Now(),
 		SourcePort: from.port,
 	}
+	if len(nextHops) > 0 {
+		entry.DestinationPort = nextHops[0]
+	}
+	t.tableMutex.Lock()
+	t.table[rx.SourceKey] = entry
+	t.tableMutex.Unlock()
 
 	// If we're at the destination of the setup then update our predecessor
 	// with information from the bootstrap.
@@ -513,6 +500,9 @@ func (t *virtualSnake) handleSetup(from *Peer, rx *types.Frame, nextHops types.S
 			// new node that we've received a bootstrap from is actually closer to
 			// us than the previous node. We'll update our record to use the new
 			// node instead and then send back a bootstrap ACK.
+			if t.descending != nil && rx.SourceKey != t.descending.PublicKey {
+				t.clearRoutingEntriesForPublicKey(t.descending.PublicKey)
+			}
 			t.descending = &virtualSnakeNeighbour{
 				PublicKey: rx.SourceKey,
 				Port:      from.port,
