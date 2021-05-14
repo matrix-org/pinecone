@@ -75,26 +75,24 @@ type rootAnnouncementWithTime struct {
 }
 
 type spanningTree struct {
-	r              *Router                   //
-	context        context.Context           //
-	advertise      util.Dispatch             //
-	advertiseTimer *time.Ticker              //
-	root           *rootAnnouncementWithTime // last root announcement
-	rootMutex      sync.RWMutex              //
-	rootReset      util.Dispatch             //
-	parent         atomic.Value              // types.SwitchPortID
-	coords         atomic.Value              // types.SwitchPorts
-	callback       func(parent types.SwitchPortID, coords types.SwitchPorts)
+	r         *Router                   //
+	context   context.Context           //
+	advertise util.Dispatch             //
+	root      *rootAnnouncementWithTime // last root announcement
+	rootMutex sync.RWMutex              //
+	rootReset util.Dispatch             //
+	parent    atomic.Value              // types.SwitchPortID
+	coords    atomic.Value              // types.SwitchPorts
+	callback  func(parent types.SwitchPortID, coords types.SwitchPorts)
 }
 
 func newSpanningTree(r *Router, f func(parent types.SwitchPortID, coords types.SwitchPorts)) *spanningTree {
 	t := &spanningTree{
-		r:              r,
-		context:        r.context,
-		advertise:      util.NewDispatch(),
-		advertiseTimer: time.NewTicker(announcementInterval),
-		rootReset:      util.NewDispatch(),
-		callback:       f,
+		r:         r,
+		context:   r.context,
+		advertise: util.NewDispatch(),
+		rootReset: util.NewDispatch(),
+		callback:  f,
 	}
 	t.becomeRoot()
 	t.advertise.Dispatch()
@@ -196,9 +194,6 @@ func (t *spanningTree) workerForAnnouncements() {
 			return
 
 		case <-t.advertise:
-			advertise()
-
-		case <-t.advertiseTimer.C:
 			advertise()
 		}
 	}
