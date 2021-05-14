@@ -39,7 +39,7 @@ import (
 
 func main() {
 	go func() {
-		_ = http.ListenAndServe(":65432", nil)
+		panic(http.ListenAndServe(":65432", nil))
 	}()
 
 	filename := flag.String("filename", "cmd/pineconesim/graphs/sim.txt", "the file that describes the simulated topology")

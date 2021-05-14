@@ -37,6 +37,24 @@ func GetFrame() *Frame {
 	return frame
 }
 
+func (f *Frame) Borrow() *Frame {
+	f.refs.Inc()
+	return f
+}
+
+func (f *Frame) Done() bool {
+	refs := f.refs.Dec()
+	if refs < 0 {
+		panic("invalid Done call")
+	}
+	if refs == 0 {
+		f.Reset()
+		framePool.Put(f)
+		return true
+	}
+	return false
+}
+
 type FrameVersion uint8
 type FrameType uint8
 
@@ -87,23 +105,6 @@ func (f *Frame) Copy() *Frame {
 	copy.refs.Store(1)
 	copy.Payload = append([]byte{}, f.Payload...)
 	return &copy
-}
-
-func (f *Frame) Borrow() *Frame {
-	f.refs.Inc()
-	return f
-}
-
-func (f *Frame) Done() bool {
-	refs := f.refs.Dec()
-	if refs < 0 {
-		panic("invalid Done call")
-	}
-	if refs == 0 {
-		framePool.Put(f)
-		return true
-	}
-	return false
 }
 
 func (f *Frame) MarshalBinary(buffer []byte) (int, error) {

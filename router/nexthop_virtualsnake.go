@@ -279,6 +279,9 @@ func (t *virtualSnake) getVirtualSnakeNextHop(from *Peer, destKey types.PublicKe
 			newCandidate(peerKey, peer.port)
 		}
 	}
+	if canlength-PortCount == 0 {
+		return types.SwitchPorts{0}
+	}
 	return candidates[canlength:]
 }
 
