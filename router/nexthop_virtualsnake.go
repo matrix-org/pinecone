@@ -294,7 +294,7 @@ func (t *virtualSnake) getVirtualSnakeTeardownNextHop(from *Peer, rx *types.Fram
 	t.ascendingMutex.Unlock()
 	t.descendingMutex.Lock()
 	if desc := t.descending; desc != nil && desc.PublicKey == rx.DestinationKey {
-		t.ascending = nil
+		t.descending = nil
 		t.maintainNow.Dispatch()
 	}
 	t.descendingMutex.Unlock()
