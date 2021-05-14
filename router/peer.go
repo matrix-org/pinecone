@@ -276,8 +276,10 @@ func (p *Peer) reader() {
 						if !dest.started.Load() || (dest.port != 0 && !dest.alive.Load()) {
 							continue
 						}
-						if p.port == dest.port || p.public.EqualTo(dest.public) {
-							continue
+						if p.port != 0 && dest.port != 0 {
+							if p.port == dest.port || p.public.EqualTo(dest.public) {
+								continue
+							}
 						}
 						switch frame.Type {
 						case types.TypePathfind, types.TypeVirtualSnakePathfind:
