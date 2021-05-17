@@ -104,6 +104,9 @@ func (p *Peer) lastAnnouncement() *rootAnnouncementWithTime {
 	}
 	p.mutex.RLock()
 	defer p.mutex.RUnlock()
+	//if p.announcement != nil && time.Since(p.announcement.at) > announcementTimeout {
+	//	return nil
+	//}
 	return p.announcement
 }
 
