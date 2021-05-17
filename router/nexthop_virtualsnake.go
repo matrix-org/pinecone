@@ -92,9 +92,15 @@ func (v *virtualSnake) maintain() {
 
 		v.ascendingMutex.RLock()
 		ascending := v.ascending
+		if ascending != nil && time.Since(ascending.LastSeen) < virtualSnakeNeighExpiryPeriod {
+			ascending = nil
+		}
 		v.ascendingMutex.RUnlock()
 		v.descendingMutex.RLock()
 		descending := v.descending
+		if descending != nil && time.Since(descending.LastSeen) < virtualSnakeNeighExpiryPeriod {
+			descending = nil
+		}
 		v.descendingMutex.RUnlock()
 
 		// Send bootstrap messages into the network. Ordinarily we
@@ -109,7 +115,7 @@ func (v *virtualSnake) maintain() {
 			v.maintainInterval.Store(0)
 			fallthrough
 		default:
-			if !v.r.PublicKey().EqualTo(v.r.RootPublicKey()) {
+			if !v.r.PublicKey().EqualTo(v.r.RootPublicKey()) { // check we aren't the root
 				ts, err := util.SignedTimestamp(v.r.private)
 				if err != nil {
 					return
@@ -151,41 +157,46 @@ func (t *virtualSnake) portWasDisconnected(port types.SwitchPortID) {
 // getVirtualSnakeBootstrapNextHop will return the most relevant port
 // for a given destination public key.
 func (t *virtualSnake) getVirtualSnakeBootstrapNextHop(from *Peer, destKey types.PublicKey) types.SwitchPorts {
-	ancestors, rootPort := t.r.tree.Ancestors()
+	ancestors, parentPort := t.r.tree.Ancestors()
 	rootKey := t.r.RootPublicKey()
-	if util.LessThan(rootKey, destKey) {
-		return nil
-	}
-	bestKey, bestPort := t.r.public, types.SwitchPortID(0)
+	bestKey, bestPort := t.r.public, types.SwitchPortID(0) // rootKey, rootPort
 	newCandidate := func(key types.PublicKey, port types.SwitchPortID) {
 		bestKey, bestPort = key, port
 	}
 
-	// Check the root key, as a last-resort we will use it
-	// to climb up towards the root
-	if from.port == 0 || util.LessThan(bestKey, destKey) {
-		newCandidate(rootKey, rootPort)
-	}
-
-	// Special rules for if the bootstrap originated locally
-	if from.port == 0 {
-		// Check our ascending node, if we have one
-		t.ascendingMutex.RLock()
-		if asc := t.ascending; asc != nil && time.Since(asc.LastSeen) <= virtualSnakeNeighExpiryPeriod {
-			if util.LessThan(destKey, asc.PublicKey) {
-				newCandidate(asc.PublicKey, asc.Port)
+	// Check our direct ancestors
+	// bestKey <= destKey < rootKey
+	if !util.LessThan(destKey, bestKey) && util.LessThan(destKey, rootKey) {
+		newCandidate(rootKey, parentPort)
+		for _, ancestor := range ancestors[1:] {
+			if util.DHTOrdered(destKey, ancestor, bestKey) {
+				newCandidate(ancestor, parentPort)
 			}
 		}
-		t.ascendingMutex.RUnlock()
 	}
 
-	// Check our direct ancestors between us and the root
-	if len(ancestors) > 0 {
-		for _, ancestorKey := range ancestors[1:] {
+	// Check our direct peers ancestors
+	for _, peer := range t.r.activePorts() {
+		peerAnn := peer.lastAnnouncement()
+		if peerAnn == nil {
+			continue
+		}
+		for _, hop := range peerAnn.Signatures {
 			switch {
-			case util.DHTOrdered(destKey, ancestorKey, bestKey):
-				newCandidate(ancestorKey, rootPort)
+			case util.DHTOrdered(destKey, hop.PublicKey, bestKey):
+				newCandidate(hop.PublicKey, peer.port)
 			}
+		}
+	}
+
+	// Check our direct peers
+	for _, peer := range t.r.activePorts() {
+		peerKey := peer.PublicKey()
+		switch {
+		case bestKey.EqualTo(peerKey):
+			newCandidate(peerKey, peer.port)
+		case util.DHTOrdered(destKey, peerKey, bestKey):
+			newCandidate(peerKey, peer.port)
 		}
 	}
 
@@ -194,26 +205,10 @@ func (t *virtualSnake) getVirtualSnakeBootstrapNextHop(from *Peer, destKey types
 	for dhtKey, entry := range t.table {
 		switch {
 		case util.DHTOrdered(destKey, dhtKey, bestKey):
-			// If the DHT entry routes to a key that is closer to the
-			// destination than our current best node then use that
-			// instead.
 			newCandidate(dhtKey, entry.SourcePort)
 		}
 	}
 	t.tableMutex.RUnlock()
-
-	// Check our direct peers
-	for _, peer := range t.r.activePorts() {
-		peer.mutex.RLock()
-		peerKey := peer.public
-		peer.mutex.RUnlock()
-		switch {
-		case util.DHTOrdered(destKey, peerKey, bestKey):
-			// If the peer is closer to the destination than our current
-			// best node then use that instead.
-			newCandidate(peerKey, peer.port)
-		}
-	}
 
 	return types.SwitchPorts{bestPort}
 }
@@ -292,12 +287,14 @@ func (t *virtualSnake) getVirtualSnakeTeardownNextHop(from *Peer, rx *types.Fram
 		t.maintainNow.Dispatch()
 	}
 	t.ascendingMutex.Unlock()
+
 	t.descendingMutex.Lock()
 	if desc := t.descending; desc != nil && desc.PublicKey == rx.DestinationKey {
 		t.descending = nil
 		t.maintainNow.Dispatch()
 	}
 	t.descendingMutex.Unlock()
+
 	t.tableMutex.Lock()
 	defer t.tableMutex.Unlock()
 	for k, v := range t.table {
@@ -418,9 +415,9 @@ func (t *virtualSnake) handleBootstrapACK(from *Peer, rx *types.Frame) {
 		// new node that we've received a bootstrap from is actually closer to
 		// us than the previous node. We'll update our record to use the new
 		// node instead and then send a new path setup message to it.
-		if t.ascending != nil && rx.SourceKey != t.ascending.PublicKey {
-			t.clearRoutingEntriesForPublicKey(t.ascending.PublicKey)
-		}
+		//if t.ascending != nil && rx.SourceKey != t.ascending.PublicKey {
+		//	t.clearRoutingEntriesForPublicKey(t.ascending.PublicKey)
+		//}
 		t.ascending = &virtualSnakeNeighbour{
 			PublicKey: rx.SourceKey,
 			Port:      from.port,

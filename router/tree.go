@@ -311,15 +311,6 @@ func (t *spanningTree) Update(p *Peer, a *types.SwitchAnnouncement) error {
 		sigs[pk] = struct{}{}
 	}
 
-	// If the announcement is from the same root, or a weaker one, and
-	// hasn't waited for the threshold to pass, then we'll stop here,
-	// otherwise we will end up flooding downstream nodes.
-	if timeSinceLastUpdate != 0 && timeSinceLastUpdate < announcementThreshold {
-		if a.RootPublicKey.CompareTo(t.Root().RootPublicKey) < 0 {
-			return fmt.Errorf("ignoring update (too soon)")
-		}
-	}
-
 	// Store the announcement against the peer. This lets us ultimately
 	// calculate what the coordinates of that peer are later.
 	p.mutex.Lock()
@@ -328,6 +319,15 @@ func (t *spanningTree) Update(p *Peer, a *types.SwitchAnnouncement) error {
 		at:                 time.Now(),
 	}
 	p.mutex.Unlock()
+
+	// If the announcement is from the same root, or a weaker one, and
+	// hasn't waited for the threshold to pass, then we'll stop here,
+	// otherwise we will end up flooding downstream nodes.
+	if timeSinceLastUpdate != 0 && timeSinceLastUpdate < announcementThreshold {
+		if a.RootPublicKey.CompareTo(t.Root().RootPublicKey) < 0 {
+			return fmt.Errorf("ignoring update (too soon)")
+		}
+	}
 
 	t.rootMutex.RLock()
 	oldRoot, newRoot := t.root, t.root
