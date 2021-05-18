@@ -24,6 +24,7 @@ import (
 	"go.uber.org/atomic"
 )
 
+const virtualSnakeSetupInterval = time.Second * 16
 const virtualSnakeNeighExpiryPeriod = time.Minute * 10
 
 type virtualSnake struct {
@@ -85,7 +86,7 @@ func (v *virtualSnake) maintain() {
 			// to do any hard maintenance work.
 			continue
 		}
-		if after < virtualSnakeNeighExpiryPeriod {
+		if after < virtualSnakeSetupInterval {
 			v.maintainInterval.Inc()
 		}
 
@@ -107,7 +108,10 @@ func (v *virtualSnake) maintain() {
 		// predefined interval, but for now we'll continue to send
 		// them on a regular interval until we can derive some better
 		// connection state.
-		if ascending == nil || descending == nil {
+		switch {
+		case ascending == nil || descending == nil:
+			fallthrough
+		default:
 			v.maintainInterval.Store(0)
 			if !v.r.PublicKey().EqualTo(v.r.RootPublicKey()) { // check we aren't the root
 				ts, err := util.SignedTimestamp(v.r.private)
@@ -213,9 +217,11 @@ func (t *virtualSnake) getVirtualSnakeBootstrapNextHop(from *Peer, destKey types
 }
 
 func (t *virtualSnake) getVirtualSnakeNextHop(from *Peer, destKey types.PublicKey) types.SwitchPorts {
+	// Check if the packet is destined locally
 	if destKey.EqualTo(t.r.public) {
 		return types.SwitchPorts{0}
 	}
+
 	ancestors, parentPort := t.r.tree.Ancestors()
 	rootKey := t.r.RootPublicKey()
 	bestKey, bestPort := t.r.public, types.SwitchPortID(0) // rootKey, rootPort
@@ -243,24 +249,28 @@ func (t *virtualSnake) getVirtualSnakeNextHop(from *Peer, destKey types.PublicKe
 	}
 
 	// Check our ascending node
-	t.ascendingMutex.RLock()
-	if asc := t.ascending; asc != nil && time.Since(asc.LastSeen) < virtualSnakeNeighExpiryPeriod {
-		switch {
-		case util.DHTOrdered(destKey, asc.PublicKey, bestKey):
-			newCandidate(asc.PublicKey, asc.Port)
+	/*
+		t.ascendingMutex.RLock()
+		if asc := t.ascending; asc != nil && time.Since(asc.LastSeen) < virtualSnakeNeighExpiryPeriod {
+			switch {
+			case util.DHTOrdered(destKey, asc.PublicKey, bestKey):
+				newCandidate(asc.PublicKey, asc.Port)
+			}
 		}
-	}
-	t.ascendingMutex.RUnlock()
+		t.ascendingMutex.RUnlock()
+	*/
 
 	// Check our descending node
-	t.descendingMutex.RLock()
-	if desc := t.descending; desc != nil && time.Since(desc.LastSeen) < virtualSnakeNeighExpiryPeriod {
-		switch {
-		case util.DHTOrdered(destKey, desc.PublicKey, bestKey):
-			newCandidate(desc.PublicKey, desc.Port)
+	/*
+		t.descendingMutex.RLock()
+		if desc := t.descending; desc != nil && time.Since(desc.LastSeen) < virtualSnakeNeighExpiryPeriod {
+			switch {
+			case util.DHTOrdered(destKey, desc.PublicKey, bestKey):
+				newCandidate(desc.PublicKey, desc.Port)
+			}
 		}
-	}
-	t.descendingMutex.RUnlock()
+		t.descendingMutex.RUnlock()
+	*/
 
 	// Check our DHT entries
 	t.tableMutex.RLock()
@@ -275,17 +285,19 @@ func (t *virtualSnake) getVirtualSnakeNextHop(from *Peer, destKey types.PublicKe
 	t.tableMutex.RUnlock()
 
 	// Check our direct peers
-	for _, peer := range t.r.activePorts() {
-		peerKey := peer.PublicKey()
-		switch {
-		case destKey.EqualTo(peerKey):
-			newCandidate(peerKey, peer.port)
-		case bestKey.EqualTo(peerKey):
-			newCandidate(peerKey, peer.port)
-		case util.DHTOrdered(destKey, peerKey, bestKey):
-			newCandidate(peerKey, peer.port)
+	/*
+		for _, peer := range t.r.activePorts() {
+			peerKey := peer.PublicKey()
+			switch {
+			case destKey.EqualTo(peerKey):
+				newCandidate(peerKey, peer.port)
+			case bestKey.EqualTo(peerKey):
+				newCandidate(peerKey, peer.port)
+			case util.DHTOrdered(destKey, peerKey, bestKey):
+				newCandidate(peerKey, peer.port)
+			}
 		}
-	}
+	*/
 
 	if canlength-PortCount == 0 {
 		return types.SwitchPorts{0}
