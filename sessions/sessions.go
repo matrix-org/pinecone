@@ -88,7 +88,6 @@ func NewSessions(log *log.Logger, r *router.Router) *Sessions {
 	q.tlsServerCfg = &tls.Config{
 		Certificates: []tls.Certificate{*q.tlsCert},
 		ClientAuth:   tls.RequireAnyClientCert,
-		MinVersion:   tls.VersionTLS13,
 	}
 
 	go q.listener()

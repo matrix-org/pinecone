@@ -86,7 +86,6 @@ func (q *Sessions) DialContext(ctx context.Context, network, addrstr string) (ne
 
 	session = tls.Client(session, &tls.Config{
 		InsecureSkipVerify: true,
-		MinVersion:         tls.VersionTLS13,
 		GetClientCertificate: func(info *tls.CertificateRequestInfo) (*tls.Certificate, error) {
 			return q.tlsCert, nil
 		},
