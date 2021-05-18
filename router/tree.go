@@ -212,10 +212,12 @@ func (t *spanningTree) workerForRoot() {
 		case <-t.rootReset:
 
 		case <-time.After(announcementTimeout):
-			if !t.IsRoot() {
-				t.r.log.Println("Haven't heard from the root lately")
-				t.becomeRoot()
-			}
+			/*
+				if !t.IsRoot() {
+					t.r.log.Println("Haven't heard from the root lately")
+					t.becomeRoot()
+				}
+			*/
 		}
 	}
 }

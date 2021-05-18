@@ -169,7 +169,7 @@ func (f *Frame) MarshalBinary(buffer []byte) (int, error) {
 		offset += 2
 		offset += copy(buffer[offset:], f.DestinationKey[:ed25519.PublicKeySize])
 		if f.Payload != nil {
-			offset += copy(buffer[:offset], f.Payload[:payloadLen])
+			offset += copy(buffer[offset:], f.Payload[:payloadLen])
 		}
 
 	case TypeVirtualSnake, TypeVirtualSnakePathfind: // destination = key, source = key
