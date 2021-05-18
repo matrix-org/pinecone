@@ -24,7 +24,6 @@ import (
 	"go.uber.org/atomic"
 )
 
-const virtualSnakeSetupInterval = time.Second * 16
 const virtualSnakeNeighExpiryPeriod = time.Minute * 10
 
 type virtualSnake struct {
@@ -86,7 +85,7 @@ func (v *virtualSnake) maintain() {
 			// to do any hard maintenance work.
 			continue
 		}
-		if after < virtualSnakeSetupInterval {
+		if after < virtualSnakeNeighExpiryPeriod {
 			v.maintainInterval.Inc()
 		}
 
@@ -108,13 +107,8 @@ func (v *virtualSnake) maintain() {
 		// predefined interval, but for now we'll continue to send
 		// them on a regular interval until we can derive some better
 		// connection state.
-		switch {
-		// TODO: case for when the root has changed?
-		// TODO: case for when our parent has changed?
-		case ascending == nil || descending == nil:
+		if ascending == nil || descending == nil {
 			v.maintainInterval.Store(0)
-			fallthrough
-		default:
 			if !v.r.PublicKey().EqualTo(v.r.RootPublicKey()) { // check we aren't the root
 				ts, err := util.SignedTimestamp(v.r.private)
 				if err != nil {
@@ -245,34 +239,25 @@ func (t *virtualSnake) getVirtualSnakeNextHop(from *Peer, destKey types.PublicKe
 		}
 	}
 
-	// Check our direct peers ancestors
-	/*
-		for _, peer := range t.r.activePorts() {
-			peerAnn := peer.lastAnnouncement()
-			if peerAnn == nil {
-				continue
-			}
-			for _, hop := range peerAnn.Signatures {
-				switch {
-				//case destKey.EqualTo(hop.PublicKey):
-				//	newCandidate(hop.PublicKey, peer.port)
-				case util.DHTOrdered(destKey, hop.PublicKey, bestKey):
-					newCandidate(hop.PublicKey, peer.port)
-				}
-			}
-		}
-	*/
-
-	// Check our direct peers
-	for _, peer := range t.r.activePorts() {
-		peerKey := peer.PublicKey()
+	// Check our ascending node
+	t.ascendingMutex.RLock()
+	if asc := t.ascending; asc != nil && time.Since(asc.LastSeen) < virtualSnakeNeighExpiryPeriod {
 		switch {
-		case from.port != 0 && destKey.EqualTo(peerKey):
-			newCandidate(peerKey, peer.port)
-		case util.DHTOrdered(destKey, peerKey, bestKey):
-			newCandidate(peerKey, peer.port)
+		case util.DHTOrdered(destKey, asc.PublicKey, bestKey):
+			newCandidate(asc.PublicKey, asc.Port)
 		}
 	}
+	t.ascendingMutex.RUnlock()
+
+	// Check our descending node
+	t.descendingMutex.RLock()
+	if desc := t.descending; desc != nil && time.Since(desc.LastSeen) < virtualSnakeNeighExpiryPeriod {
+		switch {
+		case util.DHTOrdered(destKey, desc.PublicKey, bestKey):
+			newCandidate(desc.PublicKey, desc.Port)
+		}
+	}
+	t.descendingMutex.RUnlock()
 
 	// Check our DHT entries
 	t.tableMutex.RLock()
@@ -286,6 +271,19 @@ func (t *virtualSnake) getVirtualSnakeNextHop(from *Peer, destKey types.PublicKe
 	}
 	t.tableMutex.RUnlock()
 
+	// Check our direct peers
+	for _, peer := range t.r.activePorts() {
+		peerKey := peer.PublicKey()
+		switch {
+		case destKey.EqualTo(peerKey):
+			newCandidate(peerKey, peer.port)
+		case bestKey.EqualTo(peerKey):
+			newCandidate(peerKey, peer.port)
+		case util.DHTOrdered(destKey, peerKey, bestKey):
+			newCandidate(peerKey, peer.port)
+		}
+	}
+
 	if canlength-PortCount == 0 {
 		return types.SwitchPorts{0}
 	}
@@ -293,20 +291,22 @@ func (t *virtualSnake) getVirtualSnakeNextHop(from *Peer, destKey types.PublicKe
 }
 
 func (t *virtualSnake) getVirtualSnakeTeardownNextHop(from *Peer, rx *types.Frame) types.SwitchPorts {
+	changedAscDesc := false
 	t.ascendingMutex.Lock()
 	if asc := t.ascending; asc != nil && asc.PublicKey == rx.DestinationKey {
 		t.ascending = nil
-		t.maintainNow.Dispatch()
+		changedAscDesc = true
 	}
 	t.ascendingMutex.Unlock()
-	/*
-		t.descendingMutex.Lock()
-		if desc := t.descending; desc != nil && desc.PublicKey == rx.DestinationKey {
-			t.descending = nil
-			t.maintainNow.Dispatch()
-		}
-		t.descendingMutex.Unlock()
-	*/
+	t.descendingMutex.Lock()
+	if desc := t.descending; desc != nil && desc.PublicKey == rx.DestinationKey {
+		t.descending = nil
+		changedAscDesc = true
+	}
+	t.descendingMutex.Unlock()
+	if changedAscDesc {
+		t.maintainNow.Dispatch()
+	}
 	t.tableMutex.Lock()
 	defer t.tableMutex.Unlock()
 	for k, v := range t.table {
