@@ -52,7 +52,6 @@ type Peer struct {
 	protoOut     chan *types.Frame         // queue protocol message to peer
 	coords       types.SwitchPorts         //
 	announcement *rootAnnouncementWithTime //
-	annticker    *time.Ticker              // ticks when announcements are due
 	advertise    util.Dispatch             // send switch announcement right now
 	statistics   peerStatistics            //
 }
@@ -92,6 +91,9 @@ func (p *Peer) Coordinates() types.SwitchPorts {
 }
 
 func (p *Peer) SeenRecently() bool {
+	if !p.started.Load() || !p.alive.Load() {
+		return false
+	}
 	if last := p.lastAnnouncement(); last != nil {
 		return time.Since(last.at) < announcementTimeout
 	}
@@ -104,9 +106,9 @@ func (p *Peer) lastAnnouncement() *rootAnnouncementWithTime {
 	}
 	p.mutex.RLock()
 	defer p.mutex.RUnlock()
-	//if p.announcement != nil && time.Since(p.announcement.at) > announcementTimeout {
-	//	return nil
-	//}
+	if p.announcement != nil && time.Since(p.announcement.at) > announcementTimeout {
+		return nil
+	}
 	return p.announcement
 }
 
@@ -115,7 +117,6 @@ func (p *Peer) start() error {
 		return errors.New("switch peer is already started")
 	}
 	p.alive.Store(false)
-	p.annticker = time.NewTicker(announcementInterval)
 	go p.reader()
 	go p.writer()
 	if p.port != 0 {
@@ -129,7 +130,6 @@ func (p *Peer) stop() error {
 		return errors.New("switch peer is already stopped")
 	}
 	p.alive.Store(false)
-	p.annticker.Stop()
 	p.cancel()
 	p.r.tree.Remove(p)
 	return p.conn.Close()
@@ -292,15 +292,6 @@ func (p *Peer) reader() {
 							}
 
 						case types.TypeDHTRequest, types.TypeDHTResponse, types.TypeVirtualSnakeBootstrap, types.TypeVirtualSnakeBootstrapACK, types.TypeVirtualSnakeSetup, types.TypeVirtualSnakeTeardown:
-							/*
-								borrowed := frame.Borrow()
-								select {
-								case dest.protoOut <- borrowed:
-								default:
-									<-dest.protoOut
-									dest.protoOut <- borrowed
-								}
-							*/
 							select {
 							case dest.protoOut <- frame.Borrow():
 								dest.statistics.txProtoSuccessful.Inc()
@@ -372,11 +363,24 @@ func (p *Peer) writer() {
 			return
 		case <-p.advertise:
 			_ = send(p.generateAnnouncement())
-		case <-p.annticker.C:
+			continue
+		default:
+		}
+		select {
+		case <-p.context.Done():
+			return
+		case <-p.advertise:
 			_ = send(p.generateAnnouncement())
+			continue
 		case frame := <-p.protoOut:
 			if frame != nil {
 				_ = send(frame)
+				continue
+			}
+		case frame := <-p.trafficOut:
+			if frame != nil {
+				_ = send(frame)
+				continue
 			}
 		default:
 		}
@@ -385,32 +389,16 @@ func (p *Peer) writer() {
 			return
 		case <-p.advertise:
 			_ = send(p.generateAnnouncement())
-		case <-p.annticker.C:
-			_ = send(p.generateAnnouncement())
-		case frame := <-p.protoOut:
-			if frame != nil {
-				_ = send(frame)
-			}
+			continue
 		case frame := <-p.trafficOut:
 			if frame != nil {
 				_ = send(frame)
-			}
-		default:
-		}
-		select {
-		case <-p.context.Done():
-			return
-		case <-p.advertise:
-			_ = send(p.generateAnnouncement())
-		case <-p.annticker.C:
-			_ = send(p.generateAnnouncement())
-		case frame := <-p.trafficOut:
-			if frame != nil {
-				_ = send(frame)
+				continue
 			}
 		case frame := <-p.protoOut:
 			if frame != nil {
 				_ = send(frame)
+				continue
 			}
 		}
 	}

@@ -162,12 +162,12 @@ func (t *spanningTree) selectParent() types.SwitchPortID {
 	bestDist := int64(math.MaxInt64)
 	var parent types.SwitchPortID
 	for _, port := range t.r.activePorts() {
-		ann := port.lastAnnouncement()
-		if ann == nil || len(ann.Signatures) == 0 {
+		if !port.SeenRecently() {
 			// The peer either hasn't sent us an announcement yet, or it's
 			// sent us an invalid announcement with no signatures.
 			continue
 		}
+		ann := port.lastAnnouncement()
 		if !t.root.RootPublicKey.EqualTo(ann.RootPublicKey) {
 			// The peer has sent us an announcement, but it's not from the
 			// root that we're expecting it to be from.
@@ -194,6 +194,9 @@ func (t *spanningTree) workerForAnnouncements() {
 		case <-t.context.Done():
 			return
 
+		case <-time.After(announcementInterval):
+			advertise()
+
 		case <-t.advertise:
 			advertise()
 		}
@@ -206,13 +209,13 @@ func (t *spanningTree) workerForRoot() {
 		case <-t.context.Done():
 			return
 
+		case <-t.rootReset:
+
 		case <-time.After(announcementTimeout):
 			if !t.IsRoot() {
 				t.r.log.Println("Haven't heard from the root lately")
 				t.becomeRoot()
 			}
-
-		case <-t.rootReset:
 		}
 	}
 }
@@ -345,6 +348,12 @@ func (t *spanningTree) Update(p *Peer, a *types.SwitchAnnouncement) error {
 	t.rootMutex.RUnlock()
 
 	switch {
+	case !isChild && time.Since(oldRoot.at) > announcementTimeout:
+		// We haven't had a root update from anyone else recently, so let's use
+		// this instead.
+		newRoot = &rootAnnouncementWithTime{a, time.Now()}
+		t.rootReset.Dispatch()
+
 	case a.RootPublicKey.CompareTo(oldRoot.RootPublicKey) > 0:
 		// If the advertisement contains a stronger key than the root, or the
 		// announcement contains the root that we know about, update our stored
@@ -352,35 +361,28 @@ func (t *spanningTree) Update(p *Peer, a *types.SwitchAnnouncement) error {
 		newRoot = &rootAnnouncementWithTime{a, time.Now()}
 		t.rootReset.Dispatch()
 
-	case t.r.public.CompareTo(a.RootPublicKey) >= 0 && t.r.public.CompareTo(oldRoot.RootPublicKey) >= 0:
-		// If it turns out after all that our key is stronger than the chosen
-		// root then we'll become root instead.
-		t.becomeRoot()
-
-	case oldRoot.RootPublicKey.EqualTo(a.RootPublicKey):
+	case oldRoot.RootPublicKey.EqualTo(a.RootPublicKey) && a.Sequence > oldRoot.Sequence:
 		// We'll only process the update from the same root if it's actually
 		// a new update, e.g. the sequence number has increased, and the
 		// signature count is equal to or shorter than the previous count.
 		// This stops us from flapping coordinates so much.
-		if a.Sequence > oldRoot.Sequence {
+		if !isChild && len(a.Signatures) <= len(oldRoot.Signatures) {
+			newRoot = &rootAnnouncementWithTime{a, time.Now()}
 			t.rootReset.Dispatch()
-			if !isChild && len(a.Signatures) <= len(oldRoot.Signatures) {
-				newRoot = &rootAnnouncementWithTime{a, time.Now()}
-			}
 		}
 	}
 
 	// If the root has changed then let's do something about it.
-	if newRoot.RootPublicKey != oldRoot.RootPublicKey {
-		go t.r.snake.rootNodeChanged(newRoot.RootPublicKey)
-	}
 	if newRoot != oldRoot {
 		t.rootMutex.Lock()
 		t.root = newRoot
 		t.rootMutex.Unlock()
 
 		if p.port == t.updateCoordinates() {
-			t.advertise.Dispatch()
+			if newRoot.RootPublicKey != oldRoot.RootPublicKey {
+				t.advertise.Dispatch()
+				go t.r.snake.rootNodeChanged(newRoot.RootPublicKey)
+			}
 		}
 	}
 
