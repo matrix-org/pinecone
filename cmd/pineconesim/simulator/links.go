@@ -38,9 +38,14 @@ func (sim *Simulator) ConnectNodes(a, b string) error {
 		return fmt.Errorf("already connected")
 	}
 
-	c, err := net.Dial(na.l.Addr().Network(), na.l.Addr().String())
+	//c, err := net.Dial(na.l.Addr().Network(), na.l.Addr().String())
+
+	c, err := net.DialTCP(na.l.Addr().Network(), nil, na.ListenAddr)
 	if err != nil {
 		return fmt.Errorf("net.Dial: %w", err)
+	}
+	if err := c.SetNoDelay(true); err != nil {
+		panic(err)
 	}
 	if _, err := nb.AuthenticatedConnect(c, "sim", router.PeerTypeRemote); err != nil {
 		return fmt.Errorf("nb.AuthenticatedConnect: %w", err)

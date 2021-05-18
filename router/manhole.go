@@ -101,9 +101,9 @@ func (e virtualSnakeTable) MarshalJSON() ([]byte, error) {
 			"source_port": value.SourcePort,
 			"last_seen":   time.Since(value.LastSeen).String(),
 		}
-		if time.Since(value.LastSeen) > virtualSnakePathExpiryPeriod {
-			entry["expired"] = true
-		}
+		//if time.Since(value.LastSeen) > virtualSnakePathExpiryPeriod {
+		//	entry["expired"] = true
+		//}
 		out = append(out, entry)
 	}
 	return json.Marshal(out)

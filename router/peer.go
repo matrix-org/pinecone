@@ -91,6 +91,9 @@ func (p *Peer) Coordinates() types.SwitchPorts {
 }
 
 func (p *Peer) SeenRecently() bool {
+	if !p.started.Load() || !p.alive.Load() {
+		return false
+	}
 	if last := p.lastAnnouncement(); last != nil {
 		return time.Since(last.at) < announcementTimeout
 	}
@@ -103,6 +106,9 @@ func (p *Peer) lastAnnouncement() *rootAnnouncementWithTime {
 	}
 	p.mutex.RLock()
 	defer p.mutex.RUnlock()
+	if p.announcement != nil && time.Since(p.announcement.at) > announcementTimeout {
+		return nil
+	}
 	return p.announcement
 }
 
@@ -115,7 +121,6 @@ func (p *Peer) start() error {
 	go p.writer()
 	if p.port != 0 {
 		p.advertise.Dispatch()
-		go p.announcer()
 	}
 	return nil
 }
@@ -130,56 +135,36 @@ func (p *Peer) stop() error {
 	return p.conn.Close()
 }
 
-func (p *Peer) announcer() {
-announce:
-	for {
-		select {
-		case <-p.context.Done():
-			// The switch peer is shutting down.
-			return
-
-		case <-p.advertise:
-			if !p.started.Load() {
-				// If the port isn't started then don't bother sending announcements
-				// to it. There's probably nothing on the other end.
-				continue announce
-			}
-			announcement := p.r.tree.Root()
-			for _, sig := range announcement.Signatures {
-				if p.r.public.EqualTo(sig.PublicKey) {
-					// For some reason the announcement that we want to send already
-					// includes our signature. This shouldn't really happen but if we
-					// did send it, other nodes would end up ignoring the announcement
-					// anyway since it would appear to be a routing loop.
-					continue announce
-				}
-			}
-			// Sign the announcement.
-			var err error
-			announcement, err = announcement.Sign(p.r.private[:], p.port)
-			if err != nil {
-				p.r.log.Println("Failed to sign switch announcement:", err)
-				continue announce
-			}
-			var payload [65535]byte
-			n, err := announcement.MarshalBinary(payload[:])
-			if err != nil {
-				p.r.log.Println("Failed to marshal switch announcement:", err)
-				continue announce
-			}
-			frame := types.GetFrame()
-			frame.Version = types.Version0
-			frame.Type = types.TypeSTP
-			frame.Destination = types.SwitchPorts{}
-			frame.Payload = payload[:n]
-			select {
-			case p.protoOut <- frame:
-			case <-time.After(time.Second):
-				frame.Done()
-				p.advertise.Dispatch()
-			}
+func (p *Peer) generateAnnouncement() *types.Frame {
+	announcement := p.r.tree.Root()
+	for _, sig := range announcement.Signatures {
+		if p.r.public.EqualTo(sig.PublicKey) {
+			// For some reason the announcement that we want to send already
+			// includes our signature. This shouldn't really happen but if we
+			// did send it, other nodes would end up ignoring the announcement
+			// anyway since it would appear to be a routing loop.
+			return nil
 		}
 	}
+	// Sign the announcement.
+	var err error
+	announcement, err = announcement.Sign(p.r.private[:], p.port)
+	if err != nil {
+		p.r.log.Println("Failed to sign switch announcement:", err)
+		return nil
+	}
+	var payload [65535]byte
+	n, err := announcement.MarshalBinary(payload[:])
+	if err != nil {
+		p.r.log.Println("Failed to marshal switch announcement:", err)
+		return nil
+	}
+	frame := types.GetFrame()
+	frame.Version = types.Version0
+	frame.Type = types.TypeSTP
+	frame.Destination = types.SwitchPorts{}
+	frame.Payload = payload[:n]
+	return frame
 }
 
 func (p *Peer) reader() {
@@ -223,6 +208,10 @@ func (p *Peer) reader() {
 				payloadLen := int(binary.BigEndian.Uint16(header[2:4]))
 				coordsLen := int(binary.BigEndian.Uint16(header[4:6]))
 				expecting = 10 + coordsLen + (ed25519.PublicKeySize * 2) + payloadLen
+
+			case types.TypeVirtualSnakeTeardown:
+				payloadLen := int(binary.BigEndian.Uint16(header[2:4]))
+				expecting = 8 + payloadLen + ed25519.PublicKeySize
 
 			case types.TypeVirtualSnake, types.TypeVirtualSnakePathfind:
 				payloadLen := int(binary.BigEndian.Uint16(header[2:4]))
@@ -302,7 +291,7 @@ func (p *Peer) reader() {
 								continue
 							}
 
-						case types.TypeDHTRequest, types.TypeDHTResponse, types.TypeVirtualSnakeBootstrap, types.TypeVirtualSnakeBootstrapACK, types.TypeVirtualSnakeSetup:
+						case types.TypeDHTRequest, types.TypeDHTResponse, types.TypeVirtualSnakeBootstrap, types.TypeVirtualSnakeBootstrapACK, types.TypeVirtualSnakeSetup, types.TypeVirtualSnakeTeardown:
 							select {
 							case dest.protoOut <- frame.Borrow():
 								dest.statistics.txProtoSuccessful.Inc()
@@ -337,6 +326,9 @@ func (p *Peer) writer() {
 	buf := make([]byte, 65535*3+12)
 
 	send := func(frame *types.Frame) error {
+		if frame == nil {
+			return nil
+		}
 		fn, err := frame.MarshalBinary(buf)
 		frame.Done()
 		if err != nil {
@@ -369,35 +361,44 @@ func (p *Peer) writer() {
 		select {
 		case <-p.context.Done():
 			return
+		case <-p.advertise:
+			_ = send(p.generateAnnouncement())
+			continue
+		default:
+		}
+		select {
+		case <-p.context.Done():
+			return
+		case <-p.advertise:
+			_ = send(p.generateAnnouncement())
+			continue
 		case frame := <-p.protoOut:
 			if frame != nil {
 				_ = send(frame)
+				continue
+			}
+		case frame := <-p.trafficOut:
+			if frame != nil {
+				_ = send(frame)
+				continue
 			}
 		default:
 		}
 		select {
 		case <-p.context.Done():
 			return
-		case frame := <-p.protoOut:
-			if frame != nil {
-				_ = send(frame)
-			}
+		case <-p.advertise:
+			_ = send(p.generateAnnouncement())
+			continue
 		case frame := <-p.trafficOut:
 			if frame != nil {
 				_ = send(frame)
-			}
-		default:
-		}
-		select {
-		case <-p.context.Done():
-			return
-		case frame := <-p.trafficOut:
-			if frame != nil {
-				_ = send(frame)
+				continue
 			}
 		case frame := <-p.protoOut:
 			if frame != nil {
 				_ = send(frame)
+				continue
 			}
 		}
 	}

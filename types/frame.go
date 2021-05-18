@@ -71,6 +71,7 @@ const (
 	TypeVirtualSnakeSetup                         // protocol frame, forwarded using greedy routing
 	TypeVirtualSnake                              // traffic frame, forwarded using SNEK successor ordering
 	TypeVirtualSnakePathfind                      // protocol frame, forwarded using SNEK successor ordering
+	TypeVirtualSnakeTeardown                      // protocol frame
 )
 
 const (
@@ -162,6 +163,15 @@ func (f *Frame) MarshalBinary(buffer []byte) (int, error) {
 			offset += copy(buffer[offset:], f.Payload[:payloadLen])
 		}
 
+	case TypeVirtualSnakeTeardown: // destination = key
+		payloadLen := len(f.Payload)
+		binary.BigEndian.PutUint16(buffer[offset+0:offset+2], uint16(payloadLen))
+		offset += 2
+		offset += copy(buffer[offset:], f.DestinationKey[:ed25519.PublicKeySize])
+		if f.Payload != nil {
+			offset += copy(buffer[:offset], f.Payload[:payloadLen])
+		}
+
 	case TypeVirtualSnake, TypeVirtualSnakePathfind: // destination = key, source = key
 		payloadLen := len(f.Payload)
 		binary.BigEndian.PutUint16(buffer[offset+0:offset+2], uint16(payloadLen))
@@ -247,6 +257,13 @@ func (f *Frame) UnmarshalBinary(data []byte) (int, error) {
 		}
 		offset += 4 + dstLen
 		offset += copy(f.SourceKey[:], data[offset:])
+		offset += copy(f.DestinationKey[:], data[offset:])
+		f.Payload = append([]byte{}, data[offset:offset+payloadLen]...)
+		return offset, nil
+
+	case TypeVirtualSnakeTeardown: // destination = key
+		payloadLen := int(binary.BigEndian.Uint16(data[offset+0 : offset+2]))
+		offset += 2
 		offset += copy(f.DestinationKey[:], data[offset:])
 		f.Payload = append([]byte{}, data[offset:offset+payloadLen]...)
 		return offset, nil

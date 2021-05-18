@@ -29,24 +29,25 @@ func (sim *Simulator) Node(t string) *Node {
 }
 
 func (sim *Simulator) CreateNode(t string) error {
-	l, err := net.Listen("tcp", ":0")
+	l, err := net.ListenTCP("tcp", &net.TCPAddr{
+		IP:   net.IPv4zero,
+		Port: 0,
+	})
+	tcpaddr, ok := l.Addr().(*net.TCPAddr)
+	if !ok {
+		panic("Not tcpaddr")
+	}
 	if err != nil {
 		return fmt.Errorf("net.Listen: %w", err)
 	}
-	_, port, err := net.SplitHostPort(l.Addr().String())
-	if err != nil {
-		return fmt.Errorf("net.SplitHostPort: %w", err)
-	}
-
 	pk, sk, err := ed25519.GenerateKey(nil)
 	if err != nil {
 		return fmt.Errorf("ed25519.GenerateKey: %w", err)
 	}
-
 	n := &Node{
 		Router:     router.NewRouter(sim.log, t, sk, pk, sim),
 		l:          l,
-		ListenPort: port,
+		ListenAddr: tcpaddr,
 	}
 	sim.nodesMutex.Lock()
 	sim.nodes[t] = n
@@ -54,9 +55,12 @@ func (sim *Simulator) CreateNode(t string) error {
 
 	go func(n *Node) {
 		for {
-			c, err := l.Accept()
+			c, err := l.AcceptTCP()
 			if err != nil {
 				continue
+			}
+			if err := c.SetNoDelay(true); err != nil {
+				panic(err)
 			}
 			if _, err = n.AuthenticatedConnect(c, "sim", router.PeerTypeRemote); err != nil {
 				continue

@@ -261,7 +261,7 @@ func configureHTTPRouting(sim *simulator.Simulator) {
 			public := node.PublicKey()
 			entry := Node{
 				Name:   n,
-				Port:   node.ListenPort,
+				Port:   fmt.Sprintf("%d", node.ListenAddr.Port),
 				Coords: fmt.Sprintf("%v", node.Coords()),
 				Key:    hex.EncodeToString(public[:2]),
 				IsRoot: node.IsRoot(),

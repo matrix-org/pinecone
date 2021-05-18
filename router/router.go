@@ -209,7 +209,7 @@ func (r *Router) Predecessor() *types.PublicKey {
 	r.snake.descendingMutex.RLock()
 	pr := r.snake.descending
 	r.snake.descendingMutex.RUnlock()
-	if pr == nil || time.Since(pr.LastSeen) >= virtualSnakeNeighExpiryPeriod {
+	if pr == nil { // || time.Since(pr.LastSeen) >= virtualSnakeNeighExpiryPeriod {
 		return nil
 	}
 	pk := pr.PublicKey
@@ -222,7 +222,7 @@ func (r *Router) Successor() *types.PublicKey {
 	r.snake.ascendingMutex.RLock()
 	su := r.snake.ascending
 	r.snake.ascendingMutex.RUnlock()
-	if su == nil || time.Since(su.LastSeen) >= virtualSnakeNeighExpiryPeriod {
+	if su == nil { //|| time.Since(su.LastSeen) >= virtualSnakeNeighExpiryPeriod {
 		return nil
 	}
 	pk := su.PublicKey

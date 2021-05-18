@@ -22,8 +22,8 @@ import (
 
 type Node struct {
 	*router.Router
-	l          net.Listener
-	ListenPort string
+	l          *net.TCPListener
+	ListenAddr *net.TCPAddr
 }
 
 type Distance struct {
