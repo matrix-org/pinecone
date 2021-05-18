@@ -213,6 +213,9 @@ func (t *virtualSnake) getVirtualSnakeBootstrapNextHop(from *Peer, destKey types
 }
 
 func (t *virtualSnake) getVirtualSnakeNextHop(from *Peer, destKey types.PublicKey) types.SwitchPorts {
+	if destKey.EqualTo(t.r.public) {
+		return types.SwitchPorts{0}
+	}
 	ancestors, parentPort := t.r.tree.Ancestors()
 	rootKey := t.r.RootPublicKey()
 	bestKey, bestPort := t.r.public, types.SwitchPortID(0) // rootKey, rootPort
