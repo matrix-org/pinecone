@@ -177,6 +177,7 @@ func (t *spanningTree) selectParent() types.SwitchPortID {
 			parent, bestDist = port.port, l
 		}
 	}
+	//_ = bestDist
 	return parent
 }
 
@@ -288,24 +289,43 @@ func (t *spanningTree) Remove(p *Peer) {
 }
 
 func (t *spanningTree) Update(p *Peer, a *types.SwitchAnnouncement) error {
-	// Unless the key is really stronger than our current root key,
-	// throttle how quickly we will act upon root updates.
 	var timeSinceLastUpdate time.Duration
 	if last := p.lastAnnouncement(); last != nil {
 		timeSinceLastUpdate = time.Since(last.at)
 	}
 
+	// If the announcement is from the same root, or a weaker one, and
+	// hasn't waited for the threshold to pass, then we'll stop here,
+	// otherwise we will end up flooding downstream nodes.
+	if timeSinceLastUpdate != 0 && timeSinceLastUpdate < announcementThreshold {
+		if a.RootPublicKey.CompareTo(t.Root().RootPublicKey) <= 0 {
+			return nil // fmt.Errorf("ignoring update (too soon)")
+		}
+	}
+
 	// Check that there are no routing loops in the update.
 	sigs := make(map[string]struct{})
+	isChild := false
 	for _, sig := range a.Signatures {
 		if sig.Hop == 0 {
+			// None of the hops in the update should have a port number of 0
+			// as this would imply that another node has sent their router
+			// port, which is impossible. We'll therefore reject any update
+			// that tries to do that.
 			return fmt.Errorf("rejecting update (invalid 0 hop)")
 		}
 		if p.port != 0 && t.r.public.EqualTo(sig.PublicKey) {
-			return nil // fmt.Errorf("rejecting update (we signed this already)")
+			// It looks like the update contains our public key. This is not
+			// strictly an error condition, since any of our children on the
+			// spanning tree can send an update back to us with our own key,
+			// but we don't act upon them because that would create loops.
+			// Instead we'll just update the port announcement entry and stop.
+			isChild = true
 		}
 		pk := hex.EncodeToString(sig.PublicKey[:])
 		if _, ok := sigs[pk]; ok {
+			// One of the signatures has appeared in the update more than
+			// once, which would suggest that there's a loop somewhere.
 			return fmt.Errorf("rejecting update (detected routing loop)")
 		}
 		sigs[pk] = struct{}{}
@@ -320,27 +340,10 @@ func (t *spanningTree) Update(p *Peer, a *types.SwitchAnnouncement) error {
 	}
 	p.mutex.Unlock()
 
-	// If the announcement is from the same root, or a weaker one, and
-	// hasn't waited for the threshold to pass, then we'll stop here,
-	// otherwise we will end up flooding downstream nodes.
-	if timeSinceLastUpdate != 0 && timeSinceLastUpdate < announcementThreshold {
-		if a.RootPublicKey.CompareTo(t.Root().RootPublicKey) < 0 {
-			return fmt.Errorf("ignoring update (too soon)")
-		}
-	}
-
 	t.rootMutex.RLock()
 	oldRoot, newRoot := t.root, t.root
 	t.rootMutex.RUnlock()
 
-	// Work out if the announcement came from our selected parent. We will
-	// only handle subsequent updates from the same root if they came in
-	// via our chosen parent, otherwise this might cause downstream coords
-	// to flap.
-	parent := t.Parent()
-	isParent := parent == 0 || p.port == parent
-
-	// If the advertisement came from the same root then process it.
 	switch {
 	case a.RootPublicKey.CompareTo(oldRoot.RootPublicKey) > 0:
 		// If the advertisement contains a stronger key than the root, or the
@@ -349,7 +352,7 @@ func (t *spanningTree) Update(p *Peer, a *types.SwitchAnnouncement) error {
 		newRoot = &rootAnnouncementWithTime{a, time.Now()}
 		t.rootReset.Dispatch()
 
-	case t.r.public.CompareTo(oldRoot.RootPublicKey) >= 0:
+	case t.r.public.CompareTo(a.RootPublicKey) >= 0 && t.r.public.CompareTo(oldRoot.RootPublicKey) >= 0:
 		// If it turns out after all that our key is stronger than the chosen
 		// root then we'll become root instead.
 		t.becomeRoot()
@@ -359,9 +362,11 @@ func (t *spanningTree) Update(p *Peer, a *types.SwitchAnnouncement) error {
 		// a new update, e.g. the sequence number has increased, and the
 		// signature count is equal to or shorter than the previous count.
 		// This stops us from flapping coordinates so much.
-		if isParent && a.Sequence > oldRoot.Sequence && len(a.Signatures) <= len(oldRoot.Signatures) {
-			newRoot = &rootAnnouncementWithTime{a, time.Now()}
+		if a.Sequence > oldRoot.Sequence {
 			t.rootReset.Dispatch()
+			if !isChild && len(a.Signatures) <= len(oldRoot.Signatures) {
+				newRoot = &rootAnnouncementWithTime{a, time.Now()}
+			}
 		}
 	}
 

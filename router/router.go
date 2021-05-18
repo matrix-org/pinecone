@@ -269,8 +269,6 @@ func (r *Router) activePorts() peers {
 			continue
 		case !p.started.Load() || !p.alive.Load(): // ignore stopped/non-negotiated ports
 			continue
-		case !p.SeenRecently():
-			continue
 		default:
 			peers = append(peers, p)
 		}
