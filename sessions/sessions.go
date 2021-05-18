@@ -23,6 +23,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/hex"
 	"encoding/pem"
+	"fmt"
 	"log"
 	"math/big"
 	"net"
@@ -52,7 +53,7 @@ func NewSessions(log *log.Logger, r *router.Router) *Sessions {
 	ctx, cancel := context.WithCancel(context.Background())
 	s, err := utp.NewSocketFromPacketConnNoClose(r)
 	if err != nil {
-		panic(err)
+		panic(fmt.Errorf("utp.NewSocketFromPacketConnNoClose: %w", err))
 	}
 	q := &Sessions{
 		r:         r,
@@ -75,6 +76,9 @@ func NewSessions(log *log.Logger, r *router.Router) *Sessions {
 	s.OnDetach(func(remote net.Addr) {
 		q.sessionsMutex.Lock()
 		defer q.sessionsMutex.Unlock()
+		if _, ok := q.sessions[remote]; !ok {
+			return
+		}
 		if q.sessions[remote].Dec() == 0 {
 			delete(q.sessions, remote)
 		}
@@ -126,11 +130,11 @@ func (q *Sessions) generateTLSCertificate() *tls.Certificate {
 		ed25519.PrivateKey(private[:]),
 	)
 	if err != nil {
-		panic(err)
+		panic(fmt.Errorf("x509.CreateCertificate: %w", err))
 	}
 	privateKey, err := x509.MarshalPKCS8PrivateKey(ed25519.PrivateKey(private[:]))
 	if err != nil {
-		panic(err)
+		panic(fmt.Errorf("x509.MarshalPKCS8PrivateKey: %w", err))
 	}
 
 	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER})
@@ -138,7 +142,7 @@ func (q *Sessions) generateTLSCertificate() *tls.Certificate {
 
 	tlsCert, err := tls.X509KeyPair(certPEM, keyPEM)
 	if err != nil {
-		panic(err)
+		panic(fmt.Errorf("tls.X509KeyPair: %w", err))
 	}
 
 	return &tlsCert
