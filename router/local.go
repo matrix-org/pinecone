@@ -76,8 +76,8 @@ func (r *Router) reader(conn net.Conn) {
 			case types.TypeGreedy:
 				// If the frame doesn't appear as if it's meant to be for
 				// us then we'll drop it.
-				if !frame.Destination.EqualTo(r.Coords()) {
-					r.log.Println("Router received frame that isn't for us")
+				if !r.imprecise.Load() && !frame.Destination.EqualTo(r.Coords()) {
+					//r.log.Println("Router received frame that isn't for us")
 					continue
 				}
 				r.recv <- frame
@@ -85,17 +85,17 @@ func (r *Router) reader(conn net.Conn) {
 			case types.TypeVirtualSnake:
 				// If the frame doesn't appear as if it's meant to be for
 				// us then we'll drop it.
-				/*if !frame.DestinationKey.EqualTo(r.PublicKey()) {
-					r.log.Println("Router received frame that isn't for us")
+				if !r.imprecise.Load() && !frame.DestinationKey.EqualTo(r.PublicKey()) {
+					//	r.log.Println("Router received frame that isn't for us")
 					continue
-				}*/
+				}
 				r.recv <- frame
 
 			case types.TypeSource:
 				// Check if the source path seems to be finished.
 				if len(frame.Destination) > 0 {
 					if frame.Destination[0] != 0 {
-						r.log.Println("Dropping frame that has invalid next-port")
+						//r.log.Println("Dropping frame that has invalid next-port")
 						continue
 					}
 					frame.Destination = frame.Destination[1:]

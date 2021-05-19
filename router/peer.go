@@ -280,38 +280,56 @@ func (p *Peer) reader() {
 							if signedframe == nil {
 								continue
 							}
+							/*
+								go func(frame *types.Frame) {
+									dest.protoOut <- frame
+								}(frame.Borrow())
+							*/
 							select {
 							case dest.trafficOut <- signedframe.Borrow():
 								dest.statistics.txTrafficSuccessful.Inc()
 								sent = true
 								return
-							default:
+							case <-time.After(time.Second):
 								dest.statistics.txTrafficDropped.Inc()
 								signedframe.Done()
+								p.r.log.Println("Dropped traffic pathfind frame of type", signedframe.Type.String())
 								continue
 							}
 
 						case types.TypeDHTRequest, types.TypeDHTResponse, types.TypeVirtualSnakeBootstrap, types.TypeVirtualSnakeBootstrapACK, types.TypeVirtualSnakeSetup, types.TypeVirtualSnakeTeardown:
+							/*
+								go func(frame *types.Frame) {
+									dest.protoOut <- frame
+								}(frame.Borrow())
+							*/
 							select {
 							case dest.protoOut <- frame.Borrow():
 								dest.statistics.txProtoSuccessful.Inc()
 								sent = true
 								return
-							default:
+							case <-time.After(time.Second):
 								dest.statistics.txProtoDropped.Inc()
 								frame.Done()
+								p.r.log.Println("Dropped protocol frame of type", frame.Type.String())
 								continue
 							}
 
 						case types.TypeGreedy, types.TypeSource, types.TypeVirtualSnake:
+							/*
+								go func(frame *types.Frame) {
+									dest.trafficOut <- frame
+								}(frame.Borrow())
+							*/
 							select {
 							case dest.trafficOut <- frame.Borrow():
 								dest.statistics.txTrafficSuccessful.Inc()
 								sent = true
 								return
-							default:
+							case <-time.After(time.Second):
 								dest.statistics.txTrafficDropped.Inc()
 								frame.Done()
+								p.r.log.Println("Dropped traffic frame of type", frame.Type.String())
 								continue
 							}
 						}

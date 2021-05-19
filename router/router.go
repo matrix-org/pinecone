@@ -29,6 +29,7 @@ import (
 
 	"github.com/matrix-org/pinecone/types"
 	"github.com/matrix-org/pinecone/util"
+	"go.uber.org/atomic"
 )
 
 // PortCount contains the number of ports supported by this Pinecone
@@ -38,7 +39,7 @@ const PortCount = 64
 
 // ProtoBufferSize is the number of protocol packets that a node will
 // buffer on a slow port.
-const ProtoBufferSize = 16
+const ProtoBufferSize = 1
 
 // TrafficBufferSize is the number of traffic packets that a node will
 // buffer on a slow port.
@@ -69,6 +70,7 @@ type Router struct {
 	public     types.PublicKey    // our keypair
 	tree       *spanningTree      // Yggdrasil-like spanning tree
 	snake      *virtualSnake      // SNEK routing protocol
+	imprecise  atomic.Bool        // allow imprecise routing
 	dht        *dht               // Chord-like DHT tables
 	pathfinder *pathfinder        // source routing pathfinder
 	active     sync.Map           // node public keys that we have active peerings with
@@ -179,6 +181,13 @@ func (r *Router) IsRoot() bool {
 // using greedy routing.
 func (r *Router) Addr() net.Addr {
 	return r.PublicKey()
+}
+
+// AllowImpreciseTraffic controls whether the router should return traffic
+// that isn't specifically destined for this node but has nowhere else to
+// go. This is a requirement for routing with partial public keys.
+func (r *Router) AllowImpreciseTraffic(allow bool) {
+	r.imprecise.Store(allow)
 }
 
 // Pathfind takes a GreedyAddr (for greedy routing) or a types.PublicKey
@@ -356,8 +365,8 @@ func (r *Router) Connect(conn net.Conn, public types.PublicKey, zone string, pee
 		r.ports[i].peertype = peertype
 		r.ports[i].conn = util.NewBufferedRWC(conn)
 		r.ports[i].public = public
-		r.ports[i].protoOut = make(chan *types.Frame, ProtoBufferSize)
-		r.ports[i].trafficOut = make(chan *types.Frame, TrafficBufferSize)
+		r.ports[i].protoOut = make(chan *types.Frame)   //, ProtoBufferSize)
+		r.ports[i].trafficOut = make(chan *types.Frame) //, TrafficBufferSize)
 		r.ports[i].advertise = util.NewDispatch()
 		r.ports[i].statistics.reset()
 		r.ports[i].mutex.Unlock()

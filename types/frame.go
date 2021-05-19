@@ -338,6 +338,8 @@ func (t FrameType) String() string {
 		return "TypeVirtualSnake"
 	case TypeVirtualSnakePathfind:
 		return "TypeVirtualSnakePathfind"
+	case TypeVirtualSnakeTeardown:
+		return "TypeVirtualSnakeTeardown"
 	default:
 		return "TypeUnknown"
 	}

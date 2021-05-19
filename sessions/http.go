@@ -28,7 +28,7 @@ type HTTP struct {
 
 func (q *Sessions) HTTP() *HTTP {
 	t := &http.Transport{
-		DisableKeepAlives: false,
+		DisableKeepAlives: true,
 		Dial:              q.Dial,
 		DialTLS:           q.DialTLS,
 		DialContext:       q.DialContext,
