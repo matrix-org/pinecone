@@ -65,17 +65,44 @@ func (sim *Simulator) Wires() map[string]map[string]net.Conn {
 func (sim *Simulator) Distances() map[string]map[string]*Distance {
 	sim.distsMutex.RLock()
 	defer sim.distsMutex.RUnlock()
-	return sim.dists
+	mapcopy := make(map[string]map[string]*Distance)
+	for a, aa := range sim.dists {
+		if _, ok := mapcopy[a]; !ok {
+			mapcopy[a] = make(map[string]*Distance)
+		}
+		for b, bb := range aa {
+			mapcopy[a][b] = bb
+		}
+	}
+	return mapcopy
 }
 
 func (sim *Simulator) PathConvergence() map[string]map[string]bool {
 	sim.pathConvergenceMutex.RLock()
 	defer sim.pathConvergenceMutex.RUnlock()
-	return sim.pathConvergence
+	mapcopy := make(map[string]map[string]bool)
+	for a, aa := range sim.pathConvergence {
+		if _, ok := mapcopy[a]; !ok {
+			mapcopy[a] = make(map[string]bool)
+		}
+		for b, bb := range aa {
+			mapcopy[a][b] = bb
+		}
+	}
+	return mapcopy
 }
 
 func (sim *Simulator) DHTConvergence() map[string]map[string]bool {
 	sim.dhtConvergenceMutex.RLock()
 	defer sim.dhtConvergenceMutex.RUnlock()
-	return sim.dhtConvergence
+	mapcopy := make(map[string]map[string]bool)
+	for a, aa := range sim.dhtConvergence {
+		if _, ok := mapcopy[a]; !ok {
+			mapcopy[a] = make(map[string]bool)
+		}
+		for b, bb := range aa {
+			mapcopy[a][b] = bb
+		}
+	}
+	return mapcopy
 }

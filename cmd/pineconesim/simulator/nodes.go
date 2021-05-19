@@ -17,6 +17,8 @@ package simulator
 import (
 	"crypto/ed25519"
 	"fmt"
+	"hash/crc32"
+	"log"
 	"net"
 
 	"github.com/matrix-org/pinecone/router"
@@ -44,8 +46,11 @@ func (sim *Simulator) CreateNode(t string) error {
 	if err != nil {
 		return fmt.Errorf("ed25519.GenerateKey: %w", err)
 	}
+	crc := crc32.ChecksumIEEE([]byte(t))
+	color := 31 + (crc % 6)
+	log := log.New(sim.log.Writer(), fmt.Sprintf("\033[%dmNode %s:\033[0m ", color, t), 0)
 	n := &Node{
-		Router:     router.NewRouter(sim.log, t, sk, pk, sim),
+		Router:     router.NewRouter(log, t, sk, pk, sim),
 		l:          l,
 		ListenAddr: tcpaddr,
 	}
