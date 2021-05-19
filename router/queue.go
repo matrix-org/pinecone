@@ -67,5 +67,7 @@ func (q *queue) reset() {
 }
 
 func (q *queue) wait() <-chan struct{} {
+	q.mutex.Lock()
+	defer q.mutex.Unlock()
 	return q.notifs
 }

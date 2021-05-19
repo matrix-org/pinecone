@@ -39,7 +39,7 @@ const PortCount = 64
 
 // ProtoBufferSize is the number of protocol packets that a node will
 // buffer on a slow port.
-const ProtoBufferSize = 16
+const ProtoBufferSize = 128
 
 // TrafficBufferSize is the number of traffic packets that a node will
 // buffer on a slow port.
@@ -59,23 +59,24 @@ type Simulator interface {
 // Implements net.PacketConn. A Router is an instance of a Pinecone
 // node and should only be instantiated using the NewRouter method.
 type Router struct {
-	log        *log.Logger        //
-	context    context.Context    // switch context
-	cancel     context.CancelFunc // switch context shutdown signal
-	callbacks  *callbacks         // notify when something happens
-	ports      [PortCount]*Peer   // all switch ports
-	simulator  Simulator          // is the node running in the sim?
-	id         string             // friendly identifier (for sim)
-	private    types.PrivateKey   // our keypair
-	public     types.PublicKey    // our keypair
-	tree       *spanningTree      // Yggdrasil-like spanning tree
-	snake      *virtualSnake      // SNEK routing protocol
-	imprecise  atomic.Bool        // allow imprecise routing
-	dht        *dht               // Chord-like DHT tables
-	pathfinder *pathfinder        // source routing pathfinder
-	active     sync.Map           // node public keys that we have active peerings with
-	send       chan types.Frame   // local node -> network
-	recv       chan types.Frame   // local node <- network
+	log         *log.Logger        //
+	context     context.Context    // switch context
+	cancel      context.CancelFunc // switch context shutdown signal
+	callbacks   *callbacks         // notify when something happens
+	ports       [PortCount]*Peer   // all switch ports
+	connections sync.Mutex         // prevent races on changes to ports
+	simulator   Simulator          // is the node running in the sim?
+	id          string             // friendly identifier (for sim)
+	private     types.PrivateKey   // our keypair
+	public      types.PublicKey    // our keypair
+	tree        *spanningTree      // Yggdrasil-like spanning tree
+	snake       *virtualSnake      // SNEK routing protocol
+	imprecise   atomic.Bool        // allow imprecise routing
+	dht         *dht               // Chord-like DHT tables
+	pathfinder  *pathfinder        // source routing pathfinder
+	active      sync.Map           // node public keys that we have active peerings with
+	send        chan types.Frame   // local node -> network
+	recv        chan types.Frame   // local node <- network
 }
 
 // NewRouter instantiates a new Pinecone Router instance. The logger
@@ -305,11 +306,12 @@ func (r *Router) AuthenticatedConnect(conn net.Conn, zone string, peertype int) 
 		}
 		handshake = append(handshake, r.public[:ed25519.PublicKeySize]...)
 		handshake = append(handshake, ed25519.Sign(r.private[:], handshake)...)
-		_ = conn.SetDeadline(time.Now().Add(time.Second * 5))
+		_ = conn.SetWriteDeadline(time.Now().Add(time.Second * 5))
 		if _, err := conn.Write(handshake); err != nil {
 			conn.Close()
 			return 0, err
 		}
+		_ = conn.SetReadDeadline(time.Now().Add(time.Second * 5))
 		if _, err := io.ReadFull(conn, handshake); err != nil {
 			conn.Close()
 			return 0, fmt.Errorf("io.ReadFull: %w", err)
@@ -347,6 +349,8 @@ func (r *Router) AuthenticatedConnect(conn net.Conn, zone string, peertype int) 
 // port number that the node was connected to will be
 // returned in the event of a successful connection.
 func (r *Router) Connect(conn net.Conn, public types.PublicKey, zone string, peertype int) (types.SwitchPortID, error) {
+	r.connections.Lock()
+	defer r.connections.Unlock()
 	if p, ok := r.active.Load(hex.EncodeToString(public[:]) + zone); ok {
 		if err := r.Disconnect(p.(types.SwitchPortID), nil); err != nil {
 			return 0, fmt.Errorf("already connected to this node via zone %q", zone)
@@ -396,6 +400,8 @@ func (r *Router) Disconnect(i types.SwitchPortID, err error) error {
 	if i == 0 {
 		return fmt.Errorf("cannot disconnect port %d", i)
 	}
+	r.connections.Lock()
+	defer r.connections.Unlock()
 	r.active.Delete(hex.EncodeToString(r.ports[i].public[:]) + r.ports[i].zone)
 	if err := r.ports[i].stop(); err != nil {
 		return fmt.Errorf("port.stop: %w", err)
@@ -408,8 +414,6 @@ func (r *Router) Disconnect(i types.SwitchPortID, err error) error {
 	for range r.ports[i].protoOut {
 	}
 	r.ports[i].trafficOut.reset()
-	r.ports[i].protoOut = nil
-	r.ports[i].trafficOut = nil
 	r.ports[i].mutex.Unlock()
 	if r.ports[i].port != 0 {
 		r.dht.deleteNode(r.ports[i].public)
