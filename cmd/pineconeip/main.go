@@ -55,6 +55,7 @@ func main() {
 	}
 
 	pineconeRouter := router.NewRouter(logger, "router", sk, pk, nil)
+	pineconeRouter.AllowImpreciseTraffic(true)
 	pineconeMulticast := multicast.NewMulticast(logger, pineconeRouter)
 	pineconeMulticast.Start()
 	pineconeTUN, err := tun.NewTUN(pineconeRouter)

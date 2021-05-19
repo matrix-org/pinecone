@@ -137,7 +137,8 @@ func (p *Peer) stop() error {
 	p.alive.Store(false)
 	p.cancel()
 	p.r.tree.Remove(p)
-	return p.conn.Close()
+	_ = p.conn.Close()
+	return nil
 }
 
 func (p *Peer) generateAnnouncement() *types.Frame {
