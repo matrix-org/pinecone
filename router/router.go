@@ -397,11 +397,12 @@ func (r *Router) Disconnect(i types.SwitchPortID, err error) error {
 		return fmt.Errorf("cannot disconnect port %d", i)
 	}
 	r.active.Delete(hex.EncodeToString(r.ports[i].public[:]) + r.ports[i].zone)
-	r.ports[i].mutex.Lock()
 	_ = r.ports[i].stop()
+	r.ports[i].mutex.Lock()
 	r.ports[i].peertype = 0
 	r.ports[i].zone = ""
 	r.ports[i].public = types.PublicKey{}
+	close(r.ports[i].protoOut)
 	for range r.ports[i].protoOut {
 	}
 	r.ports[i].trafficOut.reset()

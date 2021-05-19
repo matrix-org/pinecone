@@ -60,8 +60,10 @@ func (q *queue) reset() {
 	for i := range q.frames {
 		q.frames[i] = nil
 	}
+	close(q.notifs)
 	for range q.notifs {
 	}
+	q.notifs = make(chan struct{}, q.size)
 }
 
 func (q *queue) wait() <-chan struct{} {
