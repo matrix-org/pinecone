@@ -48,7 +48,7 @@ type Peer struct {
 	cancel       context.CancelFunc        //
 	conn         util.BufferedRWC          // underlying connection to peer
 	public       types.PublicKey           //
-	trafficOut   chan *types.Frame         // queue traffic message to peer
+	trafficOut   *queue                    // queue traffic message to peer
 	protoOut     chan *types.Frame         // queue protocol message to peer
 	coords       types.SwitchPorts         //
 	announcement *rootAnnouncementWithTime //
@@ -106,7 +106,12 @@ func (p *Peer) lastAnnouncement() *rootAnnouncementWithTime {
 	}
 	p.mutex.RLock()
 	defer p.mutex.RUnlock()
-	if p.announcement != nil && time.Since(p.announcement.at) > announcementTimeout {
+	switch {
+	case !p.started.Load():
+		return nil
+	case !p.alive.Load():
+		return nil
+	case p.announcement != nil && time.Since(p.announcement.at) > announcementTimeout:
 		return nil
 	}
 	return p.announcement
@@ -280,56 +285,36 @@ func (p *Peer) reader() {
 							if signedframe == nil {
 								continue
 							}
-							/*
-								go func(frame *types.Frame) {
-									dest.protoOut <- frame
-								}(frame.Borrow())
-							*/
-							select {
-							case dest.trafficOut <- signedframe.Borrow():
+							if sent = dest.trafficOut.push(signedframe.Borrow()); sent {
 								dest.statistics.txTrafficSuccessful.Inc()
-								sent = true
 								return
-							case <-time.After(time.Second):
+							} else {
+								p.r.log.Println("Dropped pathfind frame of type", signedframe.Type.String())
 								dest.statistics.txTrafficDropped.Inc()
 								signedframe.Done()
-								p.r.log.Println("Dropped traffic pathfind frame of type", signedframe.Type.String())
 								continue
 							}
 
 						case types.TypeDHTRequest, types.TypeDHTResponse, types.TypeVirtualSnakeBootstrap, types.TypeVirtualSnakeBootstrapACK, types.TypeVirtualSnakeSetup, types.TypeVirtualSnakeTeardown:
-							/*
-								go func(frame *types.Frame) {
-									dest.protoOut <- frame
-								}(frame.Borrow())
-							*/
 							select {
 							case dest.protoOut <- frame.Borrow():
 								dest.statistics.txProtoSuccessful.Inc()
-								sent = true
 								return
-							case <-time.After(time.Second):
+							default:
+								p.r.log.Println("Dropped protocol pathfind frame of type", frame.Type.String())
 								dest.statistics.txProtoDropped.Inc()
 								frame.Done()
-								p.r.log.Println("Dropped protocol frame of type", frame.Type.String())
 								continue
 							}
 
 						case types.TypeGreedy, types.TypeSource, types.TypeVirtualSnake:
-							/*
-								go func(frame *types.Frame) {
-									dest.trafficOut <- frame
-								}(frame.Borrow())
-							*/
-							select {
-							case dest.trafficOut <- frame.Borrow():
+							if sent = dest.trafficOut.push(frame.Borrow()); sent {
 								dest.statistics.txTrafficSuccessful.Inc()
-								sent = true
 								return
-							case <-time.After(time.Second):
+							} else {
+								p.r.log.Println("Dropped traffic frame of type", frame.Type.String())
 								dest.statistics.txTrafficDropped.Inc()
 								frame.Done()
-								p.r.log.Println("Dropped traffic frame of type", frame.Type.String())
 								continue
 							}
 						}
@@ -395,8 +380,8 @@ func (p *Peer) writer() {
 				_ = send(frame)
 				continue
 			}
-		case frame := <-p.trafficOut:
-			if frame != nil {
+		case <-p.trafficOut.wait():
+			if frame, ok := p.trafficOut.pop(); ok && frame != nil {
 				_ = send(frame)
 				continue
 			}
@@ -408,13 +393,13 @@ func (p *Peer) writer() {
 		case <-p.advertise:
 			_ = send(p.generateAnnouncement())
 			continue
-		case frame := <-p.trafficOut:
+		case frame := <-p.protoOut:
 			if frame != nil {
 				_ = send(frame)
 				continue
 			}
-		case frame := <-p.protoOut:
-			if frame != nil {
+		case <-p.trafficOut.wait():
+			if frame, ok := p.trafficOut.pop(); ok && frame != nil {
 				_ = send(frame)
 				continue
 			}

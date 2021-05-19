@@ -57,8 +57,9 @@ func (p *Peer) getNextHops(frame *types.Frame, from types.SwitchPortID) types.Sw
 
 	case types.TypeVirtualSnakeSetup:
 		nextHops := p.r.getGreedyRoutedNextHop(p, frame)
-		defer p.r.snake.handleSetup(p, frame, nextHops)
-		return nextHops
+		if err := p.r.snake.handleSetup(p, frame, nextHops); err == nil {
+			return nextHops
+		}
 
 	case types.TypeVirtualSnake, types.TypeVirtualSnakePathfind:
 		return p.r.snake.getVirtualSnakeNextHop(p, frame.DestinationKey, false)

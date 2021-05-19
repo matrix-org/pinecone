@@ -39,7 +39,7 @@ const PortCount = 64
 
 // ProtoBufferSize is the number of protocol packets that a node will
 // buffer on a slow port.
-const ProtoBufferSize = 1
+const ProtoBufferSize = 16
 
 // TrafficBufferSize is the number of traffic packets that a node will
 // buffer on a slow port.
@@ -365,8 +365,8 @@ func (r *Router) Connect(conn net.Conn, public types.PublicKey, zone string, pee
 		r.ports[i].peertype = peertype
 		r.ports[i].conn = util.NewBufferedRWC(conn)
 		r.ports[i].public = public
-		r.ports[i].protoOut = make(chan *types.Frame)   //, ProtoBufferSize)
-		r.ports[i].trafficOut = make(chan *types.Frame) //, TrafficBufferSize)
+		r.ports[i].protoOut = make(chan *types.Frame, ProtoBufferSize)
+		r.ports[i].trafficOut = newQueue(TrafficBufferSize)
 		r.ports[i].advertise = util.NewDispatch()
 		r.ports[i].statistics.reset()
 		r.ports[i].mutex.Unlock()
@@ -402,14 +402,9 @@ func (r *Router) Disconnect(i types.SwitchPortID, err error) error {
 	r.ports[i].peertype = 0
 	r.ports[i].zone = ""
 	r.ports[i].public = types.PublicKey{}
-	if len(r.ports[i].protoOut) > 0 {
-		for range r.ports[i].protoOut {
-		}
+	for range r.ports[i].protoOut {
 	}
-	if len(r.ports[i].trafficOut) > 0 {
-		for range r.ports[i].trafficOut {
-		}
-	}
+	r.ports[i].trafficOut.reset()
 	r.ports[i].protoOut = nil
 	r.ports[i].trafficOut = nil
 	r.ports[i].mutex.Unlock()

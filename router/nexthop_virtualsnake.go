@@ -15,6 +15,7 @@
 package router
 
 import (
+	"fmt"
 	"math"
 	"sync"
 	"time"
@@ -162,7 +163,7 @@ func (t *virtualSnake) portWasDisconnected(port types.SwitchPortID) {
 // getVirtualSnakeNextHop will return the most relevant port
 // for a given destination public key.
 func (t *virtualSnake) getVirtualSnakeNextHop(from *Peer, destKey types.PublicKey, bootstrap bool) types.SwitchPorts {
-	if !bootstrap && from.port != 0 && t.r.public.EqualTo(destKey) {
+	if /*!bootstrap &&*/ from.port != 0 && t.r.public.EqualTo(destKey) {
 		return types.SwitchPorts{0}
 	}
 
@@ -172,17 +173,22 @@ func (t *virtualSnake) getVirtualSnakeNextHop(from *Peer, destKey types.PublicKe
 	newCandidate := func(key types.PublicKey, port types.SwitchPortID) {
 		bestKey, bestPort = key, port
 	}
-	newCheckedCandidate := func(candidate types.PublicKey, port types.SwitchPortID) {
+	newCheckedCandidate := func(candidate types.PublicKey, port types.SwitchPortID) bool {
 		switch {
 		case !bootstrap && candidate.EqualTo(destKey) && !bestKey.EqualTo(destKey):
 			newCandidate(candidate, port)
+			return true
 		case util.DHTOrdered(destKey, candidate, bestKey):
 			newCandidate(candidate, port)
+			return true
 		}
+		return false
 	}
 
 	switch {
 	case bootstrap && bestKey.EqualTo(destKey):
+		// Bootstraps always start working towards the root so that
+		// they go somewhere rather than getting stuck
 		newCandidate(rootKey, parentPort)
 	case util.DHTOrdered(bestKey, destKey, rootKey):
 		// The destination key is higher than our own key, so
@@ -196,9 +202,11 @@ func (t *virtualSnake) getVirtualSnakeNextHop(from *Peer, destKey types.PublicKe
 		if peerAnn == nil {
 			continue
 		}
+		newCheckedCandidate(peerAnn.RootPublicKey, peer.port)
 		for _, hop := range peerAnn.Signatures {
 			newCheckedCandidate(hop.PublicKey, peer.port)
 		}
+		newCheckedCandidate(peer.public, peer.port)
 	}
 
 	// Check our direct ancestors
@@ -210,7 +218,6 @@ func (t *virtualSnake) getVirtualSnakeNextHop(from *Peer, destKey types.PublicKe
 	// Check our direct peers
 	for _, peer := range t.r.activePorts() {
 		peerKey := peer.PublicKey()
-		newCheckedCandidate(peerKey, peer.port)
 		switch {
 		case bestKey.EqualTo(peerKey):
 			// We've seen this key already, either as one of our ancestors
@@ -224,10 +231,9 @@ func (t *virtualSnake) getVirtualSnakeNextHop(from *Peer, destKey types.PublicKe
 	// Check our DHT entries
 	t.tableMutex.RLock()
 	for dhtKey, entry := range t.table {
-		if !entry.Valid() {
-			continue
+		if entry.Valid() {
+			newCheckedCandidate(dhtKey, entry.SourcePort)
 		}
-		newCheckedCandidate(dhtKey, entry.SourcePort)
 	}
 	t.tableMutex.RUnlock()
 
@@ -398,8 +404,8 @@ func (t *virtualSnake) handleBootstrapACK(from *Peer, rx *types.Frame) {
 			return
 		}
 		send = &types.Frame{
-			Destination:    t.ascending.Coords,
-			DestinationKey: t.ascending.PublicKey,
+			Destination:    rx.Source,
+			DestinationKey: rx.SourceKey,
 			SourceKey:      t.r.public,
 			Type:           types.TypeVirtualSnakeSetup,
 			Payload:        ts,
@@ -415,10 +421,10 @@ func (t *virtualSnake) handleBootstrapACK(from *Peer, rx *types.Frame) {
 // that the setup packet isn't necessarily destined for us directly, but is
 // instead called for every setup packet being transited through this node.
 // It will update the routing table with the new path.
-func (t *virtualSnake) handleSetup(from *Peer, rx *types.Frame, nextHops types.SwitchPorts) {
+func (t *virtualSnake) handleSetup(from *Peer, rx *types.Frame, nextHops types.SwitchPorts) error {
 	// Check if the setup packet has a valid signed timestamp.
 	if !util.VerifySignedTimestamp(rx.SourceKey, rx.Payload) {
-		return
+		return fmt.Errorf("invalid signature")
 	}
 
 	// Add a new routing table entry.
@@ -441,7 +447,7 @@ func (t *virtualSnake) handleSetup(from *Peer, rx *types.Frame, nextHops types.S
 	// Did the setup hit a dead end on the way to the ascending node?
 	if nextHops.EqualTo(types.SwitchPorts{0}) && !rx.DestinationKey.EqualTo(t.r.public) {
 		t.clearRoutingEntriesForPublicKey(rx.SourceKey, false)
-		return
+		return fmt.Errorf("setup hit dead end")
 	}
 
 	// If we're at the destination of the setup then update our predecessor
@@ -490,4 +496,6 @@ func (t *virtualSnake) handleSetup(from *Peer, rx *types.Frame, nextHops types.S
 			// yet, so we'll just ignore the bootstrap.
 		}
 	}
+
+	return nil
 }
