@@ -48,8 +48,7 @@ func (a *SwitchAnnouncement) UnmarshalBinary(data []byte) (int, error) {
 	if size := len(data); size < expected {
 		return 0, fmt.Errorf("expecting at least %d bytes, got %d bytes", expected, size)
 	}
-	copy(a.RootPublicKey[:], data)
-	remaining := data[ed25519.PublicKeySize:]
+	remaining := data[copy(a.RootPublicKey[:ed25519.PublicKeySize], data):]
 	if err := a.Sequence.UnmarshalBinary(remaining); err != nil {
 		return 0, fmt.Errorf("a.Sequence.UnmarshalBinary: %w", err)
 	}

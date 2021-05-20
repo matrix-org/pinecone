@@ -163,7 +163,7 @@ func (t *virtualSnake) portWasDisconnected(port types.SwitchPortID) {
 // getVirtualSnakeNextHop will return the most relevant port
 // for a given destination public key.
 func (t *virtualSnake) getVirtualSnakeNextHop(from *Peer, destKey types.PublicKey, bootstrap bool) types.SwitchPorts {
-	if /*!bootstrap &&*/ from.port != 0 && t.r.public.EqualTo(destKey) {
+	if !bootstrap && t.r.public.EqualTo(destKey) {
 		return types.SwitchPorts{0}
 	}
 
@@ -185,6 +185,7 @@ func (t *virtualSnake) getVirtualSnakeNextHop(from *Peer, destKey types.PublicKe
 		return false
 	}
 
+	// Check if we can use the path to the root as a starting point
 	switch {
 	case bootstrap && bestKey.EqualTo(destKey):
 		// Bootstraps always start working towards the root so that
@@ -206,7 +207,6 @@ func (t *virtualSnake) getVirtualSnakeNextHop(from *Peer, destKey types.PublicKe
 		for _, hop := range peerAnn.Signatures {
 			newCheckedCandidate(hop.PublicKey, peer.port)
 		}
-		newCheckedCandidate(peer.public, peer.port)
 	}
 
 	// Check our direct ancestors
@@ -219,6 +219,8 @@ func (t *virtualSnake) getVirtualSnakeNextHop(from *Peer, destKey types.PublicKe
 	for _, peer := range t.r.activePorts() {
 		peerKey := peer.PublicKey()
 		switch {
+		case newCheckedCandidate(peer.public, peer.port):
+			// This peer is closer to the candidate paths so far
 		case bestKey.EqualTo(peerKey):
 			// We've seen this key already, either as one of our ancestors
 			// or as an ancestor of one of our peers, but it turns out we

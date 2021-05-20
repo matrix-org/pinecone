@@ -34,7 +34,7 @@ const announcementThreshold = announcementInterval / 2
 
 // announcementInterval is the frequency at which this
 // node will send root announcements to other peers.
-const announcementInterval = time.Minute * 10
+const announcementInterval = time.Second * 2
 
 // announcementTimeout is the amount of time that must
 // pass without receiving a root announcement before we
@@ -43,25 +43,16 @@ const announcementTimeout = announcementInterval * 3
 
 func (r *Router) handleAnnouncement(peer *Peer, rx *types.Frame) {
 	defer rx.Done()
-	old := r.tree.Root()
-	var new types.SwitchAnnouncement
+	new := &types.SwitchAnnouncement{}
 	if _, err := new.UnmarshalBinary(rx.Payload); err != nil {
 		r.log.Println("Error unmarshalling announcement:", err)
 		return
 	}
 
-	peer.updateCoords(&new)
+	peer.updateCoords(new)
 	peer.alive.Store(true)
 
-	if peer.port != 0 {
-		if new.RootPublicKey.EqualTo(old.RootPublicKey) && new.Sequence < old.Sequence {
-			// The node has sent a replay of a previous announcement. No
-			// bueno, drop it.
-			return
-		}
-	}
-
-	if err := r.tree.Update(peer, &new); err != nil {
+	if err := r.tree.Update(peer, new); err != nil {
 		r.log.Println("Error handling announcement:", err)
 	}
 }
@@ -95,7 +86,6 @@ func newSpanningTree(r *Router, f func(parent types.SwitchPortID, coords types.S
 		callback:  f,
 	}
 	t.becomeRoot()
-	t.advertise.Dispatch()
 	go t.workerForRoot()
 	go t.workerForAnnouncements()
 	return t
@@ -156,6 +146,7 @@ func (t *spanningTree) becomeRoot() {
 		t.callback(0, types.SwitchPorts{})
 	}
 	t.rootReset.Dispatch()
+	t.advertise.Dispatch()
 }
 
 func (t *spanningTree) selectParent() types.SwitchPortID {
@@ -195,7 +186,9 @@ func (t *spanningTree) workerForAnnouncements() {
 			return
 
 		case <-time.After(announcementInterval):
-			advertise()
+			if t.r.IsRoot() {
+				advertise()
+			}
 
 		case <-t.advertise:
 			advertise()
@@ -212,12 +205,10 @@ func (t *spanningTree) workerForRoot() {
 		case <-t.rootReset:
 
 		case <-time.After(announcementTimeout):
-			/*
-				if !t.IsRoot() {
-					t.r.log.Println("Haven't heard from the root lately")
-					t.becomeRoot()
-				}
-			*/
+			if !t.IsRoot() {
+				t.r.log.Println("Haven't heard from the root lately")
+				t.becomeRoot()
+			}
 		}
 	}
 }
@@ -294,6 +285,7 @@ func (t *spanningTree) Remove(p *Peer) {
 }
 
 func (t *spanningTree) Update(p *Peer, a *types.SwitchAnnouncement) error {
+	old := p.lastAnnouncement()
 	var timeSinceLastUpdate time.Duration
 	if last := p.lastAnnouncement(); last != nil {
 		timeSinceLastUpdate = time.Since(last.at)
@@ -302,9 +294,12 @@ func (t *spanningTree) Update(p *Peer, a *types.SwitchAnnouncement) error {
 	// If the announcement is from the same root, or a weaker one, and
 	// hasn't waited for the threshold to pass, then we'll stop here,
 	// otherwise we will end up flooding downstream nodes.
-	if timeSinceLastUpdate != 0 && timeSinceLastUpdate < announcementThreshold {
-		if a.RootPublicKey.CompareTo(t.Root().RootPublicKey) <= 0 {
-			return nil // fmt.Errorf("ignoring update (too soon)")
+	if old != nil && a.RootPublicKey.CompareTo(old.RootPublicKey) <= 0 {
+		switch {
+		case a.RootPublicKey.EqualTo(old.RootPublicKey) && a.Sequence <= old.Sequence:
+			return fmt.Errorf("rejecting update (old sequence number %d <= %d)", a.Sequence, old.Sequence)
+		case timeSinceLastUpdate != 0 && timeSinceLastUpdate < announcementThreshold:
+			return fmt.Errorf("rejecting update (too soon after %s)", timeSinceLastUpdate)
 		}
 	}
 

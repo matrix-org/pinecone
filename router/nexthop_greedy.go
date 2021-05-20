@@ -15,8 +15,6 @@
 package router
 
 import (
-	"math"
-
 	"github.com/matrix-org/pinecone/types"
 )
 
@@ -45,42 +43,36 @@ func (r *Router) getGreedyRoutedNextHop(from *Peer, rx *types.Frame) types.Switc
 
 	// Now work out which of our peers takes the message closer.
 	bestPeer := types.SwitchPortID(0)
-	bestDist := int64(math.MaxInt64)
+	bestDist := ourDist
 	for _, p := range r.activePorts() {
-		// Don't create routing loops.
+		// Don't deliberately create routing loops.
 		if p.port == from.port {
 			continue
 		}
 
 		// Look up the coordinates of the peer.
 		p.mutex.RLock()
-		coords := p.coords
+		peerCoords := p.coords
 		p.mutex.RUnlock()
 
 		// Work out what the distance across the tree is to that
 		// peer.
-		dist := int64(coords.DistanceTo(rx.Destination))
+		peerDist := int64(peerCoords.DistanceTo(rx.Destination))
 
 		// If the distance is zero, that's because the peer is the
 		// destination itself.
-		if dist == 0 {
+		if peerDist == 0 {
 			return []types.SwitchPortID{p.port}
 		}
 
 		// Otherwise, let's see if this peer just happens to be a
 		// better candidate for the next-hop.
 		switch {
-		case dist > ourDist:
-			// TODO: is this needed?
-			// This peer will take the traffic further away from our
-			// own node.
-		case dist > bestDist:
-			// This isn't any closer to the destination than our
-			// current best candidate next-hop.
+		case peerDist >= bestDist:
 		default:
 			// This looks like probably the best next-hop candidate we
 			// have so far.
-			bestPeer, bestDist = p.port, dist
+			bestPeer, bestDist = p.port, peerDist
 		}
 	}
 
