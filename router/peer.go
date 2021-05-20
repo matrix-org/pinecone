@@ -90,9 +90,16 @@ func (p *Peer) Coordinates() types.SwitchPorts {
 	return p.coords
 }
 
-func (p *Peer) SeenRecently() bool {
+func (p *Peer) SeenCommonRootRecently() bool {
 	if last := p.lastAnnouncement(); last != nil {
 		return last.RootPublicKey.EqualTo(p.r.RootPublicKey())
+	}
+	return false
+}
+
+func (p *Peer) SeenRecently() bool {
+	if last := p.lastAnnouncement(); last != nil {
+		return true
 	}
 	return false
 }
@@ -251,7 +258,7 @@ func (p *Peer) reader() {
 					p.r.log.Println("Port", p.port, "incorrect version in frame")
 					return
 				}
-				//p.r.log.Println("Frame type", frame.Type.String(), frame.DestinationKey)
+				//	p.r.log.Println("Frame type", frame.Type.String(), frame.DestinationKey)
 				switch frame.Type {
 				case types.TypeSTP:
 					p.r.handleAnnouncement(p, frame.Borrow())
@@ -406,17 +413,17 @@ func (p *Peer) writer() {
 	}
 }
 
-func (p *Peer) updateCoords(announcement *types.SwitchAnnouncement) {
-	// TODO: this entire function is bad, do something about it
-
+func (p *Peer) updateCoords(announcement *rootAnnouncementWithTime) {
 	if len(announcement.Signatures) == 0 {
 		p.r.log.Println("WARNING: No signatures from peer on port", p.port)
+		p.cancel()
 		return
 	}
 
 	public := announcement.Signatures[len(announcement.Signatures)-1].PublicKey
 	if !p.public.EqualTo(public) {
 		p.r.log.Println("WARNING: Mismatched public key on port", p.port)
+		p.cancel()
 		return
 	}
 
@@ -425,8 +432,9 @@ func (p *Peer) updateCoords(announcement *types.SwitchAnnouncement) {
 		coords = coords[:len(coords)-1]
 	}
 
-	p.mutex.Lock()
-	defer p.mutex.Unlock()
+	// mutex is already held by the caller
+	// p.mutex.Lock()
+	// defer p.mutex.Unlock()
 	p.coords = coords
 }
 

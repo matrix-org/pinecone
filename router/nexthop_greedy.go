@@ -49,6 +49,9 @@ func (r *Router) getGreedyRoutedNextHop(from *Peer, rx *types.Frame) types.Switc
 		if p.port == from.port {
 			continue
 		}
+		if !p.SeenCommonRootRecently() {
+			continue
+		}
 
 		// Look up the coordinates of the peer.
 		p.mutex.RLock()

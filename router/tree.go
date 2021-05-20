@@ -34,12 +34,12 @@ const announcementThreshold = announcementInterval / 2
 
 // announcementInterval is the frequency at which this
 // node will send root announcements to other peers.
-const announcementInterval = time.Second * 2
+const announcementInterval = time.Second * 16
 
 // announcementTimeout is the amount of time that must
 // pass without receiving a root announcement before we
 // will assume that the peer is dead.
-const announcementTimeout = announcementInterval * 3
+const announcementTimeout = announcementInterval * 4
 
 func (r *Router) handleAnnouncement(peer *Peer, rx *types.Frame) {
 	defer rx.Done()
@@ -48,10 +48,6 @@ func (r *Router) handleAnnouncement(peer *Peer, rx *types.Frame) {
 		r.log.Println("Error unmarshalling announcement:", err)
 		return
 	}
-
-	peer.updateCoords(new)
-	peer.alive.Store(true)
-
 	if err := r.tree.Update(peer, new); err != nil {
 		r.log.Println("Error handling announcement:", err)
 	}
@@ -186,7 +182,7 @@ func (t *spanningTree) workerForAnnouncements() {
 			return
 
 		case <-time.After(announcementInterval):
-			if t.r.IsRoot() {
+			if t.IsRoot() {
 				advertise()
 			}
 
@@ -252,7 +248,7 @@ func (t *spanningTree) updateCoordinates() types.SwitchPortID {
 func (t *spanningTree) IsRoot() bool {
 	t.rootMutex.RLock()
 	defer t.rootMutex.RUnlock()
-	return t.root.RootPublicKey.EqualTo(t.r.public)
+	return t.root.RootPublicKey.EqualTo(t.r.public) || time.Since(t.root.at) >= announcementTimeout
 }
 
 func (t *spanningTree) Root() *types.SwitchAnnouncement {
@@ -297,9 +293,9 @@ func (t *spanningTree) Update(p *Peer, a *types.SwitchAnnouncement) error {
 	if old != nil && a.RootPublicKey.CompareTo(old.RootPublicKey) <= 0 {
 		switch {
 		case a.RootPublicKey.EqualTo(old.RootPublicKey) && a.Sequence <= old.Sequence:
-			return fmt.Errorf("rejecting update (old sequence number %d <= %d)", a.Sequence, old.Sequence)
+			return nil // fmt.Errorf("rejecting update (old sequence number %d <= %d)", a.Sequence, old.Sequence)
 		case timeSinceLastUpdate != 0 && timeSinceLastUpdate < announcementThreshold:
-			return fmt.Errorf("rejecting update (too soon after %s)", timeSinceLastUpdate)
+			return nil // fmt.Errorf("rejecting update (too soon after %s)", timeSinceLastUpdate)
 		}
 	}
 
@@ -333,11 +329,13 @@ func (t *spanningTree) Update(p *Peer, a *types.SwitchAnnouncement) error {
 
 	// Store the announcement against the peer. This lets us ultimately
 	// calculate what the coordinates of that peer are later.
+	p.alive.Store(true)
 	p.mutex.Lock()
 	p.announcement = &rootAnnouncementWithTime{
 		SwitchAnnouncement: a,
 		at:                 time.Now(),
 	}
+	p.updateCoords(p.announcement)
 	p.mutex.Unlock()
 
 	t.rootMutex.RLock()
@@ -349,14 +347,12 @@ func (t *spanningTree) Update(p *Peer, a *types.SwitchAnnouncement) error {
 		// We haven't had a root update from anyone else recently, so let's use
 		// this instead.
 		newRoot = &rootAnnouncementWithTime{a, time.Now()}
-		t.rootReset.Dispatch()
 
 	case a.RootPublicKey.CompareTo(oldRoot.RootPublicKey) > 0:
 		// If the advertisement contains a stronger key than the root, or the
 		// announcement contains the root that we know about, update our stored
 		// announcement.
 		newRoot = &rootAnnouncementWithTime{a, time.Now()}
-		t.rootReset.Dispatch()
 
 	case oldRoot.RootPublicKey.EqualTo(a.RootPublicKey) && a.Sequence > oldRoot.Sequence:
 		// We'll only process the update from the same root if it's actually
@@ -365,7 +361,6 @@ func (t *spanningTree) Update(p *Peer, a *types.SwitchAnnouncement) error {
 		// This stops us from flapping coordinates so much.
 		if !isChild && len(a.Signatures) <= len(oldRoot.Signatures) {
 			newRoot = &rootAnnouncementWithTime{a, time.Now()}
-			t.rootReset.Dispatch()
 		}
 	}
 
@@ -375,9 +370,11 @@ func (t *spanningTree) Update(p *Peer, a *types.SwitchAnnouncement) error {
 		t.root = newRoot
 		t.rootMutex.Unlock()
 
+		t.rootReset.Dispatch()
+		t.advertise.Dispatch()
+
 		if p.port == t.updateCoordinates() {
 			if newRoot.RootPublicKey != oldRoot.RootPublicKey {
-				t.advertise.Dispatch()
 				go t.r.snake.rootNodeChanged(newRoot.RootPublicKey)
 			}
 		}
