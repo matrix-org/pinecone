@@ -15,29 +15,31 @@
 package types
 
 import (
+	"bytes"
 	"crypto/ed25519"
+	"fmt"
 	"testing"
 )
 
 func TestMarshalUnmarshalAnnouncement(t *testing.T) {
 	pkr, _, _ := ed25519.GenerateKey(nil)
-	_, sk1, _ := ed25519.GenerateKey(nil)
-	_, sk2, _ := ed25519.GenerateKey(nil)
-	_, sk3, _ := ed25519.GenerateKey(nil)
+	pk1, sk1, _ := ed25519.GenerateKey(nil)
+	pk2, sk2, _ := ed25519.GenerateKey(nil)
+	pk3, sk3, _ := ed25519.GenerateKey(nil)
 	input := &SwitchAnnouncement{
 		Sequence: 1,
 	}
 	copy(input.RootPublicKey[:], pkr)
 	var err error
-	input, err = input.Sign(sk1, 1)
+	err = input.Sign(sk1, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	input, err = input.Sign(sk2, 2)
+	err = input.Sign(sk2, 2)
 	if err != nil {
 		t.Fatal(err)
 	}
-	input, err = input.Sign(sk3, 3)
+	err = input.Sign(sk3, 3)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,5 +51,28 @@ func TestMarshalUnmarshalAnnouncement(t *testing.T) {
 	var output SwitchAnnouncement
 	if _, err = output.UnmarshalBinary(buffer[:n]); err != nil {
 		t.Fatal(err)
+	}
+	if !bytes.Equal(pkr, output.RootPublicKey[:]) {
+		fmt.Println("expected:", pkr)
+		fmt.Println("got:", output.RootPublicKey)
+		t.Fatalf("first public key doesn't match")
+	}
+	if len(output.Signatures) < 3 {
+		t.Fatalf("not enough signatures were found (should be 3)")
+	}
+	if !bytes.Equal(pk1, output.Signatures[0].PublicKey[:]) {
+		fmt.Println("expected:", pk1)
+		fmt.Println("got:", output.Signatures[0].PublicKey)
+		t.Fatalf("first public key doesn't match")
+	}
+	if !bytes.Equal(pk2, output.Signatures[1].PublicKey[:]) {
+		fmt.Println("expected:", pk2)
+		fmt.Println("got:", output.Signatures[1].PublicKey)
+		t.Fatalf("second public key doesn't match")
+	}
+	if !bytes.Equal(pk3, output.Signatures[2].PublicKey[:]) {
+		fmt.Println("expected:", pk3)
+		fmt.Println("got:", output.Signatures[2].PublicKey)
+		t.Fatalf("third public key doesn't match")
 	}
 }

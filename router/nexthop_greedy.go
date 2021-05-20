@@ -15,6 +15,9 @@
 package router
 
 import (
+	"fmt"
+	"math"
+
 	"github.com/matrix-org/pinecone/types"
 )
 
@@ -25,7 +28,8 @@ import (
 // or one next-hop ports can be returned.
 func (r *Router) getGreedyRoutedNextHop(from *Peer, rx *types.Frame) types.SwitchPorts {
 	// If it's loopback then don't bother doing anything else.
-	if rx.Destination.EqualTo(r.Coords()) {
+	ourCoords := r.Coords()
+	if rx.Destination.EqualTo(ourCoords) {
 		return types.SwitchPorts{0}
 	}
 
@@ -33,7 +37,7 @@ func (r *Router) getGreedyRoutedNextHop(from *Peer, rx *types.Frame) types.Switc
 	// message. This is important because we'll only forward a frame
 	// to a peer that takes the message closer to the destination than
 	// we are.
-	ourDist := int64(r.Coords().DistanceTo(rx.Destination))
+	ourDist := int64(ourCoords.DistanceTo(rx.Destination))
 	if ourDist == 0 {
 		// It's impossible to get closer so there's a pretty good
 		// chance at this point that the traffic is destined for us.
@@ -44,38 +48,39 @@ func (r *Router) getGreedyRoutedNextHop(from *Peer, rx *types.Frame) types.Switc
 	// Now work out which of our peers takes the message closer.
 	bestPeer := types.SwitchPortID(0)
 	bestDist := ourDist
-	for _, p := range r.activePorts() {
+	if r.IsRoot() {
+		bestDist = int64(math.MaxInt64)
+	}
+	type portinfo struct {
+		port   types.SwitchPortID
+		coords types.SwitchPorts
+		dist   int64
+	}
+	ports := []portinfo{}
+	allports := r.activePorts()
+	for _, p := range allports {
 		// Don't deliberately create routing loops.
-		if p.port == from.port {
-			continue
-		}
-		if !p.SeenCommonRootRecently() {
+		if p.port == from.port || !p.SeenCommonRootRecently() {
 			continue
 		}
 
-		// Look up the coordinates of the peer.
-		p.mutex.RLock()
-		peerCoords := p.coords
-		p.mutex.RUnlock()
-
-		// Work out what the distance across the tree is to that
-		// peer.
+		// Look up the coordinates of the peer, and the distance
+		// across the tree to those coordinates.
+		peerCoords := p.Coordinates()
 		peerDist := int64(peerCoords.DistanceTo(rx.Destination))
 
-		// If the distance is zero, that's because the peer is the
-		// destination itself.
-		if peerDist == 0 {
-			return []types.SwitchPortID{p.port}
-		}
+		ports = append(ports, portinfo{
+			port:   p.port,
+			coords: peerCoords,
+			dist:   peerDist,
+		})
 
-		// Otherwise, let's see if this peer just happens to be a
-		// better candidate for the next-hop.
 		switch {
-		case peerDist >= bestDist:
-		default:
-			// This looks like probably the best next-hop candidate we
-			// have so far.
+		case peerDist <= 0:
+			return []types.SwitchPortID{p.port}
+		case peerDist < bestDist:
 			bestPeer, bestDist = p.port, peerDist
+		default:
 		}
 	}
 
@@ -85,6 +90,18 @@ func (r *Router) getGreedyRoutedNextHop(from *Peer, rx *types.Frame) types.Switc
 	peers := types.SwitchPorts{}
 	if bestPeer != 0 {
 		peers = append(peers, bestPeer)
+	}
+	if true && len(peers) == 0 {
+		tried := []string{}
+		for _, po := range ports {
+			tried = append(tried, fmt.Sprintf("%d (%s)", po.port, po.coords))
+		}
+		r.log.Println("Dropping", rx.Type, "frame as hit dead end - src", rx.Source, "-> local", r.Coords(), "-> dst", rx.Destination)
+		r.log.Println("We have", len(allports), "active ports, we tried", len(tried), "of them:")
+		for _, po := range ports {
+			r.log.Println("* Port", po.port, "has coords", po.coords, "dist:", po.dist)
+		}
+		r.log.Println("The best distance we found to", rx.Destination, "was", bestDist, "- our dist was", ourDist)
 	}
 	return peers
 }

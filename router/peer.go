@@ -73,28 +73,23 @@ func (s *peerStatistics) reset() {
 }
 
 func (p *Peer) PublicKey() types.PublicKey {
-	if p == nil {
-		return types.PublicKey{}
-	}
 	p.mutex.RLock()
 	defer p.mutex.RUnlock()
 	return p.public
 }
 
 func (p *Peer) Coordinates() types.SwitchPorts {
-	if p == nil {
-		return types.SwitchPorts{}
-	}
 	p.mutex.RLock()
 	defer p.mutex.RUnlock()
 	return p.coords
 }
 
 func (p *Peer) SeenCommonRootRecently() bool {
-	if last := p.lastAnnouncement(); last != nil {
-		return last.RootPublicKey.EqualTo(p.r.RootPublicKey())
+	last := p.lastAnnouncement()
+	if last == nil {
+		return false
 	}
-	return false
+	return last.RootPublicKey.EqualTo(p.r.RootPublicKey()) //&& last.Sequence == p.r.tree.Root().Sequence
 }
 
 func (p *Peer) SeenRecently() bool {
@@ -105,9 +100,6 @@ func (p *Peer) SeenRecently() bool {
 }
 
 func (p *Peer) lastAnnouncement() *rootAnnouncementWithTime {
-	if p == nil {
-		return nil
-	}
 	p.mutex.RLock()
 	defer p.mutex.RUnlock()
 	switch {
@@ -146,6 +138,9 @@ func (p *Peer) stop() error {
 }
 
 func (p *Peer) generateAnnouncement() *types.Frame {
+	if p.port == 0 {
+		return nil
+	}
 	announcement := p.r.tree.Root()
 	for _, sig := range announcement.Signatures {
 		if p.r.public.EqualTo(sig.PublicKey) {
@@ -157,9 +152,7 @@ func (p *Peer) generateAnnouncement() *types.Frame {
 		}
 	}
 	// Sign the announcement.
-	var err error
-	announcement, err = announcement.Sign(p.r.private[:], p.port)
-	if err != nil {
+	if err := announcement.Sign(p.r.private[:], p.port); err != nil {
 		p.r.log.Println("Failed to sign switch announcement:", err)
 		return nil
 	}
@@ -258,7 +251,7 @@ func (p *Peer) reader() {
 					p.r.log.Println("Port", p.port, "incorrect version in frame")
 					return
 				}
-				//	p.r.log.Println("Frame type", frame.Type.String(), frame.DestinationKey)
+				//p.r.log.Println("Frame type", frame.Type.String(), frame.DestinationKey)
 				switch frame.Type {
 				case types.TypeSTP:
 					p.r.handleAnnouncement(p, frame.Borrow())
@@ -427,15 +420,10 @@ func (p *Peer) updateCoords(announcement *rootAnnouncementWithTime) {
 		return
 	}
 
-	coords := announcement.Coords()
-	if len(coords) >= 0 {
-		coords = coords[:len(coords)-1]
-	}
-
 	// mutex is already held by the caller
 	// p.mutex.Lock()
 	// defer p.mutex.Unlock()
-	p.coords = coords
+	p.coords = announcement.PeerCoords()
 }
 
 type peers []*Peer

@@ -34,7 +34,7 @@ const announcementThreshold = announcementInterval / 2
 
 // announcementInterval is the frequency at which this
 // node will send root announcements to other peers.
-const announcementInterval = time.Second * 16
+const announcementInterval = time.Second * 4
 
 // announcementTimeout is the amount of time that must
 // pass without receiving a root announcement before we
@@ -43,13 +43,13 @@ const announcementTimeout = announcementInterval * 4
 
 func (r *Router) handleAnnouncement(peer *Peer, rx *types.Frame) {
 	defer rx.Done()
-	new := &types.SwitchAnnouncement{}
+	var new types.SwitchAnnouncement
 	if _, err := new.UnmarshalBinary(rx.Payload); err != nil {
 		r.log.Println("Error unmarshalling announcement:", err)
 		return
 	}
 	if err := r.tree.Update(peer, new); err != nil {
-		r.log.Println("Error handling announcement:", err)
+		r.log.Println("Error handling announcement on port", peer.port, ":", err)
 	}
 }
 
@@ -57,7 +57,7 @@ func (r *Router) handleAnnouncement(peer *Peer, rx *types.Frame) {
 // parent relationships for distance. All other metrics are ignored.
 
 type rootAnnouncementWithTime struct {
-	*types.SwitchAnnouncement
+	types.SwitchAnnouncement
 	at time.Time
 }
 
@@ -69,7 +69,6 @@ type spanningTree struct {
 	rootMutex sync.RWMutex              //
 	rootReset util.Dispatch             //
 	parent    atomic.Value              // types.SwitchPortID
-	coords    atomic.Value              // types.SwitchPorts
 	callback  func(parent types.SwitchPortID, coords types.SwitchPorts)
 }
 
@@ -82,23 +81,27 @@ func newSpanningTree(r *Router, f func(parent types.SwitchPortID, coords types.S
 		callback:  f,
 	}
 	t.becomeRoot()
+	t.advertise.Dispatch()
 	go t.workerForRoot()
 	go t.workerForAnnouncements()
 	return t
 }
 
 func (t *spanningTree) Coords() types.SwitchPorts {
-	if coords, ok := t.coords.Load().(types.SwitchPorts); ok {
+	t.rootMutex.RLock()
+	defer t.rootMutex.RUnlock()
+	coords := types.SwitchPorts{}
+	if t.root == nil {
 		return coords
 	}
-	return types.SwitchPorts{}
+	for _, hop := range t.root.Signatures {
+		coords = append(coords, types.SwitchPortID(hop.Hop))
+	}
+	return coords
 }
 
 func (t *spanningTree) Ancestors() ([]types.PublicKey, types.SwitchPortID) {
 	root := t.Root()
-	if root == nil {
-		return nil, 0
-	}
 	port, ok := t.parent.Load().(types.SwitchPortID)
 	if !ok || port == 0 {
 		return nil, 0
@@ -120,15 +123,14 @@ func (t *spanningTree) portWasDisconnected(port types.SwitchPortID) {
 		return
 	}
 	if t.parent.Load() == port {
-		p := t.selectParent()
-		t.parent.Store(p)
+		t.selectParent()
 	}
 }
 
 func (t *spanningTree) becomeRoot() {
 	t.rootMutex.Lock()
 	t.root = &rootAnnouncementWithTime{
-		SwitchAnnouncement: &types.SwitchAnnouncement{
+		SwitchAnnouncement: types.SwitchAnnouncement{
 			RootPublicKey: t.r.public,
 			Sequence:      types.Varu64(time.Now().UnixNano()),
 		},
@@ -138,34 +140,31 @@ func (t *spanningTree) becomeRoot() {
 	t.parent.Store(types.SwitchPortID(0))
 	newCoords := types.SwitchPorts{}
 	if !t.Coords().EqualTo(newCoords) {
-		t.coords.Store(types.SwitchPorts{})
 		t.callback(0, types.SwitchPorts{})
 	}
 	t.rootReset.Dispatch()
-	t.advertise.Dispatch()
 }
 
-func (t *spanningTree) selectParent() types.SwitchPortID {
+func (t *spanningTree) selectParent() (types.SwitchPortID, bool) {
+	oldParent := t.parent.Load()
 	bestDist := int64(math.MaxInt64)
 	var parent types.SwitchPortID
 	for _, port := range t.r.activePorts() {
-		if !port.SeenRecently() {
+		if !port.SeenCommonRootRecently() {
 			// The peer either hasn't sent us an announcement yet, or it's
 			// sent us an invalid announcement with no signatures.
 			continue
 		}
-		ann := port.lastAnnouncement()
-		if !t.root.RootPublicKey.EqualTo(ann.RootPublicKey) {
-			// The peer has sent us an announcement, but it's not from the
-			// root that we're expecting it to be from.
-			continue
+		if parent != 0 && port.port == oldParent {
+			break
 		}
+		ann := port.lastAnnouncement()
 		if l := int64(len(ann.Signatures)); parent == 0 || l < bestDist {
 			parent, bestDist = port.port, l
 		}
 	}
-	//_ = bestDist
-	return parent
+	t.parent.Store(parent)
+	return parent, parent == oldParent
 }
 
 func (t *spanningTree) workerForAnnouncements() {
@@ -209,61 +208,25 @@ func (t *spanningTree) workerForRoot() {
 	}
 }
 
-func (t *spanningTree) updateCoordinates() types.SwitchPortID {
-	// Are we the root? If so then our coords are predetermined
-	// and we don't have a parent node.
-	if t.IsRoot() {
-		newCoords := types.SwitchPorts{}
-		if !t.Coords().EqualTo(newCoords) {
-			t.coords.Store(newCoords)
-			t.callback(0, newCoords)
-		}
-		return 0
-	}
-
-	// Otherwise, let's try and work out who are most effective
-	// parent is. If we get no parent then we're the root.
-	parent := t.selectParent()
-	t.parent.Store(parent)
-	if !t.r.ports[parent].started.Load() || !t.r.ports[parent].alive.Load() {
-		return 0 // panic("parent shouldn't be nil if we aren't the root node")
-	}
-
-	// Work out what our coordinates are relative to our chosen
-	// parent.
-	t.r.ports[parent].mutex.RLock()
-	defer t.r.ports[parent].mutex.RUnlock()
-	if ann := t.r.ports[parent].lastAnnouncement(); ann != nil {
-		if newCoords := ann.Coords(); !t.Coords().EqualTo(newCoords) {
-			t.coords.Store(newCoords)
-			t.callback(parent, newCoords)
-		}
-	} else {
-		panic("couldn't get last parent announcement")
-	}
-
-	return parent
-}
-
 func (t *spanningTree) IsRoot() bool {
 	t.rootMutex.RLock()
 	defer t.rootMutex.RUnlock()
 	return t.root.RootPublicKey.EqualTo(t.r.public) || time.Since(t.root.at) >= announcementTimeout
 }
 
-func (t *spanningTree) Root() *types.SwitchAnnouncement {
+func (t *spanningTree) Root() types.SwitchAnnouncement {
 	t.rootMutex.RLock()
 	defer t.rootMutex.RUnlock()
 	if t.root.RootPublicKey.EqualTo(t.r.public) || time.Since(t.root.at) > announcementTimeout {
-		return &types.SwitchAnnouncement{
+		return types.SwitchAnnouncement{
 			RootPublicKey: t.r.public,
 			Sequence:      types.Varu64(time.Now().UnixNano()),
 		}
 	}
-	return &types.SwitchAnnouncement{ // return a copy
+	return types.SwitchAnnouncement{ // return a copy
 		RootPublicKey: t.root.RootPublicKey,
 		Sequence:      t.root.Sequence,
-		Signatures:    append([]types.SignatureWithHop{}, t.root.Signatures...),
+		Signatures:    t.root.Signatures, // ([]types.SignatureWithHop{}, t.root.Signatures...),
 	}
 }
 
@@ -280,11 +243,11 @@ func (t *spanningTree) Remove(p *Peer) {
 	}
 }
 
-func (t *spanningTree) Update(p *Peer, a *types.SwitchAnnouncement) error {
-	old := p.lastAnnouncement()
+func (t *spanningTree) Update(p *Peer, a types.SwitchAnnouncement) error {
+	old := p.announcement
 	var timeSinceLastUpdate time.Duration
-	if last := p.lastAnnouncement(); last != nil {
-		timeSinceLastUpdate = time.Since(last.at)
+	if old != nil {
+		timeSinceLastUpdate = time.Since(old.at)
 	}
 
 	// If the announcement is from the same root, or a weaker one, and
@@ -293,9 +256,9 @@ func (t *spanningTree) Update(p *Peer, a *types.SwitchAnnouncement) error {
 	if old != nil && a.RootPublicKey.CompareTo(old.RootPublicKey) <= 0 {
 		switch {
 		case a.RootPublicKey.EqualTo(old.RootPublicKey) && a.Sequence <= old.Sequence:
-			return nil // fmt.Errorf("rejecting update (old sequence number %d <= %d)", a.Sequence, old.Sequence)
-		case timeSinceLastUpdate != 0 && timeSinceLastUpdate < announcementThreshold:
-			return nil // fmt.Errorf("rejecting update (too soon after %s)", timeSinceLastUpdate)
+		//	return fmt.Errorf("rejecting update (old sequence number %d <= %d)", a.Sequence, old.Sequence)
+		case timeSinceLastUpdate > 0 && timeSinceLastUpdate < announcementThreshold:
+			//	return fmt.Errorf("rejecting update (too soon after %s)", timeSinceLastUpdate)
 		}
 	}
 
@@ -310,7 +273,7 @@ func (t *spanningTree) Update(p *Peer, a *types.SwitchAnnouncement) error {
 			// that tries to do that.
 			return fmt.Errorf("rejecting update (invalid 0 hop)")
 		}
-		if p.port != 0 && t.r.public.EqualTo(sig.PublicKey) {
+		if t.r.public.EqualTo(sig.PublicKey) {
 			// It looks like the update contains our public key. This is not
 			// strictly an error condition, since any of our children on the
 			// spanning tree can send an update back to us with our own key,
@@ -327,23 +290,12 @@ func (t *spanningTree) Update(p *Peer, a *types.SwitchAnnouncement) error {
 		sigs[pk] = struct{}{}
 	}
 
-	// Store the announcement against the peer. This lets us ultimately
-	// calculate what the coordinates of that peer are later.
-	p.alive.Store(true)
-	p.mutex.Lock()
-	p.announcement = &rootAnnouncementWithTime{
-		SwitchAnnouncement: a,
-		at:                 time.Now(),
-	}
-	p.updateCoords(p.announcement)
-	p.mutex.Unlock()
-
 	t.rootMutex.RLock()
 	oldRoot, newRoot := t.root, t.root
 	t.rootMutex.RUnlock()
 
 	switch {
-	case !isChild && time.Since(oldRoot.at) > announcementTimeout:
+	case time.Since(oldRoot.at) > announcementTimeout:
 		// We haven't had a root update from anyone else recently, so let's use
 		// this instead.
 		newRoot = &rootAnnouncementWithTime{a, time.Now()}
@@ -362,7 +314,23 @@ func (t *spanningTree) Update(p *Peer, a *types.SwitchAnnouncement) error {
 		if !isChild && len(a.Signatures) <= len(oldRoot.Signatures) {
 			newRoot = &rootAnnouncementWithTime{a, time.Now()}
 		}
+
+	default:
+		//return fmt.Errorf("no conditions met")
 	}
+
+	// Store the announcement against the peer. This lets us ultimately
+	// calculate what the coordinates of that peer are later.
+	p.alive.Store(true)
+	p.mutex.Lock()
+	p.announcement = &rootAnnouncementWithTime{
+		SwitchAnnouncement: a,
+		at:                 time.Now(),
+	}
+	p.updateCoords(p.announcement)
+	p.mutex.Unlock()
+
+	t.rootReset.Dispatch()
 
 	// If the root has changed then let's do something about it.
 	if newRoot != oldRoot {
@@ -370,14 +338,12 @@ func (t *spanningTree) Update(p *Peer, a *types.SwitchAnnouncement) error {
 		t.root = newRoot
 		t.rootMutex.Unlock()
 
-		t.rootReset.Dispatch()
-		t.advertise.Dispatch()
-
-		if p.port == t.updateCoordinates() {
-			if newRoot.RootPublicKey != oldRoot.RootPublicKey {
-				go t.r.snake.rootNodeChanged(newRoot.RootPublicKey)
-			}
+		if parent, _ := t.selectParent(); p.port == parent {
+			t.advertise.Dispatch()
 		}
+	}
+	if newRoot.RootPublicKey != oldRoot.RootPublicKey {
+		go t.r.snake.rootNodeChanged(newRoot.RootPublicKey)
 	}
 
 	return nil

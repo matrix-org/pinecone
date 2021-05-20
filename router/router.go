@@ -175,7 +175,7 @@ func (r *Router) RootPublicKey() types.PublicKey {
 // the network. This will likely return true if the node is
 // isolated (e.g. has no peers).
 func (r *Router) IsRoot() bool {
-	return r.tree.Root().RootPublicKey.EqualTo(r.public)
+	return r.tree.IsRoot()
 }
 
 // Addr returns a net.Addr instance that addresses this node
