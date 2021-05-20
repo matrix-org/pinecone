@@ -68,7 +68,7 @@ func newVirtualSnake(r *Router) *virtualSnake {
 		maintainNow: util.NewDispatch(),
 		table:       make(virtualSnakeTable),
 	}
-	go snake.maintain()
+	//go snake.maintain()
 	return snake
 }
 
@@ -126,6 +126,7 @@ func (v *virtualSnake) maintain() {
 				if err != nil {
 					return
 				}
+				v.r.log.Println("*** SENDING BOOTSTRAP FROM", v.r.Coords())
 				v.r.send <- types.Frame{
 					Type:           types.TypeVirtualSnakeBootstrap,
 					DestinationKey: v.r.PublicKey(), // routes using keys
@@ -340,6 +341,7 @@ func (t *virtualSnake) handleBootstrap(from *Peer, rx *types.Frame) {
 	if err != nil {
 		return
 	}
+	t.r.log.Println("*** SENDING BOOTSTRAP ACK FROM", t.r.Coords())
 	t.r.send <- types.Frame{
 		Destination:    rx.Source,
 		DestinationKey: rx.DestinationKey,

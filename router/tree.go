@@ -34,7 +34,7 @@ const announcementThreshold = announcementInterval / 2
 
 // announcementInterval is the frequency at which this
 // node will send root announcements to other peers.
-const announcementInterval = time.Second * 4
+const announcementInterval = time.Minute
 
 // announcementTimeout is the amount of time that must
 // pass without receiving a root announcement before we
@@ -226,7 +226,7 @@ func (t *spanningTree) Root() types.SwitchAnnouncement {
 	return types.SwitchAnnouncement{ // return a copy
 		RootPublicKey: t.root.RootPublicKey,
 		Sequence:      t.root.Sequence,
-		Signatures:    t.root.Signatures, // ([]types.SignatureWithHop{}, t.root.Signatures...),
+		Signatures:    append([]types.SignatureWithHop{}, t.root.Signatures...),
 	}
 }
 
@@ -256,9 +256,9 @@ func (t *spanningTree) Update(p *Peer, a types.SwitchAnnouncement) error {
 	if old != nil && a.RootPublicKey.CompareTo(old.RootPublicKey) <= 0 {
 		switch {
 		case a.RootPublicKey.EqualTo(old.RootPublicKey) && a.Sequence <= old.Sequence:
-		//	return fmt.Errorf("rejecting update (old sequence number %d <= %d)", a.Sequence, old.Sequence)
+			return fmt.Errorf("rejecting update (old sequence number %d <= %d)", a.Sequence, old.Sequence)
 		case timeSinceLastUpdate > 0 && timeSinceLastUpdate < announcementThreshold:
-			//	return fmt.Errorf("rejecting update (too soon after %s)", timeSinceLastUpdate)
+			return fmt.Errorf("rejecting update (too soon after %s)", timeSinceLastUpdate)
 		}
 	}
 
@@ -339,8 +339,9 @@ func (t *spanningTree) Update(p *Peer, a types.SwitchAnnouncement) error {
 		t.rootMutex.Unlock()
 
 		if parent, _ := t.selectParent(); p.port == parent {
-			t.advertise.Dispatch()
+
 		}
+		t.advertise.Dispatch()
 	}
 	if newRoot.RootPublicKey != oldRoot.RootPublicKey {
 		go t.r.snake.rootNodeChanged(newRoot.RootPublicKey)

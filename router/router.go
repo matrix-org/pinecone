@@ -171,6 +171,15 @@ func (r *Router) RootPublicKey() types.PublicKey {
 	return r.tree.Root().RootPublicKey
 }
 
+// ParentPublicKey returns the public key of the node that this
+// node believes is the parent.
+func (r *Router) ParentPublicKey() types.PublicKey {
+	parent := r.tree.Parent()
+	r.ports[parent].mutex.Lock()
+	defer r.ports[parent].mutex.Unlock()
+	return r.ports[parent].public
+}
+
 // IsRoot returns true if this node believes it is the root of
 // the network. This will likely return true if the node is
 // isolated (e.g. has no peers).

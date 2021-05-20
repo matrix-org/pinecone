@@ -305,6 +305,19 @@ func configureHTTPRouting(sim *simulator.Simulator) {
 					}
 				}
 			}
+		case "parents":
+			for _, n1 := range nodes {
+				if n1.IsRoot() {
+					continue
+				}
+				r1, _ := sim.LookupPublicKey(n1.PublicKey())
+				r2, _ := sim.LookupPublicKey(n1.ParentPublicKey())
+				data.Links = append(data.Links, Link{
+					From:    r1,
+					To:      r2,
+					Enabled: true,
+				})
+			}
 		case "physical":
 			fallthrough
 		default:

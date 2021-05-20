@@ -18,6 +18,8 @@ import (
 	"context"
 	"fmt"
 	"time"
+
+	"github.com/matrix-org/pinecone/router"
 )
 
 func (sim *Simulator) Pathfind(from, to string) error {
@@ -54,7 +56,8 @@ func (sim *Simulator) Pathfind(from, to string) error {
 	} else {
 		dhtSuccess = true
 	}*/
-	_, err := fromnode.Pathfind(ctx, tonode.PublicKey())
+	//_, err := fromnode.Pathfind(ctx, tonode.PublicKey())
+	_, err := fromnode.Pathfind(ctx, router.GreedyAddr{SwitchPorts: tonode.Coords()})
 	if err != nil {
 		return fmt.Errorf("fromnode.r.Pathfind: %w", err)
 	} else {
