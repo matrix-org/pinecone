@@ -171,11 +171,20 @@ func (r *Router) RootPublicKey() types.PublicKey {
 	return r.tree.Root().RootPublicKey
 }
 
+// ParentPublicKey returns the public key of the node that this
+// node believes is the parent.
+func (r *Router) ParentPublicKey() types.PublicKey {
+	parent := r.tree.Parent()
+	r.ports[parent].mutex.Lock()
+	defer r.ports[parent].mutex.Unlock()
+	return r.ports[parent].public
+}
+
 // IsRoot returns true if this node believes it is the root of
 // the network. This will likely return true if the node is
 // isolated (e.g. has no peers).
 func (r *Router) IsRoot() bool {
-	return r.tree.Root().RootPublicKey.EqualTo(r.public)
+	return r.tree.IsRoot()
 }
 
 // Addr returns a net.Addr instance that addresses this node
@@ -271,19 +280,32 @@ func (r *Router) KnownNodes() []types.PublicKey {
 	return list
 }
 
-func (r *Router) activePorts() peers {
+func (r *Router) startedPorts() peers {
 	peers := make(peers, 0, PortCount)
 	for _, p := range r.ports {
 		switch {
 		case p.port == 0: // ignore the router
 			continue
-		case !p.started.Load() || !p.alive.Load(): // ignore stopped/non-negotiated ports
+		case !p.started.Load(): // ignore stopped/non-negotiated ports
 			continue
 		default:
 			peers = append(peers, p)
 		}
 	}
 	sort.Sort(peers)
+	return peers
+}
+
+func (r *Router) activePorts() peers {
+	peers := make(peers, 0, PortCount)
+	for _, p := range r.startedPorts() {
+		switch {
+		case !p.alive.Load():
+			continue
+		default:
+			peers = append(peers, p)
+		}
+	}
 	return peers
 }
 
@@ -371,7 +393,6 @@ func (r *Router) Connect(conn net.Conn, public types.PublicKey, zone string, pee
 		r.ports[i].public = public
 		r.ports[i].protoOut = make(chan *types.Frame, ProtoBufferSize)
 		r.ports[i].trafficOut = newQueue(TrafficBufferSize)
-		r.ports[i].advertise = util.NewDispatch()
 		r.ports[i].statistics.reset()
 		r.ports[i].mutex.Unlock()
 		if err := r.ports[i].start(); err != nil {

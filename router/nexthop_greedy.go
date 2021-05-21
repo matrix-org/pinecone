@@ -27,7 +27,8 @@ import (
 // or one next-hop ports can be returned.
 func (r *Router) getGreedyRoutedNextHop(from *Peer, rx *types.Frame) types.SwitchPorts {
 	// If it's loopback then don't bother doing anything else.
-	if rx.Destination.EqualTo(r.Coords()) {
+	ourCoords := r.Coords()
+	if rx.Destination.EqualTo(ourCoords) {
 		return types.SwitchPorts{0}
 	}
 
@@ -35,7 +36,7 @@ func (r *Router) getGreedyRoutedNextHop(from *Peer, rx *types.Frame) types.Switc
 	// message. This is important because we'll only forward a frame
 	// to a peer that takes the message closer to the destination than
 	// we are.
-	ourDist := int64(r.Coords().DistanceTo(rx.Destination))
+	ourDist := int64(ourCoords.DistanceTo(rx.Destination))
 	if ourDist == 0 {
 		// It's impossible to get closer so there's a pretty good
 		// chance at this point that the traffic is destined for us.
@@ -45,42 +46,27 @@ func (r *Router) getGreedyRoutedNextHop(from *Peer, rx *types.Frame) types.Switc
 
 	// Now work out which of our peers takes the message closer.
 	bestPeer := types.SwitchPortID(0)
-	bestDist := int64(math.MaxInt64)
+	bestDist := ourDist
+	if r.IsRoot() {
+		bestDist = int64(math.MaxInt64)
+	}
+
 	for _, p := range r.activePorts() {
-		// Don't create routing loops.
-		if p.port == from.port {
+		// Don't deliberately create routing loops.
+		if p.port == from.port /*|| !p.SeenCommonRootRecently()*/ {
 			continue
 		}
 
-		// Look up the coordinates of the peer.
-		p.mutex.RLock()
-		coords := p.coords
-		p.mutex.RUnlock()
-
-		// Work out what the distance across the tree is to that
-		// peer.
-		dist := int64(coords.DistanceTo(rx.Destination))
-
-		// If the distance is zero, that's because the peer is the
-		// destination itself.
-		if dist == 0 {
-			return []types.SwitchPortID{p.port}
-		}
-
-		// Otherwise, let's see if this peer just happens to be a
-		// better candidate for the next-hop.
+		// Look up the coordinates of the peer, and the distance
+		// across the tree to those coordinates.
+		peerCoords := p.Coordinates()
+		peerDist := int64(peerCoords.DistanceTo(rx.Destination))
 		switch {
-		case dist > ourDist:
-			// TODO: is this needed?
-			// This peer will take the traffic further away from our
-			// own node.
-		case dist > bestDist:
-			// This isn't any closer to the destination than our
-			// current best candidate next-hop.
+		case peerDist <= 0:
+			return []types.SwitchPortID{p.port}
+		case peerDist < bestDist:
+			bestPeer, bestDist = p.port, peerDist
 		default:
-			// This looks like probably the best next-hop candidate we
-			// have so far.
-			bestPeer, bestDist = p.port, dist
 		}
 	}
 

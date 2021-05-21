@@ -23,29 +23,29 @@ import (
 )
 
 type Simulator struct {
-	log                  *log.Logger
-	nodes                map[string]*Node
-	nodesMutex           sync.RWMutex
-	graph                *dijkstra.Graph
-	maps                 map[string]int
-	wires                map[string]map[string]net.Conn
-	wiresMutex           sync.RWMutex
-	dists                map[string]map[string]*Distance
-	distsMutex           sync.RWMutex
-	pathConvergence      map[string]map[string]bool
-	pathConvergenceMutex sync.RWMutex
-	dhtConvergence       map[string]map[string]bool
-	dhtConvergenceMutex  sync.RWMutex
+	log                      *log.Logger
+	nodes                    map[string]*Node
+	nodesMutex               sync.RWMutex
+	graph                    *dijkstra.Graph
+	maps                     map[string]int
+	wires                    map[string]map[string]net.Conn
+	wiresMutex               sync.RWMutex
+	dists                    map[string]map[string]*Distance
+	distsMutex               sync.RWMutex
+	snekPathConvergence      map[string]map[string]bool
+	snekPathConvergenceMutex sync.RWMutex
+	treePathConvergence      map[string]map[string]bool
+	treePathConvergenceMutex sync.RWMutex
 }
 
 func NewSimulator(log *log.Logger) *Simulator {
 	sim := &Simulator{
-		log:             log,
-		nodes:           make(map[string]*Node),
-		wires:           make(map[string]map[string]net.Conn),
-		dists:           make(map[string]map[string]*Distance),
-		pathConvergence: make(map[string]map[string]bool),
-		dhtConvergence:  make(map[string]map[string]bool),
+		log:                 log,
+		nodes:               make(map[string]*Node),
+		wires:               make(map[string]map[string]net.Conn),
+		dists:               make(map[string]map[string]*Distance),
+		snekPathConvergence: make(map[string]map[string]bool),
+		treePathConvergence: make(map[string]map[string]bool),
 	}
 	return sim
 }
@@ -77,11 +77,11 @@ func (sim *Simulator) Distances() map[string]map[string]*Distance {
 	return mapcopy
 }
 
-func (sim *Simulator) PathConvergence() map[string]map[string]bool {
-	sim.pathConvergenceMutex.RLock()
-	defer sim.pathConvergenceMutex.RUnlock()
+func (sim *Simulator) SNEKPathConvergence() map[string]map[string]bool {
+	sim.snekPathConvergenceMutex.RLock()
+	defer sim.snekPathConvergenceMutex.RUnlock()
 	mapcopy := make(map[string]map[string]bool)
-	for a, aa := range sim.pathConvergence {
+	for a, aa := range sim.snekPathConvergence {
 		if _, ok := mapcopy[a]; !ok {
 			mapcopy[a] = make(map[string]bool)
 		}
@@ -92,11 +92,11 @@ func (sim *Simulator) PathConvergence() map[string]map[string]bool {
 	return mapcopy
 }
 
-func (sim *Simulator) DHTConvergence() map[string]map[string]bool {
-	sim.dhtConvergenceMutex.RLock()
-	defer sim.dhtConvergenceMutex.RUnlock()
+func (sim *Simulator) TreePathConvergence() map[string]map[string]bool {
+	sim.treePathConvergenceMutex.RLock()
+	defer sim.treePathConvergenceMutex.RUnlock()
 	mapcopy := make(map[string]map[string]bool)
-	for a, aa := range sim.dhtConvergence {
+	for a, aa := range sim.treePathConvergence {
 		if _, ok := mapcopy[a]; !ok {
 			mapcopy[a] = make(map[string]bool)
 		}

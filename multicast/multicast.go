@@ -221,7 +221,7 @@ func (m *Multicast) advertise(intf *multicastInterface, conn net.PacketConn, add
 	tcpaddr, _ := m.listener.Addr().(*net.TCPAddr)
 	portBytes := make([]byte, 2)
 	binary.BigEndian.PutUint16(portBytes, uint16(tcpaddr.Port))
-	ticker := time.NewTicker(time.Second * 3)
+	ticker := time.NewTicker(time.Second * 1)
 	first := make(chan struct{}, 1)
 	first <- struct{}{}
 	ourPublicKey := m.r.PublicKey()

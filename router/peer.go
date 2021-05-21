@@ -52,7 +52,6 @@ type Peer struct {
 	protoOut     chan *types.Frame         // queue protocol message to peer
 	coords       types.SwitchPorts         //
 	announcement *rootAnnouncementWithTime //
-	advertise    util.Dispatch             // send switch announcement right now
 	statistics   peerStatistics            //
 }
 
@@ -73,45 +72,50 @@ func (s *peerStatistics) reset() {
 }
 
 func (p *Peer) PublicKey() types.PublicKey {
-	if p == nil {
-		return types.PublicKey{}
-	}
 	p.mutex.RLock()
 	defer p.mutex.RUnlock()
 	return p.public
 }
 
 func (p *Peer) Coordinates() types.SwitchPorts {
-	if p == nil {
-		return types.SwitchPorts{}
-	}
 	p.mutex.RLock()
 	defer p.mutex.RUnlock()
 	return p.coords
 }
 
-func (p *Peer) SeenRecently() bool {
-	if !p.started.Load() || !p.alive.Load() {
+func (p *Peer) SeenCommonRootRecently() bool {
+	last := p.lastAnnouncement()
+	if last == nil {
 		return false
 	}
+	return last.RootPublicKey.EqualTo(p.r.RootPublicKey()) //&& last.Sequence == p.r.tree.Root().Sequence
+}
+
+func (p *Peer) SeenRecently() bool {
 	if last := p.lastAnnouncement(); last != nil {
-		return time.Since(last.at) < announcementTimeout
+		return true
 	}
 	return false
 }
 
-func (p *Peer) lastAnnouncement() *rootAnnouncementWithTime {
-	if p == nil {
-		return nil
+func (p *Peer) updateAnnouncement(new *types.SwitchAnnouncement) {
+	p.alive.Store(true)
+	p.mutex.Lock()
+	p.announcement = &rootAnnouncementWithTime{
+		SwitchAnnouncement: *new,
+		at:                 time.Now(),
 	}
+	p.coords = p.announcement.PeerCoords()
+	p.mutex.Unlock()
+}
+
+func (p *Peer) lastAnnouncement() *rootAnnouncementWithTime {
 	p.mutex.RLock()
 	defer p.mutex.RUnlock()
 	switch {
 	case !p.started.Load():
 		return nil
-	case !p.alive.Load():
-		return nil
-	case p.announcement != nil && time.Since(p.announcement.at) > announcementTimeout:
+	case p.announcement != nil && time.Since(p.announcement.at) >= announcementTimeout:
 		return nil
 	}
 	return p.announcement
@@ -124,9 +128,7 @@ func (p *Peer) start() error {
 	p.alive.Store(false)
 	go p.reader()
 	go p.writer()
-	if p.port != 0 {
-		p.advertise.Dispatch()
-	}
+	p.protoOut <- p.generateAnnouncement()
 	return nil
 }
 
@@ -142,6 +144,9 @@ func (p *Peer) stop() error {
 }
 
 func (p *Peer) generateAnnouncement() *types.Frame {
+	if p.port == 0 {
+		return nil
+	}
 	announcement := p.r.tree.Root()
 	for _, sig := range announcement.Signatures {
 		if p.r.public.EqualTo(sig.PublicKey) {
@@ -153,9 +158,7 @@ func (p *Peer) generateAnnouncement() *types.Frame {
 		}
 	}
 	// Sign the announcement.
-	var err error
-	announcement, err = announcement.Sign(p.r.private[:], p.port)
-	if err != nil {
+	if err := announcement.Sign(p.r.private[:], p.port); err != nil {
 		p.r.log.Println("Failed to sign switch announcement:", err)
 		return nil
 	}
@@ -254,70 +257,65 @@ func (p *Peer) reader() {
 					p.r.log.Println("Port", p.port, "incorrect version in frame")
 					return
 				}
-				switch frame.Type {
-				case types.TypeSTP:
-					p.r.handleAnnouncement(p, frame.Borrow())
-
-				default:
-					sent := false
-					defer func() {
-						if !sent {
-							p.statistics.rxDroppedNoDestination.Inc()
-						}
-					}()
-					for _, port := range p.getNextHops(frame, p.port) {
-						// Ignore ports that are not good candidates.
-						dest := p.r.ports[port]
-						if !dest.started.Load() || (dest.port != 0 && !dest.alive.Load()) {
+				//p.r.log.Println("Frame type", frame.Type.String(), frame.DestinationKey)
+				sent := false
+				defer func() {
+					if !sent {
+						p.statistics.rxDroppedNoDestination.Inc()
+					}
+				}()
+				for _, port := range p.getNextHops(frame, p.port) {
+					// Ignore ports that are not good candidates.
+					dest := p.r.ports[port]
+					if !dest.started.Load() || (dest.port != 0 && !dest.alive.Load()) {
+						continue
+					}
+					if p.port != 0 && dest.port != 0 {
+						if p.port == dest.port || p.public.EqualTo(dest.public) {
 							continue
 						}
-						if p.port != 0 && dest.port != 0 {
-							if p.port == dest.port || p.public.EqualTo(dest.public) {
-								continue
-							}
+					}
+					switch frame.Type {
+					case types.TypePathfind, types.TypeVirtualSnakePathfind:
+						signedframe, err := p.r.signPathfind(frame, p, dest)
+						if err != nil {
+							p.r.log.Println("WARNING: Failed to sign pathfind:", err)
+							continue
 						}
-						switch frame.Type {
-						case types.TypePathfind, types.TypeVirtualSnakePathfind:
-							signedframe, err := p.r.signPathfind(frame, p, dest)
-							if err != nil {
-								p.r.log.Println("WARNING: Failed to sign pathfind:", err)
-								continue
-							}
-							if signedframe == nil {
-								continue
-							}
-							if sent = dest.trafficOut.push(signedframe.Borrow()); sent {
-								dest.statistics.txTrafficSuccessful.Inc()
-								return
-							} else {
-								p.r.log.Println("Dropped pathfind frame of type", signedframe.Type.String())
-								dest.statistics.txTrafficDropped.Inc()
-								signedframe.Done()
-								continue
-							}
+						if signedframe == nil {
+							continue
+						}
+						if sent = dest.trafficOut.push(signedframe.Borrow()); sent {
+							dest.statistics.txTrafficSuccessful.Inc()
+							return
+						} else {
+							p.r.log.Println("Dropped pathfind frame of type", signedframe.Type.String())
+							dest.statistics.txTrafficDropped.Inc()
+							signedframe.Done()
+							continue
+						}
 
-						case types.TypeDHTRequest, types.TypeDHTResponse, types.TypeVirtualSnakeBootstrap, types.TypeVirtualSnakeBootstrapACK, types.TypeVirtualSnakeSetup, types.TypeVirtualSnakeTeardown:
-							select {
-							case dest.protoOut <- frame.Borrow():
-								dest.statistics.txProtoSuccessful.Inc()
-								return
-							default:
-								p.r.log.Println("Dropped protocol pathfind frame of type", frame.Type.String())
-								dest.statistics.txProtoDropped.Inc()
-								frame.Done()
-								continue
-							}
+					case types.TypeDHTRequest, types.TypeDHTResponse, types.TypeVirtualSnakeBootstrap, types.TypeVirtualSnakeBootstrapACK, types.TypeVirtualSnakeSetup, types.TypeVirtualSnakeTeardown:
+						select {
+						case dest.protoOut <- frame.Borrow():
+							dest.statistics.txProtoSuccessful.Inc()
+							return
+						default:
+							p.r.log.Println("Dropped protocol pathfind frame of type", frame.Type.String())
+							dest.statistics.txProtoDropped.Inc()
+							frame.Done()
+							continue
+						}
 
-						case types.TypeGreedy, types.TypeSource, types.TypeVirtualSnake:
-							if sent = dest.trafficOut.push(frame.Borrow()); sent {
-								dest.statistics.txTrafficSuccessful.Inc()
-								return
-							} else {
-								p.r.log.Println("Dropped traffic frame of type", frame.Type.String())
-								dest.statistics.txTrafficDropped.Inc()
-								frame.Done()
-								continue
-							}
+					case types.TypeGreedy, types.TypeSource, types.TypeVirtualSnake:
+						if sent = dest.trafficOut.push(frame.Borrow()); sent {
+							dest.statistics.txTrafficSuccessful.Inc()
+							return
+						} else {
+							p.r.log.Println("Dropped traffic frame of type", frame.Type.String())
+							dest.statistics.txTrafficDropped.Inc()
+							frame.Done()
+							continue
 						}
 					}
 				}
@@ -365,71 +363,16 @@ func (p *Peer) writer() {
 		select {
 		case <-p.context.Done():
 			return
-		case <-p.advertise:
-			_ = send(p.generateAnnouncement())
-			continue
-		default:
-		}
-		select {
-		case <-p.context.Done():
-			return
-		case <-p.advertise:
-			_ = send(p.generateAnnouncement())
-			continue
 		case frame := <-p.protoOut:
 			if frame != nil {
 				_ = send(frame)
-				continue
 			}
 		case <-p.trafficOut.wait():
 			if frame, ok := p.trafficOut.pop(); ok && frame != nil {
 				_ = send(frame)
-				continue
-			}
-		default:
-		}
-		select {
-		case <-p.context.Done():
-			return
-		case <-p.advertise:
-			_ = send(p.generateAnnouncement())
-			continue
-		case frame := <-p.protoOut:
-			if frame != nil {
-				_ = send(frame)
-				continue
-			}
-		case <-p.trafficOut.wait():
-			if frame, ok := p.trafficOut.pop(); ok && frame != nil {
-				_ = send(frame)
-				continue
 			}
 		}
 	}
-}
-
-func (p *Peer) updateCoords(announcement *types.SwitchAnnouncement) {
-	// TODO: this entire function is bad, do something about it
-
-	if len(announcement.Signatures) == 0 {
-		p.r.log.Println("WARNING: No signatures from peer on port", p.port)
-		return
-	}
-
-	public := announcement.Signatures[len(announcement.Signatures)-1].PublicKey
-	if !p.public.EqualTo(public) {
-		p.r.log.Println("WARNING: Mismatched public key on port", p.port)
-		return
-	}
-
-	coords := announcement.Coords()
-	if len(coords) >= 0 {
-		coords = coords[:len(coords)-1]
-	}
-
-	p.mutex.Lock()
-	defer p.mutex.Unlock()
-	p.coords = coords
 }
 
 type peers []*Peer

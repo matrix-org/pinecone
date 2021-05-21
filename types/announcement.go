@@ -26,11 +26,11 @@ type SwitchAnnouncement struct {
 	Signatures    []SignatureWithHop
 }
 
-func (a SwitchAnnouncement) Sign(privKey ed25519.PrivateKey, forPort SwitchPortID) (*SwitchAnnouncement, error) {
+func (a *SwitchAnnouncement) Sign(privKey ed25519.PrivateKey, forPort SwitchPortID) error {
 	var body [65535]byte
 	n, err := a.MarshalBinary(body[:])
 	if err != nil {
-		return nil, fmt.Errorf("a.MarshalBinary: %w", err)
+		return fmt.Errorf("a.MarshalBinary: %w", err)
 	}
 	hop := SignatureWithHop{
 		Hop: Varu64(forPort),
@@ -40,7 +40,7 @@ func (a SwitchAnnouncement) Sign(privKey ed25519.PrivateKey, forPort SwitchPortI
 		copy(hop.Signature[:], ed25519.Sign(privKey, body[:n]))
 	}
 	a.Signatures = append(a.Signatures, hop)
-	return &a, nil
+	return nil
 }
 
 func (a *SwitchAnnouncement) UnmarshalBinary(data []byte) (int, error) {
@@ -48,8 +48,7 @@ func (a *SwitchAnnouncement) UnmarshalBinary(data []byte) (int, error) {
 	if size := len(data); size < expected {
 		return 0, fmt.Errorf("expecting at least %d bytes, got %d bytes", expected, size)
 	}
-	copy(a.RootPublicKey[:], data)
-	remaining := data[ed25519.PublicKeySize:]
+	remaining := data[copy(a.RootPublicKey[:ed25519.PublicKeySize], data):]
 	if err := a.Sequence.UnmarshalBinary(remaining); err != nil {
 		return 0, fmt.Errorf("a.Sequence.UnmarshalBinary: %w", err)
 	}
@@ -96,4 +95,9 @@ func (a *SwitchAnnouncement) Coords() SwitchPorts {
 		coords = append(coords, SwitchPortID(sig.Hop))
 	}
 	return coords
+}
+
+func (a *SwitchAnnouncement) PeerCoords() SwitchPorts {
+	coords := a.Coords()
+	return coords[:len(coords)-1]
 }

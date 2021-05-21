@@ -155,7 +155,7 @@ func main() {
 			time.Sleep(time.Second * 15)
 			log.Println("Starting pathfinds...")
 
-			tasks := make(chan pair, len(nodes)*len(nodes))
+			tasks := make(chan pair, 2*(len(nodes)*len(nodes)))
 			for from := range nodes {
 				for to := range nodes {
 					tasks <- pair{from, to}
@@ -163,15 +163,19 @@ func main() {
 			}
 			close(tasks)
 
-			numworkers := runtime.NumCPU() * 16
+			numworkers := runtime.NumCPU() * 32
 			var wg sync.WaitGroup
 			wg.Add(numworkers)
 			for i := 0; i < numworkers; i++ {
 				go func() {
 					for pair := range tasks {
-						log.Println("Pathfind from", pair.from, "to", pair.to)
-						if err := sim.Pathfind(pair.from, pair.to); err != nil {
-							log.Println("Pathfind from", pair.from, "to", pair.to, "failed:", err)
+						log.Println("Tree pathfind from", pair.from, "to", pair.to)
+						if err := sim.PathfindTree(pair.from, pair.to); err != nil {
+							log.Println("Tree pathfind from", pair.from, "to", pair.to, "failed:", err)
+						}
+						log.Println("SNEK pathfind from", pair.from, "to", pair.to)
+						if err := sim.PathfindSNEK(pair.from, pair.to); err != nil {
+							log.Println("SNEK pathfind from", pair.from, "to", pair.to, "failed:", err)
 						}
 					}
 					wg.Done()
@@ -225,7 +229,7 @@ func configureHTTPRouting(sim *simulator.Simulator) {
 		dhtConvergence := 0
 		pathConvergence := 0
 
-		for _, nodes := range sim.DHTConvergence() {
+		for _, nodes := range sim.TreePathConvergence() {
 			for _, converged := range nodes {
 				if converged {
 					dhtConvergence++
@@ -233,7 +237,7 @@ func configureHTTPRouting(sim *simulator.Simulator) {
 			}
 		}
 
-		for _, paths := range sim.PathConvergence() {
+		for _, paths := range sim.SNEKPathConvergence() {
 			for _, converged := range paths {
 				if converged {
 					pathConvergence++
@@ -242,13 +246,13 @@ func configureHTTPRouting(sim *simulator.Simulator) {
 		}
 
 		data := PageData{
-			AvgStretch:      "TBD",
-			DHTConvergence:  "TBD",
-			PathConvergence: "TBD",
+			AvgStretch:          "TBD",
+			TreePathConvergence: "TBD",
+			SNEKPathConvergence: "TBD",
 		}
 		if totalCount > 0 {
-			data.DHTConvergence = fmt.Sprintf("%d%%", (dhtConvergence*100)/totalCount)
-			data.PathConvergence = fmt.Sprintf("%d%%", (pathConvergence*100)/totalCount)
+			data.TreePathConvergence = fmt.Sprintf("%d%%", (dhtConvergence*100)/totalCount)
+			data.SNEKPathConvergence = fmt.Sprintf("%d%%", (pathConvergence*100)/totalCount)
 		}
 		roots := map[string]int{}
 		nodeids := []string{}
@@ -284,7 +288,7 @@ func configureHTTPRouting(sim *simulator.Simulator) {
 		}
 
 		switch r.URL.Query().Get("view") {
-		case "logical":
+		case "snek":
 			for id, n := range nodes {
 				for id2, n2 := range nodes {
 					p := n.Predecessor()
@@ -304,6 +308,19 @@ func configureHTTPRouting(sim *simulator.Simulator) {
 						})
 					}
 				}
+			}
+		case "tree":
+			for _, n1 := range nodes {
+				if n1.IsRoot() {
+					continue
+				}
+				r1, _ := sim.LookupPublicKey(n1.PublicKey())
+				r2, _ := sim.LookupPublicKey(n1.ParentPublicKey())
+				data.Links = append(data.Links, Link{
+					From:    r1,
+					To:      r2,
+					Enabled: true,
+				})
 			}
 		case "physical":
 			fallthrough
@@ -389,15 +406,15 @@ type Link struct {
 }
 
 type PageData struct {
-	NodeCount       int
-	PathCount       int
-	Nodes           []Node
-	Links           []Link
-	Roots           []Root
-	Dists           []Dist
-	AvgStretch      string
-	DHTConvergence  string
-	PathConvergence string
+	NodeCount           int
+	PathCount           int
+	Nodes               []Node
+	Links               []Link
+	Roots               []Root
+	Dists               []Dist
+	AvgStretch          string
+	TreePathConvergence string
+	SNEKPathConvergence string
 }
 
 type Root struct {
