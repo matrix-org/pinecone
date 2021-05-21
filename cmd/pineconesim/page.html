@@ -84,17 +84,17 @@
                         <td>Total number of paths:</td>
                         <td>{{.PathCount}}</td>
                     </tr>
-                    <tr>
+                    <!--<tr>
                         <td>Average stretch of paths:</td>
                         <td>{{.AvgStretch}}</td>
+                    </tr>-->
+                    <tr>
+                        <td>Tree path convergence:</td>
+                        <td>{{.TreePathConvergence}}</td>
                     </tr>
                     <tr>
-                        <td>DHT full convergence:</td>
-                        <td>{{.DHTConvergence}}</td>
-                    </tr>
-                    <tr>
-                        <td>Path full convergence:</td>
-                        <td>{{.PathConvergence}}</td>
+                        <td>SNEK path convergence:</td>
+                        <td>{{.SNEKPathConvergence}}</td>
                     </tr>
                 </table>
 
@@ -133,7 +133,7 @@
                     </tr>{{end}}
                 </table>
 
-                <h4>Path Lengths</h4>
+                <!--<h4>Path Lengths</h4>
                 <table>
                     <tr>
                         <th>From</th>
@@ -149,7 +149,7 @@
                         <td>{{.Observed}}</td>
                         <td>{{.Stretch}}</td>
                     </tr>{{end}}
-                </table>
+                </table>-->
             </div>
             <div class="column" id="right">
                 <div id="canvas" />

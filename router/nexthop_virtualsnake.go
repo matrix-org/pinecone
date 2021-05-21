@@ -68,7 +68,7 @@ func newVirtualSnake(r *Router) *virtualSnake {
 		maintainNow: util.NewDispatch(),
 		table:       make(virtualSnakeTable),
 	}
-	//go snake.maintain()
+	go snake.maintain()
 	return snake
 }
 
