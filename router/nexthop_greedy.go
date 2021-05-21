@@ -15,7 +15,6 @@
 package router
 
 import (
-	"fmt"
 	"math"
 
 	"github.com/matrix-org/pinecone/types"
@@ -56,9 +55,7 @@ func (r *Router) getGreedyRoutedNextHop(from *Peer, rx *types.Frame) types.Switc
 		coords types.SwitchPorts
 		dist   int64
 	}
-	ports := []portinfo{}
-	allports := r.activePorts()
-	for _, p := range allports {
+	for _, p := range r.activePorts() {
 		// Don't deliberately create routing loops.
 		if p.port == from.port /*|| !p.SeenCommonRootRecently()*/ {
 			continue
@@ -68,13 +65,6 @@ func (r *Router) getGreedyRoutedNextHop(from *Peer, rx *types.Frame) types.Switc
 		// across the tree to those coordinates.
 		peerCoords := p.Coordinates()
 		peerDist := int64(peerCoords.DistanceTo(rx.Destination))
-
-		ports = append(ports, portinfo{
-			port:   p.port,
-			coords: peerCoords,
-			dist:   peerDist,
-		})
-
 		switch {
 		case peerDist <= 0:
 			return []types.SwitchPortID{p.port}
@@ -90,18 +80,6 @@ func (r *Router) getGreedyRoutedNextHop(from *Peer, rx *types.Frame) types.Switc
 	peers := types.SwitchPorts{}
 	if bestPeer != 0 {
 		peers = append(peers, bestPeer)
-	}
-	if true && len(peers) == 0 {
-		tried := []string{}
-		for _, po := range ports {
-			tried = append(tried, fmt.Sprintf("%d (%s)", po.port, po.coords))
-		}
-		r.log.Println("Dropping", rx.Type, "frame as hit dead end - src", rx.Source, "-> local", r.Coords(), "-> dst", rx.Destination)
-		r.log.Println("We have", len(allports), "active ports, we tried", len(tried), "of them:")
-		for _, po := range ports {
-			r.log.Println("* Port", po.port, "has coords", po.coords, "dist:", po.dist)
-		}
-		r.log.Println("The best distance we found to", rx.Destination, "was", bestDist, "- our dist was", ourDist)
 	}
 	return peers
 }
