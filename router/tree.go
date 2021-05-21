@@ -42,7 +42,6 @@ const announcementInterval = time.Minute
 const announcementTimeout = announcementInterval * 4
 
 func (r *Router) handleAnnouncement(peer *Peer, rx *types.Frame) {
-	defer rx.Done()
 	var new types.SwitchAnnouncement
 	if _, err := new.UnmarshalBinary(rx.Payload); err != nil {
 		r.log.Println("Error unmarshalling announcement:", err)
@@ -69,6 +68,7 @@ type spanningTree struct {
 	rootMutex sync.RWMutex              //
 	rootReset util.Dispatch             //
 	parent    atomic.Value              // types.SwitchPortID
+	coords    atomic.Value              // types.SwitchPorts
 	callback  func(parent types.SwitchPortID, coords types.SwitchPorts)
 }
 
@@ -88,16 +88,21 @@ func newSpanningTree(r *Router, f func(parent types.SwitchPortID, coords types.S
 }
 
 func (t *spanningTree) Coords() types.SwitchPorts {
+	coords, ok := t.coords.Load().(types.SwitchPorts)
+	if ok {
+		return coords
+	}
+	return types.SwitchPorts{}
+}
+
+func (t *spanningTree) updateCoords() {
 	t.rootMutex.RLock()
 	defer t.rootMutex.RUnlock()
 	coords := types.SwitchPorts{}
-	if t.root == nil {
-		return coords
-	}
 	for _, hop := range t.root.Signatures {
 		coords = append(coords, types.SwitchPortID(hop.Hop))
 	}
-	return coords
+	t.coords.Store(coords)
 }
 
 func (t *spanningTree) Ancestors() ([]types.PublicKey, types.SwitchPortID) {
@@ -150,15 +155,18 @@ func (t *spanningTree) selectParent() (types.SwitchPortID, bool) {
 	bestDist := int64(math.MaxInt64)
 	var parent types.SwitchPortID
 	for _, port := range t.r.activePorts() {
-		if !port.SeenCommonRootRecently() {
+		if !port.SeenRecently() {
 			// The peer either hasn't sent us an announcement yet, or it's
 			// sent us an invalid announcement with no signatures.
 			continue
 		}
-		if parent != 0 && port.port == oldParent {
-			break
-		}
+		//if parent != 0 && port.port == oldParent {
+		//	break
+		//}
 		ann := port.lastAnnouncement()
+		if ann == nil {
+			continue
+		}
 		if l := int64(len(ann.Signatures)); parent == 0 || l < bestDist {
 			parent, bestDist = port.port, l
 		}
@@ -259,64 +267,26 @@ func (t *spanningTree) Update(p *Peer, a types.SwitchAnnouncement) error {
 			return fmt.Errorf("rejecting update (old sequence number %d <= %d)", a.Sequence, old.Sequence)
 		case timeSinceLastUpdate > 0 && timeSinceLastUpdate < announcementThreshold:
 			return fmt.Errorf("rejecting update (too soon after %s)", timeSinceLastUpdate)
+		default:
+			// Check that there are no routing loops in the update.
+			sigs := make(map[string]struct{})
+			for _, sig := range a.Signatures {
+				if sig.Hop == 0 {
+					// None of the hops in the update should have a port number of 0
+					// as this would imply that another node has sent their router
+					// port, which is impossible. We'll therefore reject any update
+					// that tries to do that.
+					return fmt.Errorf("rejecting update (invalid 0 hop)")
+				}
+				pk := hex.EncodeToString(sig.PublicKey[:])
+				if _, ok := sigs[pk]; ok {
+					// One of the signatures has appeared in the update more than
+					// once, which would suggest that there's a loop somewhere.
+					return fmt.Errorf("rejecting update (detected routing loop)")
+				}
+				sigs[pk] = struct{}{}
+			}
 		}
-	}
-
-	// Check that there are no routing loops in the update.
-	sigs := make(map[string]struct{})
-	isChild := false
-	for _, sig := range a.Signatures {
-		if sig.Hop == 0 {
-			// None of the hops in the update should have a port number of 0
-			// as this would imply that another node has sent their router
-			// port, which is impossible. We'll therefore reject any update
-			// that tries to do that.
-			return fmt.Errorf("rejecting update (invalid 0 hop)")
-		}
-		if t.r.public.EqualTo(sig.PublicKey) {
-			// It looks like the update contains our public key. This is not
-			// strictly an error condition, since any of our children on the
-			// spanning tree can send an update back to us with our own key,
-			// but we don't act upon them because that would create loops.
-			// Instead we'll just update the port announcement entry and stop.
-			isChild = true
-		}
-		pk := hex.EncodeToString(sig.PublicKey[:])
-		if _, ok := sigs[pk]; ok {
-			// One of the signatures has appeared in the update more than
-			// once, which would suggest that there's a loop somewhere.
-			return fmt.Errorf("rejecting update (detected routing loop)")
-		}
-		sigs[pk] = struct{}{}
-	}
-
-	t.rootMutex.RLock()
-	oldRoot, newRoot := t.root, t.root
-	t.rootMutex.RUnlock()
-
-	switch {
-	case time.Since(oldRoot.at) > announcementTimeout:
-		// We haven't had a root update from anyone else recently, so let's use
-		// this instead.
-		newRoot = &rootAnnouncementWithTime{a, time.Now()}
-
-	case a.RootPublicKey.CompareTo(oldRoot.RootPublicKey) > 0:
-		// If the advertisement contains a stronger key than the root, or the
-		// announcement contains the root that we know about, update our stored
-		// announcement.
-		newRoot = &rootAnnouncementWithTime{a, time.Now()}
-
-	case oldRoot.RootPublicKey.EqualTo(a.RootPublicKey) && a.Sequence > oldRoot.Sequence:
-		// We'll only process the update from the same root if it's actually
-		// a new update, e.g. the sequence number has increased, and the
-		// signature count is equal to or shorter than the previous count.
-		// This stops us from flapping coordinates so much.
-		if !isChild && len(a.Signatures) <= len(oldRoot.Signatures) {
-			newRoot = &rootAnnouncementWithTime{a, time.Now()}
-		}
-
-	default:
-		//return fmt.Errorf("no conditions met")
 	}
 
 	// Store the announcement against the peer. This lets us ultimately
@@ -327,24 +297,43 @@ func (t *spanningTree) Update(p *Peer, a types.SwitchAnnouncement) error {
 		SwitchAnnouncement: a,
 		at:                 time.Now(),
 	}
-	p.updateCoords(p.announcement)
+	p._updateCoords(p.announcement)
 	p.mutex.Unlock()
-
 	t.rootReset.Dispatch()
 
-	// If the root has changed then let's do something about it.
-	if newRoot != oldRoot {
+	// Find the old root.
+	t.rootMutex.RLock()
+	oldRoot := t.root
+	var newRoot *rootAnnouncementWithTime
+	t.rootMutex.RUnlock()
+
+	// Now we need to work out if this is a suitable update for the root.
+	if parent, _ := t.selectParent(); p.port == parent {
+		switch {
+		case time.Since(oldRoot.at) > announcementTimeout:
+			newRoot = &rootAnnouncementWithTime{a, time.Now()}
+
+		case a.RootPublicKey.CompareTo(oldRoot.RootPublicKey) > 0:
+			newRoot = &rootAnnouncementWithTime{a, time.Now()}
+
+		case oldRoot.RootPublicKey.EqualTo(a.RootPublicKey) && a.Sequence > oldRoot.Sequence:
+			if len(a.Signatures) <= len(oldRoot.Signatures) {
+				newRoot = &rootAnnouncementWithTime{a, time.Now()}
+			}
+		}
+	}
+
+	if newRoot != nil {
 		t.rootMutex.Lock()
 		t.root = newRoot
 		t.rootMutex.Unlock()
 
-		if parent, _ := t.selectParent(); p.port == parent {
-
-		}
+		t.updateCoords()
 		t.advertise.Dispatch()
-	}
-	if newRoot.RootPublicKey != oldRoot.RootPublicKey {
-		go t.r.snake.rootNodeChanged(newRoot.RootPublicKey)
+
+		if newRoot.RootPublicKey != oldRoot.RootPublicKey {
+			go t.r.snake.rootNodeChanged(newRoot.RootPublicKey)
+		}
 	}
 
 	return nil

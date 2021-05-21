@@ -148,6 +148,7 @@ func (p *Peer) generateAnnouncement() *types.Frame {
 			// includes our signature. This shouldn't really happen but if we
 			// did send it, other nodes would end up ignoring the announcement
 			// anyway since it would appear to be a routing loop.
+			panic("unexpected signature")
 			return nil
 		}
 	}
@@ -252,70 +253,64 @@ func (p *Peer) reader() {
 					return
 				}
 				//p.r.log.Println("Frame type", frame.Type.String(), frame.DestinationKey)
-				switch frame.Type {
-				case types.TypeSTP:
-					p.r.handleAnnouncement(p, frame.Borrow())
-
-				default:
-					sent := false
-					defer func() {
-						if !sent {
-							p.statistics.rxDroppedNoDestination.Inc()
-						}
-					}()
-					for _, port := range p.getNextHops(frame, p.port) {
-						// Ignore ports that are not good candidates.
-						dest := p.r.ports[port]
-						if !dest.started.Load() || (dest.port != 0 && !dest.alive.Load()) {
+				sent := false
+				defer func() {
+					if !sent {
+						p.statistics.rxDroppedNoDestination.Inc()
+					}
+				}()
+				for _, port := range p.getNextHops(frame, p.port) {
+					// Ignore ports that are not good candidates.
+					dest := p.r.ports[port]
+					if !dest.started.Load() || (dest.port != 0 && !dest.alive.Load()) {
+						continue
+					}
+					if p.port != 0 && dest.port != 0 {
+						if p.port == dest.port || p.public.EqualTo(dest.public) {
 							continue
 						}
-						if p.port != 0 && dest.port != 0 {
-							if p.port == dest.port || p.public.EqualTo(dest.public) {
-								continue
-							}
+					}
+					switch frame.Type {
+					case types.TypePathfind, types.TypeVirtualSnakePathfind:
+						signedframe, err := p.r.signPathfind(frame, p, dest)
+						if err != nil {
+							p.r.log.Println("WARNING: Failed to sign pathfind:", err)
+							continue
 						}
-						switch frame.Type {
-						case types.TypePathfind, types.TypeVirtualSnakePathfind:
-							signedframe, err := p.r.signPathfind(frame, p, dest)
-							if err != nil {
-								p.r.log.Println("WARNING: Failed to sign pathfind:", err)
-								continue
-							}
-							if signedframe == nil {
-								continue
-							}
-							if sent = dest.trafficOut.push(signedframe.Borrow()); sent {
-								dest.statistics.txTrafficSuccessful.Inc()
-								return
-							} else {
-								p.r.log.Println("Dropped pathfind frame of type", signedframe.Type.String())
-								dest.statistics.txTrafficDropped.Inc()
-								signedframe.Done()
-								continue
-							}
+						if signedframe == nil {
+							continue
+						}
+						if sent = dest.trafficOut.push(signedframe.Borrow()); sent {
+							dest.statistics.txTrafficSuccessful.Inc()
+							return
+						} else {
+							p.r.log.Println("Dropped pathfind frame of type", signedframe.Type.String())
+							dest.statistics.txTrafficDropped.Inc()
+							signedframe.Done()
+							continue
+						}
 
-						case types.TypeDHTRequest, types.TypeDHTResponse, types.TypeVirtualSnakeBootstrap, types.TypeVirtualSnakeBootstrapACK, types.TypeVirtualSnakeSetup, types.TypeVirtualSnakeTeardown:
-							select {
-							case dest.protoOut <- frame.Borrow():
-								dest.statistics.txProtoSuccessful.Inc()
-								return
-							default:
-								p.r.log.Println("Dropped protocol pathfind frame of type", frame.Type.String())
-								dest.statistics.txProtoDropped.Inc()
-								frame.Done()
-								continue
-							}
+					case types.TypeDHTRequest, types.TypeDHTResponse, types.TypeVirtualSnakeBootstrap, types.TypeVirtualSnakeBootstrapACK, types.TypeVirtualSnakeSetup, types.TypeVirtualSnakeTeardown:
+						select {
+						case dest.protoOut <- frame.Borrow():
+							dest.statistics.txProtoSuccessful.Inc()
+							return
+						default:
+							p.r.log.Println("Dropped protocol pathfind frame of type", frame.Type.String())
+							dest.statistics.txProtoDropped.Inc()
+							frame.Done()
+							continue
+						}
 
-						case types.TypeGreedy, types.TypeSource, types.TypeVirtualSnake:
-							if sent = dest.trafficOut.push(frame.Borrow()); sent {
-								dest.statistics.txTrafficSuccessful.Inc()
-								return
-							} else {
-								p.r.log.Println("Dropped traffic frame of type", frame.Type.String())
-								dest.statistics.txTrafficDropped.Inc()
-								frame.Done()
-								continue
-							}
+					case types.TypeGreedy, types.TypeSource, types.TypeVirtualSnake:
+						if sent = dest.trafficOut.push(frame.Borrow()); sent {
+							dest.statistics.txTrafficSuccessful.Inc()
+							return
+						} else {
+							p.r.log.Println("Dropped traffic frame of type", frame.Type.String())
+							dest.statistics.txTrafficDropped.Inc()
+							frame.Done()
+							continue
 						}
 					}
 				}
@@ -406,7 +401,7 @@ func (p *Peer) writer() {
 	}
 }
 
-func (p *Peer) updateCoords(announcement *rootAnnouncementWithTime) {
+func (p *Peer) _updateCoords(announcement *rootAnnouncementWithTime) {
 	if len(announcement.Signatures) == 0 {
 		p.r.log.Println("WARNING: No signatures from peer on port", p.port)
 		p.cancel()
