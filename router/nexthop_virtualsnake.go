@@ -204,6 +204,7 @@ func (t *virtualSnake) getVirtualSnakeNextHop(from *Peer, destKey types.PublicKe
 			continue
 		}
 		newCheckedCandidate(peerAnn.RootPublicKey, peer.port)
+		newCheckedCandidate(peer.public, peer.port)
 		//for _, hop := range peerAnn.Signatures {
 		//	newCheckedCandidate(hop.PublicKey, peer.port)
 		//}
@@ -219,8 +220,6 @@ func (t *virtualSnake) getVirtualSnakeNextHop(from *Peer, destKey types.PublicKe
 	for _, peer := range t.r.activePorts() {
 		peerKey := peer.PublicKey()
 		switch {
-		case newCheckedCandidate(peer.public, peer.port):
-		// This peer is closer to the candidate paths so far
 		case bestKey.EqualTo(peerKey):
 			// We've seen this key already, either as one of our ancestors
 			// or as an ancestor of one of our peers, but it turns out we
