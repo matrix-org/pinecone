@@ -287,10 +287,7 @@ func (t *spanningTree) Update(p *Peer, newUpdate types.SwitchAnnouncement) error
 
 	case globalKeyDelta == 0: // Same root key
 		switch {
-		case len(newUpdate.Signatures) >= len(lastPortUpdate.Signatures):
-			// The new path is no shorter than our current one, so we'd
-			// might as well leave it alone
-		default:
+		case len(newUpdate.Signatures) < len(lastPortUpdate.Signatures):
 			globalUpdate = true
 		}
 
@@ -300,6 +297,7 @@ func (t *spanningTree) Update(p *Peer, newUpdate types.SwitchAnnouncement) error
 
 	if parent := t.parent.Load(); p.port == parent || globalUpdate {
 		t.rootMutex.Lock()
+
 		t.root = &rootAnnouncementWithTime{
 			at:                 time.Now(),
 			SwitchAnnouncement: newUpdate,
@@ -308,11 +306,11 @@ func (t *spanningTree) Update(p *Peer, newUpdate types.SwitchAnnouncement) error
 		for _, hop := range t.root.Signatures {
 			coords = append(coords, types.SwitchPortID(hop.Hop))
 		}
-		t.rootMutex.Unlock()
-		t.rootReset.Dispatch()
-
 		t.parent.Store(p.port)
 		t.coords.Store(coords)
+
+		t.rootMutex.Unlock()
+		t.rootReset.Dispatch()
 	}
 
 	if t.parent.Load() == p.port {
