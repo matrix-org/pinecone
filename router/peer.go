@@ -52,7 +52,6 @@ type Peer struct {
 	protoOut     chan *types.Frame         // queue protocol message to peer
 	coords       types.SwitchPorts         //
 	announcement *rootAnnouncementWithTime //
-	advertise    util.Dispatch             // send switch announcement right now
 	statistics   peerStatistics            //
 }
 
@@ -99,13 +98,22 @@ func (p *Peer) SeenRecently() bool {
 	return false
 }
 
+func (p *Peer) updateAnnouncement(new *types.SwitchAnnouncement) {
+	p.alive.Store(true)
+	p.mutex.Lock()
+	p.announcement = &rootAnnouncementWithTime{
+		SwitchAnnouncement: *new,
+		at:                 time.Now(),
+	}
+	p.coords = p.announcement.PeerCoords()
+	p.mutex.Unlock()
+}
+
 func (p *Peer) lastAnnouncement() *rootAnnouncementWithTime {
 	p.mutex.RLock()
 	defer p.mutex.RUnlock()
 	switch {
 	case !p.started.Load():
-		return nil
-	case !p.alive.Load():
 		return nil
 	case p.announcement != nil && time.Since(p.announcement.at) >= announcementTimeout:
 		return nil
@@ -120,9 +128,7 @@ func (p *Peer) start() error {
 	p.alive.Store(false)
 	go p.reader()
 	go p.writer()
-	if p.port != 0 {
-		p.advertise.Dispatch()
-	}
+	p.protoOut <- p.generateAnnouncement()
 	return nil
 }
 
@@ -148,7 +154,6 @@ func (p *Peer) generateAnnouncement() *types.Frame {
 			// includes our signature. This shouldn't really happen but if we
 			// did send it, other nodes would end up ignoring the announcement
 			// anyway since it would appear to be a routing loop.
-			panic("unexpected signature")
 			return nil
 		}
 	}
@@ -358,67 +363,16 @@ func (p *Peer) writer() {
 		select {
 		case <-p.context.Done():
 			return
-		case <-p.advertise:
-			_ = send(p.generateAnnouncement())
-			continue
-		default:
-		}
-		select {
-		case <-p.context.Done():
-			return
-		case <-p.advertise:
-			_ = send(p.generateAnnouncement())
-			continue
 		case frame := <-p.protoOut:
 			if frame != nil {
 				_ = send(frame)
-				continue
 			}
 		case <-p.trafficOut.wait():
 			if frame, ok := p.trafficOut.pop(); ok && frame != nil {
 				_ = send(frame)
-				continue
-			}
-		default:
-		}
-		select {
-		case <-p.context.Done():
-			return
-		case <-p.advertise:
-			_ = send(p.generateAnnouncement())
-			continue
-		case frame := <-p.protoOut:
-			if frame != nil {
-				_ = send(frame)
-				continue
-			}
-		case <-p.trafficOut.wait():
-			if frame, ok := p.trafficOut.pop(); ok && frame != nil {
-				_ = send(frame)
-				continue
 			}
 		}
 	}
-}
-
-func (p *Peer) _updateCoords(announcement *rootAnnouncementWithTime) {
-	if len(announcement.Signatures) == 0 {
-		p.r.log.Println("WARNING: No signatures from peer on port", p.port)
-		p.cancel()
-		return
-	}
-
-	public := announcement.Signatures[len(announcement.Signatures)-1].PublicKey
-	if !p.public.EqualTo(public) {
-		p.r.log.Println("WARNING: Mismatched public key on port", p.port)
-		p.cancel()
-		return
-	}
-
-	// mutex is already held by the caller
-	// p.mutex.Lock()
-	// defer p.mutex.Unlock()
-	p.coords = announcement.PeerCoords()
 }
 
 type peers []*Peer

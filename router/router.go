@@ -280,19 +280,32 @@ func (r *Router) KnownNodes() []types.PublicKey {
 	return list
 }
 
-func (r *Router) activePorts() peers {
+func (r *Router) startedPorts() peers {
 	peers := make(peers, 0, PortCount)
 	for _, p := range r.ports {
 		switch {
 		case p.port == 0: // ignore the router
 			continue
-		case !p.started.Load() || !p.alive.Load(): // ignore stopped/non-negotiated ports
+		case !p.started.Load(): // ignore stopped/non-negotiated ports
 			continue
 		default:
 			peers = append(peers, p)
 		}
 	}
 	sort.Sort(peers)
+	return peers
+}
+
+func (r *Router) activePorts() peers {
+	peers := make(peers, 0, PortCount)
+	for _, p := range r.startedPorts() {
+		switch {
+		case !p.alive.Load():
+			continue
+		default:
+			peers = append(peers, p)
+		}
+	}
 	return peers
 }
 
@@ -380,7 +393,6 @@ func (r *Router) Connect(conn net.Conn, public types.PublicKey, zone string, pee
 		r.ports[i].public = public
 		r.ports[i].protoOut = make(chan *types.Frame, ProtoBufferSize)
 		r.ports[i].trafficOut = newQueue(TrafficBufferSize)
-		r.ports[i].advertise = util.NewDispatch()
 		r.ports[i].statistics.reset()
 		r.ports[i].mutex.Unlock()
 		if err := r.ports[i].start(); err != nil {

@@ -30,11 +30,7 @@ import (
 func (p *Peer) getNextHops(frame *types.Frame, from types.SwitchPortID) types.SwitchPorts {
 	switch frame.Type {
 	case types.TypeSTP:
-		if p.port == routerPort {
-			return p.r.getSourceRoutedNextHop(p, frame)
-		} else {
-			p.r.handleAnnouncement(p, frame)
-		}
+		p.r.handleAnnouncement(p, frame)
 
 	case types.TypeVirtualSnakeBootstrap:
 		nextHops := p.r.snake.getVirtualSnakeNextHop(p, frame.DestinationKey, true)
