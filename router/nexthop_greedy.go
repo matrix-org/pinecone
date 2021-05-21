@@ -50,11 +50,7 @@ func (r *Router) getGreedyRoutedNextHop(from *Peer, rx *types.Frame) types.Switc
 	if r.IsRoot() {
 		bestDist = int64(math.MaxInt64)
 	}
-	type portinfo struct {
-		port   types.SwitchPortID
-		coords types.SwitchPorts
-		dist   int64
-	}
+
 	for _, p := range r.activePorts() {
 		// Don't deliberately create routing loops.
 		if p.port == from.port /*|| !p.SeenCommonRootRecently()*/ {

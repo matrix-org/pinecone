@@ -204,9 +204,9 @@ func (t *virtualSnake) getVirtualSnakeNextHop(from *Peer, destKey types.PublicKe
 			continue
 		}
 		newCheckedCandidate(peerAnn.RootPublicKey, peer.port)
-		for _, hop := range peerAnn.Signatures {
-			newCheckedCandidate(hop.PublicKey, peer.port)
-		}
+		//for _, hop := range peerAnn.Signatures {
+		//	newCheckedCandidate(hop.PublicKey, peer.port)
+		//}
 	}
 
 	// Check our direct ancestors
@@ -216,19 +216,17 @@ func (t *virtualSnake) getVirtualSnakeNextHop(from *Peer, destKey types.PublicKe
 	}
 
 	// Check our direct peers
-	if bootstrap {
-		for _, peer := range t.r.activePorts() {
-			peerKey := peer.PublicKey()
-			switch {
-			case newCheckedCandidate(peer.public, peer.port):
-			// This peer is closer to the candidate paths so far
-			case bestKey.EqualTo(peerKey):
-				// We've seen this key already, either as one of our ancestors
-				// or as an ancestor of one of our peers, but it turns out we
-				// are directly peered with that node, so use the more direct
-				// path instead
-				newCandidate(peerKey, peer.port)
-			}
+	for _, peer := range t.r.activePorts() {
+		peerKey := peer.PublicKey()
+		switch {
+		case newCheckedCandidate(peer.public, peer.port):
+		// This peer is closer to the candidate paths so far
+		case bestKey.EqualTo(peerKey):
+			// We've seen this key already, either as one of our ancestors
+			// or as an ancestor of one of our peers, but it turns out we
+			// are directly peered with that node, so use the more direct
+			// path instead
+			newCandidate(peerKey, peer.port)
 		}
 	}
 
