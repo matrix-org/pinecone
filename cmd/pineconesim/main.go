@@ -284,7 +284,7 @@ func configureHTTPRouting(sim *simulator.Simulator) {
 		}
 
 		switch r.URL.Query().Get("view") {
-		case "logical":
+		case "snek":
 			for id, n := range nodes {
 				for id2, n2 := range nodes {
 					p := n.Predecessor()
@@ -305,7 +305,7 @@ func configureHTTPRouting(sim *simulator.Simulator) {
 					}
 				}
 			}
-		case "parents":
+		case "tree":
 			for _, n1 := range nodes {
 				if n1.IsRoot() {
 					continue
