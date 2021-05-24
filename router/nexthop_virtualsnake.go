@@ -260,8 +260,6 @@ func (t *virtualSnake) getVirtualSnakeNextHop(from *Peer, destKey types.PublicKe
 		switch {
 		case !entry.Valid():
 			continue
-		case bootstrap && entry.SourcePort == 0:
-			continue
 		}
 		newCheckedCandidate(dhtKey, entry.SourcePort)
 	}
@@ -270,6 +268,9 @@ func (t *virtualSnake) getVirtualSnakeNextHop(from *Peer, destKey types.PublicKe
 	if bootstrap {
 		return types.SwitchPorts{bestPort}
 	} else {
+		if canlength == PortCount && t.r.imprecise.Load() {
+			return types.SwitchPorts{0}
+		}
 		return candidates[canlength:]
 	}
 }
