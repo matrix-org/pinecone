@@ -289,7 +289,7 @@ func (p *Peer) reader() {
 							dest.statistics.txTrafficSuccessful.Inc()
 							return
 						} else {
-							p.r.log.Println("Dropped pathfind frame of type", signedframe.Type.String())
+							p.r.log.Println("Dropped pathfind frame of type", signedframe.Type.String(), "on port", dest.port)
 							dest.statistics.txTrafficDropped.Inc()
 							signedframe.Done()
 							continue
@@ -301,7 +301,7 @@ func (p *Peer) reader() {
 							dest.statistics.txProtoSuccessful.Inc()
 							return
 						default:
-							p.r.log.Println("Dropped protocol pathfind frame of type", frame.Type.String())
+							p.r.log.Println("Dropped protocol frame of type", frame.Type.String(), "on port", dest.port)
 							dest.statistics.txProtoDropped.Inc()
 							frame.Done()
 							continue
@@ -312,7 +312,7 @@ func (p *Peer) reader() {
 							dest.statistics.txTrafficSuccessful.Inc()
 							return
 						} else {
-							p.r.log.Println("Dropped traffic frame of type", frame.Type.String())
+							p.r.log.Println("Dropped traffic frame of type", frame.Type.String(), "on port", dest.port)
 							dest.statistics.txTrafficDropped.Inc()
 							frame.Done()
 							continue

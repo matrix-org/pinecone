@@ -256,9 +256,13 @@ func (t *virtualSnake) getVirtualSnakeNextHop(from *Peer, destKey types.PublicKe
 	// Check our DHT entries
 	t.tableMutex.RLock()
 	for dhtKey, entry := range t.table {
-		if entry.Valid() {
-			newCheckedCandidate(dhtKey, entry.SourcePort)
+		switch {
+		case !entry.Valid():
+			continue
+		case bootstrap && entry.SourcePort == 0:
+			continue
 		}
+		newCheckedCandidate(dhtKey, entry.SourcePort)
 	}
 	t.tableMutex.RUnlock()
 
