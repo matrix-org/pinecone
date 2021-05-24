@@ -170,7 +170,16 @@ func (t *virtualSnake) getVirtualSnakeNextHop(from *Peer, destKey types.PublicKe
 	ancestors, parentPort := t.r.tree.Ancestors()
 	rootKey := t.r.RootPublicKey()
 	bestKey, bestPort := t.r.public, types.SwitchPortID(0) // rootKey, rootPort
+	var candidates types.SwitchPorts
+	var canlength int
+	if !bootstrap {
+		candidates, canlength = make(types.SwitchPorts, PortCount), PortCount
+	}
 	newCandidate := func(key types.PublicKey, port types.SwitchPortID) {
+		if !bootstrap && port != bestPort {
+			canlength--
+			candidates[canlength] = port
+		}
 		bestKey, bestPort = key, port
 	}
 	newCheckedCandidate := func(candidate types.PublicKey, port types.SwitchPortID) bool {
@@ -237,7 +246,11 @@ func (t *virtualSnake) getVirtualSnakeNextHop(from *Peer, destKey types.PublicKe
 	}
 	t.tableMutex.RUnlock()
 
-	return types.SwitchPorts{bestPort}
+	if bootstrap {
+		return types.SwitchPorts{bestPort}
+	} else {
+		return candidates[canlength:]
+	}
 }
 
 func (t *virtualSnake) getVirtualSnakeTeardownNextHop(from *Peer, rx *types.Frame) types.SwitchPorts {
