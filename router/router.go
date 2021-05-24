@@ -328,7 +328,7 @@ func (r *Router) AuthenticatedConnect(conn net.Conn, zone string, peertype int) 
 		}
 		handshake = append(handshake, r.public[:ed25519.PublicKeySize]...)
 		handshake = append(handshake, ed25519.Sign(r.private[:], handshake)...)
-		_ = conn.SetDeadline(time.Now().Add(time.Second * 5))
+		//_ = conn.SetDeadline(time.Now().Add(time.Second * 5))
 		if _, err := conn.Write(handshake); err != nil {
 			conn.Close()
 			return 0, err
@@ -337,7 +337,7 @@ func (r *Router) AuthenticatedConnect(conn net.Conn, zone string, peertype int) 
 			conn.Close()
 			return 0, fmt.Errorf("io.ReadFull: %w", err)
 		}
-		_ = conn.SetDeadline(time.Time{})
+		//_ = conn.SetDeadline(time.Time{})
 		if theirVersion := handshake[0]; theirVersion != ourVersion {
 			conn.Close()
 			return 0, fmt.Errorf("mismatched node version")
@@ -370,13 +370,13 @@ func (r *Router) AuthenticatedConnect(conn net.Conn, zone string, peertype int) 
 // port number that the node was connected to will be
 // returned in the event of a successful connection.
 func (r *Router) Connect(conn net.Conn, public types.PublicKey, zone string, peertype int) (types.SwitchPortID, error) {
-	r.connections.Lock()
-	defer r.connections.Unlock()
 	if p, ok := r.active.Load(hex.EncodeToString(public[:]) + zone); ok {
 		if err := r.Disconnect(p.(types.SwitchPortID), nil); err != nil {
 			return 0, fmt.Errorf("already connected to this node via zone %q", zone)
 		}
 	}
+	r.connections.Lock()
+	defer r.connections.Unlock()
 	for i := types.SwitchPortID(0); i < PortCount; i++ {
 		if i != 0 && bytes.Equal(r.public[:], public[:]) {
 			return 0, fmt.Errorf("loopback connection prohibited")
@@ -403,23 +403,21 @@ func (r *Router) Connect(conn net.Conn, public types.PublicKey, zone string, pee
 		if r.simulator != nil {
 			r.simulator.ReportNewLink(conn, r.public, public)
 		}
-		go r.callbacks.onConnected(i, public, peertype)
 		r.active.Store(hex.EncodeToString(public[:])+zone, i)
-		r.snake.portWasConnected(i)
-		/*
-			if i != 0 {
-				go func(r *Router, p *Peer) {
-					select {
-					case <-p.context.Done():
-						// port's already dead so give up
-					case <-time.After(announcementInterval * 2):
-						if !p.alive.Load() {
-							_ = r.Disconnect(p.port, fmt.Errorf("timed out waiting for tree announcement"))
-						}
+		go r.callbacks.onConnected(i, public, peertype)
+		go r.snake.portWasConnected(i)
+		if i != 0 {
+			go func(r *Router, p *Peer) {
+				select {
+				case <-p.context.Done():
+					// port's already dead so give up
+				case <-time.After(announcementInterval):
+					if !p.alive.Load() {
+						_ = r.Disconnect(p.port, fmt.Errorf("timed out waiting for tree announcement"))
 					}
-				}(r, r.ports[i])
-			}
-		*/
+				}
+			}(r, r.ports[i])
+		}
 		r.log.Printf("Connected port %d to %s (zone %q)\n", i, conn.RemoteAddr(), zone)
 		return i, nil
 	}

@@ -252,7 +252,7 @@ func (t *spanningTree) Update(p *Peer, newUpdate types.SwitchAnnouncement) error
 		// to the global ones
 
 	case portKeyDelta < 0: // Weaker root key
-		return fmt.Errorf("rejecting update (key is weaker than last update)")
+	//	return fmt.Errorf("rejecting update (key is weaker than last update)")
 
 	case portKeyDelta == 0: // Same root key
 		switch {
