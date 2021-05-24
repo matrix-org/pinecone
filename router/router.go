@@ -394,6 +394,7 @@ func (r *Router) Connect(conn net.Conn, public types.PublicKey, zone string, pee
 		r.ports[i].trafficOut = newQueue(TrafficBufferSize)
 		r.ports[i].statistics.reset()
 		r.ports[i].mutex.Unlock()
+		r.ports[i].alive.Store(false)
 		if err := r.ports[i].start(); err != nil {
 			return 0, fmt.Errorf("port.start: %w", err)
 		}
@@ -406,19 +407,20 @@ func (r *Router) Connect(conn net.Conn, public types.PublicKey, zone string, pee
 		go r.callbacks.onConnected(i, public, peertype)
 		r.active.Store(hex.EncodeToString(public[:])+zone, i)
 		r.snake.portWasConnected(i)
-		if i != 0 {
-			go func(p *Peer) {
-				select {
-				case <-p.context.Done():
-					// port's already dead so give up
-				case <-time.After(announcementInterval):
-					if !p.alive.Load() {
-						r.log.Println("Didn't receive spanning tree announcement from port", p.port, "in expected timeframe")
-						p.cancel()
+		/*
+			if i != 0 {
+				go func(r *Router, p *Peer) {
+					select {
+					case <-p.context.Done():
+						// port's already dead so give up
+					case <-time.After(announcementInterval * 2):
+						if !p.alive.Load() {
+							_ = r.Disconnect(p.port, fmt.Errorf("timed out waiting for tree announcement"))
+						}
 					}
-				}
-			}(r.ports[i])
-		}
+				}(r, r.ports[i])
+			}
+		*/
 		r.log.Printf("Connected port %d to %s (zone %q)\n", i, conn.RemoteAddr(), zone)
 		return i, nil
 	}
