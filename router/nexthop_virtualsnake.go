@@ -165,6 +165,7 @@ func (t *virtualSnake) portWasDisconnected(port types.SwitchPortID) {
 			delete(t.table, k)
 		}
 		t.tableMutex.Unlock()
+		t.maintainInterval.Store(0)
 		return
 	}
 

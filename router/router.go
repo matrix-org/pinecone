@@ -394,7 +394,6 @@ func (r *Router) Connect(conn net.Conn, public types.PublicKey, zone string, pee
 		r.ports[i].trafficOut = newQueue(TrafficBufferSize)
 		r.ports[i].statistics.reset()
 		r.ports[i].mutex.Unlock()
-		r.ports[i].alive.Store(false)
 		if err := r.ports[i].start(); err != nil {
 			return 0, fmt.Errorf("port.start: %w", err)
 		}
@@ -445,6 +444,7 @@ func (r *Router) Disconnect(i types.SwitchPortID, err error) error {
 	r.ports[i].peertype = 0
 	r.ports[i].zone = ""
 	r.ports[i].public = types.PublicKey{}
+	r.ports[i].announcement = nil
 	close(r.ports[i].protoOut)
 	for range r.ports[i].protoOut {
 	}
