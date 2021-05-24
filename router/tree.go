@@ -297,7 +297,10 @@ func (t *spanningTree) Update(p *Peer, newUpdate types.SwitchAnnouncement) error
 
 	if parent := t.parent.Load(); p.port == parent || globalUpdate {
 		t.rootMutex.Lock()
-
+		var oldRootKey types.PublicKey
+		if t.root != nil {
+			oldRootKey = t.root.RootPublicKey
+		}
 		t.root = &rootAnnouncementWithTime{
 			at:                 time.Now(),
 			SwitchAnnouncement: newUpdate,
@@ -311,17 +314,15 @@ func (t *spanningTree) Update(p *Peer, newUpdate types.SwitchAnnouncement) error
 
 		t.rootMutex.Unlock()
 		t.rootReset.Dispatch()
+
+		if oldRootKey != newUpdate.RootPublicKey {
+			go t.r.snake.rootNodeChanged(newUpdate.RootPublicKey)
+		}
 	}
 
 	if t.parent.Load() == p.port {
 		t.advertise.Dispatch()
 	}
-
-	/*
-		if newRoot != nil && newRoot.RootPublicKey != old.RootPublicKey {
-			go t.r.snake.rootNodeChanged(newRoot.RootPublicKey)
-		}
-	*/
 
 	return nil
 }

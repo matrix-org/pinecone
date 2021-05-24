@@ -197,6 +197,12 @@ func (t *virtualSnake) getVirtualSnakeNextHop(from *Peer, destKey types.PublicKe
 		newCandidate(rootKey, parentPort)
 	}
 
+	// Check our direct ancestors
+	// bestKey <= destKey < rootKey
+	for _, ancestor := range ancestors {
+		newCheckedCandidate(ancestor, parentPort)
+	}
+
 	// Check our direct peers ancestors
 	for _, peer := range t.r.activePorts() {
 		peerAnn := peer.lastAnnouncement()
@@ -204,16 +210,9 @@ func (t *virtualSnake) getVirtualSnakeNextHop(from *Peer, destKey types.PublicKe
 			continue
 		}
 		newCheckedCandidate(peerAnn.RootPublicKey, peer.port)
-		newCheckedCandidate(peer.public, peer.port)
-		//for _, hop := range peerAnn.Signatures {
-		//	newCheckedCandidate(hop.PublicKey, peer.port)
-		//}
-	}
-
-	// Check our direct ancestors
-	// bestKey <= destKey < rootKey
-	for _, ancestor := range ancestors {
-		newCheckedCandidate(ancestor, parentPort)
+		for _, hop := range peerAnn.Signatures {
+			newCheckedCandidate(hop.PublicKey, peer.port)
+		}
 	}
 
 	// Check our direct peers
@@ -296,7 +295,7 @@ func (t *virtualSnake) clearRoutingEntriesForPort(port types.SwitchPortID) {
 			Type:           types.TypeVirtualSnakeTeardown,
 			SourceKey:      t.r.public,
 			DestinationKey: k,
-			Payload:        []byte{1},
+			Payload:        []byte{1}, // ascending
 		}
 	}
 	for _, k := range desc {
@@ -304,7 +303,7 @@ func (t *virtualSnake) clearRoutingEntriesForPort(port types.SwitchPortID) {
 			Type:           types.TypeVirtualSnakeTeardown,
 			SourceKey:      t.r.public,
 			DestinationKey: k,
-			Payload:        []byte{0},
+			Payload:        []byte{0}, // descending
 		}
 	}
 }
