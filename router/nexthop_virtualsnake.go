@@ -152,6 +152,22 @@ func (t *virtualSnake) portWasConnected(port types.SwitchPortID) {
 // portWasDisconnected is called by the router when a peer disconnects
 // allowing us to clean up the virtual snake state.
 func (t *virtualSnake) portWasDisconnected(port types.SwitchPortID) {
+	// If there are no more peers left then clear all state.
+	if t.r.PeerCount(-1) == 0 {
+		t.ascendingMutex.Lock()
+		t.ascending = nil
+		t.ascendingMutex.Unlock()
+		t.descendingMutex.Lock()
+		t.descending = nil
+		t.descendingMutex.Unlock()
+		t.tableMutex.Lock()
+		for k := range t.table {
+			delete(t.table, k)
+		}
+		t.tableMutex.Unlock()
+		return
+	}
+
 	defer t.maintainNow.Dispatch()
 	// Check if any of our routing table entries are
 	// via the port in question. If they were then let's nuke those
