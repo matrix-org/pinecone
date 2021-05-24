@@ -17,7 +17,8 @@ package router
 const (
 	// reserved = 1
 	capabilityVirtualSnake = 2
+	capabilityHardState    = 4
 )
 
 const ourVersion = 0
-const ourCapabilities = capabilityVirtualSnake
+const ourCapabilities = capabilityVirtualSnake | capabilityHardState
