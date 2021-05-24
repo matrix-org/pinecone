@@ -15,12 +15,14 @@
 package main
 
 import (
+	"context"
 	"crypto/ed25519"
 	"flag"
 	"fmt"
 	"log"
 	"net"
 	"os"
+	"time"
 
 	"net/http"
 	_ "net/http/pprof"
@@ -44,6 +46,14 @@ func main() {
 		}()
 	}
 
+	dialer := net.Dialer{
+		Timeout:   time.Second * 5,
+		KeepAlive: time.Second * 5,
+	}
+	listener := net.ListenConfig{
+		KeepAlive: time.Second * 5,
+	}
+
 	pineconeRouter := router.NewRouter(logger, "router", sk, pk, nil)
 	_ = sessions.NewSessions(logger, pineconeRouter)
 	pineconeMulticast := multicast.NewMulticast(logger, pineconeRouter)
@@ -55,7 +65,7 @@ func main() {
 
 	if connect != nil && *connect != "" {
 		go func() {
-			conn, err := net.Dial("tcp", *connect)
+			conn, err := dialer.Dial("tcp", *connect)
 			if err != nil {
 				panic(err)
 			}
@@ -70,7 +80,7 @@ func main() {
 	}
 
 	go func() {
-		listener, err := net.Listen("tcp", *listen)
+		listener, err := listener.Listen(context.Background(), "tcp", *listen)
 		if err != nil {
 			panic(err)
 		}

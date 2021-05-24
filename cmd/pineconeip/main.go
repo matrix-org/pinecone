@@ -40,10 +40,10 @@ func main() {
 
 	dialer := net.Dialer{
 		Timeout:   time.Second * 5,
-		KeepAlive: time.Second * 3,
+		KeepAlive: time.Second * 5,
 	}
 	listener := net.ListenConfig{
-		KeepAlive: time.Second * 3,
+		KeepAlive: time.Second * 5,
 	}
 
 	logger := log.New(os.Stdout, "", 0)
