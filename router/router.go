@@ -328,7 +328,7 @@ func (r *Router) AuthenticatedConnect(conn net.Conn, zone string, peertype int) 
 		}
 		handshake = append(handshake, r.public[:ed25519.PublicKeySize]...)
 		handshake = append(handshake, ed25519.Sign(r.private[:], handshake)...)
-		//_ = conn.SetDeadline(time.Now().Add(time.Second * 5))
+		_ = conn.SetDeadline(time.Now().Add(time.Second * 5))
 		if _, err := conn.Write(handshake); err != nil {
 			conn.Close()
 			return 0, err
@@ -337,7 +337,7 @@ func (r *Router) AuthenticatedConnect(conn net.Conn, zone string, peertype int) 
 			conn.Close()
 			return 0, fmt.Errorf("io.ReadFull: %w", err)
 		}
-		//_ = conn.SetDeadline(time.Time{})
+		_ = conn.SetDeadline(time.Time{})
 		if theirVersion := handshake[0]; theirVersion != ourVersion {
 			conn.Close()
 			return 0, fmt.Errorf("mismatched node version")
