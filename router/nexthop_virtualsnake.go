@@ -219,6 +219,9 @@ func (t *virtualSnake) getVirtualSnakeNextHop(from *Peer, destKey types.PublicKe
 		// Bootstraps always start working towards the root so that
 		// they go somewhere rather than getting stuck
 		newCandidate(rootKey, parentPort)
+	case destKey.EqualTo(rootKey):
+		// The destination is actually the root node itself
+		newCandidate(rootKey, parentPort)
 	case util.DHTOrdered(bestKey, destKey, rootKey):
 		// The destination key is higher than our own key, so
 		// start using the path to the root as the first candidate
