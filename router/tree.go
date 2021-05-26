@@ -220,13 +220,24 @@ func (t *spanningTree) Update(p *Peer, newUpdate types.SwitchAnnouncement) error
 
 	sigs := make(map[string]struct{})
 	isChild := false
-	for _, sig := range newUpdate.Signatures {
+	for index, sig := range newUpdate.Signatures {
+		if index == 0 && sig.PublicKey != newUpdate.RootPublicKey {
+			// The first signature in the announcement must be from the
+			// key that claims to be the root.
+			return fmt.Errorf("rejecting update (first signature must be from root)")
+		}
 		if sig.Hop == 0 {
 			// None of the hops in the update should have a port number of 0
 			// as this would imply that another node has sent their router
 			// port, which is impossible. We'll therefore reject any update
 			// that tries to do that.
 			return fmt.Errorf("rejecting update (invalid 0 hop)")
+		}
+		if index == len(newUpdate.Signatures)-1 && p.PublicKey() != sig.PublicKey {
+			// The last signature in the announcement must be from the
+			// direct peer. If it isn't then it sounds like someone is
+			// trying to replay someone else's announcement to us.
+			return fmt.Errorf("rejecting update (last signature must be from peer)")
 		}
 		if sig.PublicKey.EqualTo(t.r.public) {
 			isChild = true

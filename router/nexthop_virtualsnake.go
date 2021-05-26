@@ -183,30 +183,32 @@ func (t *virtualSnake) getVirtualSnakeNextHop(from *Peer, destKey types.PublicKe
 	if !bootstrap && t.r.public.EqualTo(destKey) {
 		return types.SwitchPorts{0}
 	}
-
+	rootKey := t.r.public
 	ancestors, parentPort := t.r.tree.Ancestors()
-	rootKey := t.r.RootPublicKey()
+	if len(ancestors) > 0 {
+		rootKey = ancestors[0]
+		ancestors = ancestors[1:]
+	}
 	bestKey, bestPort := t.r.public, types.SwitchPortID(0) // rootKey, rootPort
 	var candidates types.SwitchPorts
 	var canlength int
 	if !bootstrap {
 		candidates, canlength = make(types.SwitchPorts, PortCount), PortCount
 	}
-	newCandidate := func(key types.PublicKey, port types.SwitchPortID) {
+	newCandidate := func(key types.PublicKey, port types.SwitchPortID) bool {
 		if !bootstrap && port != bestPort {
 			canlength--
 			candidates[canlength] = port
 		}
 		bestKey, bestPort = key, port
+		return true
 	}
 	newCheckedCandidate := func(candidate types.PublicKey, port types.SwitchPortID) bool {
 		switch {
 		case !bootstrap && candidate.EqualTo(destKey) && !bestKey.EqualTo(destKey):
-			newCandidate(candidate, port)
-			return true
+			return newCandidate(candidate, port)
 		case util.DHTOrdered(destKey, candidate, bestKey):
-			newCandidate(candidate, port)
-			return true
+			return newCandidate(candidate, port)
 		}
 		return false
 	}
