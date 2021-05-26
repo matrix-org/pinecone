@@ -163,7 +163,7 @@ func main() {
 			}
 			close(tasks)
 
-			numworkers := runtime.NumCPU() * 32
+			numworkers := runtime.NumCPU() * 16
 			var wg sync.WaitGroup
 			wg.Add(numworkers)
 			for i := 0; i < numworkers; i++ {

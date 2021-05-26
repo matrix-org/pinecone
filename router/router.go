@@ -39,7 +39,7 @@ const PortCount = 64
 
 // ProtoBufferSize is the number of protocol packets that a node will
 // buffer on a slow port.
-const ProtoBufferSize = 128
+const ProtoBufferSize = 16
 
 // TrafficBufferSize is the number of traffic packets that a node will
 // buffer on a slow port.
