@@ -53,7 +53,7 @@ func (r *Router) getGreedyRoutedNextHop(from *Peer, rx *types.Frame) types.Switc
 
 	for _, p := range r.activePorts() {
 		// Don't deliberately create routing loops.
-		if p.port == from.port /*|| !p.SeenCommonRootRecently()*/ {
+		if p.port == from.port || !p.SeenCommonRootRecently() {
 			continue
 		}
 
