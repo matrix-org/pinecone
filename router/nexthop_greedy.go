@@ -15,8 +15,6 @@
 package router
 
 import (
-	"math"
-
 	"github.com/matrix-org/pinecone/types"
 )
 
@@ -47,13 +45,10 @@ func (r *Router) getGreedyRoutedNextHop(from *Peer, rx *types.Frame) types.Switc
 	// Now work out which of our peers takes the message closer.
 	bestPeer := types.SwitchPortID(0)
 	bestDist := ourDist
-	if r.IsRoot() {
-		bestDist = int64(math.MaxInt64)
-	}
-
+	isRoot := r.IsRoot()
 	for _, p := range r.activePorts() {
 		// Don't deliberately create routing loops.
-		if p.port == from.port || !p.SeenCommonRootRecently() {
+		if !isRoot && !p.SeenCommonRootRecently() {
 			continue
 		}
 
@@ -62,7 +57,7 @@ func (r *Router) getGreedyRoutedNextHop(from *Peer, rx *types.Frame) types.Switc
 		peerCoords := p.Coordinates()
 		peerDist := int64(peerCoords.DistanceTo(rx.Destination))
 		switch {
-		case peerDist <= 0:
+		case peerDist == 0:
 			return []types.SwitchPortID{p.port}
 		case peerDist < bestDist:
 			bestPeer, bestDist = p.port, peerDist
@@ -73,9 +68,5 @@ func (r *Router) getGreedyRoutedNextHop(from *Peer, rx *types.Frame) types.Switc
 	// If we've got an eligible next peer, and it doesn't create a
 	// routing loop by sending the frame back where it came from,
 	// then return it.
-	peers := types.SwitchPorts{}
-	if bestPeer != 0 {
-		peers = append(peers, bestPeer)
-	}
-	return peers
+	return types.SwitchPorts{bestPeer}
 }

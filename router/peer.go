@@ -88,7 +88,7 @@ func (p *Peer) SeenCommonRootRecently() bool {
 	if last == nil {
 		return false
 	}
-	return last.RootPublicKey.EqualTo(p.r.RootPublicKey()) //&& last.Sequence == p.r.tree.Root().Sequence
+	return last.RootPublicKey.EqualTo(p.r.RootPublicKey()) && last.Sequence == p.r.tree.Root().Sequence
 }
 
 func (p *Peer) SeenRecently() bool {

@@ -112,7 +112,7 @@ func (a SwitchPorts) DistanceTo(b SwitchPorts) int {
 }
 
 func getCommonPrefix(a, b SwitchPorts) int {
-	c := -1
+	c := 0
 	l := len(a)
 	if len(b) < l {
 		l = len(b)
