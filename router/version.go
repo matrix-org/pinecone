@@ -18,7 +18,8 @@ const (
 	// reserved = 1
 	capabilityVirtualSnake = 2
 	capabilityHardState    = 4
+	capabilityPathIDs      = 8
 )
 
 const ourVersion = 0
-const ourCapabilities = capabilityVirtualSnake | capabilityHardState
+const ourCapabilities = capabilityVirtualSnake | capabilityHardState | capabilityPathIDs
