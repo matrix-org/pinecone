@@ -15,6 +15,7 @@
 package router
 
 import (
+	"crypto/rand"
 	"fmt"
 	"math"
 	"sync"
@@ -128,11 +129,19 @@ func (v *virtualSnake) maintain() {
 				if err != nil {
 					return
 				}
+				var payload [9]byte
+				bootstrap := types.VirtualSnakeBootstrap{} // nolint:gosimple
+				if _, err := rand.Read(bootstrap.PathID[:]); err != nil {
+					return
+				}
+				if _, err := bootstrap.MarshalBinary(payload[:]); err != nil {
+					return
+				}
 				v.r.send <- types.Frame{
 					Type:           types.TypeVirtualSnakeBootstrap,
 					DestinationKey: v.r.PublicKey(), // routes using keys
 					Source:         v.r.Coords(),    // used to send back a setup using ygg greedy routing
-					Payload:        ts,
+					Payload:        append(payload[:], ts...),
 				}
 			}
 		}
