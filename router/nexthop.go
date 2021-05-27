@@ -35,7 +35,9 @@ func (p *Peer) getNextHops(frame *types.Frame, from types.SwitchPortID) types.Sw
 	case types.TypeVirtualSnakeBootstrap:
 		nextHops := p.r.snake.getVirtualSnakeNextHop(p, frame.DestinationKey, true)
 		if nextHops.EqualTo(types.SwitchPorts{0}) {
-			p.r.snake.handleBootstrap(p, frame)
+			if err := p.r.snake.handleBootstrap(p, frame); err != nil {
+				p.r.log.Println("Failed to handle bootstrap:", err)
+			}
 		} else {
 			return nextHops
 		}
@@ -43,7 +45,9 @@ func (p *Peer) getNextHops(frame *types.Frame, from types.SwitchPortID) types.Sw
 	case types.TypeVirtualSnakeBootstrapACK:
 		nextHops := p.r.getGreedyRoutedNextHop(p, frame)
 		if nextHops.EqualTo(types.SwitchPorts{0}) {
-			p.r.snake.handleBootstrapACK(p, frame)
+			if err := p.r.snake.handleBootstrapACK(p, frame); err != nil {
+				p.r.log.Println("Failed to handle bootstrap ACK:", err)
+			}
 		} else {
 			return nextHops
 		}
@@ -55,6 +59,8 @@ func (p *Peer) getNextHops(frame *types.Frame, from types.SwitchPortID) types.Sw
 		nextHops := p.r.getGreedyRoutedNextHop(p, frame)
 		if err := p.r.snake.handleSetup(p, frame, nextHops); err == nil {
 			return nextHops
+		} else {
+			p.r.log.Println("Failed to handle setup:", err)
 		}
 
 	case types.TypeVirtualSnake, types.TypeVirtualSnakePathfind:

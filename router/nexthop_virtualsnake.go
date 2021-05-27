@@ -46,6 +46,7 @@ type virtualSnakeEntry struct {
 	SourcePort      types.SwitchPortID
 	DestinationPort types.SwitchPortID
 	LastSeen        time.Time
+	PathID          types.VirtualSnakePathID
 }
 
 func (e *virtualSnakeEntry) Valid() bool {
@@ -60,6 +61,7 @@ type virtualSnakeNeighbour struct {
 	Port      types.SwitchPortID
 	LastSeen  time.Time
 	Coords    types.SwitchPorts
+	PathID    types.VirtualSnakePathID
 }
 
 func newVirtualSnake(r *Router) *virtualSnake {
@@ -284,9 +286,13 @@ func (t *virtualSnake) getVirtualSnakeTeardownNextHop(from *Peer, rx *types.Fram
 	if len(rx.Payload) < 1 {
 		return types.SwitchPorts{}
 	}
-	ascending := rx.Payload[0] == 1
+	// Unmarshal the bootstrap.
+	var teardown types.VirtualSnakeTeardown
+	if _, err := teardown.UnmarshalBinary(rx.Payload); err != nil {
+		return types.SwitchPorts{}
+	}
 	changed := false
-	if ascending {
+	if teardown.Ascending {
 		t.descendingMutex.Lock()
 		if desc := t.descending; desc != nil && desc.PublicKey == rx.DestinationKey {
 			t.descending, changed = nil, true
@@ -305,9 +311,9 @@ func (t *virtualSnake) getVirtualSnakeTeardownNextHop(from *Peer, rx *types.Fram
 	t.tableMutex.Lock()
 	defer t.tableMutex.Unlock()
 	for k, v := range t.table {
-		if k == rx.DestinationKey {
+		if k == rx.DestinationKey && v.PathID == teardown.PathID {
 			delete(t.table, k)
-			if ascending {
+			if teardown.Ascending {
 				return types.SwitchPorts{v.DestinationPort}
 			} else {
 				return types.SwitchPorts{v.SourcePort}
@@ -319,62 +325,95 @@ func (t *virtualSnake) getVirtualSnakeTeardownNextHop(from *Peer, rx *types.Fram
 
 func (t *virtualSnake) clearRoutingEntriesForPort(port types.SwitchPortID) {
 	t.tableMutex.RLock()
-	var asc []types.PublicKey
-	var desc []types.PublicKey
+	asc := map[types.PublicKey]types.VirtualSnakePathID{}
+	desc := map[types.PublicKey]types.VirtualSnakePathID{}
 	for k, v := range t.table {
 		if v.DestinationPort == port {
-			asc = append(asc, k)
+			asc[k] = v.PathID
 		}
 		if v.SourcePort == port {
-			desc = append(desc, k)
+			desc[k] = v.PathID
 		}
 	}
 	t.tableMutex.RUnlock()
-	for _, k := range asc {
+	for k, pathID := range asc {
+		var payload [9]byte
+		teardown := types.VirtualSnakeTeardown{ // nolint:gosimple
+			PathID:    pathID,
+			Ascending: true,
+		}
+		if _, err := teardown.MarshalBinary(payload[:]); err != nil {
+			return
+		}
 		t.r.send <- types.Frame{
 			Type:           types.TypeVirtualSnakeTeardown,
 			SourceKey:      t.r.public,
 			DestinationKey: k,
-			Payload:        []byte{1}, // ascending
+			Payload:        payload[:],
 		}
 	}
-	for _, k := range desc {
+	for k, pathID := range desc {
+		var payload [9]byte
+		teardown := types.VirtualSnakeTeardown{ // nolint:gosimple
+			PathID:    pathID,
+			Ascending: false,
+		}
+		if _, err := teardown.MarshalBinary(payload[:]); err != nil {
+			return
+		}
 		t.r.send <- types.Frame{
 			Type:           types.TypeVirtualSnakeTeardown,
 			SourceKey:      t.r.public,
 			DestinationKey: k,
-			Payload:        []byte{0}, // descending
+			Payload:        payload[:],
 		}
 	}
 }
 
-func (t *virtualSnake) clearRoutingEntriesForPublicKey(pk types.PublicKey, ascending bool) {
-	payload := []byte{0}
-	if ascending {
-		payload[0] = 1
+func (t *virtualSnake) clearRoutingEntriesForPublicKey(pk types.PublicKey, pathID types.VirtualSnakePathID, ascending bool) {
+	var payload [9]byte
+	teardown := types.VirtualSnakeTeardown{ // nolint:gosimple
+		PathID:    pathID,
+		Ascending: ascending,
+	}
+	if _, err := teardown.MarshalBinary(payload[:]); err != nil {
+		return
 	}
 	t.r.send <- types.Frame{
 		Type:           types.TypeVirtualSnakeTeardown,
 		SourceKey:      t.r.public,
 		DestinationKey: pk,
-		Payload:        payload,
+		Payload:        payload[:],
 	}
 }
 
 // handleBootstrap is called in response to an incoming bootstrap
 // packet. It will update the descending information and send a setup
 // message if needed.
-func (t *virtualSnake) handleBootstrap(from *Peer, rx *types.Frame) {
+func (t *virtualSnake) handleBootstrap(from *Peer, rx *types.Frame) error {
 	if rx.DestinationKey.EqualTo(t.r.public) {
-		return
+		return nil
+	}
+	// Unmarshal the bootstrap.
+	var bootstrap types.VirtualSnakeBootstrap
+	n, err := bootstrap.UnmarshalBinary(rx.Payload)
+	if err != nil {
+		return fmt.Errorf("bootstrap.UnmarshalBinary: %w", err)
 	}
 	// Check if the packet has a valid signed timestamp.
-	if !util.VerifySignedTimestamp(rx.DestinationKey, rx.Payload) {
-		return
+	if !util.VerifySignedTimestamp(rx.DestinationKey, rx.Payload[n:]) {
+		return fmt.Errorf("util.VerifySignedTimestamp")
+	}
+	bootstrapACK := types.VirtualSnakeBootstrapACK{ // nolint:gosimple
+		PathID: bootstrap.PathID,
+	}
+	var buf [8]byte
+	if _, err := bootstrapACK.MarshalBinary(buf[:]); err != nil {
+		return fmt.Errorf("bootstrapACK.MarshalBinary: %w", err)
 	}
 	ts, err := util.SignedTimestamp(t.r.private)
 	if err != nil {
-		return
+		return fmt.Errorf("util.SignedTimestamp: %w", err)
 	}
 	t.r.send <- types.Frame{
 		Destination:    rx.Source,
@@ -382,14 +421,21 @@ func (t *virtualSnake) handleBootstrap(from *Peer, rx *types.Frame) {
 		Source:         t.r.Coords(),
 		SourceKey:      t.r.PublicKey(),
 		Type:           types.TypeVirtualSnakeBootstrapACK,
-		Payload:        ts,
+		Payload:        append(buf[:], ts...),
 	}
+	return nil
 }
 
-func (t *virtualSnake) handleBootstrapACK(from *Peer, rx *types.Frame) {
+func (t *virtualSnake) handleBootstrapACK(from *Peer, rx *types.Frame) error {
+	// Unmarshal the bootstrap ACK.
+	var bootstrapACK types.VirtualSnakeBootstrapACK
+	n, err := bootstrapACK.UnmarshalBinary(rx.Payload)
+	if err != nil {
+		return fmt.Errorf("bootstrapACK.UnmarshalBinary: %w", err)
+	}
 	// Check if the packet has a valid signed timestamp.
-	if !util.VerifySignedTimestamp(rx.SourceKey, rx.Payload) {
-		return
+	if !util.VerifySignedTimestamp(rx.SourceKey, rx.Payload[n:]) {
+		return fmt.Errorf("util.VerifySignedTimestamp: %w", err)
 	}
 	var send *types.Frame
 	defer func() {
@@ -431,30 +477,39 @@ func (t *virtualSnake) handleBootstrapACK(from *Peer, rx *types.Frame) {
 		// us than the previous node. We'll update our record to use the new
 		// node instead and then send a new path setup message to it.
 		if t.ascending != nil && rx.SourceKey != t.ascending.PublicKey {
-			t.clearRoutingEntriesForPublicKey(t.ascending.PublicKey, true)
+			t.clearRoutingEntriesForPublicKey(t.ascending.PublicKey, bootstrapACK.PathID, true)
 		}
 		t.ascending = &virtualSnakeNeighbour{
 			PublicKey: rx.SourceKey,
 			Port:      from.port,
 			LastSeen:  time.Now(),
 			Coords:    rx.Source,
+			PathID:    bootstrapACK.PathID,
+		}
+		setup := types.VirtualSnakeSetup{ // nolint:gosimple
+			PathID: bootstrapACK.PathID,
+		}
+		var buf [8]byte
+		if _, err := setup.MarshalBinary(buf[:]); err != nil {
+			return fmt.Errorf("setup.MarshalBinary: %w", err)
 		}
 		ts, err := util.SignedTimestamp(t.r.private)
 		if err != nil {
-			return
+			return fmt.Errorf("util.SignedTimestamp: %w", err)
 		}
 		send = &types.Frame{
 			Destination:    rx.Source,
 			DestinationKey: rx.SourceKey,
 			SourceKey:      t.r.public,
 			Type:           types.TypeVirtualSnakeSetup,
-			Payload:        ts,
+			Payload:        append(buf[:], ts...),
 		}
 	default:
 		// The bootstrap ACK conditions weren't met. This might just be because
 		// there's a node out there that hasn't converged to a closer node
 		// yet, so we'll just ignore the acknowledgement.
 	}
+	return nil
 }
 
 // handleSetup is called in response to an incoming path setup packet. Note
@@ -462,8 +517,15 @@ func (t *virtualSnake) handleBootstrapACK(from *Peer, rx *types.Frame) {
 // instead called for every setup packet being transited through this node.
 // It will update the routing table with the new path.
 func (t *virtualSnake) handleSetup(from *Peer, rx *types.Frame, nextHops types.SwitchPorts) error {
+	// Unmarshal the setup.
+	var setup types.VirtualSnakeSetup
+	n, err := setup.UnmarshalBinary(rx.Payload)
+	if err != nil {
+		return fmt.Errorf("setup.UnmarshalBinary: %w", err)
+	}
+
 	// Check if the setup packet has a valid signed timestamp.
-	if !util.VerifySignedTimestamp(rx.SourceKey, rx.Payload) {
+	if !util.VerifySignedTimestamp(rx.SourceKey, rx.Payload[n:]) {
 		return fmt.Errorf("invalid signature")
 	}
 
@@ -476,6 +538,7 @@ func (t *virtualSnake) handleSetup(from *Peer, rx *types.Frame, nextHops types.S
 	entry := virtualSnakeEntry{
 		LastSeen:   time.Now(),
 		SourcePort: from.port,
+		PathID:     setup.PathID,
 	}
 	if len(nextHops) > 0 {
 		entry.DestinationPort = nextHops[0]
@@ -486,7 +549,7 @@ func (t *virtualSnake) handleSetup(from *Peer, rx *types.Frame, nextHops types.S
 
 	// Did the setup hit a dead end on the way to the ascending node?
 	if nextHops.EqualTo(types.SwitchPorts{0}) && !rx.DestinationKey.EqualTo(t.r.public) {
-		t.clearRoutingEntriesForPublicKey(rx.SourceKey, false)
+		t.clearRoutingEntriesForPublicKey(rx.SourceKey, setup.PathID, false)
 		return fmt.Errorf("setup hit dead end")
 	}
 
@@ -522,13 +585,14 @@ func (t *virtualSnake) handleSetup(from *Peer, rx *types.Frame, nextHops types.S
 			// us than the previous node. We'll update our record to use the new
 			// node instead and then send back a bootstrap ACK.
 			if t.descending != nil && rx.SourceKey != t.descending.PublicKey {
-				t.clearRoutingEntriesForPublicKey(t.descending.PublicKey, false)
+				t.clearRoutingEntriesForPublicKey(t.descending.PublicKey, setup.PathID, false)
 			}
 			t.descending = &virtualSnakeNeighbour{
 				PublicKey: rx.SourceKey,
 				Port:      from.port,
 				LastSeen:  time.Now(),
 				Coords:    rx.Source,
+				PathID:    setup.PathID,
 			}
 		default:
 			// The bootstrap conditions weren't met. This might just be because
