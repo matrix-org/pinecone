@@ -125,31 +125,26 @@ func (t *spanningTree) becomeRoot() {
 }
 
 func (t *spanningTree) workerForAnnouncements() {
+	ticker := time.NewTicker(announcementInterval)
 	advertise := func() {
 		for _, p := range t.r.startedPorts() {
-			go func(p *Peer) {
-				if ann := p.generateAnnouncement(); ann != nil {
-					select {
-					case p.protoOut <- ann:
-					case <-p.context.Done():
-						ann.Done()
-					}
-				}
-			}(p)
+			p.announce.Dispatch()
 		}
 	}
 	for {
 		select {
 		case <-t.context.Done():
+			ticker.Stop()
 			return
 
-		case <-time.After(announcementInterval):
+		case <-ticker.C:
 			if t.IsRoot() {
 				advertise()
 			}
 
 		case <-t.advertise:
 			advertise()
+			//ticker.Reset(announcementInterval)
 		}
 	}
 }
@@ -260,29 +255,37 @@ func (t *spanningTree) Update(p *Peer, newUpdate types.SwitchAnnouncement) error
 	// ------ SANITY CHECK THE PREVIOUS UPDATE FROM THIS PEER ------
 
 	portKeyDelta := newUpdate.RootPublicKey.CompareTo(lastPortUpdate.RootPublicKey)
+	portUpdate := false
 
 	switch {
 	case portTimeSince > announcementTimeout:
+		portUpdate = true
+
 	case globalTimeSince > announcementTimeout:
-		// We haven't heard a root update in a while, so if that's the
-		// case then we'll skip the port-local checks and skip straight
-		// to the global ones
+		portUpdate = true
 
 	case portKeyDelta < 0: // Weaker root key
 	//	return fmt.Errorf("rejecting update (key is weaker than last update)")
 
 	case portKeyDelta == 0: // Same root key
 		switch {
-		case portTimeSince < announcementThreshold:
-			return fmt.Errorf("rejecting update (too soon from same key after %s)", portTimeSince)
-		case newUpdate.Sequence <= lastPortUpdate.Sequence:
-			return fmt.Errorf("rejecting update (replayed sequence %d <= %d)", newUpdate.Sequence, lastPortUpdate.Sequence)
+		//	case portTimeSince < announcementThreshold:
+		//		return fmt.Errorf("rejecting update (too soon from same key after %s)", portTimeSince)
+		case newUpdate.Sequence < lastPortUpdate.Sequence:
+			return fmt.Errorf("rejecting update (replayed sequence %d < %d)", newUpdate.Sequence, lastPortUpdate.Sequence)
+		default:
+			portUpdate = true
 		}
 
 	case portKeyDelta > 0: // Stronger root key
+		portUpdate = true
 	}
 
-	p.updateAnnouncement(&newUpdate)
+	if portUpdate {
+		p.updateAnnouncement(&newUpdate)
+	} else {
+		return nil
+	}
 
 	// ------ SANITY CHECK THE ACTUAL ROOT UPDATE FOR THE ENTIRE NODE ITSELF ------
 
@@ -297,7 +300,7 @@ func (t *spanningTree) Update(p *Peer, newUpdate types.SwitchAnnouncement) error
 	case globalTimeSince > announcementTimeout:
 		// The global announcement hasn't been updated recently so we'll
 		// accept this update in the meantime
-		globalUpdate = true
+		globalUpdate = !isChild
 
 	case globalKeyDelta < 0:
 		// The key is weaker than our existing root
@@ -305,11 +308,11 @@ func (t *spanningTree) Update(p *Peer, newUpdate types.SwitchAnnouncement) error
 	case globalKeyDelta == 0: // Same root key
 		switch {
 		case len(newUpdate.Signatures) < len(lastPortUpdate.Signatures):
-			globalUpdate = true
+			globalUpdate = !isChild
 		}
 
 	case globalKeyDelta > 0: // Stronger root key
-		globalUpdate = true
+		globalUpdate = !isChild
 	}
 
 	if parent := t.parent.Load(); p.port == parent || globalUpdate {

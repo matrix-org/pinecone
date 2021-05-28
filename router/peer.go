@@ -51,6 +51,7 @@ type Peer struct {
 	trafficOut   *lifoQueue                // queue traffic message to peer
 	protoOut     chan *types.Frame         // queue protocol message to peer
 	coords       types.SwitchPorts         //
+	announce     util.Dispatch             //
 	announcement *rootAnnouncementWithTime //
 	statistics   peerStatistics            //
 }
@@ -88,7 +89,9 @@ func (p *Peer) SeenCommonRootRecently() bool {
 	if last == nil {
 		return false
 	}
-	return last.RootPublicKey.EqualTo(p.r.RootPublicKey()) && last.Sequence == p.r.tree.Root().Sequence
+	lpk := last.RootPublicKey
+	rpk := p.r.RootPublicKey()
+	return lpk == rpk
 }
 
 func (p *Peer) SeenRecently() bool {
@@ -334,6 +337,9 @@ func (p *Peer) writer() {
 	buf := make([]byte, MaxFrameSize)
 
 	send := func(frame *types.Frame) error {
+		if frame == nil {
+			return nil
+		}
 		fn, err := frame.MarshalBinary(buf)
 		frame.Done()
 		if err != nil {
@@ -366,6 +372,26 @@ func (p *Peer) writer() {
 		select {
 		case <-p.context.Done():
 			return
+		case <-p.announce:
+			_ = send(p.generateAnnouncement())
+		default:
+		}
+		select {
+		case <-p.context.Done():
+			return
+		case <-p.announce:
+			_ = send(p.generateAnnouncement())
+		case frame := <-p.protoOut:
+			if frame != nil {
+				_ = send(frame)
+			}
+		default:
+		}
+		select {
+		case <-p.context.Done():
+			return
+		case <-p.announce:
+			_ = send(p.generateAnnouncement())
 		case frame := <-p.protoOut:
 			if frame != nil {
 				_ = send(frame)

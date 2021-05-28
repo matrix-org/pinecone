@@ -113,8 +113,9 @@ func NewRouter(log *log.Logger, id string, private ed25519.PrivateKey, public ed
 	// Prepare the switch ports.
 	for i := range sw.ports {
 		sw.ports[i] = &Peer{
-			r:    sw,
-			port: types.SwitchPortID(i),
+			r:        sw,
+			port:     types.SwitchPortID(i),
+			announce: util.NewDispatch(),
 		}
 	}
 
@@ -379,7 +380,7 @@ func (r *Router) AuthenticatedConnect(conn net.Conn, zone string, peertype int) 
 // returned in the event of a successful connection.
 func (r *Router) Connect(conn net.Conn, public types.PublicKey, zone string, peertype int) (types.SwitchPortID, error) {
 	if p, ok := r.active.Load(hex.EncodeToString(public[:]) + zone); ok {
-		if err := r.Disconnect(p.(types.SwitchPortID), nil); err != nil {
+		if err := r.Disconnect(p.(types.SwitchPortID), fmt.Errorf("another incoming connection from the same node")); err != nil {
 			return 0, fmt.Errorf("already connected to this node via zone %q", zone)
 		}
 	}

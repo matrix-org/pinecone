@@ -559,7 +559,7 @@ func (t *virtualSnake) handleSetup(from *Peer, rx *types.Frame, nextHops types.S
 	// Did the setup hit a dead end on the way to the ascending node?
 	if nextHops.EqualTo(types.SwitchPorts{0}) && !rx.DestinationKey.EqualTo(t.r.public) {
 		t.clearRoutingEntriesForPublicKey(rx.SourceKey, setup.PathID, false)
-		return fmt.Errorf("setup hit dead end")
+		return fmt.Errorf("setup for %q %s hit dead end at %s", rx.DestinationKey, rx.Destination, t.r.Coords())
 	}
 
 	// If we're at the destination of the setup then update our predecessor
