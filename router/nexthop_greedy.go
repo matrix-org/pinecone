@@ -45,10 +45,11 @@ func (r *Router) getGreedyRoutedNextHop(from *Peer, rx *types.Frame) types.Switc
 	// Now work out which of our peers takes the message closer.
 	bestPeer := types.SwitchPortID(0)
 	bestDist := ourDist
-	isRoot := r.IsRoot()
 	for _, p := range r.activePorts() {
-		// Don't deliberately create routing loops.
-		if !isRoot && !p.SeenCommonRootRecently() {
+		// Don't deliberately create routing loops by forwarding
+		// to a node that doesn't share our root - the coordinate
+		// system will be different.
+		if !p.SeenCommonRootRecently() {
 			continue
 		}
 
