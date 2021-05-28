@@ -331,8 +331,8 @@ func (p *Peer) writer() {
 		if frame == nil {
 			return nil
 		}
+		defer frame.Done()
 		fn, err := frame.MarshalBinary(buf)
-		frame.Done()
 		if err != nil {
 			p.r.log.Println("Port", p.port, "error marshalling frame:", err)
 			return err
