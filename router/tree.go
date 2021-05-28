@@ -128,11 +128,12 @@ func (t *spanningTree) workerForAnnouncements() {
 	advertise := func() {
 		for _, p := range t.r.startedPorts() {
 			go func(p *Peer) {
-				ann := p.generateAnnouncement()
-				select {
-				case p.protoOut <- ann:
-				case <-p.context.Done():
-					ann.Done()
+				if ann := p.generateAnnouncement(); ann != nil {
+					select {
+					case p.protoOut <- ann:
+					case <-p.context.Done():
+						ann.Done()
+					}
 				}
 			}(p)
 		}

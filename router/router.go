@@ -455,7 +455,8 @@ func (r *Router) Disconnect(i types.SwitchPortID, err error) error {
 	r.ports[i].public = types.PublicKey{}
 	r.ports[i].announcement = nil
 	close(r.ports[i].protoOut)
-	for range r.ports[i].protoOut {
+	for frame := range r.ports[i].protoOut {
+		frame.Done()
 	}
 	r.ports[i].trafficOut.reset()
 	r.ports[i].mutex.Unlock()

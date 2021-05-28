@@ -32,7 +32,6 @@ func (r *Router) writer(conn net.Conn) {
 
 		default:
 			frame := <-r.send
-			frame.Version = types.Version0
 			n, err := frame.MarshalBinary(buf)
 			if err != nil {
 				r.log.Printf("frame.MarshalBinary: %s\n", err)

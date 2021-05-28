@@ -128,7 +128,13 @@ func (p *Peer) start() error {
 	p.alive.Store(false)
 	go p.reader()
 	go p.writer()
-	p.protoOut <- p.generateAnnouncement()
+	if ann := p.generateAnnouncement(); ann != nil {
+		select {
+		case p.protoOut <- ann:
+		case <-p.context.Done():
+			ann.Done()
+		}
+	}
 	return nil
 }
 
@@ -328,11 +334,8 @@ func (p *Peer) writer() {
 	buf := make([]byte, MaxFrameSize)
 
 	send := func(frame *types.Frame) error {
-		if frame == nil {
-			return nil
-		}
-		defer frame.Done()
 		fn, err := frame.MarshalBinary(buf)
+		frame.Done()
 		if err != nil {
 			p.r.log.Println("Port", p.port, "error marshalling frame:", err)
 			return err
