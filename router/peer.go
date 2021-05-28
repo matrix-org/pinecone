@@ -162,7 +162,7 @@ func (p *Peer) generateAnnouncement() *types.Frame {
 		p.r.log.Println("Failed to sign switch announcement:", err)
 		return nil
 	}
-	var payload [65535]byte
+	var payload [MaxPayloadSize]byte
 	n, err := announcement.MarshalBinary(payload[:])
 	if err != nil {
 		p.r.log.Println("Failed to marshal switch announcement:", err)
@@ -177,7 +177,7 @@ func (p *Peer) generateAnnouncement() *types.Frame {
 }
 
 func (p *Peer) reader() {
-	buf := make([]byte, 65535*3+12)
+	buf := make([]byte, MaxFrameSize)
 	for {
 		select {
 		case <-p.context.Done():
@@ -325,7 +325,7 @@ func (p *Peer) reader() {
 }
 
 func (p *Peer) writer() {
-	buf := make([]byte, 65535*3+12)
+	buf := make([]byte, MaxFrameSize)
 
 	send := func(frame *types.Frame) error {
 		if frame == nil {

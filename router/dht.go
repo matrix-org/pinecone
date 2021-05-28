@@ -224,7 +224,7 @@ func (d *dht) request(coords types.SwitchPorts, pk types.PublicKey) (types.Publi
 
 	// Marshal it into binary so that we can send the request out
 	// to the network.
-	var buffer [65535]byte
+	var buffer [MaxPayloadSize]byte
 	n, err := req.MarshalBinary(buffer[:])
 	if err != nil {
 		return types.PublicKey{}, nil, fmt.Errorf("res.MarshalBinary: %w", err)
@@ -349,7 +349,7 @@ func (d *dht) onDHTRequest(req *types.DHTQueryRequest, from types.SwitchPorts) {
 
 	// Marshal the response into binary format so we can send it
 	// back.
-	var buffer [65535]byte
+	var buffer [MaxPayloadSize]byte
 	n, err := res.MarshalBinary(buffer[:], d.r.private[:])
 	if err != nil {
 		fmt.Println("Failed to sign DHT response:", err)

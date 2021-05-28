@@ -24,7 +24,7 @@ import (
 // The writer goroutine is responsible for sending traffic from
 // the router to the switch.
 func (r *Router) writer(conn net.Conn) {
-	buf := make([]byte, 65535*3+12)
+	buf := make([]byte, MaxFrameSize)
 	for {
 		select {
 		case <-r.context.Done():
@@ -53,7 +53,7 @@ func (r *Router) writer(conn net.Conn) {
 // The reader goroutine is responsible for receiving traffic
 // for the router from the switch.
 func (r *Router) reader(conn net.Conn) {
-	buf := make([]byte, 65535*3+12)
+	buf := make([]byte, MaxFrameSize)
 	var frame types.Frame
 	for {
 		select {
@@ -137,7 +137,7 @@ func (r *Router) reader(conn net.Conn) {
 						continue
 					}
 					signed.Boundary = uint8(len(signed.Signatures))
-					var buffer [65535]byte
+					var buffer [MaxPayloadSize]byte
 					n, err := signed.MarshalBinary(buffer[:])
 					if err != nil {
 						r.log.Println("signed.MarshalBinary:", err)

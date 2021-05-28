@@ -45,6 +45,14 @@ const ProtoBufferSize = 16
 // buffer on a slow port.
 const TrafficBufferSize = 256
 
+// MaxPayloadSize is the maximum size that a single frame can contain
+// as a payload, not including headers.
+const MaxPayloadSize = 65535
+
+// MaxFrameSize is the maximum size that a single frame can be, including
+// all headers.
+const MaxFrameSize = 65535*3 + 12
+
 // Simulator is not used by normal Pinecone nodes and specifies the
 // functions that must be satisfied if running under pineconesim.
 type Simulator interface {
@@ -388,7 +396,7 @@ func (r *Router) Connect(conn net.Conn, public types.PublicKey, zone string, pee
 		r.ports[i].context, r.ports[i].cancel = context.WithCancel(r.context)
 		r.ports[i].zone = zone
 		r.ports[i].peertype = peertype
-		r.ports[i].conn = util.NewBufferedRWC(conn)
+		r.ports[i].conn = util.NewBufferedRWCSize(conn, MaxFrameSize)
 		r.ports[i].public = public
 		r.ports[i].protoOut = make(chan *types.Frame, ProtoBufferSize)
 		r.ports[i].trafficOut = newLIFOQueue(TrafficBufferSize)
