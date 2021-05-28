@@ -285,7 +285,7 @@ func (p *Peer) reader() {
 						if signedframe == nil {
 							continue
 						}
-						if sent = dest.trafficOut.push(signedframe.Borrow()); sent {
+						if sent = dest.trafficOut.push(signedframe); sent {
 							dest.statistics.txTrafficSuccessful.Inc()
 							return
 						} else {

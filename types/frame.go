@@ -30,8 +30,8 @@ var framePool = &sync.Pool{
 	New: func() interface{} {
 		f := &Frame{}
 		runtime.SetFinalizer(f, func(f *Frame) {
-			if f.refs.Load() != 0 {
-				panic("frame was garbage collected with remaining references, this is a bug")
+			if refs := f.refs.Load(); refs != 0 {
+				panic(fmt.Sprintf("frame was garbage collected with %d remaining references, this is a bug", refs))
 			}
 		})
 		return f

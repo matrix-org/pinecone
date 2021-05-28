@@ -135,7 +135,7 @@ func (r *Router) signPathfind(frame *types.Frame, from, to *Peer) (*types.Frame,
 		port = from.port
 	}
 	if port == 0 {
-		return frame, nil
+		return signedFrame, nil
 	}
 	signed, err := pathfind.Sign(r.private[:], port)
 	if err != nil {
