@@ -24,7 +24,7 @@ func (v *VirtualSnakeBootstrap) UnmarshalBinary(buf []byte) (int, error) {
 		return 0, fmt.Errorf("buffer too small")
 	}
 	offset := 0
-	copy(v.PathID[:], buf[offset:])
+	offset += copy(v.PathID[:], buf[offset:])
 	return offset, nil
 }
 
@@ -46,7 +46,7 @@ func (v *VirtualSnakeBootstrapACK) UnmarshalBinary(buf []byte) (int, error) {
 		return 0, fmt.Errorf("buffer too small")
 	}
 	offset := 0
-	copy(v.PathID[:], buf[offset:])
+	offset += copy(v.PathID[:], buf[offset:])
 	return offset, nil
 }
 
@@ -68,7 +68,7 @@ func (v *VirtualSnakeSetup) UnmarshalBinary(buf []byte) (int, error) {
 		return 0, fmt.Errorf("buffer too small")
 	}
 	offset := 0
-	copy(v.PathID[:], buf[offset:])
+	offset += copy(v.PathID[:], buf[offset:])
 	return offset, nil
 }
 
@@ -96,7 +96,7 @@ func (v *VirtualSnakeTeardown) UnmarshalBinary(buf []byte) (int, error) {
 		return 0, fmt.Errorf("buffer too small")
 	}
 	offset := 0
-	copy(v.PathID[:], buf[offset:])
+	offset += copy(v.PathID[:], buf[offset:])
 	v.Ascending = buf[offset] == 1
 	offset += 1
 	return offset, nil

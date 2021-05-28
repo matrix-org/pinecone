@@ -37,21 +37,21 @@ func SignedTimestamp(private types.PrivateKey) ([]byte, error) {
 }
 
 func VerifySignedTimestamp(public types.PublicKey, payload []byte) bool {
+	if len(payload) < ed25519.SignatureSize+1 {
+		return false
+	}
+	var ts types.Varu64
+	if err := ts.UnmarshalBinary(payload); err != nil {
+		return false
+	}
+	offset := ts.Length()
 	if _, ok := os.LookupEnv("PINECONE_DISABLE_SIGNATURES"); !ok {
-		if len(payload) < ed25519.SignatureSize+1 {
-			return false
-		}
-		var ts types.Varu64
-		if err := ts.UnmarshalBinary(payload); err != nil {
-			return false
-		}
-		offset := ts.Length()
 		if !ed25519.Verify(public[:], payload[:offset], payload[offset:]) {
 			return false
 		}
-		if time.Since(time.Unix(int64(ts), 0)) > time.Minute {
-			return false
-		}
+	}
+	if time.Since(time.Unix(int64(ts), 0)) > time.Minute {
+		return false
 	}
 	return true
 }

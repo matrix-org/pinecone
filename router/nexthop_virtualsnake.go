@@ -82,7 +82,7 @@ func (v *virtualSnake) maintain() {
 	for {
 		peerCount := v.r.PeerCount(-1)
 		if peerCount == 0 {
-			v.maintainInterval.Store(0)
+			v.maintainInterval.Store(1)
 		}
 		exp := math.Exp2(float64(v.maintainInterval.Load()))
 		after := time.Second * time.Duration(exp)
@@ -129,7 +129,7 @@ func (v *virtualSnake) maintain() {
 				if err != nil {
 					return
 				}
-				var payload [9]byte
+				var payload [8]byte
 				bootstrap := types.VirtualSnakeBootstrap{} // nolint:gosimple
 				if _, err := rand.Read(bootstrap.PathID[:]); err != nil {
 					return

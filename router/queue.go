@@ -6,7 +6,7 @@ import (
 	"github.com/matrix-org/pinecone/types"
 )
 
-type queue struct {
+type lifoQueue struct {
 	frames []*types.Frame
 	size   int
 	count  int
@@ -14,8 +14,8 @@ type queue struct {
 	notifs chan struct{}
 }
 
-func newQueue(size int) *queue {
-	q := &queue{
+func newLIFOQueue(size int) *lifoQueue {
+	q := &lifoQueue{
 		frames: make([]*types.Frame, size),
 		size:   size,
 		notifs: make(chan struct{}, size),
@@ -23,7 +23,7 @@ func newQueue(size int) *queue {
 	return q
 }
 
-func (q *queue) push(frame *types.Frame) bool {
+func (q *lifoQueue) push(frame *types.Frame) bool {
 	q.mutex.Lock()
 	defer q.mutex.Unlock()
 	if q.count == q.size {
@@ -40,7 +40,7 @@ func (q *queue) push(frame *types.Frame) bool {
 	return true
 }
 
-func (q *queue) pop() (*types.Frame, bool) {
+func (q *lifoQueue) pop() (*types.Frame, bool) {
 	q.mutex.Lock()
 	defer q.mutex.Unlock()
 	if q.count == 0 {
@@ -53,7 +53,7 @@ func (q *queue) pop() (*types.Frame, bool) {
 	return frame, true
 }
 
-func (q *queue) reset() {
+func (q *lifoQueue) reset() {
 	q.mutex.Lock()
 	defer q.mutex.Unlock()
 	q.count = 0
@@ -66,7 +66,7 @@ func (q *queue) reset() {
 	q.notifs = make(chan struct{}, q.size)
 }
 
-func (q *queue) wait() <-chan struct{} {
+func (q *lifoQueue) wait() <-chan struct{} {
 	q.mutex.Lock()
 	defer q.mutex.Unlock()
 	return q.notifs

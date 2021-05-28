@@ -48,7 +48,7 @@ type Peer struct {
 	cancel       context.CancelFunc        //
 	conn         util.BufferedRWC          // underlying connection to peer
 	public       types.PublicKey           //
-	trafficOut   *queue                    // queue traffic message to peer
+	trafficOut   *lifoQueue                // queue traffic message to peer
 	protoOut     chan *types.Frame         // queue protocol message to peer
 	coords       types.SwitchPorts         //
 	announcement *rootAnnouncementWithTime //

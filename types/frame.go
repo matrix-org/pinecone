@@ -20,6 +20,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math"
+	"runtime"
 	"sync"
 
 	"go.uber.org/atomic"
@@ -27,7 +28,13 @@ import (
 
 var framePool = &sync.Pool{
 	New: func() interface{} {
-		return &Frame{}
+		f := &Frame{}
+		runtime.SetFinalizer(f, func(f *Frame) {
+			if f.refs.Load() != 0 {
+				panic("frame was garbage collected with remaining references, this is a bug")
+			}
+		})
+		return f
 	},
 }
 

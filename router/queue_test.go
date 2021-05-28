@@ -11,7 +11,7 @@ func TestQueue(t *testing.T) {
 	two := &types.Frame{}
 	three := &types.Frame{}
 	four := &types.Frame{}
-	queue := newQueue(3)
+	queue := newLIFOQueue(3)
 	if !queue.push(one) {
 		t.Fatalf("first frame should have pushed")
 	}

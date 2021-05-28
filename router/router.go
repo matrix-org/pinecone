@@ -391,7 +391,8 @@ func (r *Router) Connect(conn net.Conn, public types.PublicKey, zone string, pee
 		r.ports[i].conn = util.NewBufferedRWC(conn)
 		r.ports[i].public = public
 		r.ports[i].protoOut = make(chan *types.Frame, ProtoBufferSize)
-		r.ports[i].trafficOut = newQueue(TrafficBufferSize)
+		r.ports[i].trafficOut = newLIFOQueue(TrafficBufferSize)
+		r.ports[i].announcement = nil
 		r.ports[i].statistics.reset()
 		r.ports[i].mutex.Unlock()
 		if err := r.ports[i].start(); err != nil {
@@ -437,8 +438,8 @@ func (r *Router) Disconnect(i types.SwitchPortID, err error) error {
 	r.connections.Lock()
 	defer r.connections.Unlock()
 	r.active.Delete(hex.EncodeToString(r.ports[i].public[:]) + r.ports[i].zone)
-	if err := r.ports[i].stop(); err != nil {
-		return fmt.Errorf("port.stop: %w", err)
+	if stoperr := r.ports[i].stop(); stoperr != nil {
+		return fmt.Errorf("port.stop: %w", stoperr)
 	}
 	r.ports[i].mutex.Lock()
 	r.ports[i].peertype = 0
