@@ -256,6 +256,7 @@ func (t *spanningTree) Update(p *Peer, newUpdate types.SwitchAnnouncement) error
 
 	portKeyDelta := newUpdate.RootPublicKey.CompareTo(lastPortUpdate.RootPublicKey)
 	portUpdate := false
+	portEcho := false
 
 	switch {
 	case portTimeSince > announcementTimeout:
@@ -265,26 +266,27 @@ func (t *spanningTree) Update(p *Peer, newUpdate types.SwitchAnnouncement) error
 		portUpdate = true
 
 	case portKeyDelta < 0: // Weaker root key
-	//	return fmt.Errorf("rejecting update (key is weaker than last update)")
 
 	case portKeyDelta == 0: // Same root key
 		switch {
-		//	case portTimeSince < announcementThreshold:
-		//		return fmt.Errorf("rejecting update (too soon from same key after %s)", portTimeSince)
-		case newUpdate.Sequence < lastPortUpdate.Sequence:
-			return fmt.Errorf("rejecting update (replayed sequence %d < %d)", newUpdate.Sequence, lastPortUpdate.Sequence)
+		case portTimeSince < announcementThreshold:
+			return fmt.Errorf("rejecting update (too soon from same key after %s)", portTimeSince)
+		case newUpdate.Sequence <= lastPortUpdate.Sequence:
+			return fmt.Errorf("rejecting update (replayed sequence %d <= %d)", newUpdate.Sequence, lastPortUpdate.Sequence)
 		default:
 			portUpdate = true
 		}
 
 	case portKeyDelta > 0: // Stronger root key
 		portUpdate = true
+		portEcho = true
 	}
 
 	if portUpdate {
 		p.updateAnnouncement(&newUpdate)
-	} else {
-		return nil
+	}
+	if portEcho {
+		p.announce.Dispatch()
 	}
 
 	// ------ SANITY CHECK THE ACTUAL ROOT UPDATE FOR THE ENTIRE NODE ITSELF ------
@@ -307,7 +309,10 @@ func (t *spanningTree) Update(p *Peer, newUpdate types.SwitchAnnouncement) error
 
 	case globalKeyDelta == 0: // Same root key
 		switch {
-		case len(newUpdate.Signatures) < len(lastPortUpdate.Signatures):
+		case newUpdate.Sequence < lastGlobalUpdate.Sequence:
+			// This is a replay of an earlier update so ignore it
+		case len(newUpdate.Signatures) < len(lastPortUpdate.Signatures): // <- better stability
+			//case len(newUpdate.Signatures) < len(lastGlobalUpdate.Signatures): // <- shorter paths
 			globalUpdate = !isChild
 		}
 
