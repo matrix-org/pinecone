@@ -241,6 +241,12 @@ func (t *spanningTree) Update(p *Peer, newUpdate types.SwitchAnnouncement) error
 			return fmt.Errorf("rejecting update (last signature must be from peer)")
 		}
 		if sig.PublicKey.EqualTo(t.r.public) {
+			// A child update is one that contains our public key in the
+			// signatures already - it's probably one of our direct peers
+			// sending our root announcement back to us. In this case there
+			// is some special behaviour: we usually will need to accept
+			// the update on the port, but we don't want to do anything that
+			// would influence root or coordinate changes.
 			isChild = true
 		}
 		pk := hex.EncodeToString(sig.PublicKey[:])
@@ -261,9 +267,11 @@ func (t *spanningTree) Update(p *Peer, newUpdate types.SwitchAnnouncement) error
 	switch {
 	case portTimeSince > announcementTimeout:
 		portUpdate = true
+		portEcho = !isChild
 
 	case globalTimeSince > announcementTimeout:
 		portUpdate = true
+		portEcho = !isChild
 
 	case portKeyDelta < 0: // Weaker root key
 
@@ -275,6 +283,7 @@ func (t *spanningTree) Update(p *Peer, newUpdate types.SwitchAnnouncement) error
 			return fmt.Errorf("rejecting update (replayed sequence %d <= %d)", newUpdate.Sequence, lastPortUpdate.Sequence)
 		default:
 			portUpdate = true
+			portEcho = !isChild
 		}
 
 	case portKeyDelta > 0: // Stronger root key
@@ -298,11 +307,12 @@ func (t *spanningTree) Update(p *Peer, newUpdate types.SwitchAnnouncement) error
 	case isChild:
 		// The update contains our own key, so it's been looped back to us,
 		// so we can't use it as a path to the root
+		return nil
 
 	case globalTimeSince > announcementTimeout:
 		// The global announcement hasn't been updated recently so we'll
 		// accept this update in the meantime
-		globalUpdate = !isChild
+		globalUpdate = true
 
 	case globalKeyDelta < 0:
 		// The key is weaker than our existing root
@@ -313,11 +323,11 @@ func (t *spanningTree) Update(p *Peer, newUpdate types.SwitchAnnouncement) error
 			// This is a replay of an earlier update so ignore it
 		case len(newUpdate.Signatures) < len(lastPortUpdate.Signatures): // <- better stability
 			//case len(newUpdate.Signatures) < len(lastGlobalUpdate.Signatures): // <- shorter paths
-			globalUpdate = !isChild
+			globalUpdate = true
 		}
 
 	case globalKeyDelta > 0: // Stronger root key
-		globalUpdate = !isChild
+		globalUpdate = true
 	}
 
 	if parent := t.parent.Load(); p.port == parent || globalUpdate {
