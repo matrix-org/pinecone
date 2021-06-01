@@ -147,7 +147,6 @@ func (p *Peer) stop() error {
 	}
 	p.alive.Store(false)
 	p.cancel()
-	p.r.tree.Remove(p)
 	_ = p.conn.Close()
 	return nil
 }

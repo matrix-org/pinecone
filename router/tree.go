@@ -112,6 +112,30 @@ func (t *spanningTree) portWasDisconnected(port types.SwitchPortID) {
 		t.becomeRoot()
 		return
 	}
+	parent := t.parent.Load().(types.SwitchPortID)
+	if parent == port {
+		var bestDist int
+		var bestTime time.Time
+		var bestPort types.SwitchPortID
+		for _, p := range t.r.activePorts() {
+			ann := p.lastAnnouncement()
+			if ann == nil {
+				continue
+			}
+			hops := len(ann.Signatures)
+			switch {
+			case ann.RootPublicKey != t.r.RootPublicKey():
+				continue
+			case bestDist == 0 || hops < bestDist:
+				fallthrough
+			case ann.at.Before(bestTime):
+				bestDist = hops
+				bestPort = p.port
+				bestTime = ann.at
+			}
+		}
+		t.parent.Store(bestPort)
+	}
 }
 
 func (t *spanningTree) becomeRoot() {
@@ -201,12 +225,6 @@ func (t *spanningTree) Parent() types.SwitchPortID {
 	return 0
 }
 
-func (t *spanningTree) Remove(p *Peer) {
-	if t.Parent() == p.port {
-		t.parent.Store(types.SwitchPortID(0))
-	}
-}
-
 func (t *spanningTree) Update(p *Peer, newUpdate types.SwitchAnnouncement) error {
 	lastGlobalUpdate := t.Root()
 	lastPortUpdate := p.lastAnnouncement()
@@ -262,40 +280,35 @@ func (t *spanningTree) Update(p *Peer, newUpdate types.SwitchAnnouncement) error
 
 	portKeyDelta := newUpdate.RootPublicKey.CompareTo(lastPortUpdate.RootPublicKey)
 	portUpdate := false
-	portEcho := false
 
 	switch {
 	case portTimeSince > announcementTimeout:
 		portUpdate = true
-		portEcho = !isChild
 
 	case globalTimeSince > announcementTimeout:
 		portUpdate = true
-		portEcho = !isChild
 
 	case portKeyDelta < 0: // Weaker root key
 
 	case portKeyDelta == 0: // Same root key
 		switch {
 		case portTimeSince < announcementThreshold:
-			return fmt.Errorf("rejecting update (too soon from same key after %s)", portTimeSince)
+			return nil // fmt.Errorf("rejecting update (too soon from same key after %s)", portTimeSince)
 		case newUpdate.Sequence <= lastPortUpdate.Sequence:
-			return fmt.Errorf("rejecting update (replayed sequence %d <= %d)", newUpdate.Sequence, lastPortUpdate.Sequence)
+			return nil // fmt.Errorf("rejecting update (replayed sequence %d)", newUpdate.Sequence)
 		default:
 			portUpdate = true
-			portEcho = !isChild
 		}
 
 	case portKeyDelta > 0: // Stronger root key
 		portUpdate = true
-		portEcho = true
 	}
 
 	if portUpdate {
 		p.updateAnnouncement(&newUpdate)
-	}
-	if portEcho {
-		p.announce.Dispatch()
+		if !isChild {
+			p.announce.Dispatch()
+		}
 	}
 
 	// ------ SANITY CHECK THE ACTUAL ROOT UPDATE FOR THE ENTIRE NODE ITSELF ------

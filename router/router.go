@@ -414,8 +414,8 @@ func (r *Router) Connect(conn net.Conn, public types.PublicKey, zone string, pee
 			r.simulator.ReportNewLink(conn, r.public, public)
 		}
 		r.active.Store(hex.EncodeToString(public[:])+zone, i)
+		r.snake.portWasConnected(i)
 		go r.callbacks.onConnected(i, public, peertype)
-		go r.snake.portWasConnected(i)
 		/*
 			if i != 0 {
 				go func(r *Router, p *Peer) {
@@ -468,9 +468,9 @@ func (r *Router) Disconnect(i types.SwitchPortID, err error) error {
 		r.simulator.ReportDeadLink(r.public, r.ports[i].public)
 	}
 	r.log.Printf("Disconnected port %d: %s\n", i, err)
-	go r.callbacks.onDisconnected(i, r.ports[i].public, r.ports[i].peertype, err)
 	r.snake.portWasDisconnected(i)
 	r.tree.portWasDisconnected(i)
+	go r.callbacks.onDisconnected(i, r.ports[i].public, r.ports[i].peertype, err)
 	return nil
 }
 
