@@ -97,8 +97,9 @@ func (e virtualSnakeTable) MarshalJSON() ([]byte, error) {
 	out := []map[string]interface{}{}
 	for key, value := range e {
 		entry := map[string]interface{}{
-			"source_key":  key.String(),
+			"source_key":  key.PublicKey.String(),
 			"source_port": value.SourcePort,
+			"path_id":     key.PathID,
 			"last_seen":   time.Since(value.LastSeen).String(),
 		}
 		//if time.Since(value.LastSeen) > virtualSnakePathExpiryPeriod {

@@ -29,16 +29,16 @@ import (
 // announcementThreshold is the amount of time that must
 // pass before the node will accept a root announcement
 // again from the same peer.
-const announcementThreshold = announcementInterval / 2
+const announcementThreshold = time.Minute
 
 // announcementInterval is the frequency at which this
 // node will send root announcements to other peers.
-const announcementInterval = time.Second * 16
+const announcementInterval = time.Minute * 15
 
 // announcementTimeout is the amount of time that must
 // pass without receiving a root announcement before we
 // will assume that the peer is dead.
-const announcementTimeout = announcementInterval * 4
+const announcementTimeout = announcementInterval * 3
 
 func (r *Router) handleAnnouncement(peer *Peer, rx *types.Frame) {
 	var new types.SwitchAnnouncement
@@ -232,9 +232,6 @@ func (t *spanningTree) Update(p *Peer, newUpdate types.SwitchAnnouncement) error
 		lastPortUpdate = &rootAnnouncementWithTime{}
 	}
 
-	portTimeSince := time.Since(lastPortUpdate.at)
-	globalTimeSince := time.Since(lastGlobalUpdate.at)
-
 	// ------ SANITY CHECK THE UPDATE ITSELF ------
 
 	sigs := make(map[string]struct{})
@@ -276,44 +273,37 @@ func (t *spanningTree) Update(p *Peer, newUpdate types.SwitchAnnouncement) error
 		sigs[pk] = struct{}{}
 	}
 
+	// ------ STORE THE NEW UPDATE FOR THE PEER ------
+
+	p.updateAnnouncement(&newUpdate)
+
+	if isChild {
+		return nil
+	}
+
 	// ------ SANITY CHECK THE PREVIOUS UPDATE FROM THIS PEER ------
 
 	portKeyDelta := newUpdate.RootPublicKey.CompareTo(lastPortUpdate.RootPublicKey)
-	portUpdate := false
+	portTimeSince := time.Since(lastPortUpdate.at)
 
 	switch {
-	case portTimeSince > announcementTimeout:
-		portUpdate = true
-
-	case globalTimeSince > announcementTimeout:
-		portUpdate = true
-
 	case portKeyDelta < 0: // Weaker root key
+		return fmt.Errorf("rejecting update (weaker than last update)")
 
 	case portKeyDelta == 0: // Same root key
 		switch {
 		case portTimeSince < announcementThreshold:
-			return nil // fmt.Errorf("rejecting update (too soon from same key after %s)", portTimeSince)
+		//	return fmt.Errorf("rejecting update (too soon from same key after %s)", portTimeSince)
+
 		case newUpdate.Sequence <= lastPortUpdate.Sequence:
-			return nil // fmt.Errorf("rejecting update (replayed sequence %d)", newUpdate.Sequence)
-		default:
-			portUpdate = true
-		}
-
-	case portKeyDelta > 0: // Stronger root key
-		portUpdate = true
-	}
-
-	if portUpdate {
-		p.updateAnnouncement(&newUpdate)
-		if !isChild {
-			p.announce.Dispatch()
+			return fmt.Errorf("rejecting update (replayed sequence %d)", newUpdate.Sequence)
 		}
 	}
 
 	// ------ SANITY CHECK THE ACTUAL ROOT UPDATE FOR THE ENTIRE NODE ITSELF ------
 
 	globalKeyDelta := newUpdate.RootPublicKey.CompareTo(lastGlobalUpdate.RootPublicKey)
+	globalTimeSince := time.Since(lastGlobalUpdate.at)
 	globalUpdate := false
 
 	switch {
@@ -329,13 +319,15 @@ func (t *spanningTree) Update(p *Peer, newUpdate types.SwitchAnnouncement) error
 
 	case globalKeyDelta < 0:
 		// The key is weaker than our existing root
+		return fmt.Errorf("rejecting update (weaker than root)")
 
 	case globalKeyDelta == 0: // Same root key
 		switch {
 		case newUpdate.Sequence < lastGlobalUpdate.Sequence:
 			// This is a replay of an earlier update so ignore it
-		case len(newUpdate.Signatures) < len(lastPortUpdate.Signatures): // <- better stability
-			//case len(newUpdate.Signatures) < len(lastGlobalUpdate.Signatures): // <- shorter paths
+
+		//case len(newUpdate.Signatures) < len(lastPortUpdate.Signatures): // <- better stability
+		case len(newUpdate.Signatures) < len(lastGlobalUpdate.Signatures): // <- shorter paths
 			globalUpdate = true
 		}
 
@@ -366,9 +358,7 @@ func (t *spanningTree) Update(p *Peer, newUpdate types.SwitchAnnouncement) error
 		if oldRootKey != newUpdate.RootPublicKey {
 			go t.r.snake.rootNodeChanged(newUpdate.RootPublicKey)
 		}
-	}
 
-	if t.parent.Load() == p.port {
 		t.advertise.Dispatch()
 	}
 

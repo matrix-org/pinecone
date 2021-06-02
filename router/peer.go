@@ -131,13 +131,7 @@ func (p *Peer) start() error {
 	p.alive.Store(false)
 	go p.reader()
 	go p.writer()
-	if ann := p.generateAnnouncement(); ann != nil {
-		select {
-		case p.protoOut <- ann:
-		case <-p.context.Done():
-			ann.Done()
-		}
-	}
+	p.announce.Dispatch()
 	return nil
 }
 

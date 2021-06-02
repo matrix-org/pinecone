@@ -15,6 +15,7 @@
 package router
 
 import (
+	"crypto/ed25519"
 	"crypto/rand"
 	"fmt"
 	"math"
@@ -41,13 +42,17 @@ type virtualSnake struct {
 	descendingMutex  sync.RWMutex
 }
 
-type virtualSnakeTable map[types.PublicKey]virtualSnakeEntry
+type virtualSnakeIndex struct {
+	PublicKey types.PublicKey
+	PathID    types.VirtualSnakePathID
+}
+
+type virtualSnakeTable map[virtualSnakeIndex]virtualSnakeEntry
 
 type virtualSnakeEntry struct {
 	SourcePort      types.SwitchPortID
 	DestinationPort types.SwitchPortID
 	LastSeen        time.Time
-	PathID          types.VirtualSnakePathID
 }
 
 func (e *virtualSnakeEntry) Valid() bool {
@@ -58,11 +63,12 @@ func (e *virtualSnakeEntry) Valid() bool {
 }
 
 type virtualSnakeNeighbour struct {
-	PublicKey types.PublicKey
-	Port      types.SwitchPortID
-	LastSeen  time.Time
-	Coords    types.SwitchPorts
-	PathID    types.VirtualSnakePathID
+	PublicKey     types.PublicKey
+	Port          types.SwitchPortID
+	LastSeen      time.Time
+	Coords        types.SwitchPorts
+	PathID        types.VirtualSnakePathID
+	RootPublicKey types.PublicKey
 }
 
 func newVirtualSnake(r *Router) *virtualSnake {
@@ -103,16 +109,31 @@ func (v *virtualSnake) maintain() {
 
 		v.ascendingMutex.RLock()
 		ascending := v.ascending
-		if ascending != nil && time.Since(ascending.LastSeen) > virtualSnakeNeighExpiryPeriod {
-			ascending = nil
-		}
 		v.ascendingMutex.RUnlock()
+
 		v.descendingMutex.RLock()
 		descending := v.descending
-		if descending != nil && time.Since(descending.LastSeen) > virtualSnakeNeighExpiryPeriod {
-			descending = nil
-		}
 		v.descendingMutex.RUnlock()
+
+		if ascending != nil {
+			switch {
+			case time.Since(ascending.LastSeen) > virtualSnakeNeighExpiryPeriod:
+				fallthrough
+			case ascending.RootPublicKey != v.r.RootPublicKey():
+				v.clearRoutingEntriesForPublicKey(ascending.PublicKey, ascending.PathID, true)
+				ascending = nil
+			}
+		}
+
+		if descending != nil {
+			switch {
+			case time.Since(descending.LastSeen) > virtualSnakeNeighExpiryPeriod:
+				fallthrough
+			case descending.RootPublicKey != v.r.RootPublicKey():
+				v.clearRoutingEntriesForPublicKey(descending.PublicKey, descending.PathID, false)
+				descending = nil
+			}
+		}
 
 		// Send bootstrap messages into the network. Ordinarily we
 		// would only want to do this when starting up or after a
@@ -129,8 +150,10 @@ func (v *virtualSnake) maintain() {
 				if err != nil {
 					return
 				}
-				var payload [8]byte
-				bootstrap := types.VirtualSnakeBootstrap{} // nolint:gosimple
+				var payload [8 + ed25519.PublicKeySize]byte
+				bootstrap := types.VirtualSnakeBootstrap{
+					RootPublicKey: v.r.RootPublicKey(),
+				} // nolint:gosimple
 				if _, err := rand.Read(bootstrap.PathID[:]); err != nil {
 					return
 				}
@@ -277,7 +300,7 @@ func (t *virtualSnake) getVirtualSnakeNextHop(from *Peer, destKey types.PublicKe
 		case !entry.Valid():
 			continue
 		}
-		newCheckedCandidate(dhtKey, entry.SourcePort)
+		newCheckedCandidate(dhtKey.PublicKey, entry.SourcePort)
 	}
 	t.tableMutex.RUnlock()
 
@@ -320,7 +343,7 @@ func (t *virtualSnake) getVirtualSnakeTeardownNextHop(from *Peer, rx *types.Fram
 	t.tableMutex.Lock()
 	defer t.tableMutex.Unlock()
 	for k, v := range t.table {
-		if k == rx.DestinationKey && v.PathID == teardown.PathID {
+		if k.PublicKey == rx.DestinationKey && k.PathID == teardown.PathID {
 			delete(t.table, k)
 			if teardown.Ascending {
 				return types.SwitchPorts{v.DestinationPort}
@@ -338,10 +361,10 @@ func (t *virtualSnake) clearRoutingEntriesForPort(port types.SwitchPortID) {
 	desc := map[types.PublicKey]types.VirtualSnakePathID{}
 	for k, v := range t.table {
 		if v.DestinationPort == port {
-			asc[k] = v.PathID
+			asc[k.PublicKey] = k.PathID
 		}
 		if v.SourcePort == port {
-			desc[k] = v.PathID
+			desc[k.PublicKey] = k.PathID
 		}
 	}
 	t.tableMutex.RUnlock()
@@ -414,9 +437,10 @@ func (t *virtualSnake) handleBootstrap(from *Peer, rx *types.Frame) error {
 		return fmt.Errorf("util.VerifySignedTimestamp")
 	}
 	bootstrapACK := types.VirtualSnakeBootstrapACK{ // nolint:gosimple
-		PathID: bootstrap.PathID,
+		PathID:        bootstrap.PathID,
+		RootPublicKey: t.r.RootPublicKey(),
 	}
-	var buf [8]byte
+	var buf [8 + ed25519.PublicKeySize]byte
 	if _, err := bootstrapACK.MarshalBinary(buf[:]); err != nil {
 		return fmt.Errorf("bootstrapACK.MarshalBinary: %w", err)
 	}
@@ -464,6 +488,8 @@ func (t *virtualSnake) handleBootstrapACK(from *Peer, rx *types.Frame) error {
 		// so either another node has forwarded it to us incorrectly, or
 		// a routing loop has occurred somewhere. Don't act on the bootstrap
 		// in that case.
+	case bootstrapACK.RootPublicKey != t.r.RootPublicKey():
+		// The root key doesn't match ours so ignore the message
 	case t.ascending != nil && t.ascending.PublicKey.EqualTo(rx.SourceKey):
 		// We've received another bootstrap ACK from our direct ascending node.
 		// Just refresh the record and then send a new path setup message to
@@ -489,16 +515,18 @@ func (t *virtualSnake) handleBootstrapACK(from *Peer, rx *types.Frame) error {
 			t.clearRoutingEntriesForPublicKey(t.ascending.PublicKey, bootstrapACK.PathID, true)
 		}
 		t.ascending = &virtualSnakeNeighbour{
-			PublicKey: rx.SourceKey,
-			Port:      from.port,
-			LastSeen:  time.Now(),
-			Coords:    rx.Source,
-			PathID:    bootstrapACK.PathID,
+			PublicKey:     rx.SourceKey,
+			Port:          from.port,
+			LastSeen:      time.Now(),
+			Coords:        rx.Source,
+			PathID:        bootstrapACK.PathID,
+			RootPublicKey: bootstrapACK.RootPublicKey,
 		}
 		setup := types.VirtualSnakeSetup{ // nolint:gosimple
-			PathID: bootstrapACK.PathID,
+			PathID:        bootstrapACK.PathID,
+			RootPublicKey: t.r.RootPublicKey(),
 		}
-		var buf [8]byte
+		var buf [8 + ed25519.PublicKeySize]byte
 		if _, err := setup.MarshalBinary(buf[:]); err != nil {
 			return fmt.Errorf("setup.MarshalBinary: %w", err)
 		}
@@ -544,16 +572,19 @@ func (t *virtualSnake) handleSetup(from *Peer, rx *types.Frame, nextHops types.S
 	// bound the routing table safely, we may want to make sure that we have
 	// a reasonable spread of routes across keyspace so that we don't create
 	// any obvious routing holes.
+	index := virtualSnakeIndex{
+		PublicKey: rx.SourceKey,
+		PathID:    setup.PathID,
+	}
 	entry := virtualSnakeEntry{
 		LastSeen:   time.Now(),
 		SourcePort: from.port,
-		PathID:     setup.PathID,
 	}
 	if len(nextHops) > 0 {
 		entry.DestinationPort = nextHops[0]
 	}
 	t.tableMutex.Lock()
-	t.table[rx.SourceKey] = entry
+	t.table[index] = entry
 	t.tableMutex.Unlock()
 
 	// Did the setup hit a dead end on the way to the ascending node?
@@ -573,6 +604,8 @@ func (t *virtualSnake) handleSetup(from *Peer, rx *types.Frame, nextHops types.S
 			// so either another node has forwarded it to us incorrectly, or
 			// a routing loop has occurred somewhere. Don't act on the bootstrap
 			// in that case.
+		case setup.RootPublicKey != t.r.RootPublicKey():
+			// The root key doesn't match ours so ignore the message
 		case t.descending != nil && t.descending.PublicKey.EqualTo(rx.SourceKey):
 			// We've received another bootstrap from our direct descending node.
 			// Just refresh the record and then send back an acknowledgement.
@@ -597,11 +630,12 @@ func (t *virtualSnake) handleSetup(from *Peer, rx *types.Frame, nextHops types.S
 				t.clearRoutingEntriesForPublicKey(t.descending.PublicKey, setup.PathID, false)
 			}
 			t.descending = &virtualSnakeNeighbour{
-				PublicKey: rx.SourceKey,
-				Port:      from.port,
-				LastSeen:  time.Now(),
-				Coords:    rx.Source,
-				PathID:    setup.PathID,
+				PublicKey:     rx.SourceKey,
+				Port:          from.port,
+				LastSeen:      time.Now(),
+				Coords:        rx.Source,
+				PathID:        setup.PathID,
+				RootPublicKey: setup.RootPublicKey,
 			}
 		default:
 			// The bootstrap conditions weren't met. This might just be because

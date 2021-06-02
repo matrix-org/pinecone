@@ -279,7 +279,7 @@ func (r *Router) KnownNodes() []types.PublicKey {
 	r.snake.ascendingMutex.RUnlock()
 	r.snake.tableMutex.RLock()
 	for k := range r.snake.table {
-		known[k] = struct{}{}
+		known[k.PublicKey] = struct{}{}
 	}
 	r.snake.tableMutex.RUnlock()
 	list := make([]types.PublicKey, 0, len(known))
