@@ -436,6 +436,9 @@ func (t *virtualSnake) handleBootstrap(from *Peer, rx *types.Frame) error {
 	if !util.VerifySignedTimestamp(rx.DestinationKey, rx.Payload[n:]) {
 		return fmt.Errorf("util.VerifySignedTimestamp")
 	}
+	if bootstrap.RootPublicKey != t.r.RootPublicKey() {
+		return fmt.Errorf("public key doesn't match")
+	}
 	bootstrapACK := types.VirtualSnakeBootstrapACK{ // nolint:gosimple
 		PathID:        bootstrap.PathID,
 		RootPublicKey: t.r.RootPublicKey(),
@@ -564,6 +567,10 @@ func (t *virtualSnake) handleSetup(from *Peer, rx *types.Frame, nextHops types.S
 	// Check if the setup packet has a valid signed timestamp.
 	if !util.VerifySignedTimestamp(rx.SourceKey, rx.Payload[n:]) {
 		return fmt.Errorf("invalid signature")
+	}
+	if setup.RootPublicKey != t.r.RootPublicKey() {
+		t.clearRoutingEntriesForPublicKey(rx.SourceKey, setup.PathID, false)
+		return fmt.Errorf("root public key doesn't match")
 	}
 
 	// Add a new routing table entry.
