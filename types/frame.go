@@ -235,7 +235,8 @@ func (f *Frame) UnmarshalBinary(data []byte) (int, error) {
 		}
 		offset += 4 + srcLen
 		offset += copy(f.DestinationKey[:], data[offset:])
-		f.Payload = append([]byte{}, data[offset:offset+payloadLen]...)
+		f.Payload = make([]byte, payloadLen)
+		offset += copy(f.Payload, data[offset:])
 		return offset, nil
 
 	case TypeVirtualSnakeBootstrapACK:
@@ -253,7 +254,8 @@ func (f *Frame) UnmarshalBinary(data []byte) (int, error) {
 		offset += srcLen
 		offset += copy(f.DestinationKey[:], data[offset:])
 		offset += copy(f.SourceKey[:], data[offset:])
-		f.Payload = append([]byte{}, data[offset:offset+payloadLen]...)
+		f.Payload = make([]byte, payloadLen)
+		offset += copy(f.Payload, data[offset:])
 		return offset, nil
 
 	case TypeVirtualSnakeSetup: // destination = coords & key, source = key
@@ -265,14 +267,16 @@ func (f *Frame) UnmarshalBinary(data []byte) (int, error) {
 		offset += 4 + dstLen
 		offset += copy(f.SourceKey[:], data[offset:])
 		offset += copy(f.DestinationKey[:], data[offset:])
-		f.Payload = append([]byte{}, data[offset:offset+payloadLen]...)
+		f.Payload = make([]byte, payloadLen)
+		offset += copy(f.Payload, data[offset:])
 		return offset, nil
 
 	case TypeVirtualSnakeTeardown: // destination = key
 		payloadLen := int(binary.BigEndian.Uint16(data[offset+0 : offset+2]))
 		offset += 2
 		offset += copy(f.DestinationKey[:], data[offset:])
-		f.Payload = append([]byte{}, data[offset:offset+payloadLen]...)
+		f.Payload = make([]byte, payloadLen)
+		offset += copy(f.Payload, data[offset:])
 		return offset, nil
 
 	case TypeVirtualSnake, TypeVirtualSnakePathfind: // destination = key, source = key
@@ -280,7 +284,8 @@ func (f *Frame) UnmarshalBinary(data []byte) (int, error) {
 		offset += 2
 		offset += copy(f.DestinationKey[:], data[offset:])
 		offset += copy(f.SourceKey[:], data[offset:])
-		f.Payload = append([]byte{}, data[offset:offset+payloadLen]...)
+		f.Payload = make([]byte, payloadLen)
+		offset += copy(f.Payload, data[offset:])
 		return offset + payloadLen, nil
 
 	default: // destination = coords, source = coords
@@ -299,7 +304,8 @@ func (f *Frame) UnmarshalBinary(data []byte) (int, error) {
 			return 0, fmt.Errorf("f.Source.UnmarshalBinary: %w", err)
 		}
 		offset += srcLen
-		f.Payload = append([]byte{}, data[offset:offset+payloadLen]...)
+		f.Payload = make([]byte, payloadLen)
+		offset += copy(f.Payload, data[offset:])
 		return offset + payloadLen, nil
 	}
 }
