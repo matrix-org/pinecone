@@ -26,11 +26,6 @@ import (
 	"github.com/matrix-org/pinecone/util"
 )
 
-// announcementThreshold is the amount of time that must
-// pass before the node will accept a root announcement
-// again from the same peer.
-const announcementThreshold = time.Minute
-
 // announcementInterval is the frequency at which this
 // node will send root announcements to other peers.
 const announcementInterval = time.Minute * 15
@@ -38,7 +33,7 @@ const announcementInterval = time.Minute * 15
 // announcementTimeout is the amount of time that must
 // pass without receiving a root announcement before we
 // will assume that the peer is dead.
-const announcementTimeout = announcementInterval * 3
+const announcementTimeout = announcementInterval * 2
 
 func (r *Router) handleAnnouncement(peer *Peer, rx *types.Frame) {
 	var new types.SwitchAnnouncement
@@ -226,16 +221,8 @@ func (t *spanningTree) Parent() types.SwitchPortID {
 }
 
 func (t *spanningTree) Update(p *Peer, newUpdate types.SwitchAnnouncement) error {
-	lastGlobalUpdate := t.Root()
-	lastPortUpdate := p.lastAnnouncement()
-	if lastPortUpdate == nil {
-		lastPortUpdate = &rootAnnouncementWithTime{}
-	}
-
-	// ------ SANITY CHECK THE UPDATE ITSELF ------
-
 	sigs := make(map[string]struct{})
-	isChild := false
+	isLoopbackUpdate := false
 	for index, sig := range newUpdate.Signatures {
 		if index == 0 && sig.PublicKey != newUpdate.RootPublicKey {
 			// The first signature in the announcement must be from the
@@ -262,7 +249,7 @@ func (t *spanningTree) Update(p *Peer, newUpdate types.SwitchAnnouncement) error
 			// is some special behaviour: we usually will need to accept
 			// the update on the port, but we don't want to do anything that
 			// would influence root or coordinate changes.
-			isChild = true
+			isLoopbackUpdate = true
 		}
 		pk := hex.EncodeToString(sig.PublicKey[:])
 		if _, ok := sigs[pk]; ok {
@@ -273,65 +260,49 @@ func (t *spanningTree) Update(p *Peer, newUpdate types.SwitchAnnouncement) error
 		sigs[pk] = struct{}{}
 	}
 
-	// ------ STORE THE NEW UPDATE FOR THE PEER ------
-
 	p.updateAnnouncement(&newUpdate)
 
-	if isChild {
+	if isLoopbackUpdate {
+		// The update contains our own signature already, so using it for
+		// a root update would create a loop
 		return nil
 	}
 
-	// ------ SANITY CHECK THE PREVIOUS UPDATE FROM THIS PEER ------
-
-	portKeyDelta := newUpdate.RootPublicKey.CompareTo(lastPortUpdate.RootPublicKey)
-	portTimeSince := time.Since(lastPortUpdate.at)
-
-	switch {
-	case portKeyDelta < 0: // Weaker root key
-		return fmt.Errorf("rejecting update (weaker than last update)")
-
-	case portKeyDelta == 0: // Same root key
-		switch {
-		case portTimeSince < announcementThreshold:
-		//	return fmt.Errorf("rejecting update (too soon from same key after %s)", portTimeSince)
-
-		case newUpdate.Sequence <= lastPortUpdate.Sequence:
-			return fmt.Errorf("rejecting update (replayed sequence %d)", newUpdate.Sequence)
-		}
-	}
-
-	// ------ SANITY CHECK THE ACTUAL ROOT UPDATE FOR THE ENTIRE NODE ITSELF ------
-
+	lastGlobalUpdate := t.Root()
 	globalKeyDelta := newUpdate.RootPublicKey.CompareTo(lastGlobalUpdate.RootPublicKey)
 	globalTimeSince := time.Since(lastGlobalUpdate.at)
 	globalUpdate := false
 
 	switch {
-	case isChild:
-		// The update contains our own key, so it's been looped back to us,
-		// so we can't use it as a path to the root
-		return nil
-
 	case globalTimeSince > announcementTimeout:
-		// The global announcement hasn't been updated recently so we'll
-		// accept this update in the meantime
+		// We haven't seen a suitable root update recently so we'll accept
+		// this one instead
 		globalUpdate = true
 
 	case globalKeyDelta < 0:
-		// The key is weaker than our existing root
-		return fmt.Errorf("rejecting update (weaker than root)")
+		// The root key is weaker than our existing root, so it's no good
+		return nil
 
-	case globalKeyDelta == 0: // Same root key
+	case globalKeyDelta == 0:
+		// The update is from the same root node, let's see if it matches
+		// any other useful conditions
+
 		switch {
 		case newUpdate.Sequence < lastGlobalUpdate.Sequence:
-			// This is a replay of an earlier update so ignore it
+			// This is a replay of an earlier update, therefore we should
+			// ignore it, even if it came from our parent node
+			return nil
 
-		//case len(newUpdate.Signatures) < len(lastPortUpdate.Signatures): // <- better stability
-		case len(newUpdate.Signatures) < len(lastGlobalUpdate.Signatures): // <- shorter paths
+		case len(newUpdate.Signatures) < len(lastGlobalUpdate.Signatures):
+			// The path to the root is shorter than our last update, so
+			// we'll accept it
 			globalUpdate = true
 		}
 
-	case globalKeyDelta > 0: // Stronger root key
+	case globalKeyDelta > 0:
+		// The root key is stronger than our existing root, therefore we'll
+		// accept it anyway, since we always want to converge on the
+		// strongest root key
 		globalUpdate = true
 	}
 
