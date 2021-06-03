@@ -17,6 +17,7 @@ package simulator
 import (
 	"fmt"
 	"net"
+	"time"
 
 	"github.com/matrix-org/pinecone/router"
 )
@@ -44,6 +45,12 @@ func (sim *Simulator) ConnectNodes(a, b string) error {
 		return fmt.Errorf("net.Dial: %w", err)
 	}
 	if err := c.SetNoDelay(true); err != nil {
+		panic(err)
+	}
+	if err := c.SetKeepAlive(true); err != nil {
+		panic(err)
+	}
+	if err := c.SetKeepAlivePeriod(time.Second / 10); err != nil {
 		panic(err)
 	}
 	if _, err := nb.AuthenticatedConnect(c, "sim", router.PeerTypeRemote); err != nil {

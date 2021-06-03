@@ -407,29 +407,15 @@ func (r *Router) Connect(conn net.Conn, public types.PublicKey, zone string, pee
 		if err := r.ports[i].start(); err != nil {
 			return 0, fmt.Errorf("port.start: %w", err)
 		}
+		r.active.Store(hex.EncodeToString(public[:])+zone, i)
 		if i != 0 {
 			r.dht.insertNode(r.ports[i])
 		}
 		if r.simulator != nil {
 			r.simulator.ReportNewLink(conn, r.public, public)
 		}
-		r.active.Store(hex.EncodeToString(public[:])+zone, i)
 		r.snake.portWasConnected(i)
 		go r.callbacks.onConnected(i, public, peertype)
-		/*
-			if i != 0 {
-				go func(r *Router, p *Peer) {
-					select {
-					case <-p.context.Done():
-						// port's already dead so give up
-					case <-time.After(announcementInterval):
-						if !p.alive.Load() {
-							_ = r.Disconnect(p.port, fmt.Errorf("timed out waiting for tree announcement"))
-						}
-					}
-				}(r, r.ports[i])
-			}
-		*/
 		r.log.Printf("Connected port %d to %s (zone %q)\n", i, conn.RemoteAddr(), zone)
 		return i, nil
 	}
@@ -446,10 +432,10 @@ func (r *Router) Disconnect(i types.SwitchPortID, err error) error {
 	}
 	r.connections.Lock()
 	defer r.connections.Unlock()
-	r.active.Delete(hex.EncodeToString(r.ports[i].public[:]) + r.ports[i].zone)
 	if stoperr := r.ports[i].stop(); stoperr != nil {
 		return fmt.Errorf("port.stop: %w", stoperr)
 	}
+	r.active.Delete(hex.EncodeToString(r.ports[i].public[:]) + r.ports[i].zone)
 	r.ports[i].mutex.Lock()
 	r.ports[i].peertype = 0
 	r.ports[i].zone = ""

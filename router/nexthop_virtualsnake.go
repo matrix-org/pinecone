@@ -18,7 +18,6 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"fmt"
-	"math"
 	"sync"
 	"time"
 
@@ -90,7 +89,7 @@ func (v *virtualSnake) maintain() {
 		if peerCount == 0 {
 			v.maintainInterval.Store(1)
 		}
-		exp := math.Exp2(float64(v.maintainInterval.Load()))
+		exp := v.maintainInterval.Load() + 1
 		after := time.Second * time.Duration(exp)
 		select {
 		case <-v.r.context.Done():
@@ -437,7 +436,7 @@ func (t *virtualSnake) handleBootstrap(from *Peer, rx *types.Frame) error {
 		return fmt.Errorf("util.VerifySignedTimestamp")
 	}
 	if bootstrap.RootPublicKey != t.r.RootPublicKey() {
-		return fmt.Errorf("public key doesn't match")
+		return fmt.Errorf("root key doesn't match")
 	}
 	bootstrapACK := types.VirtualSnakeBootstrapACK{ // nolint:gosimple
 		PathID:        bootstrap.PathID,
@@ -471,7 +470,7 @@ func (t *virtualSnake) handleBootstrapACK(from *Peer, rx *types.Frame) error {
 	}
 	// Check if the packet has a valid signed timestamp.
 	if !util.VerifySignedTimestamp(rx.SourceKey, rx.Payload[n:]) {
-		return fmt.Errorf("util.VerifySignedTimestamp: %w", err)
+		return fmt.Errorf("util.VerifySignedTimestamp")
 	}
 	var send *types.Frame
 	defer func() {
@@ -514,8 +513,10 @@ func (t *virtualSnake) handleBootstrapACK(from *Peer, rx *types.Frame) error {
 		// new node that we've received a bootstrap from is actually closer to
 		// us than the previous node. We'll update our record to use the new
 		// node instead and then send a new path setup message to it.
-		if t.ascending != nil && rx.SourceKey != t.ascending.PublicKey {
-			t.clearRoutingEntriesForPublicKey(t.ascending.PublicKey, bootstrapACK.PathID, true)
+		if t.ascending != nil {
+			if rx.SourceKey != t.ascending.PublicKey || bootstrapACK.PathID != t.ascending.PathID {
+				t.clearRoutingEntriesForPublicKey(t.ascending.PublicKey, t.ascending.PathID, true)
+			}
 		}
 		t.ascending = &virtualSnakeNeighbour{
 			PublicKey:     rx.SourceKey,
@@ -570,7 +571,7 @@ func (t *virtualSnake) handleSetup(from *Peer, rx *types.Frame, nextHops types.S
 	}
 	if setup.RootPublicKey != t.r.RootPublicKey() {
 		t.clearRoutingEntriesForPublicKey(rx.SourceKey, setup.PathID, false)
-		return fmt.Errorf("root public key doesn't match")
+		return fmt.Errorf("root key doesn't match")
 	}
 
 	// Add a new routing table entry.
@@ -633,8 +634,10 @@ func (t *virtualSnake) handleSetup(from *Peer, rx *types.Frame, nextHops types.S
 			// new node that we've received a bootstrap from is actually closer to
 			// us than the previous node. We'll update our record to use the new
 			// node instead and then send back a bootstrap ACK.
-			if t.descending != nil && rx.SourceKey != t.descending.PublicKey {
-				t.clearRoutingEntriesForPublicKey(t.descending.PublicKey, setup.PathID, false)
+			if t.descending != nil {
+				if rx.SourceKey != t.descending.PublicKey || t.descending.PathID != setup.PathID {
+					t.clearRoutingEntriesForPublicKey(t.descending.PublicKey, t.descending.PathID, false)
+				}
 			}
 			t.descending = &virtualSnakeNeighbour{
 				PublicKey:     rx.SourceKey,

@@ -38,12 +38,8 @@ func main() {
 		panic(err)
 	}
 
-	dialer := net.Dialer{
-		Timeout:   time.Second * 5,
-		KeepAlive: time.Second * 1,
-	}
 	listener := net.ListenConfig{
-		KeepAlive: time.Second * 1,
+		KeepAlive: time.Second,
 	}
 
 	logger := log.New(os.Stdout, "", 0)
@@ -70,8 +66,25 @@ func main() {
 
 	if connect != nil && *connect != "" {
 		go func() {
-			conn, err := dialer.Dial("tcp", *connect)
+			addr, err := net.ResolveTCPAddr("tcp", *connect)
 			if err != nil {
+				panic(err)
+			}
+
+			conn, err := net.DialTCP("tcp", nil, addr)
+			if err != nil {
+				panic(err)
+			}
+
+			if err := conn.SetNoDelay(true); err != nil {
+				panic(err)
+			}
+
+			if err := conn.SetKeepAlive(true); err != nil {
+				panic(err)
+			}
+
+			if err := conn.SetKeepAlivePeriod(time.Second); err != nil {
 				panic(err)
 			}
 
