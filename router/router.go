@@ -231,12 +231,22 @@ func (r *Router) DHTSearch(ctx context.Context, pk ed25519.PublicKey, stopshort 
 	return r.dht.search(ctx, public, stopshort)
 }
 
+func (r *Router) DHTInfo() (asc, desc *virtualSnakeNeighbour, table map[virtualSnakeIndex]virtualSnakeEntry) {
+	asc = r.snake.ascending()
+	desc = r.snake.descending()
+	r.snake.tableMutex.RLock()
+	table = map[virtualSnakeIndex]virtualSnakeEntry{}
+	for k, v := range r.snake.table {
+		table[k] = v
+	}
+	r.snake.tableMutex.RUnlock()
+	return
+}
+
 // DHTPredecessor returns the public key of the previous node in
 // the DHT snake.
 func (r *Router) Predecessor() *types.PublicKey {
-	r.snake.descendingMutex.RLock()
-	pr := r.snake.descending
-	r.snake.descendingMutex.RUnlock()
+	pr := r.snake.descending()
 	if pr == nil { // || time.Since(pr.LastSeen) >= virtualSnakeNeighExpiryPeriod {
 		return nil
 	}
@@ -247,9 +257,7 @@ func (r *Router) Predecessor() *types.PublicKey {
 // DHTSuccessor returns the public key of the next node in the
 // DHT snake.
 func (r *Router) Successor() *types.PublicKey {
-	r.snake.ascendingMutex.RLock()
-	su := r.snake.ascending
-	r.snake.ascendingMutex.RUnlock()
+	su := r.snake.ascending()
 	if su == nil { //|| time.Since(su.LastSeen) >= virtualSnakeNeighExpiryPeriod {
 		return nil
 	}
@@ -267,16 +275,12 @@ func (r *Router) KnownNodes() []types.PublicKey {
 		known[p.public] = struct{}{}
 		p.mutex.RUnlock()
 	}
-	r.snake.descendingMutex.RLock()
-	if p := r.snake.descending; p != nil {
+	if p := r.snake.descending(); p != nil {
 		known[p.PublicKey] = struct{}{}
 	}
-	r.snake.descendingMutex.RUnlock()
-	r.snake.ascendingMutex.RLock()
-	if s := r.snake.ascending; s != nil {
+	if s := r.snake.ascending(); s != nil {
 		known[s.PublicKey] = struct{}{}
 	}
-	r.snake.ascendingMutex.RUnlock()
 	r.snake.tableMutex.RLock()
 	for k := range r.snake.table {
 		known[k.PublicKey] = struct{}{}

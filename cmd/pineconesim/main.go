@@ -263,24 +263,53 @@ func configureHTTPRouting(sim *simulator.Simulator) {
 		for _, n := range nodeids {
 			node := nodes[n]
 			public := node.PublicKey()
+			predecessor, successor, table := node.DHTInfo()
 			entry := Node{
-				Name:   n,
-				Port:   fmt.Sprintf("%d", node.ListenAddr.Port),
-				Coords: fmt.Sprintf("%v", node.Coords()),
-				Key:    hex.EncodeToString(public[:2]),
-				IsRoot: node.IsRoot(),
+				Name:    n,
+				Port:    fmt.Sprintf("%d", node.ListenAddr.Port),
+				Coords:  fmt.Sprintf("%v", node.Coords()),
+				Key:     hex.EncodeToString(public[:2]),
+				IsRoot:  node.IsRoot(),
+				DHTSize: len(table),
 			}
 			rootkey := node.RootPublicKey()
 			entry.Root = hex.EncodeToString(rootkey[:2])
-			if predecessor := node.Predecessor(); predecessor != nil {
-				entry.Predecessor = hex.EncodeToString(predecessor[:2])
+			if predecessor != nil {
+				entry.Predecessor = hex.EncodeToString(predecessor.PublicKey[:2])
 			}
-			if successor := node.Successor(); successor != nil {
-				entry.Successor = hex.EncodeToString(successor[:2])
+			if successor != nil {
+				entry.Successor = hex.EncodeToString(successor.PublicKey[:2])
 			}
 			data.Nodes = append(data.Nodes, entry)
 			data.NodeCount++
 			roots[entry.Root]++
+		}
+
+		if nodeID := r.URL.Query().Get("node"); nodeID != "" {
+			if node, ok := nodes[nodeID]; ok {
+				pk := node.Router.PublicKey()
+				asc, desc, dht := node.Router.DHTInfo()
+				data.DHTInfo = &DHTInfo{
+					PublicKey: hex.EncodeToString(pk[:2]),
+				}
+				if asc != nil {
+					data.DHTInfo.Ascending = hex.EncodeToString(asc.PublicKey[:2])
+				}
+				if desc != nil {
+					data.DHTInfo.Descending = hex.EncodeToString(desc.PublicKey[:2])
+				}
+				for k, v := range dht {
+					data.DHTInfo.Entries = append(
+						data.DHTInfo.Entries,
+						DHTEntry{
+							PublicKey:       hex.EncodeToString(k.PublicKey[:2]),
+							PathID:          hex.EncodeToString(k.PathID[:]),
+							DestinationPort: int(v.DestinationPort),
+							SourcePort:      int(v.SourcePort),
+						},
+					)
+				}
+			}
 		}
 
 		for range wires {
@@ -397,6 +426,7 @@ type Node struct {
 	Successor   string
 	IsRoot      bool
 	IsExternal  bool
+	DHTSize     int
 }
 
 type Link struct {
@@ -415,6 +445,21 @@ type PageData struct {
 	AvgStretch          string
 	TreePathConvergence string
 	SNEKPathConvergence string
+	DHTInfo             *DHTInfo
+}
+
+type DHTInfo struct {
+	PublicKey  string
+	Ascending  string
+	Descending string
+	Entries    []DHTEntry
+}
+
+type DHTEntry struct {
+	PublicKey       string
+	DestinationPort int
+	SourcePort      int
+	PathID          string
 }
 
 type Root struct {
