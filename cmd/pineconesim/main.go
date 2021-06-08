@@ -254,6 +254,7 @@ func configureHTTPRouting(sim *simulator.Simulator) {
 			data.TreePathConvergence = fmt.Sprintf("%d%%", (dhtConvergence*100)/totalCount)
 			data.SNEKPathConvergence = fmt.Sprintf("%d%%", (pathConvergence*100)/totalCount)
 		}
+		shortcuts := map[string]string{}
 		roots := map[string]int{}
 		nodeids := []string{}
 		for n := range nodes {
@@ -272,6 +273,7 @@ func configureHTTPRouting(sim *simulator.Simulator) {
 				IsRoot:  node.IsRoot(),
 				DHTSize: len(table),
 			}
+			shortcuts[entry.Key] = n
 			rootkey := node.RootPublicKey()
 			entry.Root = hex.EncodeToString(rootkey[:2])
 			if predecessor != nil {
@@ -285,8 +287,8 @@ func configureHTTPRouting(sim *simulator.Simulator) {
 			roots[entry.Root]++
 		}
 
-		if nodeID := r.URL.Query().Get("node"); nodeID != "" {
-			if node, ok := nodes[nodeID]; ok {
+		if nodeKey := r.URL.Query().Get("pk"); nodeKey != "" {
+			if node, ok := nodes[shortcuts[nodeKey]]; ok {
 				pk := node.Router.PublicKey()
 				asc, desc, dht := node.Router.DHTInfo()
 				data.DHTInfo = &DHTInfo{
@@ -309,6 +311,7 @@ func configureHTTPRouting(sim *simulator.Simulator) {
 						},
 					)
 				}
+				sort.Sort(data.DHTInfo.Entries)
 			}
 		}
 
@@ -452,7 +455,24 @@ type DHTInfo struct {
 	PublicKey  string
 	Ascending  string
 	Descending string
-	Entries    []DHTEntry
+	Entries    DHTEntries
+}
+
+type DHTEntries []DHTEntry
+
+func (e DHTEntries) Len() int {
+	return len(e)
+}
+func (e DHTEntries) Swap(i, j int) {
+	e[i], e[j] = e[j], e[i]
+}
+func (e DHTEntries) Less(i, j int) bool {
+	pk := strings.Compare(e[i].PublicKey, e[j].PublicKey)
+	pi := strings.Compare(e[i].PathID, e[j].PathID)
+	if pk == 0 {
+		return pi < 0
+	}
+	return pk < 0
 }
 
 type DHTEntry struct {

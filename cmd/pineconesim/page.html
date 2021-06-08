@@ -6,6 +6,9 @@
         body {
             font-family: -apple-system, sans-serif;
         }
+        a {
+            color: black;
+        }
         div.row {
             padding: 1em;
         }
@@ -125,11 +128,11 @@
                         <td>{{.Name}}</td>
                         <td><code>{{.Port}}</code></td>
                         <td><code>{{.Coords}}</code></td>
-                        <td><code>{{.Root}}</code></td>
-                        <td><code>{{.Predecessor}}</code></td>
-                        <td><code>{{.Key}}</code></td>
-                        <td><code>{{.Successor}}</code></td>
-                        <td><a href="?view=snek&node={{.Name}}"><code>{{.DHTSize}}</code></a></td>
+                        <td><a href="?view=snek&pk={{.Root}}"><code>{{.Root}}</code></a></td>
+                        <td><a href="?view=snek&pk={{.Predecessor}}"><code>{{.Predecessor}}</code></a></td>
+                        <td><a href="?view=snek&pk={{.Key}}"><code>{{.Key}}</code></a></td>
+                        <td><a href="?view=snek&pk={{.Successor}}"><code>{{.Successor}}</code></a></td>
+                        <td><a href="?view=snek&pk={{.Key}}"><code>{{.DHTSize}}</code></a></td>
                     {{end}}</tr>{{end}}
                 </table>
 
@@ -172,15 +175,15 @@
                 <table>
                     <tr>
                         <td>Public Key:</td>
-                        <td><code>{{.DHTInfo.PublicKey}}</code></td>
+                        <td><code><a href="?view=snek&pk={{.DHTInfo.PublicKey}}">{{.DHTInfo.PublicKey}}</a></code></td>
                     </tr>
                     <tr>
                         <td>Descending:</td>
-                        <td><code>{{.DHTInfo.Descending}}</code></td>
+                        <td><code><a href="?view=snek&pk={{.DHTInfo.Descending}}">{{.DHTInfo.Descending}}</a></code></td>
                     </tr>
                     <tr>
                         <td>Ascending:</td>
-                        <td><code>{{.DHTInfo.Ascending}}</code></td>
+                        <td><code><a href="?view=snek&pk={{.DHTInfo.Ascending}}">{{.DHTInfo.Ascending}}</a></code></td>
                     </tr>
                 </table>
                 <h4>DHT Entries</h4>
@@ -193,7 +196,7 @@
                     </tr>
                 {{range .DHTInfo.Entries}}
                     <tr>
-                        <td><code>{{.PublicKey}}</code></td>
+                        <td><code><a href="?view=snek&pk={{.PublicKey}}">{{.PublicKey}}</a></code></td>
                         <td><code>{{.PathID}}</code></td>
                         <td><code>{{.SourcePort}}</code></td>
                         <td><code>{{.DestinationPort}}</code></td>

@@ -531,7 +531,7 @@ func (t *virtualSnake) handleBootstrapACK(from *Peer, rx *types.Frame) error {
 	if update {
 		if asc != nil && !rx.SourceKey.EqualTo(asc.PublicKey) {
 			t.sendTeardownsForKey(asc.PublicKey, true, fmt.Errorf("replacing ascending"))
-			//t.sendTeardownForPath(asc.PublicKey, asc.PathID, true, fmt.Errorf("replacing ascending"))
+			//t.sendTeardownForPath(asc.PublicKey, asc.PathID, asc.Port, true, fmt.Errorf("replacing ascending"))
 		}
 		t.setAscending(&virtualSnakeNeighbour{
 			PublicKey:     rx.SourceKey,
@@ -635,11 +635,8 @@ func (t *virtualSnake) handleSetup(from *Peer, rx *types.Frame, nextHops types.S
 		}
 		if update {
 			if desc != nil {
-				t.sendTeardownForPath(desc.PublicKey, desc.PathID, desc.Port, false, fmt.Errorf("replacing descending"))
-				//t.sendTeardownsForKey(desc.PublicKey, false, fmt.Errorf("replacing descending"))
-				t.tableMutex.Lock()
-				delete(t.table, virtualSnakeIndex{desc.PublicKey, desc.PathID})
-				t.tableMutex.Unlock()
+				//t.sendTeardownForPath(desc.PublicKey, desc.PathID, desc.Port, false, fmt.Errorf("replacing descending"))
+				t.sendTeardownsForKey(desc.PublicKey, false, fmt.Errorf("replacing descending"))
 			}
 			t.setDescending(&virtualSnakeNeighbour{
 				PublicKey:     rx.SourceKey,
