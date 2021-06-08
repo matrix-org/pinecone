@@ -530,8 +530,16 @@ func (t *virtualSnake) handleBootstrapACK(from *Peer, rx *types.Frame) error {
 	}
 	if update {
 		if asc != nil && !rx.SourceKey.EqualTo(asc.PublicKey) {
-			t.sendTeardownsForKey(asc.PublicKey, true, fmt.Errorf("replacing ascending"))
-			//t.sendTeardownForPath(asc.PublicKey, asc.PathID, asc.Port, true, fmt.Errorf("replacing ascending"))
+			// Remote side is responsible for clearing up the replaced path, but
+			// we do want to make sure we don't have any old paths to other nodes
+			// that *aren't* the new ascending node lying around.
+			t.tableMutex.RLock()
+			for k, v := range t.table {
+				if v.SourcePort == 0 && !k.PublicKey.EqualTo(rx.SourceKey) {
+					defer t.sendTeardownForPath(k.PublicKey, k.PathID, v.DestinationPort, true, fmt.Errorf("replacing ascending"))
+				}
+			}
+			t.tableMutex.RUnlock()
 		}
 		t.setAscending(&virtualSnakeNeighbour{
 			PublicKey:     rx.SourceKey,
@@ -594,6 +602,14 @@ func (t *virtualSnake) handleSetup(from *Peer, rx *types.Frame, nextHops types.S
 		}
 	}
 
+	// Is the setup a duplicate of one we already have in our table?
+	t.tableMutex.RLock()
+	if _, ok := t.table[virtualSnakeIndex{rx.SourceKey, setup.PathID}]; ok {
+		t.sendTeardownForPath(rx.SourceKey, setup.PathID, from.port, false, fmt.Errorf("rejecting setup (duplicate)"))
+		return fmt.Errorf("setup is a duplicate")
+	}
+	t.tableMutex.RUnlock()
+
 	var addToRoutingTable bool
 
 	// If we're at the destination of the setup then update our predecessor
@@ -607,7 +623,7 @@ func (t *virtualSnake) handleSetup(from *Peer, rx *types.Frame, nextHops types.S
 			// so either another node has forwarded it to us incorrectly, or
 			// a routing loop has occurred somewhere. Don't act on the bootstrap
 			// in that case.
-		case desc != nil && desc.PublicKey.EqualTo(rx.SourceKey) && desc.PathID != setup.PathID:
+		case desc != nil && desc.PublicKey.EqualTo(rx.SourceKey): // && desc.PathID != setup.PathID:
 			// We've received another bootstrap from our direct descending node.
 			// Just refresh the record and then send back an acknowledgement.
 			update = true
@@ -635,8 +651,8 @@ func (t *virtualSnake) handleSetup(from *Peer, rx *types.Frame, nextHops types.S
 		}
 		if update {
 			if desc != nil {
-				//t.sendTeardownForPath(desc.PublicKey, desc.PathID, desc.Port, false, fmt.Errorf("replacing descending"))
-				t.sendTeardownsForKey(desc.PublicKey, false, fmt.Errorf("replacing descending"))
+				// Tear down the previous path, if there was one.
+				t.sendTeardownForPath(desc.PublicKey, desc.PathID, desc.Port, false, fmt.Errorf("replacing descending"))
 			}
 			t.setDescending(&virtualSnakeNeighbour{
 				PublicKey:     rx.SourceKey,
@@ -648,6 +664,7 @@ func (t *virtualSnake) handleSetup(from *Peer, rx *types.Frame, nextHops types.S
 			})
 			addToRoutingTable = true
 		} else {
+			// The new path wasn't good enough so tear down that instead.
 			t.sendTeardownForPath(rx.SourceKey, setup.PathID, from.port, false, fmt.Errorf("rejecting setup (no conditions met)"))
 		}
 	} else {

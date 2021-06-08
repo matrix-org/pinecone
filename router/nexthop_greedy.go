@@ -49,7 +49,7 @@ func (r *Router) getGreedyRoutedNextHop(from *Peer, rx *types.Frame) types.Switc
 		// Don't deliberately create routing loops by forwarding
 		// to a node that doesn't share our root - the coordinate
 		// system will be different.
-		if !p.SeenCommonRootRecently() {
+		if p.port == from.port || !p.SeenCommonRootRecently() {
 			continue
 		}
 
