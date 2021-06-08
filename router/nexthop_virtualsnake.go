@@ -380,7 +380,6 @@ func (t *virtualSnake) getVirtualSnakeTeardownNextHop(from *Peer, rx *types.Fram
 					return types.SwitchPorts{v.SourcePort}
 				}
 			default:
-				panic(fmt.Sprintf("teardown came from port %d but should have been from %d or %d", from.port, v.SourcePort, v.DestinationPort))
 			}
 		}
 	}
@@ -401,7 +400,6 @@ func (t *virtualSnake) sendTeardownsForPort(port types.SwitchPortID) {
 }
 
 func (t *virtualSnake) sendTeardownForPath(pk types.PublicKey, pathID types.VirtualSnakePathID, via types.SwitchPortID, ascending bool, err error) {
-	t.r.log.Println("Tear down", pk, "path", pathID, "because:", err)
 	var payload [9]byte
 	teardown := types.VirtualSnakeTeardown{ // nolint:gosimple
 		PathID:    pathID,
