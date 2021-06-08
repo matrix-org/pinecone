@@ -99,17 +99,8 @@ func (a *SwitchPorts) Copy() SwitchPorts {
 }
 
 func (a SwitchPorts) DistanceTo(b SwitchPorts) int {
-	// Find out what the common ancestor is between "a" and "b".
 	ancestor := getCommonPrefix(a, b)
-
-	// Work out what the distance is between the destination and
-	// the common ancestor, and the peer and the common ancestor.
-	//distA, distB := len(a)-ancestor, len(b)-ancestor
 	return len(a) + len(b) - 2*ancestor
-
-	// Work out the total distance on the tree between the peer
-	// and the destination.
-	//return distA + distB
 }
 
 func getCommonPrefix(a, b SwitchPorts) int {

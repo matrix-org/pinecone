@@ -15,8 +15,36 @@
 package router
 
 import (
+	"fmt"
+	"time"
+
 	"github.com/matrix-org/pinecone/types"
+	"go.uber.org/atomic"
 )
+
+var (
+	countSTP          atomic.Uint64
+	countBootstrap    atomic.Uint64
+	countBootstrapACK atomic.Uint64
+	countTeardown     atomic.Uint64
+	countSetup        atomic.Uint64
+)
+
+func init() {
+	go func() {
+		for {
+			time.Sleep(time.Second)
+			fmt.Printf(
+				"--- STP: %d, B: %d, BA: %d, T: %d, S: %d ---\n",
+				countSTP.Load(),
+				countBootstrap.Load(),
+				countBootstrapACK.Load(),
+				countTeardown.Load(),
+				countSetup.Load(),
+			)
+		}
+	}()
+}
 
 // getNextHops is called to determine the next-hop ports for a given
 // packet. This function will determine the frame type and automatically
@@ -25,16 +53,18 @@ import (
 //    spanning tree coordinates;
 //  * source routing, where the path is already known ahead of time;
 //  * virtual snake routing, for most traffic.
-// This function also ensures that root announcements, boostrap and
+// This function also ensures that root announcements, bootstrap and
 // path setup messages are processed as necessary.
 func (p *Peer) getNextHops(frame *types.Frame, from types.SwitchPortID) types.SwitchPorts {
 	switch frame.Type {
 	case types.TypeSTP:
+		countSTP.Inc()
 		if from != 0 {
 			p.r.handleAnnouncement(p, frame)
 		}
 
 	case types.TypeVirtualSnakeBootstrap:
+		countBootstrap.Inc()
 		nextHops := p.r.snake.getVirtualSnakeNextHop(p, frame.DestinationKey, true)
 		if nextHops.EqualTo(types.SwitchPorts{0}) {
 			if err := p.r.snake.handleBootstrap(p, frame); err != nil {
@@ -45,6 +75,7 @@ func (p *Peer) getNextHops(frame *types.Frame, from types.SwitchPortID) types.Sw
 		}
 
 	case types.TypeVirtualSnakeBootstrapACK:
+		countBootstrapACK.Inc()
 		nextHops := p.r.getGreedyRoutedNextHop(p, frame)
 		if nextHops.EqualTo(types.SwitchPorts{0}) {
 			if err := p.r.snake.handleBootstrapACK(p, frame); err != nil {
@@ -55,9 +86,11 @@ func (p *Peer) getNextHops(frame *types.Frame, from types.SwitchPortID) types.Sw
 		}
 
 	case types.TypeVirtualSnakeTeardown:
+		countTeardown.Inc()
 		return p.r.snake.getVirtualSnakeTeardownNextHop(p, frame)
 
 	case types.TypeVirtualSnakeSetup:
+		countSetup.Inc()
 		nextHops := p.r.getGreedyRoutedNextHop(p, frame)
 		if err := p.r.snake.handleSetup(p, frame, nextHops); err == nil {
 			return nextHops

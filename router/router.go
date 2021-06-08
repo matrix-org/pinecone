@@ -245,7 +245,7 @@ func (r *Router) DHTInfo() (asc, desc *virtualSnakeNeighbour, table map[virtualS
 
 // DHTPredecessor returns the public key of the previous node in
 // the DHT snake.
-func (r *Router) Predecessor() *types.PublicKey {
+func (r *Router) Descending() *types.PublicKey {
 	pr := r.snake.descending()
 	if pr == nil { // || time.Since(pr.LastSeen) >= virtualSnakeNeighExpiryPeriod {
 		return nil
@@ -256,7 +256,7 @@ func (r *Router) Predecessor() *types.PublicKey {
 
 // DHTSuccessor returns the public key of the next node in the
 // DHT snake.
-func (r *Router) Successor() *types.PublicKey {
+func (r *Router) Ascending() *types.PublicKey {
 	su := r.snake.ascending()
 	if su == nil { //|| time.Since(su.LastSeen) >= virtualSnakeNeighExpiryPeriod {
 		return nil
