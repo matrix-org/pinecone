@@ -254,6 +254,7 @@ func configureHTTPRouting(sim *simulator.Simulator) {
 			data.TreePathConvergence = fmt.Sprintf("%d%%", (dhtConvergence*100)/totalCount)
 			data.SNEKPathConvergence = fmt.Sprintf("%d%%", (pathConvergence*100)/totalCount)
 		}
+		shortcuts := map[string]string{}
 		roots := map[string]int{}
 		nodeids := []string{}
 		for n := range nodes {
@@ -263,24 +264,70 @@ func configureHTTPRouting(sim *simulator.Simulator) {
 		for _, n := range nodeids {
 			node := nodes[n]
 			public := node.PublicKey()
+			asc, desc, table := node.DHTInfo()
 			entry := Node{
-				Name:   n,
-				Port:   fmt.Sprintf("%d", node.ListenAddr.Port),
-				Coords: fmt.Sprintf("%v", node.Coords()),
-				Key:    hex.EncodeToString(public[:2]),
-				IsRoot: node.IsRoot(),
+				Name:    n,
+				Port:    fmt.Sprintf("%d", node.ListenAddr.Port),
+				Coords:  fmt.Sprintf("%v", node.Coords()),
+				Key:     hex.EncodeToString(public[:2]),
+				IsRoot:  node.IsRoot(),
+				DHTSize: len(table),
 			}
+			shortcuts[entry.Key] = n
 			rootkey := node.RootPublicKey()
 			entry.Root = hex.EncodeToString(rootkey[:2])
-			if predecessor := node.Predecessor(); predecessor != nil {
-				entry.Predecessor = hex.EncodeToString(predecessor[:2])
+			if desc != nil {
+				entry.Predecessor = hex.EncodeToString(desc.PublicKey[:2])
 			}
-			if successor := node.Successor(); successor != nil {
-				entry.Successor = hex.EncodeToString(successor[:2])
+			if asc != nil {
+				entry.Successor = hex.EncodeToString(asc.PublicKey[:2])
 			}
 			data.Nodes = append(data.Nodes, entry)
 			data.NodeCount++
 			roots[entry.Root]++
+		}
+
+		if nodeKey := r.URL.Query().Get("pk"); nodeKey != "" {
+			if node, ok := nodes[shortcuts[nodeKey]]; ok {
+				pk := node.Router.PublicKey()
+				asc, desc, dht := node.Router.DHTInfo()
+				pks := hex.EncodeToString(pk[:2])
+				data.NodeInfo = &NodeInfo{
+					Name:      shortcuts[pks],
+					PublicKey: pks,
+				}
+				if asc != nil {
+					data.NodeInfo.Ascending = hex.EncodeToString(asc.PublicKey[:2])
+					data.NodeInfo.AscendingPathID = hex.EncodeToString(asc.PathID[:])
+				}
+				if desc != nil {
+					data.NodeInfo.Descending = hex.EncodeToString(desc.PublicKey[:2])
+					data.NodeInfo.DescendingPathID = hex.EncodeToString(desc.PathID[:])
+				}
+				for k, v := range dht {
+					data.NodeInfo.Entries = append(
+						data.NodeInfo.Entries,
+						DHTEntry{
+							PublicKey:       hex.EncodeToString(k.PublicKey[:2]),
+							PathID:          hex.EncodeToString(k.PathID[:]),
+							DestinationPort: int(v.DestinationPort),
+							SourcePort:      int(v.SourcePort),
+						},
+					)
+				}
+				for _, p := range node.Router.Peers() {
+					data.NodeInfo.Peers = append(
+						data.NodeInfo.Peers,
+						PeerEntry{
+							Name:          shortcuts[p.PublicKey[:4]],
+							PublicKey:     p.PublicKey[:4],
+							Port:          p.Port,
+							RootPublicKey: p.RootPublicKey[:4],
+						},
+					)
+				}
+				sort.Sort(data.NodeInfo.Entries)
+			}
 		}
 
 		for range wires {
@@ -291,8 +338,8 @@ func configureHTTPRouting(sim *simulator.Simulator) {
 		case "snek":
 			for id, n := range nodes {
 				for id2, n2 := range nodes {
-					p := n.Predecessor()
-					s := n.Successor()
+					p, _ := n.Descending()
+					s, _ := n.Ascending()
 					if p != nil && p.EqualTo(n2.PublicKey()) {
 						data.Links = append(data.Links, Link{
 							From:    id,
@@ -397,6 +444,7 @@ type Node struct {
 	Successor   string
 	IsRoot      bool
 	IsExternal  bool
+	DHTSize     int
 }
 
 type Link struct {
@@ -415,6 +463,51 @@ type PageData struct {
 	AvgStretch          string
 	TreePathConvergence string
 	SNEKPathConvergence string
+	NodeInfo            *NodeInfo
+}
+
+type NodeInfo struct {
+	Name             string
+	PublicKey        string
+	Ascending        string
+	AscendingPathID  string
+	Descending       string
+	DescendingPathID string
+	Entries          DHTEntries
+	Peers            PeerEntries
+}
+
+type DHTEntries []DHTEntry
+
+func (e DHTEntries) Len() int {
+	return len(e)
+}
+func (e DHTEntries) Swap(i, j int) {
+	e[i], e[j] = e[j], e[i]
+}
+func (e DHTEntries) Less(i, j int) bool {
+	pk := strings.Compare(e[i].PublicKey, e[j].PublicKey)
+	pi := strings.Compare(e[i].PathID, e[j].PathID)
+	if pk == 0 {
+		return pi < 0
+	}
+	return pk < 0
+}
+
+type DHTEntry struct {
+	PublicKey       string
+	DestinationPort int
+	SourcePort      int
+	PathID          string
+}
+
+type PeerEntries []PeerEntry
+
+type PeerEntry struct {
+	Name          string
+	PublicKey     string
+	Port          int
+	RootPublicKey string
 }
 
 type Root struct {

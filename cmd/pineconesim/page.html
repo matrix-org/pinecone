@@ -6,43 +6,56 @@
         body {
             font-family: -apple-system, sans-serif;
         }
-        .row {
+        a {
+            color: black;
+        }
+        div.row {
+            padding: 1em;
+        }
+        div.row#title {
             display: flex;
             justify-content: space-between;
             flex-direction: row;
             flex-wrap: nowrap;
-            padding: 1em;
         }
-        .column {
-            flex-direction: column;
-        }
-        .column#left {
+        div.row#title div.title#left {
             order: 1;
             width: auto;
             padding-right: 2em;
+            flex-shrink: 1;
         }
-        .column#right {
+        div.row#title div.title#right {
             order: 2;
-            flex-shrink: 100;
+            flex-shrink: 0;
         }
 
-        #main.row #left.column, 
-        #main.row #right.column {
+        div.row#main {
+            display: flex;
+            justify-content: space-between;
+            flex-direction: row;
+            flex-wrap: nowrap;
+        }
+        div.row#main div {
             height: calc(100vh - 100px);
             overflow-y: scroll;
+            flex-direction: column;
         }
-
-        #main.row div#canvas {
-            height: calc(100vh - 100px);
-            background-color: #f6f6f6;
-        }
-        #main.row div#left {
+        div.row#main div#left {
             order: 1;
-            flex-basis: auto;
+            width: auto;
+            padding-right: 2em;
+            flex-shrink: 0;
         }
-        #main.row div#right {
+        div.row#main div#graph {
             order: 2;
+            background-color: #f6f6f6;
             flex-basis: 100%;
+            flex-shrink: 1;
+        }
+        div.row#main div#right {
+            order: 3;
+            padding-left: 2em;
+            flex-shrink: 0;
         }
 
         #title div#right a {
@@ -66,10 +79,10 @@
     </head>
     <body>
         <div class="row" id="title">
-            <div class="column" id="left">
+            <div id="left">
                 <strong>Pinecone Simulator</strong> is running with {{.NodeCount}} nodes
             </div>
-            <div class="column" id="right">
+            <div id="right">
                 Topology view: 
                 <a href="?view=physical">Physical</a>
                 <a href="?view=snek">Virtual Snake</a>
@@ -77,7 +90,7 @@
             </div>
         </div>
         <div class="row" id="main">
-            <div class="column" id="left">
+            <div id="left">
                 <h4>Statistics</h4>
                 <table>
                     <tr>
@@ -108,16 +121,18 @@
                         <th>↓</th>
                         <th>Key</th>
                         <th>↑</th>
+                        <th>DHT</th>
                     </tr>
                     {{range .Nodes}}
                     {{if not .IsExternal}}<tr>
                         <td>{{.Name}}</td>
                         <td><code>{{.Port}}</code></td>
                         <td><code>{{.Coords}}</code></td>
-                        <td><code>{{.Root}}</code></td>
-                        <td><code>{{.Predecessor}}</code></td>
-                        <td><code>{{.Key}}</code></td>
-                        <td><code>{{.Successor}}</code></td>
+                        <td><a href="?view=snek&pk={{.Root}}"><code>{{.Root}}</code></a></td>
+                        <td><a href="?view=snek&pk={{.Predecessor}}"><code>{{.Predecessor}}</code></a></td>
+                        <td><a href="?view=snek&pk={{.Key}}"><code>{{.Key}}</code></a></td>
+                        <td><a href="?view=snek&pk={{.Successor}}"><code>{{.Successor}}</code></a></td>
+                        <td><a href="?view=snek&pk={{.Key}}"><code>{{.DHTSize}}</code></a></td>
                     {{end}}</tr>{{end}}
                 </table>
 
@@ -151,9 +166,74 @@
                     </tr>{{end}}
                 </table>-->
             </div>
-            <div class="column" id="right">
-                <div id="canvas" />
+            <div id="graph">
+                <div id="canvas"></div>
             </div>
+            {{if .NodeInfo}}
+            <div id="right">
+                <h4>Node Information</h4>
+                <table>
+                    <tr>
+                        <td>Name:</td>
+                        <td>{{.NodeInfo.Name}}</td>
+                    </tr>
+                    <tr>
+                        <td>Public Key:</td>
+                        <td><code><a href="?view=snek&pk={{.NodeInfo.PublicKey}}">{{.NodeInfo.PublicKey}}</a></code></td>
+                    </tr>
+                    <tr>
+                        <td>Descending Key:</td>
+                        <td><code><a href="?view=snek&pk={{.NodeInfo.Descending}}">{{.NodeInfo.Descending}}</a></code></td>
+                    </tr>
+                    <tr>
+                        <td>Descending Path:</td>
+                        <td><code>{{.NodeInfo.DescendingPathID}}</code></td>
+                    </tr>
+                    <tr>
+                        <td>Ascending Key:</td>
+                        <td><code><a href="?view=snek&pk={{.NodeInfo.Ascending}}">{{.NodeInfo.Ascending}}</a></code></td>
+                    </tr>
+                    <tr>
+                        <td>Ascending Path:</td>
+                        <td><code>{{.NodeInfo.AscendingPathID}}</code></td>
+                    </tr>
+                </table>
+                <h4>Peers</h4>
+                <table>
+                    <tr>
+                        <th>Name</th>
+                        <th>Public Key</th>
+                        <th>Port</th>
+                        <th>Root</th>
+                    </tr>
+                    {{range .NodeInfo.Peers}}
+                    <tr>
+                        <td><code>{{.Name}}</code></td>
+                        <td><code><a href="?view=snek&pk={{.PublicKey}}">{{.PublicKey}}</a></code></td>
+                        <td><code>{{.Port}}</code></td>
+                        <td><code><a href="?view=snek&pk={{.RootPublicKey}}">{{.RootPublicKey}}</a></code></td>
+                    </tr>
+                {{end}}
+                </table>
+                <h4>DHT Paths (via this node)</h4>
+                <table>
+                    <tr>
+                        <th>Public Key</th>
+                        <th>Path ID</th>
+                        <th>Src</th>
+                        <th>Dst</th>
+                    </tr>
+                {{range .NodeInfo.Entries}}
+                    <tr>
+                        <td><code><a href="?view=snek&pk={{.PublicKey}}">{{.PublicKey}}</a></code></td>
+                        <td><code>{{.PathID}}</code></td>
+                        <td><code>{{.SourcePort}}</code></td>
+                        <td><code>{{.DestinationPort}}</code></td>
+                    </tr>
+                {{end}}
+                </table>
+            </div>
+            {{end}}
         </div>
 
         <script>

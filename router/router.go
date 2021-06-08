@@ -231,30 +231,40 @@ func (r *Router) DHTSearch(ctx context.Context, pk ed25519.PublicKey, stopshort 
 	return r.dht.search(ctx, public, stopshort)
 }
 
+func (r *Router) DHTInfo() (asc, desc *virtualSnakeNeighbour, table map[virtualSnakeIndex]virtualSnakeEntry) {
+	asc = r.snake.ascending()
+	desc = r.snake.descending()
+	r.snake.tableMutex.RLock()
+	table = map[virtualSnakeIndex]virtualSnakeEntry{}
+	for k, v := range r.snake.table {
+		table[k] = v
+	}
+	r.snake.tableMutex.RUnlock()
+	return
+}
+
 // DHTPredecessor returns the public key of the previous node in
 // the DHT snake.
-func (r *Router) Predecessor() *types.PublicKey {
-	r.snake.descendingMutex.RLock()
-	pr := r.snake.descending
-	r.snake.descendingMutex.RUnlock()
-	if pr == nil { // || time.Since(pr.LastSeen) >= virtualSnakeNeighExpiryPeriod {
-		return nil
+func (r *Router) Descending() (*types.PublicKey, *types.VirtualSnakePathID) {
+	pr := r.snake.descending()
+	if pr == nil {
+		return nil, nil
 	}
 	pk := pr.PublicKey
-	return &pk
+	pi := pr.PathID
+	return &pk, &pi
 }
 
 // DHTSuccessor returns the public key of the next node in the
 // DHT snake.
-func (r *Router) Successor() *types.PublicKey {
-	r.snake.ascendingMutex.RLock()
-	su := r.snake.ascending
-	r.snake.ascendingMutex.RUnlock()
-	if su == nil { //|| time.Since(su.LastSeen) >= virtualSnakeNeighExpiryPeriod {
-		return nil
+func (r *Router) Ascending() (*types.PublicKey, *types.VirtualSnakePathID) {
+	su := r.snake.ascending()
+	if su == nil {
+		return nil, nil
 	}
 	pk := su.PublicKey
-	return &pk
+	pi := su.PathID
+	return &pk, &pi
 }
 
 // KnownNodes returns a list of all nodes that are known about
@@ -267,16 +277,12 @@ func (r *Router) KnownNodes() []types.PublicKey {
 		known[p.public] = struct{}{}
 		p.mutex.RUnlock()
 	}
-	r.snake.descendingMutex.RLock()
-	if p := r.snake.descending; p != nil {
+	if p := r.snake.descending(); p != nil {
 		known[p.PublicKey] = struct{}{}
 	}
-	r.snake.descendingMutex.RUnlock()
-	r.snake.ascendingMutex.RLock()
-	if s := r.snake.ascending; s != nil {
+	if s := r.snake.ascending(); s != nil {
 		known[s.PublicKey] = struct{}{}
 	}
-	r.snake.ascendingMutex.RUnlock()
 	r.snake.tableMutex.RLock()
 	for k := range r.snake.table {
 		known[k.PublicKey] = struct{}{}
@@ -489,10 +495,11 @@ func (r *Router) IsConnected(key types.PublicKey, zone string) bool {
 // PeerInfo is a gomobile-friendly type that represents a peer
 // connection.
 type PeerInfo struct {
-	Port      int
-	PublicKey string
-	PeerType  int
-	Zone      string
+	Port          int
+	PublicKey     string
+	RootPublicKey string
+	PeerType      int
+	Zone          string
 }
 
 // Peers returns a list of PeerInfos that show all of the currently
@@ -501,12 +508,16 @@ func (r *Router) Peers() []PeerInfo {
 	peers := make([]PeerInfo, 0, PortCount)
 	for _, p := range r.activePorts() {
 		p.mutex.RLock()
-		peers = append(peers, PeerInfo{
+		info := PeerInfo{
 			Port:      int(p.port),
 			PeerType:  p.peertype,
 			PublicKey: p.public.String(),
 			Zone:      p.zone,
-		})
+		}
+		if ann := p.lastAnnouncement(); ann != nil {
+			info.RootPublicKey = ann.RootPublicKey.String()
+		}
+		peers = append(peers, info)
 		p.mutex.RUnlock()
 	}
 	return peers

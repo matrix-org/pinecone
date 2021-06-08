@@ -327,7 +327,7 @@ func (t *spanningTree) Update(p *Peer, newUpdate types.SwitchAnnouncement) error
 		t.rootReset.Dispatch()
 
 		if oldRootKey != newUpdate.RootPublicKey {
-			go t.r.snake.rootNodeChanged(newUpdate.RootPublicKey)
+			t.r.snake.rootNodeChanged(newUpdate.RootPublicKey)
 		}
 
 		t.advertise.Dispatch()

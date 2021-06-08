@@ -248,17 +248,20 @@ func (p *Peer) reader() {
 				p.r.log.Println("Expecting", expecting, "bytes but got", n, "bytes")
 				continue
 			}
-			func() {
-				frame := types.GetFrame()
+			frame := types.GetFrame()
+			if _, err := frame.UnmarshalBinary(buf[:n]); err != nil {
+				p.r.log.Println("Port", p.port, "error unmarshalling frame:", err)
+				frame.Done()
+				return
+			}
+			if frame.Version != types.Version0 {
+				p.r.log.Println("Port", p.port, "incorrect version in frame")
+				frame.Done()
+				return
+			}
+			func(frame *types.Frame) {
 				defer frame.Done()
-				if _, err := frame.UnmarshalBinary(buf[:n]); err != nil {
-					p.r.log.Println("Port", p.port, "error unmarshalling frame:", err)
-					return
-				}
-				if frame.Version != types.Version0 {
-					p.r.log.Println("Port", p.port, "incorrect version in frame")
-					return
-				}
+
 				//p.r.log.Println("Frame type", frame.Type.String(), frame.DestinationKey)
 				sent := false
 				defer func() {
@@ -321,14 +324,13 @@ func (p *Peer) reader() {
 						}
 					}
 				}
-			}()
+			}(frame)
 		}
 	}
 }
 
 func (p *Peer) writer() {
 	buf := make([]byte, MaxFrameSize)
-
 	send := func(frame *types.Frame) error {
 		if frame == nil {
 			return nil
@@ -359,14 +361,12 @@ func (p *Peer) writer() {
 	}
 
 	for {
-		if !p.started.Load() {
-			return
-		}
 		select {
 		case <-p.context.Done():
 			return
 		case <-p.announce:
 			_ = send(p.generateAnnouncement())
+			continue
 		default:
 		}
 		select {
@@ -374,10 +374,12 @@ func (p *Peer) writer() {
 			return
 		case <-p.announce:
 			_ = send(p.generateAnnouncement())
+			continue
 		case frame := <-p.protoOut:
 			if frame != nil {
 				_ = send(frame)
 			}
+			continue
 		default:
 		}
 		select {
@@ -385,14 +387,17 @@ func (p *Peer) writer() {
 			return
 		case <-p.announce:
 			_ = send(p.generateAnnouncement())
+			continue
 		case frame := <-p.protoOut:
 			if frame != nil {
 				_ = send(frame)
 			}
+			continue
 		case <-p.trafficOut.wait():
 			if frame, ok := p.trafficOut.pop(); ok && frame != nil {
 				_ = send(frame)
 			}
+			continue
 		}
 	}
 }
