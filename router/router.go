@@ -39,7 +39,7 @@ const PortCount = 64
 
 // ProtoBufferSize is the number of protocol packets that a node will
 // buffer on a slow port.
-const ProtoBufferSize = 16
+const ProtoBufferSize = 64
 
 // TrafficBufferSize is the number of traffic packets that a node will
 // buffer on a slow port.
@@ -102,8 +102,8 @@ func NewRouter(log *log.Logger, id string, private ed25519.PrivateKey, public ed
 		cancel:    cancel,
 		id:        id,
 		simulator: simulator,
-		send:      make(chan types.Frame, 32),
-		recv:      make(chan types.Frame, 32),
+		send:      make(chan types.Frame),
+		recv:      make(chan types.Frame),
 	}
 	sw.callbacks = &callbacks{r: sw}
 	copy(sw.private[:], private)

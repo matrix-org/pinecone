@@ -121,7 +121,7 @@
                         <th>↓</th>
                         <th>Key</th>
                         <th>↑</th>
-                        <th>DHT</th>
+                        <th>#</th>
                     </tr>
                     {{range .Nodes}}
                     {{if not .IsExternal}}<tr>
@@ -132,7 +132,7 @@
                         <td><a href="?view=snek&pk={{.Predecessor}}"><code>{{.Predecessor}}</code></a></td>
                         <td><a href="?view=snek&pk={{.Key}}"><code>{{.Key}}</code></a></td>
                         <td><a href="?view=snek&pk={{.Successor}}"><code>{{.Successor}}</code></a></td>
-                        <td><a href="?view=snek&pk={{.Key}}"><code>{{.DHTSize}}</code></a></td>
+                        <td><code>{{.DHTSize}}</code></td>
                     {{end}}</tr>{{end}}
                 </table>
 
