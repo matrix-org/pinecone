@@ -15,7 +15,6 @@
 package main
 
 import (
-	"context"
 	"crypto/ed25519"
 	"flag"
 	"fmt"
@@ -38,8 +37,18 @@ func main() {
 		panic(err)
 	}
 
-	listener := net.ListenConfig{
-		KeepAlive: time.Second,
+	listen := flag.String("listen", "", "address to listen on")
+	connect := flag.String("connect", "", "peer to connect to")
+	flag.Parse()
+
+	addr, err := net.ResolveTCPAddr("tcp", *listen)
+	if err != nil {
+		panic(err)
+	}
+
+	listener, err := net.ListenTCP("tcp", addr)
+	if err != nil {
+		panic(err)
 	}
 
 	logger := log.New(os.Stdout, "", 0)
@@ -60,9 +69,18 @@ func main() {
 	}
 	_ = pineconeTUN
 
-	listen := flag.String("listen", "", "address to listen on")
-	connect := flag.String("connect", "", "peer to connect to")
-	flag.Parse()
+	tcpParams := func(conn *net.TCPConn) error {
+		if err := conn.SetNoDelay(true); err != nil {
+			return fmt.Errorf("conn.SetNoDelay: %w", err)
+		}
+		if err := conn.SetKeepAlive(true); err != nil {
+			return fmt.Errorf("conn.SetKeepAlive: %w", err)
+		}
+		if err := conn.SetKeepAlivePeriod(time.Second * 2); err != nil {
+			return fmt.Errorf("conn.SetKeepAlivePeriod: %w", err)
+		}
+		return nil
+	}
 
 	if connect != nil && *connect != "" {
 		go func() {
@@ -76,15 +94,7 @@ func main() {
 				panic(err)
 			}
 
-			if err := conn.SetNoDelay(true); err != nil {
-				panic(err)
-			}
-
-			if err := conn.SetKeepAlive(true); err != nil {
-				panic(err)
-			}
-
-			if err := conn.SetKeepAlivePeriod(time.Second); err != nil {
+			if err := tcpParams(conn); err != nil {
 				panic(err)
 			}
 
@@ -98,16 +108,15 @@ func main() {
 	}
 
 	go func() {
-		listener, err := listener.Listen(context.Background(), "tcp", *listen)
-		if err != nil {
-			panic(err)
-		}
-
 		fmt.Println("Listening on", listener.Addr())
 
 		for {
-			conn, err := listener.Accept()
+			conn, err := listener.AcceptTCP()
 			if err != nil {
+				panic(err)
+			}
+
+			if err := tcpParams(conn); err != nil {
 				panic(err)
 			}
 

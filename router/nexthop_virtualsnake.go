@@ -326,8 +326,6 @@ func (t *virtualSnake) getVirtualSnakeNextHop(from *Peer, destKey types.PublicKe
 		switch {
 		case !entry.Valid():
 			continue
-		case dhtKey.PublicKey.EqualTo(t.r.public):
-			continue
 		}
 		newCheckedCandidate(dhtKey.PublicKey, entry.SourcePort)
 	}
@@ -594,16 +592,18 @@ func (t *virtualSnake) handleSetup(from *Peer, rx *types.Frame, nextHops types.S
 	var addToRoutingTable bool
 
 	// Is the setup a duplicate of one we already have in our table?
-	if from.port != 0 {
-		t.tableMutex.RLock()
-		_, ok := t.table[virtualSnakeIndex{rx.SourceKey, setup.PathID}]
-		t.tableMutex.RUnlock()
-		if ok {
-			t.sendTeardownForPath(rx.SourceKey, setup.PathID, from.port, false, fmt.Errorf("rejecting setup (duplicate)"))
-			return fmt.Errorf("setup is a duplicate")
+	t.tableMutex.RLock()
+	path, ok := t.table[virtualSnakeIndex{rx.SourceKey, setup.PathID}]
+	t.tableMutex.RUnlock()
+	if ok {
+		t.sendTeardownForPath(rx.SourceKey, setup.PathID, from.port, false, fmt.Errorf("rejecting setup (duplicate)"))
+		if path.DestinationPort != 0 {
+			t.sendTeardownForPath(rx.SourceKey, setup.PathID, path.DestinationPort, true, fmt.Errorf("rejecting setup (duplicate)"))
 		}
-	} else {
-		addToRoutingTable = true
+		if path.SourcePort != 0 {
+			t.sendTeardownForPath(rx.SourceKey, setup.PathID, path.SourcePort, false, fmt.Errorf("rejecting setup (duplicate)"))
+		}
+		return fmt.Errorf("setup is a duplicate")
 	}
 
 	// If we're at the destination of the setup then update our predecessor
