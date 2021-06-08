@@ -291,14 +291,18 @@ func configureHTTPRouting(sim *simulator.Simulator) {
 			if node, ok := nodes[shortcuts[nodeKey]]; ok {
 				pk := node.Router.PublicKey()
 				asc, desc, dht := node.Router.DHTInfo()
+				pks := hex.EncodeToString(pk[:2])
 				data.NodeInfo = &NodeInfo{
-					PublicKey: hex.EncodeToString(pk[:2]),
+					Name:      shortcuts[pks],
+					PublicKey: pks,
 				}
 				if asc != nil {
 					data.NodeInfo.Ascending = hex.EncodeToString(asc.PublicKey[:2])
+					data.NodeInfo.AscendingPathID = hex.EncodeToString(asc.PathID[:])
 				}
 				if desc != nil {
 					data.NodeInfo.Descending = hex.EncodeToString(desc.PublicKey[:2])
+					data.NodeInfo.DescendingPathID = hex.EncodeToString(desc.PathID[:])
 				}
 				for k, v := range dht {
 					data.NodeInfo.Entries = append(
@@ -315,6 +319,7 @@ func configureHTTPRouting(sim *simulator.Simulator) {
 					data.NodeInfo.Peers = append(
 						data.NodeInfo.Peers,
 						PeerEntry{
+							Name:          shortcuts[p.PublicKey[:4]],
 							PublicKey:     p.PublicKey[:4],
 							Port:          p.Port,
 							RootPublicKey: p.RootPublicKey[:4],
@@ -333,8 +338,8 @@ func configureHTTPRouting(sim *simulator.Simulator) {
 		case "snek":
 			for id, n := range nodes {
 				for id2, n2 := range nodes {
-					p := n.Descending()
-					s := n.Ascending()
+					p, _ := n.Descending()
+					s, _ := n.Ascending()
 					if p != nil && p.EqualTo(n2.PublicKey()) {
 						data.Links = append(data.Links, Link{
 							From:    id,
@@ -462,11 +467,14 @@ type PageData struct {
 }
 
 type NodeInfo struct {
-	PublicKey  string
-	Ascending  string
-	Descending string
-	Entries    DHTEntries
-	Peers      PeerEntries
+	Name             string
+	PublicKey        string
+	Ascending        string
+	AscendingPathID  string
+	Descending       string
+	DescendingPathID string
+	Entries          DHTEntries
+	Peers            PeerEntries
 }
 
 type DHTEntries []DHTEntry
@@ -496,6 +504,7 @@ type DHTEntry struct {
 type PeerEntries []PeerEntry
 
 type PeerEntry struct {
+	Name          string
 	PublicKey     string
 	Port          int
 	RootPublicKey string

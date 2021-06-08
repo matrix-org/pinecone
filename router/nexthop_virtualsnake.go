@@ -126,10 +126,10 @@ func (t *virtualSnake) maintain() {
 		if asc := t.ascending(); asc != nil {
 			switch {
 			case time.Since(asc.LastSeen) > virtualSnakeNeighExpiryPeriod:
-				t.sendTeardownsForKey(asc.PublicKey, true, fmt.Errorf("ascending neighbour expired"))
+				t.sendTeardownForPath(t.r.public, asc.PathID, asc.Port, true, fmt.Errorf("ascending neighbour expired"))
 				bootstrapNow = true
 			case asc.RootPublicKey != t.r.RootPublicKey():
-				t.sendTeardownsForKey(asc.PublicKey, true, fmt.Errorf("ascending root changed"))
+				t.sendTeardownForPath(t.r.public, asc.PathID, asc.Port, true, fmt.Errorf("ascending root changed"))
 				bootstrapNow = true
 			}
 		} else if bootstrapConditionally {
@@ -139,9 +139,9 @@ func (t *virtualSnake) maintain() {
 		if desc := t.descending(); desc != nil {
 			switch {
 			case time.Since(desc.LastSeen) > virtualSnakeNeighExpiryPeriod:
-				t.sendTeardownsForKey(desc.PublicKey, false, fmt.Errorf("descending neighbour expired"))
+				t.sendTeardownForPath(desc.PublicKey, desc.PathID, desc.Port, false, fmt.Errorf("descending neighbour expired"))
 			case !desc.RootPublicKey.EqualTo(t.r.RootPublicKey()):
-				t.sendTeardownsForKey(desc.PublicKey, false, fmt.Errorf("descending root changed"))
+				t.sendTeardownForPath(desc.PublicKey, desc.PathID, desc.Port, false, fmt.Errorf("descending root changed"))
 			}
 		}
 
@@ -186,11 +186,9 @@ func (t *virtualSnake) bootstrapNow() {
 // allowing us to start a new bootstrap.
 func (t *virtualSnake) rootNodeChanged(root types.PublicKey) {
 	if asc := t.ascending(); asc != nil && !asc.RootPublicKey.EqualTo(root) {
-		//t.sendTeardownsForKey(asc.PublicKey, true, fmt.Errorf("root changed and asc no longer matches"))
-		t.sendTeardownForPath(asc.PublicKey, asc.PathID, asc.Port, true, fmt.Errorf("root changed and asc no longer matches"))
+		t.sendTeardownForPath(t.r.public, asc.PathID, asc.Port, true, fmt.Errorf("root changed and asc no longer matches"))
 	}
 	if desc := t.descending(); desc != nil && !desc.RootPublicKey.EqualTo(root) {
-		//t.sendTeardownsForKey(desc.PublicKey, true, fmt.Errorf("root changed and desc no longer matches"))
 		t.sendTeardownForPath(desc.PublicKey, desc.PathID, desc.Port, true, fmt.Errorf("root changed and desc no longer matches"))
 	}
 	teardown := map[virtualSnakeIndex]virtualSnakeEntry{}
@@ -202,7 +200,12 @@ func (t *virtualSnake) rootNodeChanged(root types.PublicKey) {
 	}
 	t.tableMutex.RUnlock()
 	for k, v := range teardown {
-		t.sendTeardownForPath(k.PublicKey, k.PathID, v.SourcePort, false, fmt.Errorf("root changed and tearing paths"))
+		if v.SourcePort != 0 {
+			t.sendTeardownForPath(k.PublicKey, k.PathID, v.SourcePort, false, fmt.Errorf("root changed and tearing paths"))
+		}
+		if v.DestinationPort != 0 {
+			t.sendTeardownForPath(k.PublicKey, k.PathID, v.DestinationPort, true, fmt.Errorf("root changed and tearing paths"))
+		}
 	}
 	t.bootstrapNow()
 }
@@ -318,18 +321,12 @@ func (t *virtualSnake) getVirtualSnakeNextHop(from *Peer, destKey types.PublicKe
 	}
 
 	// Check our DHT entries
-	/*
-		if asc := t.ascending(); asc != nil {
-			newCheckedCandidate(asc.PublicKey, asc.Port)
-		}
-		if desc := t.descending(); desc != nil {
-			newCheckedCandidate(desc.PublicKey, desc.Port)
-		}
-	*/
 	t.tableMutex.RLock()
 	for dhtKey, entry := range t.table {
 		switch {
 		case !entry.Valid():
+			continue
+		case dhtKey.PublicKey.EqualTo(t.r.public):
 			continue
 		}
 		newCheckedCandidate(dhtKey.PublicKey, entry.SourcePort)
@@ -403,24 +400,6 @@ func (t *virtualSnake) sendTeardownsForPort(port types.SwitchPortID) {
 	t.tableMutex.RUnlock()
 }
 
-func (t *virtualSnake) sendTeardownsForKey(pk types.PublicKey, ascending bool, err error) {
-	teardown := map[virtualSnakeIndex]virtualSnakeEntry{}
-	t.tableMutex.RLock()
-	for k, v := range t.table {
-		if k.PublicKey.EqualTo(pk) {
-			teardown[k] = v
-		}
-	}
-	t.tableMutex.RUnlock()
-	for k, v := range teardown {
-		if ascending {
-			t.sendTeardownForPath(k.PublicKey, k.PathID, v.SourcePort, false, err)
-		} else {
-			t.sendTeardownForPath(k.PublicKey, k.PathID, v.DestinationPort, true, err)
-		}
-	}
-}
-
 func (t *virtualSnake) sendTeardownForPath(pk types.PublicKey, pathID types.VirtualSnakePathID, via types.SwitchPortID, ascending bool, err error) {
 	t.r.log.Println("Tear down", pk, "path", pathID, "because:", err)
 	var payload [9]byte
@@ -475,7 +454,7 @@ func (t *virtualSnake) handleBootstrap(from *Peer, rx *types.Frame) error {
 	if err != nil {
 		return fmt.Errorf("util.SignedTimestamp: %w", err)
 	}
-	frame := types.Frame{
+	t.r.send <- types.Frame{
 		Destination:    rx.Source,
 		DestinationKey: rx.DestinationKey,
 		Source:         t.r.Coords(),
@@ -483,7 +462,6 @@ func (t *virtualSnake) handleBootstrap(from *Peer, rx *types.Frame) error {
 		Type:           types.TypeVirtualSnakeBootstrapACK,
 		Payload:        append(buf[:], ts...),
 	}
-	from.protoOut <- frame.Borrow()
 	return nil
 }
 
@@ -573,14 +551,13 @@ func (t *virtualSnake) handleBootstrapACK(from *Peer, rx *types.Frame) error {
 		if err != nil {
 			return fmt.Errorf("util.SignedTimestamp: %w", err)
 		}
-		frame := types.Frame{
+		t.r.send <- types.Frame{
 			Destination:    rx.Source,
 			DestinationKey: rx.SourceKey,
 			SourceKey:      t.r.public,
 			Type:           types.TypeVirtualSnakeSetup,
 			Payload:        append(buf[:], ts...),
 		}
-		from.protoOut <- frame.Borrow()
 	}
 	return nil
 }
@@ -615,16 +592,20 @@ func (t *virtualSnake) handleSetup(from *Peer, rx *types.Frame, nextHops types.S
 		}
 	}
 
-	// Is the setup a duplicate of one we already have in our table?
-	t.tableMutex.RLock()
-	_, ok := t.table[virtualSnakeIndex{rx.SourceKey, setup.PathID}]
-	t.tableMutex.RUnlock()
-	if ok {
-		t.sendTeardownForPath(rx.SourceKey, setup.PathID, from.port, false, fmt.Errorf("rejecting setup (duplicate)"))
-		return fmt.Errorf("setup is a duplicate")
-	}
-
 	var addToRoutingTable bool
+
+	// Is the setup a duplicate of one we already have in our table?
+	if from.port != 0 {
+		t.tableMutex.RLock()
+		_, ok := t.table[virtualSnakeIndex{rx.SourceKey, setup.PathID}]
+		t.tableMutex.RUnlock()
+		if ok {
+			t.sendTeardownForPath(rx.SourceKey, setup.PathID, from.port, false, fmt.Errorf("rejecting setup (duplicate)"))
+			return fmt.Errorf("setup is a duplicate")
+		}
+	} else {
+		addToRoutingTable = true
+	}
 
 	// If we're at the destination of the setup then update our predecessor
 	// with information from the bootstrap.

@@ -174,27 +174,41 @@
                 <h4>Node Information</h4>
                 <table>
                     <tr>
+                        <td>Name:</td>
+                        <td>{{.NodeInfo.Name}}</td>
+                    </tr>
+                    <tr>
                         <td>Public Key:</td>
                         <td><code><a href="?view=snek&pk={{.NodeInfo.PublicKey}}">{{.NodeInfo.PublicKey}}</a></code></td>
                     </tr>
                     <tr>
-                        <td>Descending:</td>
+                        <td>Descending Key:</td>
                         <td><code><a href="?view=snek&pk={{.NodeInfo.Descending}}">{{.NodeInfo.Descending}}</a></code></td>
                     </tr>
                     <tr>
-                        <td>Ascending:</td>
+                        <td>Descending Path:</td>
+                        <td><code>{{.NodeInfo.DescendingPathID}}</code></td>
+                    </tr>
+                    <tr>
+                        <td>Ascending Key:</td>
                         <td><code><a href="?view=snek&pk={{.NodeInfo.Ascending}}">{{.NodeInfo.Ascending}}</a></code></td>
+                    </tr>
+                    <tr>
+                        <td>Ascending Path:</td>
+                        <td><code>{{.NodeInfo.AscendingPathID}}</code></td>
                     </tr>
                 </table>
                 <h4>Peers</h4>
                 <table>
                     <tr>
+                        <th>Name</th>
                         <th>Public Key</th>
                         <th>Port</th>
-                        <th>Root Public Key</th>
+                        <th>Root</th>
                     </tr>
                     {{range .NodeInfo.Peers}}
                     <tr>
+                        <td><code>{{.Name}}</code></td>
                         <td><code><a href="?view=snek&pk={{.PublicKey}}">{{.PublicKey}}</a></code></td>
                         <td><code>{{.Port}}</code></td>
                         <td><code><a href="?view=snek&pk={{.RootPublicKey}}">{{.RootPublicKey}}</a></code></td>
