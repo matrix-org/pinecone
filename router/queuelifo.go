@@ -58,7 +58,10 @@ func (q *lifoQueue) reset() {
 	defer q.mutex.Unlock()
 	q.count = 0
 	for i := range q.frames {
-		q.frames[i] = nil
+		if q.frames[i] != nil {
+			q.frames[i].Done()
+			q.frames[i] = nil
+		}
 	}
 	close(q.notifs)
 	for range q.notifs {
