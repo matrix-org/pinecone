@@ -49,7 +49,7 @@ type Peer struct {
 	conn         util.BufferedRWC          // underlying connection to peer
 	public       types.PublicKey           //
 	trafficOut   *lifoQueue                // queue traffic message to peer
-	protoOut     chan *types.Frame         // queue protocol message to peer
+	protoOut     *fifoQueue                // queue protocol message to peer
 	coords       types.SwitchPorts         //
 	announce     util.Dispatch             //
 	announcement *rootAnnouncementWithTime //
@@ -304,11 +304,10 @@ func (p *Peer) reader() {
 						}
 
 					case types.TypeDHTRequest, types.TypeDHTResponse, types.TypeVirtualSnakeBootstrap, types.TypeVirtualSnakeBootstrapACK, types.TypeVirtualSnakeSetup, types.TypeVirtualSnakeTeardown:
-						select {
-						case dest.protoOut <- frame.Borrow():
+						if sent = dest.protoOut.push(frame.Borrow()); sent {
 							dest.statistics.txProtoSuccessful.Inc()
 							return
-						default:
+						} else {
 							p.r.log.Println("Dropped protocol frame of type", frame.Type.String(), "on port", dest.port)
 							dest.statistics.txProtoDropped.Inc()
 							frame.Done()
@@ -378,8 +377,8 @@ func (p *Peer) writer() {
 		case <-p.announce:
 			_ = send(p.generateAnnouncement())
 			continue
-		case frame := <-p.protoOut:
-			if frame != nil {
+		case <-p.protoOut.wait():
+			if frame, ok := p.protoOut.pop(); ok && frame != nil {
 				_ = send(frame)
 			}
 			continue
@@ -391,8 +390,8 @@ func (p *Peer) writer() {
 		case <-p.announce:
 			_ = send(p.generateAnnouncement())
 			continue
-		case frame := <-p.protoOut:
-			if frame != nil {
+		case <-p.protoOut.wait():
+			if frame, ok := p.protoOut.pop(); ok && frame != nil {
 				_ = send(frame)
 			}
 			continue

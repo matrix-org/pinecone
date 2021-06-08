@@ -405,7 +405,7 @@ func (r *Router) Connect(conn net.Conn, public types.PublicKey, zone string, pee
 		r.ports[i].peertype = peertype
 		r.ports[i].conn = util.NewBufferedRWCSize(conn, MaxFrameSize)
 		r.ports[i].public = public
-		r.ports[i].protoOut = make(chan *types.Frame, ProtoBufferSize)
+		r.ports[i].protoOut = newFIFOQueue()
 		r.ports[i].trafficOut = newLIFOQueue(TrafficBufferSize)
 		r.ports[i].announcement = nil
 		r.ports[i].statistics.reset()
@@ -447,10 +447,7 @@ func (r *Router) Disconnect(i types.SwitchPortID, err error) error {
 	r.ports[i].zone = ""
 	r.ports[i].public = types.PublicKey{}
 	r.ports[i].announcement = nil
-	close(r.ports[i].protoOut)
-	for frame := range r.ports[i].protoOut {
-		frame.Done()
-	}
+	r.ports[i].protoOut.reset()
 	r.ports[i].trafficOut.reset()
 	r.ports[i].mutex.Unlock()
 	if r.ports[i].port != 0 {

@@ -47,7 +47,7 @@ func (r *Router) startManhole() {
 				"public_key":            p.public.String(),
 				"coords":                p.coords.String(),
 				"peer_type":             p.peertype,
-				"queued_proto":          fmt.Sprintf("%d/%d", len(p.protoOut), cap(p.protoOut)),
+				"queued_proto":          fmt.Sprintf("%d/%d", p.protoOut.count, p.protoOut.size),
 				"queued_traffic":        fmt.Sprintf("%d/%d", p.trafficOut.count, p.trafficOut.size),
 				"tx_proto_successful":   p.statistics.txProtoSuccessful.Load(),
 				"tx_proto_dropped":      p.statistics.txProtoDropped.Load(),

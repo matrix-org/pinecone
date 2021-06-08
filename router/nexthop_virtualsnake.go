@@ -413,9 +413,7 @@ func (t *virtualSnake) sendTeardownForPath(pk types.PublicKey, pathID types.Virt
 		Payload:        payload[:],
 	}
 	_ = t.getVirtualSnakeTeardownNextHop(t.r.ports[0], &frame)
-	go func(via types.SwitchPortID) {
-		t.r.ports[via].protoOut <- frame.Borrow()
-	}(via)
+	t.r.ports[via].protoOut.push(frame.Borrow())
 }
 
 // handleBootstrap is called in response to an incoming bootstrap
