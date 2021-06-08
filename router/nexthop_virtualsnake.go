@@ -189,7 +189,7 @@ func (t *virtualSnake) rootNodeChanged(root types.PublicKey) {
 		t.sendTeardownForPath(t.r.public, asc.PathID, asc.Port, true, fmt.Errorf("root changed and asc no longer matches"))
 	}
 	if desc := t.descending(); desc != nil && !desc.RootPublicKey.EqualTo(root) {
-		t.sendTeardownForPath(desc.PublicKey, desc.PathID, desc.Port, true, fmt.Errorf("root changed and desc no longer matches"))
+		t.sendTeardownForPath(desc.PublicKey, desc.PathID, desc.Port, false, fmt.Errorf("root changed and desc no longer matches"))
 	}
 	teardown := map[virtualSnakeIndex]virtualSnakeEntry{}
 	t.tableMutex.RLock()

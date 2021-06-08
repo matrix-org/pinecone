@@ -85,6 +85,9 @@ func (p *Peer) Coordinates() types.SwitchPorts {
 }
 
 func (p *Peer) SeenCommonRootRecently() bool {
+	if !p.alive.Load() {
+		return false
+	}
 	last := p.lastAnnouncement()
 	if last == nil {
 		return false
