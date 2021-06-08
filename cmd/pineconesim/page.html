@@ -169,22 +169,37 @@
             <div id="graph">
                 <div id="canvas"></div>
             </div>
-            {{if .DHTInfo}}
+            {{if .NodeInfo}}
             <div id="right">
                 <h4>Node Information</h4>
                 <table>
                     <tr>
                         <td>Public Key:</td>
-                        <td><code><a href="?view=snek&pk={{.DHTInfo.PublicKey}}">{{.DHTInfo.PublicKey}}</a></code></td>
+                        <td><code><a href="?view=snek&pk={{.NodeInfo.PublicKey}}">{{.NodeInfo.PublicKey}}</a></code></td>
                     </tr>
                     <tr>
                         <td>Descending:</td>
-                        <td><code><a href="?view=snek&pk={{.DHTInfo.Descending}}">{{.DHTInfo.Descending}}</a></code></td>
+                        <td><code><a href="?view=snek&pk={{.NodeInfo.Descending}}">{{.NodeInfo.Descending}}</a></code></td>
                     </tr>
                     <tr>
                         <td>Ascending:</td>
-                        <td><code><a href="?view=snek&pk={{.DHTInfo.Ascending}}">{{.DHTInfo.Ascending}}</a></code></td>
+                        <td><code><a href="?view=snek&pk={{.NodeInfo.Ascending}}">{{.NodeInfo.Ascending}}</a></code></td>
                     </tr>
+                </table>
+                <h4>Peers</h4>
+                <table>
+                    <tr>
+                        <th>Public Key</th>
+                        <th>Port</th>
+                        <th>Root Public Key</th>
+                    </tr>
+                    {{range .NodeInfo.Peers}}
+                    <tr>
+                        <td><code><a href="?view=snek&pk={{.PublicKey}}">{{.PublicKey}}</a></code></td>
+                        <td><code>{{.Port}}</code></td>
+                        <td><code><a href="?view=snek&pk={{.RootPublicKey}}">{{.RootPublicKey}}</a></code></td>
+                    </tr>
+                {{end}}
                 </table>
                 <h4>DHT Paths (via this node)</h4>
                 <table>
@@ -194,7 +209,7 @@
                         <th>Src</th>
                         <th>Dst</th>
                     </tr>
-                {{range .DHTInfo.Entries}}
+                {{range .NodeInfo.Entries}}
                     <tr>
                         <td><code><a href="?view=snek&pk={{.PublicKey}}">{{.PublicKey}}</a></code></td>
                         <td><code>{{.PathID}}</code></td>

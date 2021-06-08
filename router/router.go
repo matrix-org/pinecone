@@ -493,10 +493,11 @@ func (r *Router) IsConnected(key types.PublicKey, zone string) bool {
 // PeerInfo is a gomobile-friendly type that represents a peer
 // connection.
 type PeerInfo struct {
-	Port      int
-	PublicKey string
-	PeerType  int
-	Zone      string
+	Port          int
+	PublicKey     string
+	RootPublicKey string
+	PeerType      int
+	Zone          string
 }
 
 // Peers returns a list of PeerInfos that show all of the currently
@@ -505,12 +506,16 @@ func (r *Router) Peers() []PeerInfo {
 	peers := make([]PeerInfo, 0, PortCount)
 	for _, p := range r.activePorts() {
 		p.mutex.RLock()
-		peers = append(peers, PeerInfo{
+		info := PeerInfo{
 			Port:      int(p.port),
 			PeerType:  p.peertype,
 			PublicKey: p.public.String(),
 			Zone:      p.zone,
-		})
+		}
+		if ann := p.lastAnnouncement(); ann != nil {
+			info.RootPublicKey = ann.RootPublicKey.String()
+		}
+		peers = append(peers, info)
 		p.mutex.RUnlock()
 	}
 	return peers

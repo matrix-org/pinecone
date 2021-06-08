@@ -291,18 +291,18 @@ func configureHTTPRouting(sim *simulator.Simulator) {
 			if node, ok := nodes[shortcuts[nodeKey]]; ok {
 				pk := node.Router.PublicKey()
 				asc, desc, dht := node.Router.DHTInfo()
-				data.DHTInfo = &DHTInfo{
+				data.NodeInfo = &NodeInfo{
 					PublicKey: hex.EncodeToString(pk[:2]),
 				}
 				if asc != nil {
-					data.DHTInfo.Ascending = hex.EncodeToString(asc.PublicKey[:2])
+					data.NodeInfo.Ascending = hex.EncodeToString(asc.PublicKey[:2])
 				}
 				if desc != nil {
-					data.DHTInfo.Descending = hex.EncodeToString(desc.PublicKey[:2])
+					data.NodeInfo.Descending = hex.EncodeToString(desc.PublicKey[:2])
 				}
 				for k, v := range dht {
-					data.DHTInfo.Entries = append(
-						data.DHTInfo.Entries,
+					data.NodeInfo.Entries = append(
+						data.NodeInfo.Entries,
 						DHTEntry{
 							PublicKey:       hex.EncodeToString(k.PublicKey[:2]),
 							PathID:          hex.EncodeToString(k.PathID[:]),
@@ -311,7 +311,17 @@ func configureHTTPRouting(sim *simulator.Simulator) {
 						},
 					)
 				}
-				sort.Sort(data.DHTInfo.Entries)
+				for _, p := range node.Router.Peers() {
+					data.NodeInfo.Peers = append(
+						data.NodeInfo.Peers,
+						PeerEntry{
+							PublicKey:     p.PublicKey[:4],
+							Port:          p.Port,
+							RootPublicKey: p.RootPublicKey[:4],
+						},
+					)
+				}
+				sort.Sort(data.NodeInfo.Entries)
 			}
 		}
 
@@ -448,14 +458,15 @@ type PageData struct {
 	AvgStretch          string
 	TreePathConvergence string
 	SNEKPathConvergence string
-	DHTInfo             *DHTInfo
+	NodeInfo            *NodeInfo
 }
 
-type DHTInfo struct {
+type NodeInfo struct {
 	PublicKey  string
 	Ascending  string
 	Descending string
 	Entries    DHTEntries
+	Peers      PeerEntries
 }
 
 type DHTEntries []DHTEntry
@@ -480,6 +491,14 @@ type DHTEntry struct {
 	DestinationPort int
 	SourcePort      int
 	PathID          string
+}
+
+type PeerEntries []PeerEntry
+
+type PeerEntry struct {
+	PublicKey     string
+	Port          int
+	RootPublicKey string
 }
 
 type Root struct {
