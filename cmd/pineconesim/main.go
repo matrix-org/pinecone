@@ -264,7 +264,7 @@ func configureHTTPRouting(sim *simulator.Simulator) {
 		for _, n := range nodeids {
 			node := nodes[n]
 			public := node.PublicKey()
-			predecessor, successor, table := node.DHTInfo()
+			asc, desc, table := node.DHTInfo()
 			entry := Node{
 				Name:    n,
 				Port:    fmt.Sprintf("%d", node.ListenAddr.Port),
@@ -276,11 +276,11 @@ func configureHTTPRouting(sim *simulator.Simulator) {
 			shortcuts[entry.Key] = n
 			rootkey := node.RootPublicKey()
 			entry.Root = hex.EncodeToString(rootkey[:2])
-			if predecessor != nil {
-				entry.Predecessor = hex.EncodeToString(predecessor.PublicKey[:2])
+			if desc != nil {
+				entry.Predecessor = hex.EncodeToString(desc.PublicKey[:2])
 			}
-			if successor != nil {
-				entry.Successor = hex.EncodeToString(successor.PublicKey[:2])
+			if asc != nil {
+				entry.Successor = hex.EncodeToString(asc.PublicKey[:2])
 			}
 			data.Nodes = append(data.Nodes, entry)
 			data.NodeCount++
@@ -323,8 +323,8 @@ func configureHTTPRouting(sim *simulator.Simulator) {
 		case "snek":
 			for id, n := range nodes {
 				for id2, n2 := range nodes {
-					p := n.Predecessor()
-					s := n.Successor()
+					p := n.Descending()
+					s := n.Ascending()
 					if p != nil && p.EqualTo(n2.PublicKey()) {
 						data.Links = append(data.Links, Link{
 							From:    id,
