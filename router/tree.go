@@ -23,7 +23,6 @@ import (
 	"time"
 
 	"github.com/matrix-org/pinecone/types"
-	"github.com/matrix-org/pinecone/util"
 )
 
 // announcementInterval is the frequency at which this
@@ -54,10 +53,10 @@ type rootAnnouncementWithTime struct {
 type spanningTree struct {
 	r         *Router                   //
 	context   context.Context           //
-	advertise util.Dispatch             // advertise to all other ports except for this one
+	advertise *sync.Cond                // advertise to all other ports except for this one
 	root      *rootAnnouncementWithTime //
 	rootMutex sync.RWMutex              //
-	rootReset util.Dispatch             //
+	rootReset chan struct{}             //
 	parent    atomic.Value              // types.SwitchPortID
 	coords    atomic.Value              // types.SwitchPorts
 	callback  func(parent types.SwitchPortID, coords types.SwitchPorts)
@@ -67,10 +66,10 @@ func newSpanningTree(r *Router, f func(parent types.SwitchPortID, coords types.S
 	t := &spanningTree{
 		r:         r,
 		context:   r.context,
-		advertise: util.NewDispatch(),
-		rootReset: util.NewDispatch(),
+		rootReset: make(chan struct{}),
 		callback:  f,
 	}
+	t.advertise = sync.NewCond(&sync.RWMutex{})
 	t.becomeRoot()
 	go t.workerForRoot()
 	go t.workerForAnnouncements()
@@ -130,6 +129,7 @@ func (t *spanningTree) portWasDisconnected(port types.SwitchPortID) {
 			}
 		}
 		t.parent.Store(bestPort)
+		t.advertise.Broadcast()
 	}
 }
 
@@ -139,31 +139,22 @@ func (t *spanningTree) becomeRoot() {
 	if !t.Coords().EqualTo(newCoords) {
 		t.callback(0, types.SwitchPorts{})
 	}
-	t.rootReset.Dispatch()
-	t.advertise.Dispatch()
+	t.advertise.Broadcast()
 }
 
 func (t *spanningTree) workerForAnnouncements() {
 	ticker := time.NewTicker(announcementInterval)
-	advertise := func() {
-		for _, p := range t.r.startedPorts() {
-			p.announce.Dispatch()
-		}
-	}
+	defer ticker.Stop()
 	for {
 		select {
 		case <-t.context.Done():
-			ticker.Stop()
 			return
 
 		case <-ticker.C:
 			if t.IsRoot() {
-				advertise()
+				t.advertise.Broadcast()
+				t.rootReset <- struct{}{}
 			}
-
-		case <-t.advertise:
-			advertise()
-			//ticker.Reset(announcementInterval)
 		}
 	}
 }
@@ -324,13 +315,13 @@ func (t *spanningTree) Update(p *Peer, newUpdate types.SwitchAnnouncement) error
 		t.coords.Store(coords)
 
 		t.rootMutex.Unlock()
-		t.rootReset.Dispatch()
 
 		if oldRootKey != newUpdate.RootPublicKey {
 			t.r.snake.rootNodeChanged(newUpdate.RootPublicKey)
 		}
 
-		t.advertise.Dispatch()
+		t.advertise.Broadcast()
+		t.rootReset <- struct{}{}
 	}
 
 	return nil

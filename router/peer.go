@@ -51,7 +51,7 @@ type Peer struct {
 	trafficOut   *lifoQueue                // queue traffic message to peer
 	protoOut     *fifoQueue                // queue protocol message to peer
 	coords       types.SwitchPorts         //
-	announce     util.Dispatch             //
+	announce     chan struct{}             //
 	announcement *rootAnnouncementWithTime //
 	statistics   peerStatistics            //
 }
@@ -134,7 +134,8 @@ func (p *Peer) start() error {
 	p.alive.Store(false)
 	go p.reader()
 	go p.writer()
-	p.announce.Dispatch()
+	go p.announcer()
+	p.announce <- struct{}{}
 	return nil
 }
 
@@ -179,6 +180,22 @@ func (p *Peer) generateAnnouncement() *types.Frame {
 	frame.Destination = types.SwitchPorts{}
 	frame.Payload = payload[:n]
 	return frame
+}
+
+func (p *Peer) announcer() {
+	p.r.tree.advertise.L.Lock()
+	defer p.r.tree.advertise.L.Unlock()
+	for {
+		select {
+		case <-p.context.Done():
+			// The switch peer is shutting down.
+			return
+
+		default:
+			p.r.tree.advertise.Wait()
+			p.announce <- struct{}{}
+		}
+	}
 }
 
 func (p *Peer) reader() {

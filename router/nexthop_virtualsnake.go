@@ -29,7 +29,6 @@ const virtualSnakeNeighExpiryPeriod = time.Minute * 10
 
 type virtualSnake struct {
 	r               *Router
-	maintainNow     util.Dispatch
 	table           virtualSnakeTable
 	tableMutex      sync.RWMutex
 	_ascending      *virtualSnakeNeighbour
@@ -108,14 +107,10 @@ func (t *virtualSnake) maintain() {
 	for {
 		peerCount := t.r.PeerCount(-1)
 		bootstrapNow := false
-		bootstrapConditionally := false
 		select {
 		case <-t.r.context.Done():
 			return
 		case <-time.After(time.Second):
-			bootstrapConditionally = true
-		case <-t.maintainNow:
-			bootstrapNow = true
 		}
 		if peerCount == 0 {
 			// If there are no peers connected then we don't need
@@ -132,7 +127,7 @@ func (t *virtualSnake) maintain() {
 				t.sendTeardownForPath(t.r.public, asc.PathID, asc.Port, true, fmt.Errorf("ascending root changed"))
 				bootstrapNow = true
 			}
-		} else if bootstrapConditionally {
+		} else {
 			bootstrapNow = true
 		}
 
@@ -187,6 +182,7 @@ func (t *virtualSnake) bootstrapNow() {
 func (t *virtualSnake) rootNodeChanged(root types.PublicKey) {
 	if asc := t.ascending(); asc != nil && !asc.RootPublicKey.EqualTo(root) {
 		t.sendTeardownForPath(t.r.public, asc.PathID, asc.Port, true, fmt.Errorf("root changed and asc no longer matches"))
+		defer t.bootstrapNow()
 	}
 	if desc := t.descending(); desc != nil && !desc.RootPublicKey.EqualTo(root) {
 		t.sendTeardownForPath(desc.PublicKey, desc.PathID, desc.Port, false, fmt.Errorf("root changed and desc no longer matches"))
@@ -207,13 +203,6 @@ func (t *virtualSnake) rootNodeChanged(root types.PublicKey) {
 			t.sendTeardownForPath(k.PublicKey, k.PathID, v.DestinationPort, true, fmt.Errorf("root changed and tearing paths"))
 		}
 	}
-	t.bootstrapNow()
-}
-
-// portWasDisconnected is called by the router when a peer connects
-// allowing us to start a new bootstrap.
-func (t *virtualSnake) portWasConnected(port types.SwitchPortID) {
-	t.bootstrapNow()
 }
 
 // portWasDisconnected is called by the router when a peer disconnects
@@ -349,16 +338,11 @@ func (t *virtualSnake) getVirtualSnakeTeardownNextHop(from *Peer, rx *types.Fram
 	if _, err := teardown.UnmarshalBinary(rx.Payload); err != nil {
 		return types.SwitchPorts{}
 	}
-	changed := false
 	if desc := t.descending(); desc != nil && desc.PublicKey.EqualTo(rx.DestinationKey) && desc.PathID == teardown.PathID {
 		t.setDescending(nil)
-		changed = true
 	}
 	if asc := t.ascending(); asc != nil && t.r.public.EqualTo(rx.DestinationKey) && asc.PathID == teardown.PathID {
 		t.setAscending(nil)
-		changed = true
-	}
-	if changed {
 		defer t.bootstrapNow()
 	}
 	t.tableMutex.Lock()

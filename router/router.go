@@ -115,7 +115,7 @@ func NewRouter(log *log.Logger, id string, private ed25519.PrivateKey, public ed
 		sw.ports[i] = &Peer{
 			r:        sw,
 			port:     types.SwitchPortID(i),
-			announce: util.NewDispatch(),
+			announce: make(chan struct{}),
 		}
 	}
 
@@ -420,7 +420,6 @@ func (r *Router) Connect(conn net.Conn, public types.PublicKey, zone string, pee
 		if r.simulator != nil {
 			r.simulator.ReportNewLink(conn, r.public, public)
 		}
-		r.snake.portWasConnected(i)
 		go r.callbacks.onConnected(i, public, peertype)
 		r.log.Printf("Connected port %d to %s (zone %q)\n", i, conn.RemoteAddr(), zone)
 		return i, nil
@@ -457,8 +456,8 @@ func (r *Router) Disconnect(i types.SwitchPortID, err error) error {
 		r.simulator.ReportDeadLink(r.public, r.ports[i].public)
 	}
 	r.log.Printf("Disconnected port %d: %s\n", i, err)
-	r.snake.portWasDisconnected(i)
 	r.tree.portWasDisconnected(i)
+	r.snake.portWasDisconnected(i)
 	go r.callbacks.onDisconnected(i, r.ports[i].public, r.ports[i].peertype, err)
 	return nil
 }
