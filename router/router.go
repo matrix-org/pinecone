@@ -111,7 +111,7 @@ func NewRouter(log *log.Logger, id string, private ed25519.PrivateKey, public ed
 		sw.ports[i] = &Peer{
 			r:        sw,
 			port:     types.SwitchPortID(i),
-			announce: make(chan struct{}),
+			announce: make(chan *types.Frame),
 		}
 	}
 
