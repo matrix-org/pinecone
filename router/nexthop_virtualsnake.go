@@ -17,6 +17,7 @@ package router
 import (
 	"crypto/ed25519"
 	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"sync"
 	"time"
@@ -343,7 +344,8 @@ func (t *virtualSnake) getVirtualSnakeTeardownNextHop(from *Peer, rx *types.Fram
 	}
 	if asc := t.ascending(); asc != nil && t.r.public.EqualTo(rx.DestinationKey) && asc.PathID == teardown.PathID {
 		t.setAscending(nil)
-		defer t.bootstrapNow()
+		defer time.AfterFunc(time.Millisecond*100, t.bootstrapNow)
+		//defer t.bootstrapNow()
 	}
 	t.tableMutex.Lock()
 	defer t.tableMutex.Unlock()
@@ -565,9 +567,9 @@ func (t *virtualSnake) handleSetup(from *Peer, rx *types.Frame, nextHops types.S
 
 	// Did the setup hit a dead end on the way to the ascending node?
 	if nextHops.EqualTo(types.SwitchPorts{0}) || nextHops.EqualTo(types.SwitchPorts{}) {
-		if !rx.DestinationKey.EqualTo(t.r.public) {
+		if !rx.DestinationKey.EqualTo(t.r.public) || !rx.Destination.EqualTo(t.r.Coords()) {
 			t.sendTeardownForPath(rx.SourceKey, setup.PathID, from.port, false, fmt.Errorf("rejecting setup (hit dead end)"))
-			return fmt.Errorf("setup for %q en route to %q %s hit dead end at %s", rx.SourceKey, rx.DestinationKey, rx.Destination, t.r.Coords())
+			return fmt.Errorf("setup for %q (%s) en route to %q %s hit dead end at %s", rx.SourceKey, hex.EncodeToString(setup.PathID[:]), rx.DestinationKey, rx.Destination, t.r.Coords())
 		}
 	}
 

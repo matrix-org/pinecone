@@ -97,7 +97,15 @@ func (a *SwitchAnnouncement) Coords() SwitchPorts {
 	return coords
 }
 
-func (a *SwitchAnnouncement) PeerCoords() SwitchPorts {
-	coords := a.Coords()
-	return coords[:len(coords)-1]
+func (a *SwitchAnnouncement) PeerCoords(public PublicKey) (SwitchPorts, error) {
+	sigs := a.Signatures
+	last := len(sigs) - 1
+	if sigs[last].PublicKey != public {
+		return nil, fmt.Errorf("invalid last hop")
+	}
+	coords := make(SwitchPorts, 0, len(sigs))
+	for _, sig := range sigs[:last] {
+		coords = append(coords, SwitchPortID(sig.Hop))
+	}
+	return coords, nil
 }

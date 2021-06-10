@@ -104,15 +104,23 @@ func (p *Peer) SeenRecently() bool {
 	return false
 }
 
-func (p *Peer) updateAnnouncement(new *types.SwitchAnnouncement) {
-	p.alive.Store(true)
+func (p *Peer) updateAnnouncement(new *types.SwitchAnnouncement) error {
 	p.mutex.Lock()
+	defer p.mutex.Unlock()
+	coords, err := new.PeerCoords(p.public)
+	if err != nil {
+		p.alive.Store(false)
+		p.announcement = nil
+		p.coords = nil
+		return fmt.Errorf("new.PeerCoords: %w", err)
+	}
+	p.alive.Store(true)
 	p.announcement = &rootAnnouncementWithTime{
 		SwitchAnnouncement: *new,
 		at:                 time.Now(),
 	}
-	p.coords = p.announcement.PeerCoords()
-	p.mutex.Unlock()
+	p.coords = coords
+	return nil
 }
 
 func (p *Peer) lastAnnouncement() *rootAnnouncementWithTime {
@@ -348,12 +356,19 @@ func (p *Peer) reader() {
 	}
 }
 
+var bufPool = sync.Pool{
+	New: func() interface{} {
+		return make([]byte, MaxFrameSize)
+	},
+}
+
 func (p *Peer) writer() {
-	buf := make([]byte, MaxFrameSize)
 	send := func(frame *types.Frame) error {
 		if frame == nil {
 			return nil
 		}
+		buf := bufPool.Get().([]byte)
+		defer bufPool.Put(buf) // nolint:staticcheck
 		fn, err := frame.MarshalBinary(buf)
 		frame.Done()
 		if err != nil {

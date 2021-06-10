@@ -76,7 +76,7 @@ func main() {
 		if err := conn.SetKeepAlive(true); err != nil {
 			return fmt.Errorf("conn.SetKeepAlive: %w", err)
 		}
-		if err := conn.SetKeepAlivePeriod(time.Second * 2); err != nil {
+		if err := conn.SetKeepAlivePeriod(time.Second * 5); err != nil {
 			return fmt.Errorf("conn.SetKeepAlivePeriod: %w", err)
 		}
 		return nil

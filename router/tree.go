@@ -251,7 +251,9 @@ func (t *spanningTree) Update(p *Peer, newUpdate types.SwitchAnnouncement) error
 		sigs[pk] = struct{}{}
 	}
 
-	p.updateAnnouncement(&newUpdate)
+	if err := p.updateAnnouncement(&newUpdate); err != nil {
+		return fmt.Errorf("p.updateAnnouncement: %w", err)
+	}
 
 	if isLoopbackUpdate {
 		// The update contains our own signature already, so using it for

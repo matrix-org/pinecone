@@ -35,11 +35,7 @@ import (
 // PortCount contains the number of ports supported by this Pinecone
 // node. This is, in practice, the limit of concurrent peering
 // connections that are supported at one time.
-const PortCount = 64
-
-// ProtoBufferSize is the number of protocol packets that a node will
-// buffer on a slow port.
-const ProtoBufferSize = 64
+const PortCount = 256
 
 // TrafficBufferSize is the number of traffic packets that a node will
 // buffer on a slow port.
