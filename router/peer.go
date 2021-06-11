@@ -159,12 +159,14 @@ func (p *Peer) stop() error {
 	return nil
 }
 
+/*
 func (p *Peer) generateKeepalive() *types.Frame {
 	frame := types.GetFrame()
 	frame.Version = types.Version0
 	frame.Type = types.TypeKeepalive
 	return frame
 }
+*/
 
 func (p *Peer) generateAnnouncement() *types.Frame {
 	if p.port == 0 {
