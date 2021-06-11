@@ -66,7 +66,7 @@ type FrameVersion uint8
 type FrameType uint8
 
 const (
-	TypeSTP                      FrameType = iota // root announcements, signed before forwarding to all peers
+	TypeSTP                      FrameType = iota // protocol frame, bypasses queues
 	TypeSource                                    // traffic frame, forwarded using source routing
 	TypeGreedy                                    // traffic frame, forwarded using greedy routing
 	TypePathfind                                  // protocol frame, sign the update before forwarding it greedily
@@ -79,6 +79,7 @@ const (
 	TypeVirtualSnake                              // traffic frame, forwarded using SNEK successor ordering
 	TypeVirtualSnakePathfind                      // protocol frame, forwarded using SNEK successor ordering
 	TypeVirtualSnakeTeardown                      // protocol frame
+	TypeKeepalive                                 // protocol frame, bypasses queues
 )
 
 const (
@@ -117,7 +118,7 @@ func (f *Frame) Copy() *Frame {
 func (f *Frame) MarshalBinary(buffer []byte) (int, error) {
 	copy(buffer[:4], FrameMagicBytes)
 	buffer[4], buffer[5] = byte(f.Version), byte(f.Type)
-	offset := 6
+	offset := 8
 	switch f.Type {
 	case TypeVirtualSnakeBootstrap: // destination = key, source = coords
 		payloadLen := len(f.Payload)
@@ -189,6 +190,8 @@ func (f *Frame) MarshalBinary(buffer []byte) (int, error) {
 			offset += copy(buffer[offset:], f.Payload[:payloadLen])
 		}
 
+	case TypeKeepalive:
+
 	default: // destination = coords, source = coords
 		dst, err := f.Destination.MarshalBinary()
 		if err != nil {
@@ -213,19 +216,24 @@ func (f *Frame) MarshalBinary(buffer []byte) (int, error) {
 		}
 	}
 
+	binary.BigEndian.PutUint16(buffer[6:8], uint16(offset))
 	return offset, nil
 }
 
 func (f *Frame) UnmarshalBinary(data []byte) (int, error) {
 	f.Reset()
-	if len(data) < 6 {
+	if len(data) < 8 {
 		return 0, fmt.Errorf("frame is not long enough to include metadata")
 	}
 	if !bytes.Equal(data[:4], FrameMagicBytes) {
 		return 0, fmt.Errorf("frame doesn't contain magic bytes")
 	}
 	f.Version, f.Type = FrameVersion(data[4]), FrameType(data[5])
-	offset := 6
+	framelen := int(binary.BigEndian.Uint16(data[6:8]))
+	if len(data) != framelen {
+		return 0, fmt.Errorf("frame length incorrect")
+	}
+	offset := 8
 	switch f.Type {
 	case TypeVirtualSnakeBootstrap: // destination = key, source = coords
 		payloadLen := int(binary.BigEndian.Uint16(data[offset+0 : offset+2]))
@@ -287,6 +295,9 @@ func (f *Frame) UnmarshalBinary(data []byte) (int, error) {
 		f.Payload = make([]byte, payloadLen)
 		offset += copy(f.Payload, data[offset:])
 		return offset + payloadLen, nil
+
+	case TypeKeepalive:
+		return offset, nil
 
 	default: // destination = coords, source = coords
 		dstLen := int(binary.BigEndian.Uint16(data[offset+0 : offset+2]))

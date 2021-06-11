@@ -17,18 +17,20 @@ package router
 import (
 	"bytes"
 	"context"
-	"crypto/ed25519"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"sync"
 	"time"
 
 	"github.com/matrix-org/pinecone/types"
-	"github.com/matrix-org/pinecone/util"
 	"go.uber.org/atomic"
 )
+
+const PeerKeepaliveInterval = time.Second * 2
+const PeerKeepaliveTimeout = PeerKeepaliveInterval * 3
 
 const (
 	PeerTypeMulticast int = iota
@@ -46,7 +48,7 @@ type Peer struct {
 	peertype     int                       //
 	context      context.Context           //
 	cancel       context.CancelFunc        //
-	conn         util.BufferedRWC          // underlying connection to peer
+	conn         net.Conn                  // underlying connection to peer
 	public       types.PublicKey           //
 	trafficOut   *lifoQueue                // queue traffic message to peer
 	protoOut     *fifoQueue                // queue protocol message to peer
@@ -114,7 +116,9 @@ func (p *Peer) updateAnnouncement(new *types.SwitchAnnouncement) error {
 		p.coords = nil
 		return fmt.Errorf("new.PeerCoords: %w", err)
 	}
-	p.alive.Store(true)
+	if p.alive.CAS(false, true) {
+		p.r.snake.portWasConnected(p.port)
+	}
 	p.announcement = &rootAnnouncementWithTime{
 		SwitchAnnouncement: *new,
 		at:                 time.Now(),
@@ -140,8 +144,8 @@ func (p *Peer) start() error {
 		return errors.New("switch peer is already started")
 	}
 	p.alive.Store(false)
-	go p.reader()
-	go p.writer()
+	go p.reader(p.context)
+	go p.writer(p.context)
 	p.announce <- struct{}{}
 	return nil
 }
@@ -154,6 +158,13 @@ func (p *Peer) stop() error {
 	p.cancel()
 	_ = p.conn.Close()
 	return nil
+}
+
+func (p *Peer) generateKeepalive() *types.Frame {
+	frame := types.GetFrame()
+	frame.Version = types.Version0
+	frame.Type = types.TypeKeepalive
+	return frame
 }
 
 func (p *Peer) generateAnnouncement() *types.Frame {
@@ -189,78 +200,41 @@ func (p *Peer) generateAnnouncement() *types.Frame {
 	return frame
 }
 
-func (p *Peer) reader() {
+func (p *Peer) reader(ctx context.Context) {
 	buf := make([]byte, MaxFrameSize)
 	for {
 		select {
-		case <-p.context.Done():
+		case <-ctx.Done():
 			// The switch peer is shutting down.
 			return
 
 		default:
-			var n int
-			header, err := p.conn.Peek(12)
-			if err != nil {
-				if err != io.EOF {
-					p.r.log.Println("Failed to peek:", err)
+			if p.port != 0 {
+				if err := p.conn.SetReadDeadline(time.Now().Add(PeerKeepaliveTimeout)); err != nil {
+					_ = p.r.Disconnect(p.port, fmt.Errorf("conn.SetReadDeadline: %w", err))
+					return
 				}
+			}
+			if _, err := io.ReadFull(p.conn, buf[:8]); err != nil {
 				_ = p.r.Disconnect(p.port, fmt.Errorf("p.conn.Peek: %w", err))
 				return
 			}
-			if !bytes.Equal(header[:4], types.FrameMagicBytes) {
-				p.r.log.Println(p.port, "traffic had no magic", types.FrameMagicBytes, "bytes", header, types.FrameType(header[1]))
-				_, _ = p.conn.Discard(1)
-				continue
+			if !bytes.Equal(buf[:4], types.FrameMagicBytes) {
+				_ = p.r.Disconnect(p.port, fmt.Errorf("missing magic bytes"))
+				return
 			}
-			header = header[4:]
-			expecting := 0
-			switch types.FrameType(header[1]) {
-			case types.TypeVirtualSnakeBootstrap:
-				payloadLen := int(binary.BigEndian.Uint16(header[2:4]))
-				coordsLen := int(binary.BigEndian.Uint16(header[4:6]))
-				expecting = 10 + coordsLen + payloadLen + ed25519.PublicKeySize
-
-			case types.TypeVirtualSnakeBootstrapACK:
-				payloadLen := int(binary.BigEndian.Uint16(header[2:4]))
-				dstLen := int(binary.BigEndian.Uint16(header[4:6]))
-				srcLen := int(binary.BigEndian.Uint16(header[6:8]))
-				expecting = 12 + dstLen + srcLen + payloadLen + (ed25519.PublicKeySize * 2)
-
-			case types.TypeVirtualSnakeSetup:
-				payloadLen := int(binary.BigEndian.Uint16(header[2:4]))
-				coordsLen := int(binary.BigEndian.Uint16(header[4:6]))
-				expecting = 10 + coordsLen + (ed25519.PublicKeySize * 2) + payloadLen
-
-			case types.TypeVirtualSnakeTeardown:
-				payloadLen := int(binary.BigEndian.Uint16(header[2:4]))
-				expecting = 8 + payloadLen + ed25519.PublicKeySize
-
-			case types.TypeVirtualSnake, types.TypeVirtualSnakePathfind:
-				payloadLen := int(binary.BigEndian.Uint16(header[2:4]))
-				expecting = 8 + payloadLen + (ed25519.PublicKeySize * 2)
-
-			default:
-				dstLen := int(binary.BigEndian.Uint16(header[2:4]))
-				srcLen := int(binary.BigEndian.Uint16(header[4:6]))
-				payloadLen := int(binary.BigEndian.Uint16(header[6:8]))
-				expecting = 12 + dstLen + srcLen + payloadLen
-			}
-			n, err = io.ReadFull(p.conn, buf[:expecting])
-			switch err {
-			case io.EOF, io.ErrUnexpectedEOF:
+			expecting := int(binary.BigEndian.Uint16(buf[6:8]))
+			n, err := io.ReadFull(p.conn, buf[8:expecting])
+			if err != nil {
 				_ = p.r.Disconnect(p.port, fmt.Errorf("io.ReadFull: %w", err))
 				return
-			case nil:
-			default:
-				p.r.log.Println("Failed to read:", err)
-				continue
 			}
-			if n < expecting {
+			if n < expecting-8 {
 				p.r.log.Println("Expecting", expecting, "bytes but got", n, "bytes")
 				continue
 			}
 			frame := types.GetFrame()
-			if _, err := frame.UnmarshalBinary(buf[:n]); err != nil {
+			if _, err := frame.UnmarshalBinary(buf[:n+8]); err != nil {
 				p.r.log.Println("Port", p.port, "error unmarshalling frame:", err)
 				frame.Done()
 				return
@@ -270,10 +244,13 @@ func (p *Peer) reader() {
 				frame.Done()
 				return
 			}
+			if frame.Type == types.TypeKeepalive {
+				frame.Done()
+				continue
+			}
 			func(frame *types.Frame) {
 				defer frame.Done()
-
-				//p.r.log.Println("Frame type", frame.Type.String(), frame.DestinationKey)
+				//	p.r.log.Println("Frame type", frame.Type.String(), frame.DestinationKey)
 				sent := false
 				defer func() {
 					if !sent {
@@ -345,10 +322,10 @@ var bufPool = sync.Pool{
 	},
 }
 
-func (p *Peer) writer() {
-	send := func(frame *types.Frame) error {
+func (p *Peer) writer(ctx context.Context) {
+	send := func(frame *types.Frame) {
 		if frame == nil {
-			return nil
+			return
 		}
 		buf := bufPool.Get().([]byte)
 		defer bufPool.Put(buf) // nolint:staticcheck
@@ -356,7 +333,7 @@ func (p *Peer) writer() {
 		frame.Done()
 		if err != nil {
 			p.r.log.Println("Port", p.port, "error marshalling frame:", err)
-			return err
+			return
 		}
 		if !bytes.Equal(buf[:4], types.FrameMagicBytes) {
 			panic("expected magic bytes")
@@ -365,55 +342,74 @@ func (p *Peer) writer() {
 		for len(remaining) > 0 {
 			n, err := p.conn.Write(remaining)
 			if err != nil {
-				if err != io.EOF {
-					p.r.log.Println("Failed to write:", err)
-				}
 				_ = p.r.Disconnect(p.port, fmt.Errorf("p.conn.Write: %w", err))
-				return err
+				return
 			}
 			remaining = remaining[n:]
 		}
-		p.conn.Flush()
-		return nil
 	}
+
+	tick := time.NewTicker(PeerKeepaliveInterval)
+	defer tick.Stop()
 
 	for {
 		select {
-		case <-p.context.Done():
+		case <-ctx.Done():
 			return
 		case <-p.announce:
-			_ = send(p.generateAnnouncement())
+			send(p.generateAnnouncement())
 			continue
 		default:
 		}
 		select {
-		case <-p.context.Done():
+		case <-ctx.Done():
 			return
 		case <-p.announce:
-			_ = send(p.generateAnnouncement())
+			send(p.generateAnnouncement())
 			continue
 		case <-p.protoOut.wait():
-			if frame, ok := p.protoOut.pop(); ok && frame != nil {
-				_ = send(frame)
+			if frame, ok := p.protoOut.pop(); ok {
+				send(frame)
 			}
 			continue
 		default:
 		}
 		select {
-		case <-p.context.Done():
+		case <-ctx.Done():
 			return
 		case <-p.announce:
-			_ = send(p.generateAnnouncement())
+			send(p.generateAnnouncement())
 			continue
 		case <-p.protoOut.wait():
-			if frame, ok := p.protoOut.pop(); ok && frame != nil {
-				_ = send(frame)
+			if frame, ok := p.protoOut.pop(); ok {
+				send(frame)
 			}
 			continue
 		case <-p.trafficOut.wait():
-			if frame, ok := p.trafficOut.pop(); ok && frame != nil {
-				_ = send(frame)
+			if frame, ok := p.trafficOut.pop(); ok {
+				send(frame)
 			}
+			continue
+		default:
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-p.announce:
+			send(p.generateAnnouncement())
+			continue
+		case <-p.protoOut.wait():
+			if frame, ok := p.protoOut.pop(); ok {
+				send(frame)
+			}
+			continue
+		case <-p.trafficOut.wait():
+			if frame, ok := p.trafficOut.pop(); ok {
+				send(frame)
+			}
+			continue
+		case <-tick.C:
+			send(p.generateKeepalive())
 			continue
 		}
 	}

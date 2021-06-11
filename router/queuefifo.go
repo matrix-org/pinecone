@@ -67,10 +67,12 @@ func (q *fifoQueue) reset() {
 func (q *fifoQueue) wait() <-chan struct{} {
 	q.mutex.Lock()
 	defer q.mutex.Unlock()
-	if q.count > 0 {
-		ch := make(chan struct{})
-		close(ch)
-		return ch
-	}
+	/*
+		if q.count > 0 {
+			ch := make(chan struct{})
+			close(ch)
+			return ch
+		}
+	*/
 	return q.notifs
 }

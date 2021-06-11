@@ -19,6 +19,7 @@ import (
 	"net"
 
 	"github.com/matrix-org/pinecone/router"
+	"github.com/matrix-org/pinecone/util"
 )
 
 func (sim *Simulator) ConnectNodes(a, b string) error {
@@ -46,12 +47,18 @@ func (sim *Simulator) ConnectNodes(a, b string) error {
 	if err := c.SetNoDelay(true); err != nil {
 		panic(err)
 	}
-	if _, err := nb.AuthenticatedConnect(c, "sim", router.PeerTypeRemote); err != nil {
+	sc := &util.SlowConn{
+		Conn: c,
+		//	ReadJitterMillis:  2,
+		//	WriteJitterMillis: 2,
+	}
+	if _, err := nb.AuthenticatedConnect(sc, "sim", router.PeerTypeRemote); err != nil {
 		return fmt.Errorf("nb.AuthenticatedConnect: %w", err)
 	}
-
 	/*
 		pa, pb := net.Pipe()
+		pa = &util.SlowConn{Conn: pa, ReadDelay: 25 * time.Millisecond}
+		pb = &util.SlowConn{Conn: pb, ReadDelay: 25 * time.Millisecond}
 		go func() {
 			if _, err := na.Connect(pa, nb.PublicKey(), "sim", router.PeerTypeRemote); err != nil {
 				return //fmt.Errorf("nb.AuthenticatedConnect: %w", err)
@@ -68,7 +75,7 @@ func (sim *Simulator) ConnectNodes(a, b string) error {
 	if sim.wires[a] == nil {
 		sim.wires[a] = map[string]net.Conn{}
 	}
-	sim.wires[a][b] = c
+	sim.wires[a][b] = sc
 	//sim.wires[a][b] = pa
 
 	sim.log.Printf("Connected node %q to node %q\n", a, b)

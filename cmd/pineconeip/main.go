@@ -21,7 +21,6 @@ import (
 	"log"
 	"net"
 	"os"
-	"time"
 
 	"net/http"
 	_ "net/http/pprof"
@@ -73,11 +72,16 @@ func main() {
 		if err := conn.SetNoDelay(true); err != nil {
 			return fmt.Errorf("conn.SetNoDelay: %w", err)
 		}
-		if err := conn.SetKeepAlive(true); err != nil {
-			return fmt.Errorf("conn.SetKeepAlive: %w", err)
-		}
-		if err := conn.SetKeepAlivePeriod(time.Second * 5); err != nil {
-			return fmt.Errorf("conn.SetKeepAlivePeriod: %w", err)
+		/*
+			if err := conn.SetKeepAlive(true); err != nil {
+				return fmt.Errorf("conn.SetKeepAlive: %w", err)
+			}
+			if err := conn.SetKeepAlivePeriod(time.Second); err != nil {
+				return fmt.Errorf("conn.SetKeepAlivePeriod: %w", err)
+			}
+		*/
+		if err := conn.SetLinger(0); err != nil {
+			return fmt.Errorf("conn.SetLinger: %w", err)
 		}
 		return nil
 	}

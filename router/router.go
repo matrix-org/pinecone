@@ -28,7 +28,6 @@ import (
 	"time"
 
 	"github.com/matrix-org/pinecone/types"
-	"github.com/matrix-org/pinecone/util"
 	"go.uber.org/atomic"
 )
 
@@ -47,7 +46,7 @@ const MaxPayloadSize = 65535
 
 // MaxFrameSize is the maximum size that a single frame can be, including
 // all headers.
-const MaxFrameSize = 65535*3 + 12
+const MaxFrameSize = 65535*3 + 14
 
 // Simulator is not used by normal Pinecone nodes and specifies the
 // functions that must be satisfied if running under pineconesim.
@@ -109,9 +108,11 @@ func NewRouter(log *log.Logger, id string, private ed25519.PrivateKey, public ed
 	// Prepare the switch ports.
 	for i := range sw.ports {
 		sw.ports[i] = &Peer{
-			r:        sw,
-			port:     types.SwitchPortID(i),
-			announce: make(chan struct{}),
+			r:          sw,
+			port:       types.SwitchPortID(i),
+			announce:   make(chan struct{}),
+			protoOut:   newFIFOQueue(),
+			trafficOut: newLIFOQueue(TrafficBufferSize),
 		}
 	}
 
@@ -342,7 +343,7 @@ func (r *Router) AuthenticatedConnect(conn net.Conn, zone string, peertype int) 
 		_ = conn.SetDeadline(time.Now().Add(time.Second * 5))
 		if _, err := conn.Write(handshake); err != nil {
 			conn.Close()
-			return 0, err
+			return 0, fmt.Errorf("conn.Write: %w", err)
 		}
 		if _, err := io.ReadFull(conn, handshake); err != nil {
 			conn.Close()
@@ -382,9 +383,7 @@ func (r *Router) AuthenticatedConnect(conn net.Conn, zone string, peertype int) 
 // returned in the event of a successful connection.
 func (r *Router) Connect(conn net.Conn, public types.PublicKey, zone string, peertype int) (types.SwitchPortID, error) {
 	if p, ok := r.active.Load(hex.EncodeToString(public[:]) + zone); ok {
-		if err := r.Disconnect(p.(types.SwitchPortID), fmt.Errorf("another incoming connection from the same node")); err != nil {
-			return 0, fmt.Errorf("already connected to this node via zone %q", zone)
-		}
+		_ = r.Disconnect(p.(types.SwitchPortID), fmt.Errorf("another incoming connection from the same node"))
 	}
 	r.connections.Lock()
 	defer r.connections.Unlock()
@@ -399,10 +398,11 @@ func (r *Router) Connect(conn net.Conn, public types.PublicKey, zone string, pee
 		r.ports[i].context, r.ports[i].cancel = context.WithCancel(r.context)
 		r.ports[i].zone = zone
 		r.ports[i].peertype = peertype
-		r.ports[i].conn = util.NewBufferedRWCSize(conn, MaxFrameSize)
+		r.ports[i].conn = conn // util.NewBufferedRWCSize(conn, MaxFrameSize)
 		r.ports[i].public = public
-		r.ports[i].protoOut = newFIFOQueue()
-		r.ports[i].trafficOut = newLIFOQueue(TrafficBufferSize)
+		r.ports[i].coords = nil
+		r.ports[i].protoOut.reset()
+		r.ports[i].trafficOut.reset()
 		r.ports[i].announcement = nil
 		r.ports[i].statistics.reset()
 		r.ports[i].mutex.Unlock()
@@ -441,6 +441,7 @@ func (r *Router) Disconnect(i types.SwitchPortID, err error) error {
 	r.ports[i].peertype = 0
 	r.ports[i].zone = ""
 	r.ports[i].public = types.PublicKey{}
+	r.ports[i].coords = nil
 	r.ports[i].announcement = nil
 	r.ports[i].protoOut.reset()
 	r.ports[i].trafficOut.reset()
@@ -480,8 +481,12 @@ func (r *Router) PeerCount(peertype int) int {
 // IsConnected returns true if the node is connected within the
 // given zone, or false otherwise.
 func (r *Router) IsConnected(key types.PublicKey, zone string) bool {
-	_, ok := r.active.Load(hex.EncodeToString(key[:]) + zone)
-	return ok
+	v, ok := r.active.Load(hex.EncodeToString(key[:]) + zone)
+	if !ok {
+		return false
+	}
+	port := v.(types.SwitchPortID)
+	return r.ports[port].started.Load()
 }
 
 // PeerInfo is a gomobile-friendly type that represents a peer

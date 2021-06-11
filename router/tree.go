@@ -18,6 +18,7 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
+	"math"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -51,14 +52,15 @@ type rootAnnouncementWithTime struct {
 }
 
 type spanningTree struct {
-	r         *Router                   //
-	context   context.Context           //
-	root      *rootAnnouncementWithTime //
-	rootMutex sync.RWMutex              //
-	rootReset chan struct{}             //
-	parent    atomic.Value              // types.SwitchPortID
-	coords    atomic.Value              // types.SwitchPorts
-	callback  func(parent types.SwitchPortID, coords types.SwitchPorts)
+	r           *Router                   //
+	context     context.Context           //
+	root        *rootAnnouncementWithTime //
+	rootMutex   sync.RWMutex              //
+	rootReset   chan struct{}             //
+	updateMutex sync.Mutex                //
+	parent      atomic.Value              // types.SwitchPortID
+	coords      atomic.Value              // types.SwitchPorts
+	callback    func(parent types.SwitchPortID, coords types.SwitchPorts)
 }
 
 func newSpanningTree(r *Router, f func(parent types.SwitchPortID, coords types.SwitchPorts)) *spanningTree {
@@ -106,9 +108,10 @@ func (t *spanningTree) portWasDisconnected(port types.SwitchPortID) {
 	}
 	parent := t.parent.Load().(types.SwitchPortID)
 	if parent == port {
-		var bestDist int
+		bestDist := math.MaxInt64
 		var bestTime time.Time
 		var bestPort types.SwitchPortID
+		var bestAnn *rootAnnouncementWithTime
 		for _, p := range t.r.activePorts() {
 			ann := p.lastAnnouncement()
 			if ann == nil {
@@ -118,16 +121,21 @@ func (t *spanningTree) portWasDisconnected(port types.SwitchPortID) {
 			switch {
 			case ann.RootPublicKey != t.r.RootPublicKey():
 				continue
-			case bestDist == 0 || hops < bestDist:
+			case hops < bestDist:
 				fallthrough
 			case ann.at.Before(bestTime):
 				bestDist = hops
 				bestPort = p.port
 				bestTime = ann.at
+				bestAnn = ann
 			}
 		}
-		t.parent.Store(bestPort)
-		t.advertise()
+		if bestAnn != nil {
+			t.parent.Store(bestPort)
+			_ = t.Update(t.r.ports[bestPort], bestAnn.SwitchAnnouncement)
+		} else {
+			t.becomeRoot()
+		}
 	}
 }
 
@@ -257,6 +265,16 @@ func (t *spanningTree) Update(p *Peer, newUpdate types.SwitchAnnouncement) error
 		sigs[pk] = struct{}{}
 	}
 
+	lastPortUpdate := p.lastAnnouncement()
+	if lastPortUpdate != nil && lastPortUpdate.RootPublicKey == newUpdate.RootPublicKey {
+		if newUpdate.Sequence < lastPortUpdate.Sequence {
+			// The update has a lower sequence number than our last update
+			// on this port from this root. This shouldn't happen, but if it
+			// does, then just drop the update.
+			return nil
+		}
+	}
+
 	if err := p.updateAnnouncement(&newUpdate); err != nil {
 		return fmt.Errorf("p.updateAnnouncement: %w", err)
 	}
@@ -266,6 +284,9 @@ func (t *spanningTree) Update(p *Peer, newUpdate types.SwitchAnnouncement) error
 		// a root update would create a loop
 		return nil
 	}
+
+	t.updateMutex.Lock()
+	defer t.updateMutex.Unlock()
 
 	lastGlobalUpdate := t.Root()
 	globalKeyDelta := newUpdate.RootPublicKey.CompareTo(lastGlobalUpdate.RootPublicKey)
@@ -315,17 +336,12 @@ func (t *spanningTree) Update(p *Peer, newUpdate types.SwitchAnnouncement) error
 			at:                 time.Now(),
 			SwitchAnnouncement: newUpdate,
 		}
-		coords := types.SwitchPorts{}
-		for _, hop := range t.root.Signatures {
-			coords = append(coords, types.SwitchPortID(hop.Hop))
-		}
 		t.parent.Store(p.port)
-		t.coords.Store(coords)
-
+		t.coords.Store(t.root.Coords())
 		t.rootMutex.Unlock()
 
 		if oldRootKey != newUpdate.RootPublicKey {
-			t.r.snake.rootNodeChanged(newUpdate.RootPublicKey)
+			defer t.r.snake.rootNodeChanged(newUpdate.RootPublicKey)
 		}
 
 		t.advertise()

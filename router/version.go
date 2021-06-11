@@ -20,7 +20,8 @@ const (
 	capabilityHardState     = 4
 	capabilityPathIDs       = 8
 	capabilityRootInUpdates = 16
+	capabilityNewHeaders    = 32
 )
 
 const ourVersion = 0
-const ourCapabilities = capabilityVirtualSnake | capabilityHardState | capabilityPathIDs | capabilityRootInUpdates
+const ourCapabilities = capabilityVirtualSnake | capabilityHardState | capabilityPathIDs | capabilityRootInUpdates | capabilityNewHeaders
