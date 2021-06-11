@@ -322,8 +322,8 @@ var bufPool = sync.Pool{
 }
 
 func (p *Peer) writer(ctx context.Context) {
-	tick := time.NewTicker(PeerKeepaliveInterval)
-	defer tick.Stop()
+	//tick := time.NewTicker(PeerKeepaliveInterval)
+	//defer tick.Stop()
 	send := func(frame *types.Frame) {
 		if frame == nil {
 			return
@@ -411,9 +411,9 @@ func (p *Peer) writer(ctx context.Context) {
 				send(frame)
 			}
 			continue
-		case <-tick.C:
-			send(p.generateKeepalive())
-			continue
+			//case <-tick.C:
+			//	send(p.generateKeepalive())
+			//	continue
 		}
 	}
 }
