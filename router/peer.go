@@ -146,7 +146,6 @@ func (p *Peer) start() error {
 	p.alive.Store(false)
 	go p.reader(p.context)
 	go p.writer(p.context)
-	p.announce <- struct{}{}
 	return nil
 }
 
@@ -323,6 +322,8 @@ var bufPool = sync.Pool{
 }
 
 func (p *Peer) writer(ctx context.Context) {
+	tick := time.NewTicker(PeerKeepaliveInterval)
+	defer tick.Stop()
 	send := func(frame *types.Frame) {
 		if frame == nil {
 			return
@@ -349,8 +350,10 @@ func (p *Peer) writer(ctx context.Context) {
 		}
 	}
 
-	tick := time.NewTicker(PeerKeepaliveInterval)
-	defer tick.Stop()
+	// The very first thing we send should be a tree announcement,
+	// so that the remote side can work out our coords and consider
+	// us to be "alive".
+	send(p.generateAnnouncement())
 
 	for {
 		select {
