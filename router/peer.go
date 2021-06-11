@@ -51,7 +51,7 @@ type Peer struct {
 	trafficOut   *lifoQueue                // queue traffic message to peer
 	protoOut     *fifoQueue                // queue protocol message to peer
 	coords       types.SwitchPorts         //
-	announce     chan *types.Frame         //
+	announce     chan struct{}             //
 	announcement *rootAnnouncementWithTime //
 	statistics   peerStatistics            //
 }
@@ -142,10 +142,7 @@ func (p *Peer) start() error {
 	p.alive.Store(false)
 	go p.reader()
 	go p.writer()
-	go p.announcer()
-	if ann := p.generateAnnouncement(); ann != nil {
-		p.announce <- ann
-	}
+	p.announce <- struct{}{}
 	return nil
 }
 
@@ -190,24 +187,6 @@ func (p *Peer) generateAnnouncement() *types.Frame {
 	frame.Destination = types.SwitchPorts{}
 	frame.Payload = payload[:n]
 	return frame
-}
-
-func (p *Peer) announcer() {
-	p.r.tree.advertise.L.Lock()
-	defer p.r.tree.advertise.L.Unlock()
-	for {
-		select {
-		case <-p.context.Done():
-			// The switch peer is shutting down.
-			return
-
-		default:
-			p.r.tree.advertise.Wait()
-			if ann := p.generateAnnouncement(); ann != nil {
-				p.announce <- ann
-			}
-		}
-	}
 }
 
 func (p *Peer) reader() {
@@ -402,16 +381,16 @@ func (p *Peer) writer() {
 		select {
 		case <-p.context.Done():
 			return
-		case ann := <-p.announce:
-			_ = send(ann)
+		case <-p.announce:
+			_ = send(p.generateAnnouncement())
 			continue
 		default:
 		}
 		select {
 		case <-p.context.Done():
 			return
-		case ann := <-p.announce:
-			_ = send(ann)
+		case <-p.announce:
+			_ = send(p.generateAnnouncement())
 			continue
 		case <-p.protoOut.wait():
 			if frame, ok := p.protoOut.pop(); ok && frame != nil {
@@ -423,8 +402,8 @@ func (p *Peer) writer() {
 		select {
 		case <-p.context.Done():
 			return
-		case ann := <-p.announce:
-			_ = send(ann)
+		case <-p.announce:
+			_ = send(p.generateAnnouncement())
 			continue
 		case <-p.protoOut.wait():
 			if frame, ok := p.protoOut.pop(); ok && frame != nil {

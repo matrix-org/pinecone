@@ -53,7 +53,6 @@ type rootAnnouncementWithTime struct {
 type spanningTree struct {
 	r         *Router                   //
 	context   context.Context           //
-	advertise *sync.Cond                // advertise to all other ports except for this one
 	root      *rootAnnouncementWithTime //
 	rootMutex sync.RWMutex              //
 	rootReset chan struct{}             //
@@ -69,7 +68,6 @@ func newSpanningTree(r *Router, f func(parent types.SwitchPortID, coords types.S
 		rootReset: make(chan struct{}),
 		callback:  f,
 	}
-	t.advertise = sync.NewCond(&sync.RWMutex{})
 	t.becomeRoot()
 	go t.workerForRoot()
 	go t.workerForAnnouncements()
@@ -129,7 +127,15 @@ func (t *spanningTree) portWasDisconnected(port types.SwitchPortID) {
 			}
 		}
 		t.parent.Store(bestPort)
-		t.advertise.Broadcast()
+		t.advertise()
+	}
+}
+
+func (t *spanningTree) advertise() {
+	for _, p := range t.r.startedPorts() {
+		go func(p *Peer) {
+			p.announce <- struct{}{}
+		}(p)
 	}
 }
 
@@ -139,7 +145,7 @@ func (t *spanningTree) becomeRoot() {
 	if !t.Coords().EqualTo(newCoords) {
 		t.callback(0, types.SwitchPorts{})
 	}
-	t.advertise.Broadcast()
+	t.advertise()
 }
 
 func (t *spanningTree) workerForAnnouncements() {
@@ -152,7 +158,7 @@ func (t *spanningTree) workerForAnnouncements() {
 
 		case <-ticker.C:
 			if t.IsRoot() {
-				t.advertise.Broadcast()
+				t.advertise()
 				t.rootReset <- struct{}{}
 			}
 		}
@@ -322,7 +328,7 @@ func (t *spanningTree) Update(p *Peer, newUpdate types.SwitchAnnouncement) error
 			t.r.snake.rootNodeChanged(newUpdate.RootPublicKey)
 		}
 
-		t.advertise.Broadcast()
+		t.advertise()
 		t.rootReset <- struct{}{}
 	}
 
