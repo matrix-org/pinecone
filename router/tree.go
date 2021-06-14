@@ -115,7 +115,7 @@ func (t *spanningTree) selectNewParent() {
 	t.updateMutex.Lock()
 	defer t.updateMutex.Unlock()
 	t.becomeRoot()
-	bestDist := math.MaxInt64
+	bestDist := math.MaxInt32
 	bestKey := t.r.public
 	var bestTime time.Time
 	var bestPort types.SwitchPortID
