@@ -37,7 +37,8 @@ func (r *Router) startManhole() {
 			"coords":     r.Coords().String(),
 		}
 		results["tree"] = map[string]string{
-			"root": r.tree.Root().RootPublicKey.String(),
+			"root":      r.tree.Root().RootPublicKey.String(),
+			"last_seen": time.Since(r.tree.Root().at).String(),
 		}
 		ports := map[types.SwitchPortID]map[string]interface{}{}
 		for _, p := range r.activePorts() {
@@ -53,7 +54,10 @@ func (r *Router) startManhole() {
 				"tx_proto_dropped":      p.statistics.txProtoDropped.Load(),
 				"tx_traffic_successful": p.statistics.txTrafficSuccessful.Load(),
 				"tx_traffic_dropped":    p.statistics.txTrafficDropped.Load(),
-				"rx_dropped_no_dest":    p.statistics.rxDroppedNoDestination.Load(),
+			}
+			if ann := p.lastAnnouncement(); ann != nil {
+				ports[p.port]["root"] = ann.RootPublicKey.String()
+				ports[p.port]["last_seen"] = time.Since(ann.at).String()
 			}
 			p.mutex.RUnlock()
 		}
@@ -84,7 +88,7 @@ func (e *virtualSnakeNeighbour) MarshalJSON() ([]byte, error) {
 	out := map[string]interface{}{
 		"public_key": e.PublicKey.String(),
 		"port":       e.Port,
-		"last_seen":  time.Since(e.LastSeen).String(),
+		"age":        time.Since(e.LastSeen).String(),
 	}
 	return json.Marshal(out)
 }
@@ -96,7 +100,7 @@ func (e virtualSnakeTable) MarshalJSON() ([]byte, error) {
 			"source_key":  key.PublicKey.String(),
 			"source_port": value.SourcePort,
 			"path_id":     key.PathID,
-			"last_seen":   time.Since(value.LastSeen).String(),
+			"age":         time.Since(value.LastSeen).String(),
 		}
 		//if time.Since(value.LastSeen) > virtualSnakePathExpiryPeriod {
 		//	entry["expired"] = true
@@ -108,7 +112,7 @@ func (e virtualSnakeTable) MarshalJSON() ([]byte, error) {
 
 func (e virtualSnakeEntry) MarshalJSON() ([]byte, error) {
 	out := map[string]interface{}{
-		"last_seen":   time.Since(e.LastSeen).String(),
+		"age":         time.Since(e.LastSeen).String(),
 		"source_port": e.SourcePort,
 	}
 	return json.Marshal(out)

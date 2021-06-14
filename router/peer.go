@@ -59,11 +59,12 @@ type Peer struct {
 }
 
 type peerStatistics struct {
-	txProtoSuccessful      atomic.Uint64
-	txProtoDropped         atomic.Uint64
-	txTrafficSuccessful    atomic.Uint64
-	txTrafficDropped       atomic.Uint64
-	rxDroppedNoDestination atomic.Uint64
+	txProtoSuccessful   atomic.Uint64
+	txProtoDropped      atomic.Uint64
+	txTrafficSuccessful atomic.Uint64
+	txTrafficDropped    atomic.Uint64
+	rxProto             atomic.Uint64
+	rxTraffic           atomic.Uint64
 }
 
 func (s *peerStatistics) reset() {
@@ -71,7 +72,8 @@ func (s *peerStatistics) reset() {
 	s.txProtoDropped.Store(0)
 	s.txTrafficSuccessful.Store(0)
 	s.txTrafficDropped.Store(0)
-	s.rxDroppedNoDestination.Store(0)
+	s.rxProto.Store(0)
+	s.rxTraffic.Store(0)
 }
 
 func (p *Peer) PublicKey() types.PublicKey {
@@ -252,12 +254,6 @@ func (p *Peer) reader(ctx context.Context) {
 			func(frame *types.Frame) {
 				defer frame.Done()
 				//	p.r.log.Println("Frame type", frame.Type.String(), frame.DestinationKey)
-				sent := false
-				defer func() {
-					if !sent {
-						p.statistics.rxDroppedNoDestination.Inc()
-					}
-				}()
 				for _, port := range p.getNextHops(frame, p.port) {
 					// Ignore ports that are not good candidates.
 					dest := p.r.ports[port]
@@ -279,34 +275,25 @@ func (p *Peer) reader(ctx context.Context) {
 						if signedframe == nil {
 							continue
 						}
-						if sent = dest.trafficOut.push(signedframe); sent {
-							dest.statistics.txTrafficSuccessful.Inc()
+						if dest.trafficOut.push(signedframe) {
 							return
 						} else {
-							p.r.log.Println("Dropped pathfind frame of type", signedframe.Type.String(), "on port", dest.port)
-							dest.statistics.txTrafficDropped.Inc()
 							signedframe.Done()
 							continue
 						}
 
 					case types.TypeDHTRequest, types.TypeDHTResponse, types.TypeVirtualSnakeBootstrap, types.TypeVirtualSnakeBootstrapACK, types.TypeVirtualSnakeSetup, types.TypeVirtualSnakeTeardown:
-						if sent = dest.protoOut.push(frame.Borrow()); sent {
-							dest.statistics.txProtoSuccessful.Inc()
+						if dest.protoOut.push(frame.Borrow()) {
 							return
 						} else {
-							p.r.log.Println("Dropped protocol frame of type", frame.Type.String(), "on port", dest.port)
-							dest.statistics.txProtoDropped.Inc()
 							frame.Done()
 							continue
 						}
 
 					case types.TypeGreedy, types.TypeSource, types.TypeVirtualSnake:
-						if sent = dest.trafficOut.push(frame.Borrow()); sent {
-							dest.statistics.txTrafficSuccessful.Inc()
+						if dest.trafficOut.push(frame.Borrow()) {
 							return
 						} else {
-							p.r.log.Println("Dropped traffic frame of type", frame.Type.String(), "on port", dest.port)
-							dest.statistics.txTrafficDropped.Inc()
 							frame.Done()
 							continue
 						}
@@ -363,6 +350,7 @@ func (p *Peer) writer(ctx context.Context) {
 			return
 		case <-p.announce:
 			send(p.generateAnnouncement())
+			p.statistics.txProtoSuccessful.Inc()
 			continue
 		default:
 		}
@@ -371,10 +359,14 @@ func (p *Peer) writer(ctx context.Context) {
 			return
 		case <-p.announce:
 			send(p.generateAnnouncement())
+			p.statistics.txProtoSuccessful.Inc()
 			continue
 		case <-p.protoOut.wait():
 			if frame, ok := p.protoOut.pop(); ok {
 				send(frame)
+				p.statistics.txProtoSuccessful.Inc()
+			} else {
+				p.statistics.txProtoDropped.Inc()
 			}
 			continue
 		default:
@@ -384,15 +376,22 @@ func (p *Peer) writer(ctx context.Context) {
 			return
 		case <-p.announce:
 			send(p.generateAnnouncement())
+			p.statistics.txProtoSuccessful.Inc()
 			continue
 		case <-p.protoOut.wait():
 			if frame, ok := p.protoOut.pop(); ok {
 				send(frame)
+				p.statistics.txProtoSuccessful.Inc()
+			} else {
+				p.statistics.txProtoDropped.Inc()
 			}
 			continue
 		case <-p.trafficOut.wait():
 			if frame, ok := p.trafficOut.pop(); ok {
 				send(frame)
+				p.statistics.txTrafficSuccessful.Inc()
+			} else {
+				p.statistics.txTrafficDropped.Inc()
 			}
 			continue
 		default:
@@ -402,19 +401,27 @@ func (p *Peer) writer(ctx context.Context) {
 			return
 		case <-p.announce:
 			send(p.generateAnnouncement())
+			p.statistics.txProtoSuccessful.Inc()
 			continue
 		case <-p.protoOut.wait():
 			if frame, ok := p.protoOut.pop(); ok {
 				send(frame)
+				p.statistics.txProtoSuccessful.Inc()
+			} else {
+				p.statistics.txProtoDropped.Inc()
 			}
 			continue
 		case <-p.trafficOut.wait():
 			if frame, ok := p.trafficOut.pop(); ok {
 				send(frame)
+				p.statistics.txTrafficSuccessful.Inc()
+			} else {
+				p.statistics.txTrafficDropped.Inc()
 			}
 			continue
 			//case <-tick.C:
 			//	send(p.generateKeepalive())
+			//  p.statistics.txProtoSuccessful.Inc()
 			//	continue
 		}
 	}

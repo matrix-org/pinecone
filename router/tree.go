@@ -152,7 +152,11 @@ func (t *spanningTree) selectNewParent() {
 func (t *spanningTree) advertise() {
 	for _, p := range t.r.startedPorts() {
 		go func(p *Peer) {
-			p.announce <- struct{}{}
+			select {
+			case <-p.context.Done():
+			case <-time.After(announcementTimeout):
+			case p.announce <- struct{}{}:
+			}
 		}(p)
 	}
 }
