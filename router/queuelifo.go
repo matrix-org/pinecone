@@ -23,6 +23,18 @@ func newLIFOQueue(size int) *lifoQueue {
 	return q
 }
 
+func (q *lifoQueue) queuecount() int {
+	q.mutex.Lock()
+	defer q.mutex.Unlock()
+	return q.count
+}
+
+func (q *lifoQueue) queuesize() int {
+	q.mutex.Lock()
+	defer q.mutex.Unlock()
+	return q.size
+}
+
 func (q *lifoQueue) push(frame *types.Frame) bool {
 	q.mutex.Lock()
 	defer q.mutex.Unlock()

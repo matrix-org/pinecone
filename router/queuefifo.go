@@ -9,7 +9,6 @@ import (
 type fifoQueue struct {
 	frames []*types.Frame
 	count  int
-	size   int
 	mutex  sync.Mutex
 	notifs chan struct{}
 }
@@ -21,12 +20,23 @@ func newFIFOQueue() *fifoQueue {
 	return q
 }
 
+func (q *fifoQueue) queuecount() int {
+	q.mutex.Lock()
+	defer q.mutex.Unlock()
+	return q.count
+}
+
+func (q *fifoQueue) queuesize() int {
+	q.mutex.Lock()
+	defer q.mutex.Unlock()
+	return cap(q.frames)
+}
+
 func (q *fifoQueue) push(frame *types.Frame) bool {
 	q.mutex.Lock()
 	defer q.mutex.Unlock()
 	q.frames = append(q.frames, frame)
 	q.count++
-	q.size = q.count
 	select {
 	case q.notifs <- struct{}{}:
 	default:
@@ -56,7 +66,6 @@ func (q *fifoQueue) reset() {
 	q.mutex.Lock()
 	defer q.mutex.Unlock()
 	q.count = 0
-	q.size = 0
 	for i := range q.frames {
 		if q.frames[i] != nil {
 			q.frames[i].Done()

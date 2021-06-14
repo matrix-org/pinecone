@@ -2,10 +2,15 @@ package types
 
 import (
 	"crypto/ed25519"
+	"encoding/hex"
 	"fmt"
 )
 
 type VirtualSnakePathID [8]byte
+
+func (p VirtualSnakePathID) MarshalJSON() ([]byte, error) {
+	return []byte("\"" + hex.EncodeToString(p[:]) + "\""), nil
+}
 
 type VirtualSnakeBootstrap struct {
 	PathID        VirtualSnakePathID

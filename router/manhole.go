@@ -47,8 +47,8 @@ func (r *Router) startManhole() {
 				"public_key":            p.public.String(),
 				"coords":                p.coords.String(),
 				"peer_type":             p.peertype,
-				"queued_proto":          fmt.Sprintf("%d/%d", p.protoOut.count, p.protoOut.size),
-				"queued_traffic":        fmt.Sprintf("%d/%d", p.trafficOut.count, p.trafficOut.size),
+				"queued_proto":          fmt.Sprintf("%d/%d", p.protoOut.queuecount(), p.protoOut.queuesize()),
+				"queued_traffic":        fmt.Sprintf("%d/%d", p.trafficOut.queuecount(), p.trafficOut.queuesize()),
 				"tx_proto_successful":   p.statistics.txProtoSuccessful.Load(),
 				"tx_proto_dropped":      p.statistics.txProtoDropped.Load(),
 				"tx_traffic_successful": p.statistics.txTrafficSuccessful.Load(),
@@ -60,16 +60,12 @@ func (r *Router) startManhole() {
 		results["ports"] = ports
 
 		r.snake.tableMutex.RLock()
-		r.snake.descendingMutex.RLock()
-		r.snake.ascendingMutex.RLock()
 		results["snake"] = map[string]interface{}{
-			"predecessor": r.snake.descending,
-			"successor":   r.snake.ascending,
+			"predecessor": r.snake.descending(),
+			"successor":   r.snake.ascending(),
 			"table":       r.snake.table,
 		}
 		b, err := json.MarshalIndent(results, "", "  ")
-		r.snake.ascendingMutex.RUnlock()
-		r.snake.descendingMutex.RUnlock()
 		r.snake.tableMutex.RUnlock()
 
 		if err != nil {
