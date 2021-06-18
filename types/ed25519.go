@@ -25,8 +25,24 @@ type PublicKey [ed25519.PublicKeySize]byte
 type PrivateKey [ed25519.PrivateKeySize]byte
 type Signature [ed25519.SignatureSize]byte
 
+var FullMask = PublicKey{
+	0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+	0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+	0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+	0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+}
+
 func (a PublicKey) EqualTo(b PublicKey) bool {
 	return bytes.Equal(a[:], b[:])
+}
+
+func (a PublicKey) EqualMaskTo(b, m PublicKey) bool {
+	for i := range a {
+		if (a[i] & m[i]) != (b[i] & m[i]) {
+			return false
+		}
+	}
+	return true
 }
 
 func (a PublicKey) CompareTo(b PublicKey) int {

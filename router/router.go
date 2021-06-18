@@ -222,10 +222,12 @@ func (r *Router) Pathfind(ctx context.Context, addr net.Addr) (net.Addr, error) 
 // node to the public key found in the search. If set to false,
 // the search will fail and return an error if the specific node
 // is not found.
-func (r *Router) DHTSearch(ctx context.Context, pk ed25519.PublicKey, stopshort bool) (types.PublicKey, net.Addr, error) {
+func (r *Router) DHTSearch(ctx context.Context, pk, mk ed25519.PublicKey, stopshort bool) (types.PublicKey, net.Addr, error) {
 	var public types.PublicKey
+	var mask types.PublicKey
 	copy(public[:], pk)
-	return r.dht.search(ctx, public, stopshort)
+	copy(mask[:], mk)
+	return r.dht.search(ctx, public, mask, stopshort)
 }
 
 func (r *Router) DHTInfo() (asc, desc *virtualSnakeNeighbour, table map[virtualSnakeIndex]virtualSnakeEntry) {

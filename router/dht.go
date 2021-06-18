@@ -89,10 +89,10 @@ func (d *dht) getCloser(k types.PublicKey) []dhtEntry {
 // destination. This function blocks for the duration of
 // the search. The address returned will be a set of coords
 // for greedy routing.
-func (d *dht) search(ctx context.Context, pk types.PublicKey, stopshort bool) (types.PublicKey, net.Addr, error) {
+func (d *dht) search(ctx context.Context, pk, mask types.PublicKey, stopshort bool) (types.PublicKey, net.Addr, error) {
 	// If the search is for our own key then don't do anything
 	// as we already know what our own coordinates are.
-	if d.r.public.EqualTo(pk) && !stopshort {
+	if d.r.public.EqualMaskTo(pk, mask) && !stopshort {
 		return pk, &GreedyAddr{d.r.Coords()}, nil
 	}
 
@@ -135,7 +135,7 @@ func (d *dht) search(ctx context.Context, pk types.PublicKey, stopshort bool) (t
 		// If the node's public key is equal to the public key that
 		// we're looking for, then we've successfully completed the
 		// search! Return the coordinates that we contacted.
-		if pubkey.EqualTo(pk) {
+		if pubkey.EqualMaskTo(pk, mask) {
 			return pubkey, sc, nil
 		}
 
@@ -153,7 +153,7 @@ func (d *dht) search(ctx context.Context, pk types.PublicKey, stopshort bool) (t
 
 		// Process each of the results.
 		for _, result := range results {
-			if result.PublicKey.EqualTo(pk) && stopshort {
+			if result.PublicKey.EqualMaskTo(pk, mask) && stopshort {
 				return via, sc, nil
 			}
 
