@@ -17,7 +17,6 @@
 package multicast
 
 import (
-	"fmt"
 	"syscall"
 )
 
