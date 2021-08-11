@@ -127,11 +127,10 @@ func (t *spanningTree) selectNewParent() {
 		}
 		hops := len(ann.Signatures)
 		switch {
-		case ann.RootPublicKey.CompareTo(bestKey) > 0:
-			fallthrough
-		case hops < bestDist:
-			fallthrough
-		case ann.at.Before(bestTime):
+		case ann.RootPublicKey.CompareTo(bestKey) < 0:
+		case hops > bestDist:
+		case !ann.at.Before(bestTime):
+		default:
 			bestKey = ann.RootPublicKey
 			bestDist = hops
 			bestPort = p.port
