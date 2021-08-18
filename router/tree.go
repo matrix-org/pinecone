@@ -128,9 +128,17 @@ func (t *spanningTree) selectNewParent() {
 		hops := len(ann.Signatures)
 		switch {
 		case ann.RootPublicKey.CompareTo(bestKey) < 0:
+			// The key is weaker than our best, so do nothing.
 		case hops > bestDist:
-		case !ann.at.Before(bestTime):
+			// The path to the root is longer than our best,
+			// so do nothing.
+		case ann.at.After(bestTime):
+			// The announcement came later than our best,
+			// which implies that the path to the root via
+			// this peer has higher latency, so do nothing.
 		default:
+			// If we reach this case then the chosen port is
+			// seemingly better than our best case.
 			bestKey = ann.RootPublicKey
 			bestDist = hops
 			bestPort = p.port
@@ -140,11 +148,9 @@ func (t *spanningTree) selectNewParent() {
 	}
 	if bestAnn != nil {
 		t.parent.Store(bestPort)
-		defer func() {
-			if err := t.Update(t.r.ports[bestPort], bestAnn.SwitchAnnouncement); err != nil {
-				t.r.log.Println("t.Update: %w", err)
-			}
-		}()
+		if err := t.Update(t.r.ports[bestPort], bestAnn.SwitchAnnouncement); err != nil {
+			t.r.log.Println("t.Update: %w", err)
+		}
 	}
 }
 
