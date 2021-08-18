@@ -8,36 +8,30 @@ import (
 
 type SlowConn struct {
 	net.Conn
-	ReadDelayMillis   int
-	ReadJitterMillis  int
-	WriteDelayMillis  int
-	WriteJitterMillis int
+	ReadDelay   time.Duration
+	ReadJitter  time.Duration
+	WriteDelay  time.Duration
+	WriteJitter time.Duration
 }
 
 func (p *SlowConn) Read(b []byte) (n int, err error) {
-	duration := 0
-	if d := p.ReadDelayMillis; d > 0 {
-		duration += d
-	}
-	if j := p.ReadJitterMillis; j > 0 {
-		duration += rand.Intn(j)
+	duration := p.ReadDelay
+	if j := p.ReadJitter; j > 0 {
+		duration += time.Duration(rand.Intn(int(j)))
 	}
 	if duration > 0 {
-		time.Sleep(time.Millisecond * time.Duration(duration))
+		time.Sleep(duration)
 	}
 	return p.Conn.Read(b)
 }
 
 func (p *SlowConn) Write(b []byte) (n int, err error) {
-	duration := 0
-	if d := p.WriteDelayMillis; d > 0 {
-		duration += d
-	}
-	if j := p.WriteJitterMillis; j > 0 {
-		duration += rand.Intn(j)
+	duration := p.WriteDelay
+	if j := p.WriteJitter; j > 0 {
+		duration += time.Duration(rand.Intn(int(j)))
 	}
 	if duration > 0 {
-		time.Sleep(time.Millisecond * time.Duration(duration))
+		time.Sleep(duration)
 	}
 	return p.Conn.Write(b)
 }

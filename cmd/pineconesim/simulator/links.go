@@ -49,16 +49,16 @@ func (sim *Simulator) ConnectNodes(a, b string) error {
 	}
 	sc := &util.SlowConn{
 		Conn: c,
-		//	ReadJitterMillis:  2,
-		//	WriteJitterMillis: 2,
+		//ReadDelay:  5 * time.Millisecond,
+		//ReadJitter: 2 * time.Millisecond,
 	}
 	if _, err := nb.AuthenticatedConnect(sc, "sim", router.PeerTypeRemote); err != nil {
 		return fmt.Errorf("nb.AuthenticatedConnect: %w", err)
 	}
 	/*
 		pa, pb := net.Pipe()
-		pa = &util.SlowConn{Conn: pa, ReadDelay: 25 * time.Millisecond}
-		pb = &util.SlowConn{Conn: pb, ReadDelay: 25 * time.Millisecond}
+		pa = &util.SlowConn{Conn: pa, ReadJitter: 25 * time.Millisecond}
+		pb = &util.SlowConn{Conn: pb, ReadJitter: 25 * time.Millisecond}
 		go func() {
 			if _, err := na.Connect(pa, nb.PublicKey(), "sim", router.PeerTypeRemote); err != nil {
 				return //fmt.Errorf("nb.AuthenticatedConnect: %w", err)
