@@ -28,11 +28,12 @@ type HTTP struct {
 
 func (q *Sessions) HTTP() *HTTP {
 	t := &http.Transport{
-		DisableKeepAlives: true,
-		Dial:              q.Dial,
-		DialTLS:           q.DialTLS,
-		DialContext:       q.DialContext,
-		DialTLSContext:    q.DialTLSContext,
+		DisableKeepAlives:   true,
+		MaxIdleConnsPerHost: -1,
+		Dial:                q.Dial,
+		DialTLS:             q.DialTLS,
+		DialContext:         q.DialContext,
+		DialTLSContext:      q.DialTLSContext,
 	}
 
 	h := &HTTP{
