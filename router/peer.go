@@ -50,8 +50,8 @@ type Peer struct {
 	cancel       context.CancelFunc        //
 	conn         net.Conn                  // underlying connection to peer
 	public       types.PublicKey           //
-	trafficOut   *lifoQueue                // queue traffic message to peer
-	protoOut     *fifoQueue                // queue protocol message to peer
+	trafficOut   queue                     // queue traffic message to peer
+	protoOut     queue                     // queue protocol message to peer
 	coords       types.SwitchPorts         //
 	announce     chan struct{}             //
 	announcement *rootAnnouncementWithTime //
