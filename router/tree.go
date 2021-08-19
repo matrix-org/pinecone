@@ -120,32 +120,35 @@ func (t *spanningTree) selectNewParent() {
 	var bestTime time.Time
 	var bestPort types.SwitchPortID
 	var bestAnn *rootAnnouncementWithTime
+	portsToCheck := map[*Peer]*rootAnnouncementWithTime{}
 	for _, p := range t.r.activePorts() {
 		ann := p.lastAnnouncement()
 		if ann == nil {
 			continue
 		}
-		hops := len(ann.Signatures)
-		switch {
-		case ann.RootPublicKey.CompareTo(bestKey) < 0:
-			// The key is weaker than our best, so do nothing.
-		case hops > bestDist:
-			// The path to the root is longer than our best,
-			// so do nothing.
-		case ann.at.After(bestTime):
-			// The announcement came later than our best,
-			// which implies that the path to the root via
-			// this peer has higher latency, so do nothing.
-		default:
-			// If we reach this case then the chosen port is
-			// seemingly better than our best case.
-			bestKey = ann.RootPublicKey
-			bestDist = hops
-			bestPort = p.port
-			bestTime = ann.at
-			bestAnn = ann
+		portsToCheck[p] = ann
+	}
+	checkWithCondition := func(f func(ann *rootAnnouncementWithTime, hops int) bool) {
+		for p, ann := range portsToCheck {
+			hops := len(ann.Signatures)
+			if f(ann, hops) {
+				bestKey = ann.RootPublicKey
+				bestDist = hops
+				bestPort = p.port
+				bestTime = ann.at
+				bestAnn = ann
+			}
 		}
 	}
+	checkWithCondition(func(ann *rootAnnouncementWithTime, hops int) bool {
+		return ann.RootPublicKey.CompareTo(bestKey) > 0
+	})
+	checkWithCondition(func(ann *rootAnnouncementWithTime, hops int) bool {
+		return ann.RootPublicKey.CompareTo(bestKey) > 0 && hops < bestDist
+	})
+	checkWithCondition(func(ann *rootAnnouncementWithTime, hops int) bool {
+		return ann.RootPublicKey.CompareTo(bestKey) == 0 && hops == bestDist && ann.at.Before(bestTime)
+	})
 	if bestAnn != nil {
 		t.parent.Store(bestPort)
 		if err := t.Update(t.r.ports[bestPort], bestAnn.SwitchAnnouncement); err != nil {
