@@ -120,6 +120,7 @@ func (t *spanningTree) selectNewParent() {
 	var bestTime time.Time
 	var bestPort types.SwitchPortID
 	var bestAnn *rootAnnouncementWithTime
+	var bestSeq types.Varu64
 	portsToCheck := map[*Peer]*rootAnnouncementWithTime{}
 	for _, p := range t.r.activePorts() {
 		ann := p.lastAnnouncement()
@@ -136,6 +137,7 @@ func (t *spanningTree) selectNewParent() {
 				bestDist = hops
 				bestPort = p.port
 				bestTime = ann.at
+				bestSeq = ann.Sequence
 				bestAnn = ann
 			}
 		}
@@ -144,10 +146,13 @@ func (t *spanningTree) selectNewParent() {
 		return ann.RootPublicKey.CompareTo(bestKey) > 0
 	})
 	checkWithCondition(func(ann *rootAnnouncementWithTime, hops int) bool {
-		return ann.RootPublicKey.CompareTo(bestKey) > 0 && hops < bestDist
+		return ann.RootPublicKey.CompareTo(bestKey) == 0 && ann.Sequence > bestSeq
 	})
 	checkWithCondition(func(ann *rootAnnouncementWithTime, hops int) bool {
-		return ann.RootPublicKey.CompareTo(bestKey) == 0 && hops == bestDist && ann.at.Before(bestTime)
+		return ann.RootPublicKey.CompareTo(bestKey) == 0 && ann.Sequence == bestSeq && hops < bestDist
+	})
+	checkWithCondition(func(ann *rootAnnouncementWithTime, hops int) bool {
+		return ann.RootPublicKey.CompareTo(bestKey) == 0 && ann.Sequence == bestSeq && hops == bestDist && ann.at.Before(bestTime)
 	})
 	if bestAnn != nil {
 		t.parent.Store(bestPort)
