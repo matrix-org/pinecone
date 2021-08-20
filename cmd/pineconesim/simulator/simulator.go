@@ -18,6 +18,7 @@ import (
 	"log"
 	"net"
 	"sync"
+	"time"
 
 	"github.com/RyanCarrier/dijkstra"
 )
@@ -36,6 +37,7 @@ type Simulator struct {
 	snekPathConvergenceMutex sync.RWMutex
 	treePathConvergence      map[string]map[string]bool
 	treePathConvergenceMutex sync.RWMutex
+	startTime                time.Time
 }
 
 func NewSimulator(log *log.Logger) *Simulator {
@@ -46,6 +48,7 @@ func NewSimulator(log *log.Logger) *Simulator {
 		dists:               make(map[string]map[string]*Distance),
 		snekPathConvergence: make(map[string]map[string]bool),
 		treePathConvergence: make(map[string]map[string]bool),
+		startTime:           time.Now(),
 	}
 	return sim
 }
@@ -105,4 +108,8 @@ func (sim *Simulator) TreePathConvergence() map[string]map[string]bool {
 		}
 	}
 	return mapcopy
+}
+
+func (sim *Simulator) Uptime() time.Duration {
+	return time.Since(sim.startTime)
 }
