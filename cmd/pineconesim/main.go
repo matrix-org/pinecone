@@ -249,6 +249,7 @@ func configureHTTPRouting(sim *simulator.Simulator) {
 			AvgStretch:          "TBD",
 			TreePathConvergence: "TBD",
 			SNEKPathConvergence: "TBD",
+			Uptime:              sim.Uptime().Round(time.Second),
 		}
 		if totalCount > 0 {
 			data.TreePathConvergence = fmt.Sprintf("%d%%", (dhtConvergence*100)/totalCount)
@@ -464,6 +465,7 @@ type PageData struct {
 	TreePathConvergence string
 	SNEKPathConvergence string
 	NodeInfo            *NodeInfo
+	Uptime              time.Duration
 }
 
 type NodeInfo struct {
