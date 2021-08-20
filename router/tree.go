@@ -108,7 +108,7 @@ func (t *spanningTree) portWasDisconnected(port types.SwitchPortID) {
 		t.becomeRoot()
 		return
 	}
-	if parent := t.parent.Load().(types.SwitchPortID); parent == port {
+	if parent, ok := t.parent.Load().(types.SwitchPortID); !ok || parent == port {
 		t.selectNewParent()
 	}
 }
@@ -223,7 +223,7 @@ func (t *spanningTree) IsRoot() bool {
 
 func (t *spanningTree) Root() *rootAnnouncementWithTime {
 	root := t.r.ports[t.Parent()].lastAnnouncement()
-	if root == nil || time.Since(root.at) > announcementTimeout {
+	if root == nil {
 		return &rootAnnouncementWithTime{
 			at: time.Now(),
 			SwitchAnnouncement: types.SwitchAnnouncement{
@@ -351,7 +351,7 @@ func (t *spanningTree) Update(p *Peer, newUpdate types.SwitchAnnouncement, globa
 		}
 	}
 
-	if parent := t.parent.Load(); p.port == parent || globalUpdate {
+	if parent, ok := t.parent.Load().(types.SwitchPortID); !ok || p.port == parent || globalUpdate {
 		oldcoords, oldroot := t.Coords(), t.Root().RootPublicKey
 		t.parent.Store(p.port)
 		newcoords, newroot := t.Coords(), t.Root().RootPublicKey
