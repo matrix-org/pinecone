@@ -365,7 +365,7 @@ func (t *spanningTree) Update(p *Peer, newUpdate types.SwitchAnnouncement, globa
 		}
 	}
 
-	if parent := t.parent.Load(); p.port == parent {
+	if parent, ok := t.parent.Load().(types.SwitchPortID); ok && p.port == parent {
 		t.advertise()
 		t.rootReset <- struct{}{}
 	}
