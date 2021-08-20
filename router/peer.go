@@ -161,14 +161,12 @@ func (p *Peer) stop() error {
 	return nil
 }
 
-/*
 func (p *Peer) generateKeepalive() *types.Frame {
 	frame := types.GetFrame()
 	frame.Version = types.Version0
 	frame.Type = types.TypeKeepalive
 	return frame
 }
-*/
 
 func (p *Peer) generateAnnouncement() *types.Frame {
 	if p.port == 0 {
@@ -311,8 +309,8 @@ var bufPool = sync.Pool{
 }
 
 func (p *Peer) writer(ctx context.Context) {
-	//tick := time.NewTicker(PeerKeepaliveInterval)
-	//defer tick.Stop()
+	tick := time.NewTicker(PeerKeepaliveInterval)
+	defer tick.Stop()
 	send := func(frame *types.Frame) {
 		if frame == nil {
 			return
@@ -419,10 +417,10 @@ func (p *Peer) writer(ctx context.Context) {
 				p.statistics.txTrafficDropped.Inc()
 			}
 			continue
-			//case <-tick.C:
-			//	send(p.generateKeepalive())
-			//  p.statistics.txProtoSuccessful.Inc()
-			//	continue
+		case <-tick.C:
+			send(p.generateKeepalive())
+			p.statistics.txProtoSuccessful.Inc()
+			continue
 		}
 	}
 }

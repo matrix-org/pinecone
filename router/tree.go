@@ -28,7 +28,7 @@ import (
 
 // announcementInterval is the frequency at which this
 // node will send root announcements to other peers.
-const announcementInterval = PeerKeepaliveInterval // time.Minute * 15
+const announcementInterval = time.Minute * 15
 
 // announcementTimeout is the amount of time that must
 // pass without receiving a root announcement before we
@@ -41,7 +41,7 @@ func (r *Router) handleAnnouncement(peer *Peer, rx *types.Frame) {
 		r.log.Println("Error unmarshalling announcement:", err)
 		return
 	}
-	if err := r.tree.Update(peer, new); err != nil {
+	if err := r.tree.Update(peer, new, false); err != nil {
 		r.log.Println("Error handling announcement on port", peer.port, ":", err)
 	}
 }
@@ -114,7 +114,6 @@ func (t *spanningTree) portWasDisconnected(port types.SwitchPortID) {
 func (t *spanningTree) selectNewParent() {
 	t.updateMutex.Lock()
 	defer t.updateMutex.Unlock()
-	t.becomeRoot()
 	bestDist := math.MaxInt32
 	bestKey := t.r.public
 	var bestTime time.Time
@@ -155,10 +154,11 @@ func (t *spanningTree) selectNewParent() {
 		return ann.RootPublicKey.CompareTo(bestKey) == 0 && ann.Sequence == bestSeq && hops == bestDist && ann.at.Before(bestTime)
 	})
 	if bestAnn != nil {
-		t.parent.Store(bestPort)
-		if err := t.Update(t.r.ports[bestPort], bestAnn.SwitchAnnouncement); err != nil {
+		if err := t.Update(t.r.ports[bestPort], bestAnn.SwitchAnnouncement, true); err != nil {
 			t.r.log.Println("t.Update: %w", err)
 		}
+	} else {
+		t.becomeRoot()
 	}
 }
 
@@ -251,7 +251,7 @@ func (t *spanningTree) Parent() types.SwitchPortID {
 	return 0
 }
 
-func (t *spanningTree) Update(p *Peer, newUpdate types.SwitchAnnouncement) error {
+func (t *spanningTree) Update(p *Peer, newUpdate types.SwitchAnnouncement, globalUpdate bool) error {
 	sigs := make(map[string]struct{})
 	isLoopbackUpdate := false
 	for index, sig := range newUpdate.Signatures {
@@ -314,42 +314,43 @@ func (t *spanningTree) Update(p *Peer, newUpdate types.SwitchAnnouncement) error
 	t.updateMutex.Lock()
 	defer t.updateMutex.Unlock()
 
-	lastGlobalUpdate := t.Root()
-	globalKeyDelta := newUpdate.RootPublicKey.CompareTo(lastGlobalUpdate.RootPublicKey)
-	globalTimeSince := time.Since(lastGlobalUpdate.at)
-	globalUpdate := false
-
-	switch {
-	case globalTimeSince > announcementTimeout:
-		// We haven't seen a suitable root update recently so we'll accept
-		// this one instead
-		globalUpdate = true
-
-	case globalKeyDelta < 0:
-		// The root key is weaker than our existing root, so it's no good
-		return nil
-
-	case globalKeyDelta == 0:
-		// The update is from the same root node, let's see if it matches
-		// any other useful conditions
+	if !globalUpdate {
+		lastGlobalUpdate := t.Root()
+		globalKeyDelta := newUpdate.RootPublicKey.CompareTo(lastGlobalUpdate.RootPublicKey)
+		globalTimeSince := time.Since(lastGlobalUpdate.at)
 
 		switch {
-		case newUpdate.Sequence < lastGlobalUpdate.Sequence:
-			// This is a replay of an earlier update, therefore we should
-			// ignore it, even if it came from our parent node
+		case globalTimeSince > announcementTimeout:
+			// We haven't seen a suitable root update recently so we'll accept
+			// this one instead
+			globalUpdate = true
+
+		case globalKeyDelta < 0:
+			// The root key is weaker than our existing root, so it's no good
 			return nil
 
-		case len(newUpdate.Signatures) < len(lastGlobalUpdate.Signatures):
-			// The path to the root is shorter than our last update, so
-			// we'll accept it
+		case globalKeyDelta == 0:
+			// The update is from the same root node, let's see if it matches
+			// any other useful conditions
+
+			switch {
+			case newUpdate.Sequence < lastGlobalUpdate.Sequence:
+				// This is a replay of an earlier update, therefore we should
+				// ignore it, even if it came from our parent node
+				return nil
+
+			case len(newUpdate.Signatures) < len(lastGlobalUpdate.Signatures):
+				// The path to the root is shorter than our last update, so
+				// we'll accept it
+				globalUpdate = true
+			}
+
+		case globalKeyDelta > 0:
+			// The root key is stronger than our existing root, therefore we'll
+			// accept it anyway, since we always want to converge on the
+			// strongest root key
 			globalUpdate = true
 		}
-
-	case globalKeyDelta > 0:
-		// The root key is stronger than our existing root, therefore we'll
-		// accept it anyway, since we always want to converge on the
-		// strongest root key
-		globalUpdate = true
 	}
 
 	if parent := t.parent.Load(); p.port == parent || globalUpdate {
@@ -362,9 +363,9 @@ func (t *spanningTree) Update(p *Peer, newUpdate types.SwitchAnnouncement) error
 			at:                 time.Now(),
 			SwitchAnnouncement: newUpdate,
 		}
-		t.parent.Store(p.port)
 		oldcoords := t.Coords()
 		newcoords := t.root.Coords()
+		t.parent.Store(p.port)
 		t.coords.Store(newcoords)
 		t.rootMutex.Unlock()
 
@@ -375,7 +376,9 @@ func (t *spanningTree) Update(p *Peer, newUpdate types.SwitchAnnouncement) error
 		if oldRootKey != newUpdate.RootPublicKey {
 			defer t.r.snake.rootNodeChanged(newUpdate.RootPublicKey)
 		}
+	}
 
+	if parent := t.parent.Load(); p.port == parent {
 		t.advertise()
 		t.rootReset <- struct{}{}
 	}
