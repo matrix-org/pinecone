@@ -68,7 +68,6 @@ func newSpanningTree(r *Router, f func(parent types.SwitchPortID, coords types.S
 		callback:  f,
 	}
 	t.becomeRoot()
-	t.advertise()
 	go t.workerForRoot()
 	go t.workerForAnnouncements()
 	return t
@@ -115,7 +114,6 @@ func (t *spanningTree) portWasDisconnected(port types.SwitchPortID) {
 
 func (t *spanningTree) selectNewParent() {
 	t.updateMutex.Lock()
-	t.becomeRoot()
 	bestDist := math.MaxInt32
 	bestKey := t.r.public
 	var bestTime time.Time
@@ -160,6 +158,8 @@ func (t *spanningTree) selectNewParent() {
 		if err := t.Update(t.r.ports[bestPort], bestAnn.SwitchAnnouncement, true); err != nil {
 			t.r.log.Println("t.Update: %w", err)
 		}
+	} else {
+		t.becomeRoot()
 	}
 }
 
@@ -181,6 +181,7 @@ func (t *spanningTree) becomeRoot() {
 	if !t.Coords().EqualTo(newCoords) {
 		go t.callback(0, types.SwitchPorts{})
 	}
+	t.advertise()
 }
 
 func (t *spanningTree) workerForAnnouncements() {
@@ -249,7 +250,7 @@ func (t *spanningTree) Parent() types.SwitchPortID {
 	return 0
 }
 
-func (t *spanningTree) Update(p *Peer, newUpdate types.SwitchAnnouncement, globalUpdate bool) error {
+func (t *spanningTree) Update(p *Peer, newUpdate types.SwitchAnnouncement, updateParent bool) error {
 	sigs := make(map[string]struct{})
 	isLoopbackUpdate := false
 	for index, sig := range newUpdate.Signatures {
@@ -299,6 +300,7 @@ func (t *spanningTree) Update(p *Peer, newUpdate types.SwitchAnnouncement, globa
 		}
 	}
 
+	lastGlobalUpdate := t.Root()
 	if err := p.updateAnnouncement(&newUpdate); err != nil {
 		return fmt.Errorf("p.updateAnnouncement: %w", err)
 	}
@@ -312,8 +314,7 @@ func (t *spanningTree) Update(p *Peer, newUpdate types.SwitchAnnouncement, globa
 	t.updateMutex.Lock()
 	defer t.updateMutex.Unlock()
 
-	if !globalUpdate {
-		lastGlobalUpdate := t.Root()
+	if !updateParent {
 		globalKeyDelta := newUpdate.RootPublicKey.CompareTo(lastGlobalUpdate.RootPublicKey)
 		globalTimeSince := time.Since(lastGlobalUpdate.at)
 
@@ -321,7 +322,7 @@ func (t *spanningTree) Update(p *Peer, newUpdate types.SwitchAnnouncement, globa
 		case globalTimeSince > announcementTimeout:
 			// We haven't seen a suitable root update recently so we'll accept
 			// this one instead
-			globalUpdate = true
+			updateParent = true
 
 		case globalKeyDelta < 0:
 			// The root key is weaker than our existing root, so it's no good
@@ -340,19 +341,19 @@ func (t *spanningTree) Update(p *Peer, newUpdate types.SwitchAnnouncement, globa
 			case len(newUpdate.Signatures) < len(lastGlobalUpdate.Signatures):
 				// The path to the root is shorter than our last update, so
 				// we'll accept it
-				globalUpdate = true
+				updateParent = true
 			}
 
 		case globalKeyDelta > 0:
 			// The root key is stronger than our existing root, therefore we'll
 			// accept it anyway, since we always want to converge on the
 			// strongest root key
-			globalUpdate = true
+			updateParent = true
 		}
 	}
 
-	if parent, ok := t.parent.Load().(types.SwitchPortID); !ok || p.port == parent || globalUpdate {
-		oldcoords, oldroot := t.Coords(), t.Root().RootPublicKey
+	if parent, ok := t.parent.Load().(types.SwitchPortID); !ok || p.port == parent || updateParent {
+		oldcoords, oldroot := lastGlobalUpdate.Coords(), lastGlobalUpdate.RootPublicKey
 		t.parent.Store(p.port)
 		newcoords, newroot := t.Coords(), t.Root().RootPublicKey
 
