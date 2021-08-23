@@ -43,6 +43,7 @@ type Peer struct {
 	port         types.SwitchPortID        //
 	started      atomic.Bool               // worker goroutines started?
 	alive        atomic.Bool               // have we received a handshake?
+	child        atomic.Bool               // is this node a child of ours?
 	mutex        sync.RWMutex              // protects everything below this line
 	zone         string                    //
 	peertype     int                       //
@@ -126,6 +127,13 @@ func (p *Peer) updateAnnouncement(new *types.SwitchAnnouncement) error {
 		at:                 time.Now(),
 	}
 	p.coords = coords
+	isChild := false
+	for _, sig := range new.Signatures {
+		if sig.PublicKey.EqualTo(p.r.public) {
+			isChild = true
+		}
+	}
+	p.child.Store(isChild)
 	return nil
 }
 
@@ -146,6 +154,7 @@ func (p *Peer) start() error {
 		return errors.New("switch peer is already started")
 	}
 	p.alive.Store(false)
+	p.child.Store(false)
 	go p.reader(p.context)
 	go p.writer(p.context)
 	return nil
@@ -156,6 +165,7 @@ func (p *Peer) stop() error {
 		return errors.New("switch peer is already stopped")
 	}
 	p.alive.Store(false)
+	p.child.Store(false)
 	p.cancel()
 	_ = p.conn.Close()
 	return nil
