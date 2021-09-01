@@ -305,11 +305,13 @@ func (t *spanningTree) Update(p *Peer, newUpdate types.SwitchAnnouncement, updat
 		// of the path or a root key change altogether.
 		if parent := t.parent.Load().(types.SwitchPortID); p.port == parent {
 			switch {
-			case newUpdate.RootPublicKey.CompareTo(lastPortUpdate.RootPublicKey) < 0: // the root key got weaker
-				t.selectNewParent()
-				return nil
+			case newUpdate.AncestorParent() != lastPortUpdate.AncestorParent(): // our ancestor's parent changed
+				fallthrough
 
-			case len(newUpdate.Signatures)-len(lastPortUpdate.Signatures) > 0: // the path got longer
+			case newUpdate.RootPublicKey.CompareTo(lastPortUpdate.RootPublicKey) < 0: // the root key got weaker
+				fallthrough
+
+			case len(newUpdate.Signatures) > len(lastPortUpdate.Signatures): // the path got suddenly longer
 				t.selectNewParent()
 				return nil
 			}

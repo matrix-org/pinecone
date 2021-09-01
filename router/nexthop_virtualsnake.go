@@ -372,7 +372,7 @@ func (t *virtualSnake) getVirtualSnakeTeardownNextHop(from *Peer, rx *types.Fram
 	}
 	if asc := t.ascending(); asc != nil && t.r.public.EqualTo(rx.DestinationKey) && asc.PathID == teardown.PathID {
 		t.setAscending(nil)
-		defer time.AfterFunc(time.Millisecond*500, t.bootstrapNow)
+		defer time.AfterFunc(time.Second, t.bootstrapNow)
 	}
 	t.tableMutex.Lock()
 	defer t.tableMutex.Unlock()
@@ -584,7 +584,7 @@ func (t *virtualSnake) handleSetup(from *Peer, rx *types.Frame, nextHops types.S
 
 	// Did the setup hit a dead end on the way to the ascending node?
 	if nextHops.EqualTo(types.SwitchPorts{0}) || nextHops.EqualTo(types.SwitchPorts{}) {
-		if !rx.DestinationKey.EqualTo(t.r.public) || !rx.Destination.EqualTo(t.r.Coords()) {
+		if !rx.DestinationKey.EqualTo(t.r.public) {
 			t.teardownPath(rx.SourceKey, setup.PathID, from.port, false, fmt.Errorf("rejecting setup (hit dead end)"))
 			return fmt.Errorf("setup for %q (%s) en route to %q %s hit dead end at %s", rx.SourceKey, hex.EncodeToString(setup.PathID[:]), rx.DestinationKey, rx.Destination, t.r.Coords())
 		}

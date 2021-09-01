@@ -109,3 +109,10 @@ func (a *SwitchAnnouncement) PeerCoords(public PublicKey) (SwitchPorts, error) {
 	}
 	return coords, nil
 }
+
+func (a *SwitchAnnouncement) AncestorParent() PublicKey {
+	if len(a.Signatures) < 2 {
+		return a.RootPublicKey
+	}
+	return a.Signatures[len(a.Signatures)-2].PublicKey
+}
