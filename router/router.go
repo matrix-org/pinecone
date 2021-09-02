@@ -314,7 +314,7 @@ func (r *Router) activePorts() peers {
 	peers := make(peers, 0, PortCount)
 	for _, p := range r.startedPorts() {
 		switch {
-		case !p.alive.Load():
+		case !p.Alive():
 			continue
 		default:
 			peers = append(peers, p)
@@ -411,7 +411,6 @@ func (r *Router) Connect(conn net.Conn, public types.PublicKey, zone string, pee
 		if err := r.ports[i].start(); err != nil {
 			return 0, fmt.Errorf("port.start: %w", err)
 		}
-		r.active.Store(hex.EncodeToString(public[:])+zone, i)
 		if i != 0 {
 			r.dht.insertNode(r.ports[i])
 		}
@@ -438,16 +437,6 @@ func (r *Router) Disconnect(i types.SwitchPortID, err error) error {
 	if stoperr := r.ports[i].stop(); stoperr != nil {
 		return fmt.Errorf("port.stop: %w", stoperr)
 	}
-	r.active.Delete(hex.EncodeToString(r.ports[i].public[:]) + r.ports[i].zone)
-	r.ports[i].mutex.Lock()
-	r.ports[i].peertype = 0
-	r.ports[i].zone = ""
-	r.ports[i].public = types.PublicKey{}
-	r.ports[i].coords = nil
-	r.ports[i].announcement = nil
-	r.ports[i].protoOut.reset()
-	r.ports[i].trafficOut.reset()
-	r.ports[i].mutex.Unlock()
 	if r.ports[i].port != 0 {
 		r.dht.deleteNode(r.ports[i].public)
 	}
@@ -488,7 +477,7 @@ func (r *Router) IsConnected(key types.PublicKey, zone string) bool {
 		return false
 	}
 	port := v.(types.SwitchPortID)
-	return r.ports[port].started.Load()
+	return r.ports[port].Alive()
 }
 
 // PeerInfo is a gomobile-friendly type that represents a peer

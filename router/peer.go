@@ -18,6 +18,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -42,7 +43,6 @@ type Peer struct {
 	r            *Router                   //
 	port         types.SwitchPortID        //
 	started      atomic.Bool               // worker goroutines started?
-	alive        atomic.Bool               // have we received a handshake?
 	child        atomic.Bool               // is this node a child of ours?
 	mutex        sync.RWMutex              // protects everything below this line
 	zone         string                    //
@@ -77,6 +77,16 @@ func (s *peerStatistics) reset() {
 	s.rxTraffic.Store(0)
 }
 
+func (p *Peer) IsParent() bool {
+	return p.r.tree.Parent() == p.port
+}
+
+func (p *Peer) Alive() bool {
+	p.mutex.RLock()
+	defer p.mutex.RUnlock()
+	return p.announcement != nil && time.Since(p.announcement.at) < announcementTimeout
+}
+
 func (p *Peer) PublicKey() types.PublicKey {
 	p.mutex.RLock()
 	defer p.mutex.RUnlock()
@@ -90,7 +100,7 @@ func (p *Peer) Coordinates() types.SwitchPorts {
 }
 
 func (p *Peer) SeenCommonRootRecently() bool {
-	if !p.alive.Load() {
+	if !p.Alive() {
 		return false
 	}
 	last := p.lastAnnouncement()
@@ -99,14 +109,10 @@ func (p *Peer) SeenCommonRootRecently() bool {
 	}
 	lpk := last.RootPublicKey
 	rpk := p.r.RootPublicKey()
-	return lpk == rpk
-}
-
-func (p *Peer) SeenRecently() bool {
-	if last := p.lastAnnouncement(); last != nil {
-		return true
+	if lpk != rpk {
+		fmt.Println("Root disagreement", lpk, "vs", rpk)
 	}
-	return false
+	return lpk == rpk
 }
 
 func (p *Peer) updateAnnouncement(new *types.SwitchAnnouncement) error {
@@ -114,13 +120,9 @@ func (p *Peer) updateAnnouncement(new *types.SwitchAnnouncement) error {
 	defer p.mutex.Unlock()
 	coords, err := new.PeerCoords(p.public)
 	if err != nil {
-		p.alive.Store(false)
 		p.announcement = nil
 		p.coords = nil
 		return fmt.Errorf("new.PeerCoords: %w", err)
-	}
-	if p.alive.CAS(false, true) {
-		p.r.snake.portWasConnected(p.port)
 	}
 	p.announcement = &rootAnnouncementWithTime{
 		SwitchAnnouncement: *new,
@@ -131,6 +133,7 @@ func (p *Peer) updateAnnouncement(new *types.SwitchAnnouncement) error {
 	for _, sig := range new.Signatures {
 		if sig.PublicKey.EqualTo(p.r.public) {
 			isChild = true
+			break
 		}
 	}
 	p.child.Store(isChild)
@@ -153,10 +156,11 @@ func (p *Peer) start() error {
 	if !p.started.CAS(false, true) {
 		return errors.New("switch peer is already started")
 	}
-	p.alive.Store(false)
+	p.announcement = nil
 	p.child.Store(false)
 	go p.reader(p.context)
 	go p.writer(p.context)
+	p.r.active.Store(hex.EncodeToString(p.public[:])+p.zone, p.port)
 	return nil
 }
 
@@ -164,7 +168,16 @@ func (p *Peer) stop() error {
 	if !p.started.CAS(true, false) {
 		return errors.New("switch peer is already stopped")
 	}
-	p.alive.Store(false)
+	p.r.active.Delete(hex.EncodeToString(p.public[:]) + p.zone)
+	p.mutex.Lock()
+	p.peertype = 0
+	p.zone = ""
+	p.public = types.PublicKey{}
+	p.coords = nil
+	p.announcement = nil
+	p.protoOut.reset()
+	p.trafficOut.reset()
+	p.mutex.Unlock()
 	p.child.Store(false)
 	p.cancel()
 	_ = p.conn.Close()
@@ -265,7 +278,7 @@ func (p *Peer) reader(ctx context.Context) {
 				for _, port := range p.getNextHops(frame, p.port) {
 					// Ignore ports that are not good candidates.
 					dest := p.r.ports[port]
-					if !dest.started.Load() || (dest.port != 0 && !dest.alive.Load()) {
+					if !dest.started.Load() || (dest.port != 0 && !dest.Alive()) {
 						continue
 					}
 					if p.port != 0 && dest.port != 0 {

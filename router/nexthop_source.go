@@ -51,7 +51,7 @@ func (r *Router) getSourceRoutedNextHop(from *Peer, rx *types.Frame) types.Switc
 		return nil
 	}
 
-	if peer := r.ports[to]; !peer.started.Load() || !peer.alive.Load() {
+	if peer := r.ports[to]; !peer.started.Load() || !peer.Alive() {
 		// Don't try to send packets to a port that has nothing
 		// connected to it or isn't alive.
 		return nil

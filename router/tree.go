@@ -17,13 +17,12 @@ package router
 import (
 	"context"
 	"encoding/hex"
-	"fmt"
 	"math"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/matrix-org/pinecone/types"
+	"go.uber.org/atomic"
 )
 
 // announcementInterval is the frequency at which this
@@ -36,12 +35,56 @@ const announcementInterval = time.Minute * 15
 const announcementTimeout = announcementInterval * 2
 
 func (r *Router) handleAnnouncement(peer *Peer, rx *types.Frame) {
-	var new types.SwitchAnnouncement
-	if _, err := new.UnmarshalBinary(rx.Payload); err != nil {
+	var newUpdate types.SwitchAnnouncement
+	if _, err := newUpdate.UnmarshalBinary(rx.Payload); err != nil {
 		r.log.Println("Error unmarshalling announcement:", err)
 		return
 	}
-	if err := r.tree.Update(peer, new, false); err != nil {
+	sigs := make(map[string]struct{})
+	for index, sig := range newUpdate.Signatures {
+		if index == 0 && sig.PublicKey != newUpdate.RootPublicKey {
+			// The first signature in the announcement must be from the
+			// key that claims to be the root.
+			return
+		}
+		if sig.Hop == 0 {
+			// None of the hops in the update should have a port number of 0
+			// as this would imply that another node has sent their router
+			// port, which is impossible. We'll therefore reject any update
+			// that tries to do that.
+			return
+		}
+		if index == len(newUpdate.Signatures)-1 && peer.PublicKey() != sig.PublicKey {
+			// The last signature in the announcement must be from the
+			// direct peer. If it isn't then it sounds like someone is
+			// trying to replay someone else's announcement to us.
+			return
+		}
+		pk := hex.EncodeToString(sig.PublicKey[:])
+		if _, ok := sigs[pk]; ok {
+			// One of the signatures has appeared in the update more than
+			// once, which would suggest that there's a loop somewhere.
+			return
+		}
+		sigs[pk] = struct{}{}
+	}
+
+	lastPortUpdate := peer.lastAnnouncement()
+	if lastPortUpdate != nil && lastPortUpdate.RootPublicKey == newUpdate.RootPublicKey {
+		if newUpdate.Sequence < lastPortUpdate.Sequence {
+			// The update is a replay of a previous announcement which doesn't
+			// make sense
+			peer.cancel()
+			return
+		}
+	}
+
+	if err := peer.updateAnnouncement(&newUpdate); err != nil {
+		r.log.Println("Error updating announcement on port", peer.port, ":", err)
+		return
+	}
+
+	if err := r.tree.Update(peer, newUpdate, false); err != nil {
 		r.log.Println("Error handling announcement on port", peer.port, ":", err)
 	}
 }
@@ -74,11 +117,7 @@ func newSpanningTree(r *Router, f func(parent types.SwitchPortID, coords types.S
 }
 
 func (t *spanningTree) Coords() types.SwitchPorts {
-	parent, ok := t.parent.Load().(types.SwitchPortID)
-	if !ok {
-		return types.SwitchPorts{}
-	}
-	ann := t.r.ports[parent].lastAnnouncement()
+	ann := t.r.ports[t.Parent()].lastAnnouncement()
 	if ann == nil {
 		return types.SwitchPorts{}
 	}
@@ -86,9 +125,8 @@ func (t *spanningTree) Coords() types.SwitchPorts {
 }
 
 func (t *spanningTree) Ancestors() ([]types.PublicKey, types.SwitchPortID) {
-	root := t.Root()
-	port, ok := t.parent.Load().(types.SwitchPortID)
-	if !ok || port == 0 {
+	root, port := t.Root(), t.Parent()
+	if port == 0 {
 		return nil, 0
 	}
 	ancestors := make([]types.PublicKey, 0, 1+len(root.Signatures))
@@ -107,19 +145,46 @@ func (t *spanningTree) portWasDisconnected(port types.SwitchPortID) {
 		t.becomeRoot()
 		return
 	}
-	if parent := t.parent.Load().(types.SwitchPortID); parent == port {
-		t.selectNewParent()
+	if t.Parent() == port {
+		t.selectNewParentAndAdvertise()
+	}
+}
+
+func (t *spanningTree) selectNewParentAndAdvertise() {
+	lastParentUpdate := t.Root()
+	lastParentPort := t.Parent()
+
+	t.selectNewParent()
+
+	newParentUpdate := t.Root()
+	newParentPort := t.Parent()
+
+	switch {
+	case lastParentUpdate.RootPublicKey != newParentUpdate.RootPublicKey:
+		fallthrough
+
+	case lastParentUpdate.AncestorParent() != newParentUpdate.AncestorParent():
+		fallthrough
+
+	case lastParentPort != newParentPort:
+		t.advertise()
+		t.rootReset <- struct{}{}
 	}
 }
 
 func (t *spanningTree) selectNewParent() {
 	t.updateMutex.Lock()
+	defer t.updateMutex.Unlock()
+
+	lastParentUpdate := t.Root()
+
 	bestDist := math.MaxInt32
 	bestKey := t.r.public
 	var bestTime time.Time
 	var bestPort types.SwitchPortID
 	var bestAnn *rootAnnouncementWithTime
 	var bestSeq types.Varu64
+
 	portsToCheck := map[*Peer]*rootAnnouncementWithTime{}
 	for _, p := range t.r.activePorts() {
 		if p.child.Load() {
@@ -131,6 +196,7 @@ func (t *spanningTree) selectNewParent() {
 		}
 		portsToCheck[p] = ann
 	}
+
 	checkWithCondition := func(f func(ann *rootAnnouncementWithTime, hops int) bool) {
 		for p, ann := range portsToCheck {
 			hops := len(ann.Signatures)
@@ -144,6 +210,7 @@ func (t *spanningTree) selectNewParent() {
 			}
 		}
 	}
+
 	checkWithCondition(func(ann *rootAnnouncementWithTime, hops int) bool {
 		return ann.RootPublicKey.CompareTo(bestKey) > 0
 	})
@@ -156,10 +223,17 @@ func (t *spanningTree) selectNewParent() {
 	checkWithCondition(func(ann *rootAnnouncementWithTime, hops int) bool {
 		return ann.RootPublicKey.CompareTo(bestKey) == 0 && ann.Sequence == bestSeq && hops == bestDist && ann.at.Before(bestTime)
 	})
-	t.updateMutex.Unlock()
-	if bestAnn != nil {
-		if err := t.Update(t.r.ports[bestPort], bestAnn.SwitchAnnouncement, true); err != nil {
-			t.r.log.Println("t.Update: %w", err)
+
+	if bestAnn != nil && bestAnn.RootPublicKey.CompareTo(t.r.public) > 0 {
+		t.parent.Store(bestPort)
+		newcoords, newroot := t.Coords(), t.Root().RootPublicKey
+
+		if t.callback != nil && !lastParentUpdate.Coords().EqualTo(newcoords) {
+			defer t.callback(bestPort, newcoords)
+		}
+
+		if newroot != lastParentUpdate.RootPublicKey {
+			defer t.r.snake.rootNodeChanged(newroot)
 		}
 	} else {
 		t.becomeRoot()
@@ -215,7 +289,7 @@ func (t *spanningTree) workerForRoot() {
 
 		case <-time.After(announcementTimeout):
 			if !t.IsRoot() {
-				t.selectNewParent()
+				t.selectNewParentAndAdvertise()
 			}
 		}
 	}
@@ -255,55 +329,24 @@ func (t *spanningTree) Parent() types.SwitchPortID {
 }
 
 func (t *spanningTree) Update(p *Peer, newUpdate types.SwitchAnnouncement, updateParent bool) error {
-	sigs := make(map[string]struct{})
-	for index, sig := range newUpdate.Signatures {
-		if index == 0 && sig.PublicKey != newUpdate.RootPublicKey {
-			// The first signature in the announcement must be from the
-			// key that claims to be the root.
-			return fmt.Errorf("rejecting update (first signature must be from root)")
-		}
-		if sig.Hop == 0 {
-			// None of the hops in the update should have a port number of 0
-			// as this would imply that another node has sent their router
-			// port, which is impossible. We'll therefore reject any update
-			// that tries to do that.
-			return fmt.Errorf("rejecting update (invalid 0 hop)")
-		}
-		if index == len(newUpdate.Signatures)-1 && p.PublicKey() != sig.PublicKey {
-			// The last signature in the announcement must be from the
-			// direct peer. If it isn't then it sounds like someone is
-			// trying to replay someone else's announcement to us.
-			return fmt.Errorf("rejecting update (last signature must be from peer)")
-		}
-		pk := hex.EncodeToString(sig.PublicKey[:])
-		if _, ok := sigs[pk]; ok {
-			// One of the signatures has appeared in the update more than
-			// once, which would suggest that there's a loop somewhere.
-			return fmt.Errorf("rejecting update (detected routing loop)")
-		}
-		sigs[pk] = struct{}{}
+	if newUpdate.RootPublicKey.CompareTo(t.Root().RootPublicKey) < 0 {
+		// The update that this peer sent us, for some reason, has a weaker
+		// root than the one that we know about. Send an announcement back
+		// to them with our stronger root and do nothing further with the
+		// update. If our own root timed out then t.Root() will return an
+		// update with our own key, so it's equivalent to seeing if our key
+		// is stronger than theirs.
+		p.announce <- struct{}{}
+		return nil
 	}
 
-	lastPortUpdate := p.lastAnnouncement()
-	if lastPortUpdate != nil && lastPortUpdate.RootPublicKey == newUpdate.RootPublicKey {
-		if newUpdate.Sequence < lastPortUpdate.Sequence {
-			// The update has a lower sequence number than our last update
-			// on this port from this root. This shouldn't happen, but if it
-			// does, then just drop the update.
-			return nil
-		}
-	}
-
-	lastParentUpdate := t.Root()
-	if err := p.updateAnnouncement(&newUpdate); err != nil {
-		return fmt.Errorf("p.updateAnnouncement: %w", err)
-	}
-
-	if lastPortUpdate != nil {
+	if p.IsParent() {
 		// Check if anything strange has happened to our parent that might
 		// indicate a problem with their parent, like a sudden lengthening
-		// of the path or a root key change altogether.
-		if parent := t.parent.Load().(types.SwitchPortID); p.port == parent {
+		// of the path or a root key change altogether. If these cases happen
+		// then it might be that the parent we have is no longer the best one
+		// so we should try and select a new one.
+		if lastPortUpdate := p.lastAnnouncement(); lastPortUpdate != nil {
 			switch {
 			case newUpdate.AncestorParent() != lastPortUpdate.AncestorParent(): // our ancestor's parent changed
 				fallthrough
@@ -312,68 +355,56 @@ func (t *spanningTree) Update(p *Peer, newUpdate types.SwitchAnnouncement, updat
 				fallthrough
 
 			case len(newUpdate.Signatures) > len(lastPortUpdate.Signatures): // the path got suddenly longer
-				t.selectNewParent()
+				t.selectNewParentAndAdvertise()
 				return nil
 			}
 		}
 	}
 
-	if p.child.Load() {
-		return nil
-	}
-
-	t.updateMutex.Lock()
-	defer t.updateMutex.Unlock()
-
 	if !updateParent {
+		// At this point we're looking to see if there are any reasons
+		// that we should select a new parent. By this point, the peer's
+		// update has already been saved, so positive cases here will mean
+		// that we may end up switching to this node.
+		lastParentUpdate := t.Root()
 		keyDeltaSinceLastParentUpdate := newUpdate.RootPublicKey.CompareTo(lastParentUpdate.RootPublicKey)
 
 		switch {
 		case time.Since(lastParentUpdate.at) > announcementTimeout:
-			// We haven't seen a suitable root update recently so we'll accept
-			// this one instead
+			// We haven't seen a suitable root update recently from our parent,
+			// so try and select a new parent.
 			updateParent = true
 
 		case keyDeltaSinceLastParentUpdate < 0:
-			// The root key is weaker than our existing root so ignore it.
-			return nil
+			// The root key is weaker than our existing root so there's no point
+			// in attempting parent selection.
+
+		case keyDeltaSinceLastParentUpdate > 0:
+			// The root key is stronger than our existing root, therefore this
+			// is likely a good candidate to be a new parent.
+			updateParent = true
 
 		case keyDeltaSinceLastParentUpdate == 0:
 			// The update is from the same root node, let's see if it matches
-			// any other useful conditions
+			// any other useful conditions.
 			switch {
 			case newUpdate.Sequence < lastParentUpdate.Sequence:
-				// This is a replay of an earlier update, therefore we should
-				// ignore it, even if it came from our parent node
-				return nil
+			// This is a replay of an earlier update, therefore we should
+			// ignore it, even if it came from our parent node
 
 			case len(newUpdate.Signatures) < len(lastParentUpdate.Signatures):
 				// The path to the root is shorter than our last update, so
 				// we'll accept it
 				updateParent = true
 			}
-
-		case keyDeltaSinceLastParentUpdate > 0:
-			// The root key is stronger than our existing root, therefore we'll
-			// accept it anyway, since we always want to converge on the
-			// strongest root key
-			updateParent = true
 		}
 	}
 
-	if parent, ok := t.parent.Load().(types.SwitchPortID); !ok || p.port == parent || updateParent {
-		oldcoords, oldroot := lastParentUpdate.Coords(), lastParentUpdate.RootPublicKey
-		t.parent.Store(p.port)
-		newcoords, newroot := t.Coords(), t.Root().RootPublicKey
+	switch {
+	case updateParent:
+		t.selectNewParentAndAdvertise()
 
-		if t.callback != nil && !oldcoords.EqualTo(newcoords) {
-			go t.callback(p.port, newcoords)
-		}
-
-		if oldroot != newroot {
-			defer t.r.snake.rootNodeChanged(newroot)
-		}
-
+	case p.IsParent():
 		t.advertise()
 		t.rootReset <- struct{}{}
 	}

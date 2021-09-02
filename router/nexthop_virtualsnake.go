@@ -203,10 +203,6 @@ func (t *virtualSnake) rootNodeChanged(root types.PublicKey) {
 	}
 }
 
-func (t *virtualSnake) portWasConnected(port types.SwitchPortID) {
-	// time.AfterFunc(time.Second, t.bootstrapNow)
-}
-
 // portWasDisconnected is called by the router when a peer disconnects
 // allowing us to clean up the virtual snake state.
 func (t *virtualSnake) portWasDisconnected(port types.SwitchPortID) {
