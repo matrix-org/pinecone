@@ -384,11 +384,46 @@ func (r *Router) AuthenticatedConnect(conn net.Conn, zone string, peertype int) 
 // port number that the node was connected to will be
 // returned in the event of a successful connection.
 func (r *Router) Connect(conn net.Conn, public types.PublicKey, zone string, peertype int) (types.SwitchPortID, error) {
+	var reusePort types.SwitchPortID
 	if p, ok := r.active.Load(hex.EncodeToString(public[:]) + zone); ok {
-		_ = r.Disconnect(p.(types.SwitchPortID), fmt.Errorf("another incoming connection from the same node"))
+		if err := r.Disconnect(p.(types.SwitchPortID), fmt.Errorf("another incoming connection from the same node")); err == nil {
+			reusePort = p.(types.SwitchPortID)
+		}
+	}
+	usePort := func(port *Peer) error {
+		port.mutex.Lock()
+		port.context, port.cancel = context.WithCancel(r.context)
+		port.zone = zone
+		port.peertype = peertype
+		port.conn = conn // util.NewBufferedRWCSize(conn, MaxFrameSize)
+		port.public = public
+		port.coords = nil
+		port.protoOut.reset()
+		port.trafficOut.reset()
+		port.announcement = nil
+		port.statistics.reset()
+		port.mutex.Unlock()
+		if err := port.start(); err != nil {
+			return fmt.Errorf("port.start: %w", err)
+		}
+		if port.port != 0 {
+			r.dht.insertNode(port)
+		}
+		if r.simulator != nil {
+			r.simulator.ReportNewLink(conn, r.public, public)
+		}
+		go r.callbacks.onConnected(port.port, public, peertype)
+		r.log.Printf("Connected port %d to %s (zone %q)\n", port.port, conn.RemoteAddr(), zone)
+		return nil
 	}
 	r.connections.Lock()
 	defer r.connections.Unlock()
+	if reusePort != 0 {
+		if err := usePort(r.ports[reusePort]); err != nil {
+			return 0, fmt.Errorf("error reusing port: %w", err)
+		}
+		return reusePort, nil
+	}
 	for i := types.SwitchPortID(0); i < PortCount; i++ {
 		if i != 0 && bytes.Equal(r.public[:], public[:]) {
 			return 0, fmt.Errorf("loopback connection prohibited")
@@ -396,29 +431,9 @@ func (r *Router) Connect(conn net.Conn, public types.PublicKey, zone string, pee
 		if r.ports[i].started.Load() {
 			continue
 		}
-		r.ports[i].mutex.Lock()
-		r.ports[i].context, r.ports[i].cancel = context.WithCancel(r.context)
-		r.ports[i].zone = zone
-		r.ports[i].peertype = peertype
-		r.ports[i].conn = conn // util.NewBufferedRWCSize(conn, MaxFrameSize)
-		r.ports[i].public = public
-		r.ports[i].coords = nil
-		r.ports[i].protoOut.reset()
-		r.ports[i].trafficOut.reset()
-		r.ports[i].announcement = nil
-		r.ports[i].statistics.reset()
-		r.ports[i].mutex.Unlock()
-		if err := r.ports[i].start(); err != nil {
-			return 0, fmt.Errorf("port.start: %w", err)
+		if err := usePort(r.ports[i]); err != nil {
+			return 0, fmt.Errorf("error allocating new port: %w", err)
 		}
-		if i != 0 {
-			r.dht.insertNode(r.ports[i])
-		}
-		if r.simulator != nil {
-			r.simulator.ReportNewLink(conn, r.public, public)
-		}
-		go r.callbacks.onConnected(i, public, peertype)
-		r.log.Printf("Connected port %d to %s (zone %q)\n", i, conn.RemoteAddr(), zone)
 		return i, nil
 	}
 	return 0, fmt.Errorf("no free switch ports")

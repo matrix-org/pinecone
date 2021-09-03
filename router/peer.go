@@ -153,11 +153,11 @@ func (p *Peer) start() error {
 	if !p.started.CAS(false, true) {
 		return errors.New("switch peer is already started")
 	}
+	defer p.r.active.Store(hex.EncodeToString(p.public[:])+p.zone, p.port)
 	p.announcement = nil
 	p.child.Store(false)
 	go p.reader(p.context)
 	go p.writer(p.context)
-	p.r.active.Store(hex.EncodeToString(p.public[:])+p.zone, p.port)
 	return nil
 }
 
@@ -165,7 +165,7 @@ func (p *Peer) stop() error {
 	if !p.started.CAS(true, false) {
 		return errors.New("switch peer is already stopped")
 	}
-	p.r.active.Delete(hex.EncodeToString(p.public[:]) + p.zone)
+	defer p.r.active.Delete(hex.EncodeToString(p.public[:]) + p.zone)
 	p.mutex.Lock()
 	p.peertype = 0
 	p.zone = ""

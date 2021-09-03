@@ -216,13 +216,13 @@ func (t *spanningTree) selectNewParent() {
 			accept()
 		case ann.Sequence < bestSeq:
 			// ignore
-		case annAt.Before(bestTime):
-			accept()
-		case annAt.After(bestTime):
-			// ignore
 		case len(ann.Signatures) < bestDist:
 			accept()
 		case len(ann.Signatures) > bestDist:
+			// ignore
+		case annAt.Before(bestTime):
+			accept()
+		case annAt.After(bestTime):
 			// ignore
 		case p.public.CompareTo(bestKey) > 0:
 			accept()
