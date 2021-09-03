@@ -84,7 +84,7 @@ func (r *Router) handleAnnouncement(peer *Peer, rx *types.Frame) {
 		return
 	}
 
-	if err := r.tree.Update(peer, newUpdate, false); err != nil {
+	if err := r.tree.Update(peer, newUpdate); err != nil {
 		r.log.Println("Error handling announcement on port", peer.port, ":", err)
 	}
 }
@@ -100,6 +100,7 @@ type spanningTree struct {
 	rootReset   chan struct{}   //
 	updateMutex sync.Mutex      //
 	parent      atomic.Value    // types.SwitchPortID
+	reparenting atomic.Bool     //
 	callback    func(parent types.SwitchPortID, coords types.SwitchPorts)
 }
 
@@ -145,12 +146,14 @@ func (t *spanningTree) portWasDisconnected(port types.SwitchPortID) {
 		t.becomeRoot()
 		return
 	}
-	if t.Parent() == port {
+	if t.Parent() == port && t.reparenting.CAS(false, true) {
 		t.selectNewParentAndAdvertise()
 	}
 }
 
 func (t *spanningTree) selectNewParentAndAdvertise() {
+	t.reparenting.Store(false)
+
 	lastParentUpdate := t.Root()
 	lastParentPort := t.Parent()
 
@@ -168,7 +171,6 @@ func (t *spanningTree) selectNewParentAndAdvertise() {
 
 	case lastParentPort != newParentPort:
 		t.advertise()
-		t.rootReset <- struct{}{}
 	}
 }
 
@@ -176,16 +178,14 @@ func (t *spanningTree) selectNewParent() {
 	t.updateMutex.Lock()
 	defer t.updateMutex.Unlock()
 
-	lastParentUpdate := t.Root()
-
+	lastUpdate := t.Root()
 	bestDist := math.MaxInt32
 	bestKey := t.r.public
-	var bestTime time.Time
+	bestTime := t.Root().at
 	var bestPort types.SwitchPortID
 	var bestAnn *rootAnnouncementWithTime
 	var bestSeq types.Varu64
 
-	portsToCheck := map[*Peer]*rootAnnouncementWithTime{}
 	for _, p := range t.r.activePorts() {
 		if p.child.Load() {
 			continue
@@ -194,45 +194,50 @@ func (t *spanningTree) selectNewParent() {
 		if ann == nil {
 			continue
 		}
-		portsToCheck[p] = ann
-	}
-
-	checkWithCondition := func(f func(ann *rootAnnouncementWithTime, hops int) bool) {
-		for p, ann := range portsToCheck {
-			hops := len(ann.Signatures)
-			if f(ann, hops) {
-				bestKey = ann.RootPublicKey
-				bestDist = hops
-				bestPort = p.port
-				bestTime = ann.at
-				bestSeq = ann.Sequence
-				bestAnn = ann
-			}
+		if time.Since(ann.at) > announcementTimeout {
+			continue
+		}
+		accept := func() {
+			bestKey = ann.RootPublicKey
+			bestDist = len(ann.Signatures)
+			bestPort = p.port
+			bestTime = ann.at
+			bestSeq = ann.Sequence
+			bestAnn = ann
+		}
+		annAt := ann.at.Round(time.Millisecond)
+		keyDelta := ann.RootPublicKey.CompareTo(bestKey)
+		switch {
+		case keyDelta > 0:
+			accept()
+		case keyDelta < 0:
+			// ignore
+		case ann.Sequence > bestSeq:
+			accept()
+		case ann.Sequence < bestSeq:
+			// ignore
+		case annAt.Before(bestTime):
+			accept()
+		case annAt.After(bestTime):
+			// ignore
+		case len(ann.Signatures) < bestDist:
+			accept()
+		case len(ann.Signatures) > bestDist:
+			// ignore
+		case p.public.CompareTo(bestKey) > 0:
+			accept()
 		}
 	}
-
-	checkWithCondition(func(ann *rootAnnouncementWithTime, hops int) bool {
-		return ann.RootPublicKey.CompareTo(bestKey) > 0
-	})
-	checkWithCondition(func(ann *rootAnnouncementWithTime, hops int) bool {
-		return ann.RootPublicKey.CompareTo(bestKey) == 0 && ann.Sequence > bestSeq
-	})
-	checkWithCondition(func(ann *rootAnnouncementWithTime, hops int) bool {
-		return ann.RootPublicKey.CompareTo(bestKey) == 0 && ann.Sequence == bestSeq && hops < bestDist
-	})
-	checkWithCondition(func(ann *rootAnnouncementWithTime, hops int) bool {
-		return ann.RootPublicKey.CompareTo(bestKey) == 0 && ann.Sequence == bestSeq && hops == bestDist && ann.at.Before(bestTime)
-	})
 
 	if bestAnn != nil && bestAnn.RootPublicKey.CompareTo(t.r.public) > 0 {
 		t.parent.Store(bestPort)
 		newcoords, newroot := t.Coords(), t.Root().RootPublicKey
 
-		if t.callback != nil && !lastParentUpdate.Coords().EqualTo(newcoords) {
+		if t.callback != nil && !lastUpdate.Coords().EqualTo(newcoords) {
 			defer t.callback(bestPort, newcoords)
 		}
 
-		if newroot != lastParentUpdate.RootPublicKey {
+		if newroot != lastUpdate.RootPublicKey {
 			defer t.r.snake.rootNodeChanged(newroot)
 		}
 	} else {
@@ -288,7 +293,7 @@ func (t *spanningTree) workerForRoot() {
 		case <-t.rootReset:
 
 		case <-time.After(announcementTimeout):
-			if !t.IsRoot() {
+			if !t.IsRoot() && t.reparenting.CAS(false, true) {
 				t.selectNewParentAndAdvertise()
 			}
 		}
@@ -328,85 +333,63 @@ func (t *spanningTree) Parent() types.SwitchPortID {
 	return 0
 }
 
-func (t *spanningTree) Update(p *Peer, newUpdate types.SwitchAnnouncement, updateParent bool) error {
-	if newUpdate.RootPublicKey.CompareTo(t.Root().RootPublicKey) < 0 {
-		// The update that this peer sent us, for some reason, has a weaker
-		// root than the one that we know about. Send an announcement back
-		// to them with our stronger root and do nothing further with the
-		// update. If our own root timed out then t.Root() will return an
-		// update with our own key, so it's equivalent to seeing if our key
-		// is stronger than theirs.
-		p.announce <- struct{}{}
-		return nil
-	}
-
-	if p.IsParent() {
-		// Check if anything strange has happened to our parent that might
-		// indicate a problem with their parent, like a sudden lengthening
-		// of the path or a root key change altogether. If these cases happen
-		// then it might be that the parent we have is no longer the best one
-		// so we should try and select a new one.
-		if lastPortUpdate := p.lastAnnouncement(); lastPortUpdate != nil {
-			switch {
-			case newUpdate.AncestorParent() != lastPortUpdate.AncestorParent(): // our ancestor's parent changed
-				fallthrough
-
-			case newUpdate.RootPublicKey.CompareTo(lastPortUpdate.RootPublicKey) < 0: // the root key got weaker
-				fallthrough
-
-			case len(newUpdate.Signatures) > len(lastPortUpdate.Signatures): // the path got suddenly longer
-				t.selectNewParentAndAdvertise()
-				return nil
-			}
+func (t *spanningTree) strongestRootKeyOfPeers() types.PublicKey {
+	strongest := t.r.public
+	for _, p := range t.r.activePorts() {
+		if p.announcement.RootPublicKey.CompareTo(strongest) > 0 {
+			strongest = p.announcement.RootPublicKey
 		}
 	}
+	return strongest
+}
 
-	if !updateParent {
-		// At this point we're looking to see if there are any reasons
-		// that we should select a new parent. By this point, the peer's
-		// update has already been saved, so positive cases here will mean
-		// that we may end up switching to this node.
-		lastParentUpdate := t.Root()
-		keyDeltaSinceLastParentUpdate := newUpdate.RootPublicKey.CompareTo(lastParentUpdate.RootPublicKey)
+func (t *spanningTree) Update(p *Peer, newUpdate types.SwitchAnnouncement) error {
+	updateParent := false
+	lastParentUpdate := t.Root()
+	keyDeltaSinceLastParentUpdate := newUpdate.RootPublicKey.CompareTo(lastParentUpdate.RootPublicKey)
+	keyDeltaFromStrongestRootKeyOfPeers := newUpdate.RootPublicKey.CompareTo(t.strongestRootKeyOfPeers())
 
+	switch {
+	case time.Since(lastParentUpdate.at) > announcementTimeout:
+		updateParent = true
+
+	case keyDeltaFromStrongestRootKeyOfPeers < 0 && p.port == t.Parent():
+		updateParent = true
+
+	case keyDeltaSinceLastParentUpdate != 0:
+		updateParent = true
+
+	case keyDeltaSinceLastParentUpdate == 0:
 		switch {
-		case time.Since(lastParentUpdate.at) > announcementTimeout:
-			// We haven't seen a suitable root update recently from our parent,
-			// so try and select a new parent.
+		case newUpdate.Sequence < lastParentUpdate.Sequence:
+			// Ignore an update with an old sequence number
+
+		case len(newUpdate.Signatures) != len(lastParentUpdate.Signatures):
 			updateParent = true
 
-		case keyDeltaSinceLastParentUpdate < 0:
-			// The root key is weaker than our existing root so there's no point
-			// in attempting parent selection.
-
-		case keyDeltaSinceLastParentUpdate > 0:
-			// The root key is stronger than our existing root, therefore this
-			// is likely a good candidate to be a new parent.
-			updateParent = true
-
-		case keyDeltaSinceLastParentUpdate == 0:
-			// The update is from the same root node, let's see if it matches
-			// any other useful conditions.
-			switch {
-			case newUpdate.Sequence < lastParentUpdate.Sequence:
-			// This is a replay of an earlier update, therefore we should
-			// ignore it, even if it came from our parent node
-
-			case len(newUpdate.Signatures) < len(lastParentUpdate.Signatures):
-				// The path to the root is shorter than our last update, so
-				// we'll accept it
-				updateParent = true
+		default:
+			for i := 0; i < len(newUpdate.Signatures); i++ {
+				if newUpdate.Signatures[i] != lastParentUpdate.Signatures[i] {
+					updateParent = true
+					break
+				}
 			}
 		}
 	}
 
 	switch {
 	case updateParent:
-		t.selectNewParentAndAdvertise()
+		if t.reparenting.CAS(false, true) {
+			time.AfterFunc(time.Second, t.selectNewParentAndAdvertise)
+		}
 
 	case p.IsParent():
-		t.advertise()
-		t.rootReset <- struct{}{}
+		if newUpdate.Sequence >= lastParentUpdate.Sequence {
+			t.advertise()
+		}
+		if newUpdate.Sequence > lastParentUpdate.Sequence {
+			t.rootReset <- struct{}{}
+		}
 	}
 
 	return nil

@@ -109,9 +109,6 @@ func (p *Peer) SeenCommonRootRecently() bool {
 	}
 	lpk := last.RootPublicKey
 	rpk := p.r.RootPublicKey()
-	if lpk != rpk {
-		fmt.Println("Root disagreement", lpk, "vs", rpk)
-	}
 	return lpk == rpk
 }
 

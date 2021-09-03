@@ -24,6 +24,7 @@ import (
 
 	"github.com/matrix-org/pinecone/types"
 	"github.com/matrix-org/pinecone/util"
+	"go.uber.org/atomic"
 )
 
 const virtualSnakeNeighExpiryPeriod = time.Minute * 30
@@ -36,6 +37,7 @@ type virtualSnake struct {
 	ascendingMutex  sync.RWMutex
 	_descending     *virtualSnakeNeighbour
 	descendingMutex sync.RWMutex
+	bootstrapping   atomic.Bool
 }
 
 type virtualSnakeIndex struct {
@@ -145,13 +147,14 @@ func (t *virtualSnake) maintain() {
 		// predefined interval, but for now we'll continue to send
 		// them on a regular interval until we can derive some better
 		// connection state.
-		if bootstrapNow {
+		if bootstrapNow && t.bootstrapping.CAS(false, true) {
 			t.bootstrapNow()
 		}
 	}
 }
 
 func (t *virtualSnake) bootstrapNow() {
+	t.bootstrapping.Store(false)
 	if t.r.IsRoot() {
 		return
 	}
@@ -180,7 +183,9 @@ func (t *virtualSnake) bootstrapNow() {
 func (t *virtualSnake) rootNodeChanged(root types.PublicKey) {
 	if asc := t.ascending(); asc != nil && !asc.RootPublicKey.EqualTo(root) {
 		t.teardownPath(t.r.public, asc.PathID, asc.Port, true, fmt.Errorf("root changed and asc no longer matches"))
-		defer t.bootstrapNow()
+		if t.bootstrapping.CAS(false, true) {
+			time.AfterFunc(time.Second, t.bootstrapNow)
+		}
 	}
 	if desc := t.descending(); desc != nil && !desc.RootPublicKey.EqualTo(root) {
 		t.teardownPath(desc.PublicKey, desc.PathID, desc.Port, false, fmt.Errorf("root changed and desc no longer matches"))
