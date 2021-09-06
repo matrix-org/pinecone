@@ -7,85 +7,74 @@ import (
 )
 
 type fifoQueue struct {
-	frames []*types.Frame
-	count  int
-	mutex  sync.Mutex
-	notifs chan struct{}
+	entries []chan *types.Frame
+	mutex   sync.Mutex
 }
 
 func newFIFOQueue() *fifoQueue {
-	q := &fifoQueue{
-		notifs: make(chan struct{}),
-	}
+	q := &fifoQueue{}
+	q.reset()
 	return q
+}
+
+func (q *fifoQueue) _initialise() {
+	for i := range q.entries {
+		q.entries[i] = nil
+	}
+	q.entries = []chan *types.Frame{
+		make(chan *types.Frame, 1),
+	}
 }
 
 func (q *fifoQueue) queuecount() int {
 	q.mutex.Lock()
 	defer q.mutex.Unlock()
-	return q.count
+	return len(q.entries)
 }
 
 func (q *fifoQueue) queuesize() int {
 	q.mutex.Lock()
 	defer q.mutex.Unlock()
-	return cap(q.frames)
+	return cap(q.entries)
 }
 
 func (q *fifoQueue) push(frame *types.Frame) bool {
 	q.mutex.Lock()
 	defer q.mutex.Unlock()
-	q.frames = append(q.frames, frame)
-	q.count++
-	select {
-	case q.notifs <- struct{}{}:
-	default:
+	if len(q.entries) == 0 {
+		q._initialise()
 	}
+	ch := q.entries[len(q.entries)-1]
+	ch <- frame
+	close(ch)
+	q.entries = append(q.entries, make(chan *types.Frame, 1))
 	return true
-}
-
-func (q *fifoQueue) pop() (*types.Frame, bool) {
-	q.mutex.Lock()
-	defer q.mutex.Unlock()
-	if q.count == 0 {
-		return nil, false
-	}
-	frame := q.frames[0]
-	q.frames[0] = nil
-	q.frames = q.frames[1:]
-	q.count--
-	if q.count == 0 {
-		// Force a GC of the underlying array, since it might have
-		// grown significantly if the queue was hammered for some reason
-		q.frames = nil
-	}
-	return frame, true
 }
 
 func (q *fifoQueue) reset() {
 	q.mutex.Lock()
 	defer q.mutex.Unlock()
-	q.count = 0
-	for i := range q.frames {
-		if q.frames[i] != nil {
-			q.frames[i].Done()
-			q.frames[i] = nil
+	for _, ch := range q.entries {
+		frame := <-ch
+		if frame != nil {
+			frame.Done()
 		}
 	}
-	q.frames = nil
-	close(q.notifs)
-	for range q.notifs {
-	}
-	q.notifs = make(chan struct{})
+	q._initialise()
 }
 
-func (q *fifoQueue) wait() <-chan struct{} {
+func (q *fifoQueue) pop() <-chan *types.Frame {
 	q.mutex.Lock()
 	defer q.mutex.Unlock()
-	if q.count > 0 {
-		ch := make(chan struct{})
-		close(ch)
-		return ch
+	if len(q.entries) == 0 {
+		q._initialise()
 	}
-	return q.notifs
+	entry := q.entries[0]
+	return entry
+}
+
+func (q *fifoQueue) ack() {
+	q.mutex.Lock()
+	defer q.mutex.Unlock()
+	q.entries = q.entries[1:]
 }

@@ -314,8 +314,11 @@ func (t *virtualSnake) getVirtualSnakeNextHop(from *Peer, destKey types.PublicKe
 		newCheckedCandidate(ancestor, parentPort)
 	}
 
+	// The next section needs us to check direct peers
+	activePorts := t.r.activePorts()
+
 	// Check our direct peers ancestors
-	for _, peer := range t.r.activePorts() {
+	for _, peer := range activePorts {
 		peerAnn := peer.lastAnnouncement()
 		if peerAnn == nil {
 			continue
@@ -327,7 +330,7 @@ func (t *virtualSnake) getVirtualSnakeNextHop(from *Peer, destKey types.PublicKe
 	}
 
 	// Check our direct peers
-	for _, peer := range t.r.activePorts() {
+	for _, peer := range activePorts {
 		peerKey := peer.PublicKey()
 		switch {
 		case bestKey.EqualTo(peerKey):

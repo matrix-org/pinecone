@@ -110,7 +110,6 @@ func NewRouter(log *log.Logger, id string, private ed25519.PrivateKey, public ed
 		sw.ports[i] = &Peer{
 			r:          sw,
 			port:       types.SwitchPortID(i),
-			announce:   make(chan struct{}),
 			protoOut:   newFIFOQueue(),
 			trafficOut: newLIFOQueue(TrafficBufferSize),
 		}
@@ -313,10 +312,7 @@ func (r *Router) startedPorts() peers {
 func (r *Router) activePorts() peers {
 	peers := make(peers, 0, PortCount)
 	for _, p := range r.startedPorts() {
-		switch {
-		case !p.Alive():
-			continue
-		default:
+		if p.Alive() {
 			peers = append(peers, p)
 		}
 	}
@@ -397,12 +393,8 @@ func (r *Router) Connect(conn net.Conn, public types.PublicKey, zone string, pee
 		port.peertype = peertype
 		port.conn = conn // util.NewBufferedRWCSize(conn, MaxFrameSize)
 		port.public = public
-		port.coords = nil
-		port.protoOut.reset()
-		port.trafficOut.reset()
-		port.announcement = nil
-		port.statistics.reset()
 		port.mutex.Unlock()
+		port.protoOut.push(port.generateAnnouncement())
 		if err := port.start(); err != nil {
 			return fmt.Errorf("port.start: %w", err)
 		}

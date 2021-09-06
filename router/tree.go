@@ -17,6 +17,7 @@ package router
 import (
 	"context"
 	"encoding/hex"
+	"fmt"
 	"math"
 	"sync"
 	"time"
@@ -34,37 +35,36 @@ const announcementInterval = time.Minute * 15
 // will assume that the peer is dead.
 const announcementTimeout = announcementInterval * 2
 
-func (r *Router) handleAnnouncement(peer *Peer, rx *types.Frame) {
+func (r *Router) handleAnnouncement(peer *Peer, rx *types.Frame) error {
 	var newUpdate types.SwitchAnnouncement
 	if _, err := newUpdate.UnmarshalBinary(rx.Payload); err != nil {
-		r.log.Println("Error unmarshalling announcement:", err)
-		return
+		return fmt.Errorf("failed to unmarshal root announcement: %w", err)
 	}
 	sigs := make(map[string]struct{})
 	for index, sig := range newUpdate.Signatures {
 		if index == 0 && sig.PublicKey != newUpdate.RootPublicKey {
 			// The first signature in the announcement must be from the
 			// key that claims to be the root.
-			return
+			return fmt.Errorf("root announcement first signature is not from the root node")
 		}
 		if sig.Hop == 0 {
 			// None of the hops in the update should have a port number of 0
 			// as this would imply that another node has sent their router
 			// port, which is impossible. We'll therefore reject any update
 			// that tries to do that.
-			return
+			return fmt.Errorf("root announcement contains an invalid port number")
 		}
 		if index == len(newUpdate.Signatures)-1 && peer.PublicKey() != sig.PublicKey {
 			// The last signature in the announcement must be from the
 			// direct peer. If it isn't then it sounds like someone is
 			// trying to replay someone else's announcement to us.
-			return
+			return fmt.Errorf("root announcement last signature is not from the direct peer")
 		}
 		pk := hex.EncodeToString(sig.PublicKey[:])
 		if _, ok := sigs[pk]; ok {
 			// One of the signatures has appeared in the update more than
 			// once, which would suggest that there's a loop somewhere.
-			return
+			return fmt.Errorf("root announcement contains a routing loop")
 		}
 		sigs[pk] = struct{}{}
 	}
@@ -74,19 +74,16 @@ func (r *Router) handleAnnouncement(peer *Peer, rx *types.Frame) {
 		if newUpdate.Sequence < lastPortUpdate.Sequence {
 			// The update is a replay of a previous announcement which doesn't
 			// make sense
-			peer.cancel()
-			return
+			return fmt.Errorf("root announcement is a replay of an old sequence number")
 		}
 	}
 
 	if err := peer.updateAnnouncement(&newUpdate); err != nil {
-		r.log.Println("Error updating announcement on port", peer.port, ":", err)
-		return
+		return fmt.Errorf("updating the peer last root announcement failed: %w", err)
 	}
 
-	if err := r.tree.Update(peer, newUpdate); err != nil {
-		r.log.Println("Error handling announcement on port", peer.port, ":", err)
-	}
+	r.tree.UpdateParentIfNeeded(peer, newUpdate)
+	return nil
 }
 
 type rootAnnouncementWithTime struct {
@@ -205,25 +202,25 @@ func (t *spanningTree) selectNewParent() {
 			bestSeq = ann.Sequence
 			bestAnn = ann
 		}
-		annAt := ann.at.Round(time.Millisecond)
 		keyDelta := ann.RootPublicKey.CompareTo(bestKey)
+		annAt := ann.at.Round(time.Millisecond)
 		switch {
 		case keyDelta > 0:
 			accept()
 		case keyDelta < 0:
-			// ignore
+			// ignore weaker root keys
 		case ann.Sequence > bestSeq:
 			accept()
 		case ann.Sequence < bestSeq:
-			// ignore
-		case len(ann.Signatures) < bestDist:
-			accept()
-		case len(ann.Signatures) > bestDist:
-			// ignore
+			// ignore lower sequence numbers
 		case annAt.Before(bestTime):
 			accept()
 		case annAt.After(bestTime):
-			// ignore
+			// ignore updates that arrived more recently
+		case len(ann.Signatures) < bestDist:
+			accept()
+		case len(ann.Signatures) > bestDist:
+			// ignore longer paths
 		case p.public.CompareTo(bestKey) > 0:
 			accept()
 		}
@@ -247,13 +244,7 @@ func (t *spanningTree) selectNewParent() {
 
 func (t *spanningTree) advertise() {
 	for _, p := range t.r.startedPorts() {
-		go func(p *Peer) {
-			select {
-			case <-p.context.Done():
-			case <-time.After(announcementTimeout):
-			case p.announce <- struct{}{}:
-			}
-		}(p)
+		p.protoOut.push(p.generateAnnouncement())
 	}
 }
 
@@ -333,27 +324,13 @@ func (t *spanningTree) Parent() types.SwitchPortID {
 	return 0
 }
 
-func (t *spanningTree) strongestRootKeyOfPeers() types.PublicKey {
-	strongest := t.r.public
-	for _, p := range t.r.activePorts() {
-		if p.announcement.RootPublicKey.CompareTo(strongest) > 0 {
-			strongest = p.announcement.RootPublicKey
-		}
-	}
-	return strongest
-}
-
-func (t *spanningTree) Update(p *Peer, newUpdate types.SwitchAnnouncement) error {
+func (t *spanningTree) UpdateParentIfNeeded(p *Peer, newUpdate types.SwitchAnnouncement) {
 	updateParent := false
 	lastParentUpdate := t.Root()
 	keyDeltaSinceLastParentUpdate := newUpdate.RootPublicKey.CompareTo(lastParentUpdate.RootPublicKey)
-	keyDeltaFromStrongestRootKeyOfPeers := newUpdate.RootPublicKey.CompareTo(t.strongestRootKeyOfPeers())
 
 	switch {
 	case time.Since(lastParentUpdate.at) > announcementTimeout:
-		updateParent = true
-
-	case keyDeltaFromStrongestRootKeyOfPeers < 0 && p.port == t.Parent():
 		updateParent = true
 
 	case keyDeltaSinceLastParentUpdate != 0:
@@ -366,31 +343,22 @@ func (t *spanningTree) Update(p *Peer, newUpdate types.SwitchAnnouncement) error
 
 		case len(newUpdate.Signatures) != len(lastParentUpdate.Signatures):
 			updateParent = true
-
-		default:
-			for i := 0; i < len(newUpdate.Signatures); i++ {
-				if newUpdate.Signatures[i] != lastParentUpdate.Signatures[i] {
-					updateParent = true
-					break
-				}
-			}
 		}
 	}
 
 	switch {
 	case updateParent:
 		if t.reparenting.CAS(false, true) {
-			time.AfterFunc(time.Second, t.selectNewParentAndAdvertise)
+			t.selectNewParentAndAdvertise()
 		}
 
 	case p.IsParent():
 		if newUpdate.Sequence >= lastParentUpdate.Sequence {
 			t.advertise()
 		}
-		if newUpdate.Sequence > lastParentUpdate.Sequence {
-			t.rootReset <- struct{}{}
-		}
 	}
 
-	return nil
+	if newUpdate.Sequence > lastParentUpdate.Sequence {
+		t.rootReset <- struct{}{}
+	}
 }

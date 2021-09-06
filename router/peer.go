@@ -30,7 +30,7 @@ import (
 	"go.uber.org/atomic"
 )
 
-const PeerKeepaliveInterval = time.Second * 2
+const PeerKeepaliveInterval = time.Second * 3
 const PeerKeepaliveTimeout = PeerKeepaliveInterval * 3
 
 const (
@@ -51,12 +51,28 @@ type Peer struct {
 	cancel       context.CancelFunc        //
 	conn         net.Conn                  // underlying connection to peer
 	public       types.PublicKey           //
-	trafficOut   queue                     // queue traffic message to peer
-	protoOut     queue                     // queue protocol message to peer
+	trafficOut   *lifoQueue                // queue traffic message to peer
+	protoOut     *fifoQueue                // queue protocol message to peer
 	coords       types.SwitchPorts         //
-	announce     chan struct{}             //
 	announcement *rootAnnouncementWithTime //
 	statistics   peerStatistics            //
+}
+
+func (p *Peer) reset() {
+	p.mutex.Lock()
+	defer p.mutex.Unlock()
+	p.started.Store(false)
+	p.child.Store(false)
+	p.zone = ""
+	p.peertype = 0
+	p.context, p.cancel = nil, nil
+	//p.conn = nil
+	p.public = types.PublicKey{}
+	p.trafficOut.reset()
+	p.protoOut.reset()
+	p.coords = nil
+	p.announcement = nil
+	p.statistics.reset()
 }
 
 type peerStatistics struct {
@@ -153,9 +169,7 @@ func (p *Peer) start() error {
 	if !p.started.CAS(false, true) {
 		return errors.New("switch peer is already started")
 	}
-	defer p.r.active.Store(hex.EncodeToString(p.public[:])+p.zone, p.port)
-	p.announcement = nil
-	p.child.Store(false)
+	p.r.active.Store(hex.EncodeToString(p.public[:])+p.zone, p.port)
 	go p.reader(p.context)
 	go p.writer(p.context)
 	return nil
@@ -167,17 +181,10 @@ func (p *Peer) stop() error {
 	}
 	defer p.r.active.Delete(hex.EncodeToString(p.public[:]) + p.zone)
 	p.mutex.Lock()
-	p.peertype = 0
-	p.zone = ""
-	p.public = types.PublicKey{}
-	p.coords = nil
-	p.announcement = nil
-	p.protoOut.reset()
-	p.trafficOut.reset()
-	p.mutex.Unlock()
-	p.child.Store(false)
-	p.cancel()
 	_ = p.conn.Close()
+	p.cancel()
+	p.mutex.Unlock()
+	p.reset()
 	return nil
 }
 
@@ -346,28 +353,19 @@ func (p *Peer) writer(ctx context.Context) {
 		if !bytes.Equal(buf[:4], types.FrameMagicBytes) {
 			panic("expected magic bytes")
 		}
-		remaining := buf[:fn]
-		for len(remaining) > 0 {
-			n, err := p.conn.Write(remaining)
-			if err != nil {
-				_ = p.r.Disconnect(p.port, fmt.Errorf("p.conn.Write: %w", err))
-				return
-			}
-			remaining = remaining[n:]
+		if _, err = p.conn.Write(buf[:fn]); err != nil {
+			_ = p.r.Disconnect(p.port, fmt.Errorf("p.conn.Write: %w", err))
+			return
 		}
 	}
-
-	// The very first thing we send should be a tree announcement,
-	// so that the remote side can work out our coords and consider
-	// us to be "alive".
-	send(p.generateAnnouncement())
 
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-p.announce:
-			send(p.generateAnnouncement())
+		case frame := <-p.protoOut.pop():
+			p.protoOut.ack()
+			send(frame)
 			p.statistics.txProtoSuccessful.Inc()
 			continue
 		default:
@@ -375,34 +373,10 @@ func (p *Peer) writer(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			return
-		case <-p.announce:
-			send(p.generateAnnouncement())
+		case frame := <-p.protoOut.pop():
+			p.protoOut.ack()
+			send(frame)
 			p.statistics.txProtoSuccessful.Inc()
-			continue
-		case <-p.protoOut.wait():
-			if frame, ok := p.protoOut.pop(); ok {
-				send(frame)
-				p.statistics.txProtoSuccessful.Inc()
-			} else {
-				p.statistics.txProtoDropped.Inc()
-			}
-			continue
-		default:
-		}
-		select {
-		case <-ctx.Done():
-			return
-		case <-p.announce:
-			send(p.generateAnnouncement())
-			p.statistics.txProtoSuccessful.Inc()
-			continue
-		case <-p.protoOut.wait():
-			if frame, ok := p.protoOut.pop(); ok {
-				send(frame)
-				p.statistics.txProtoSuccessful.Inc()
-			} else {
-				p.statistics.txProtoDropped.Inc()
-			}
 			continue
 		case <-p.trafficOut.wait():
 			if frame, ok := p.trafficOut.pop(); ok {
@@ -417,17 +391,10 @@ func (p *Peer) writer(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			return
-		case <-p.announce:
-			send(p.generateAnnouncement())
+		case frame := <-p.protoOut.pop():
+			p.protoOut.ack()
+			send(frame)
 			p.statistics.txProtoSuccessful.Inc()
-			continue
-		case <-p.protoOut.wait():
-			if frame, ok := p.protoOut.pop(); ok {
-				send(frame)
-				p.statistics.txProtoSuccessful.Inc()
-			} else {
-				p.statistics.txProtoDropped.Inc()
-			}
 			continue
 		case <-p.trafficOut.wait():
 			if frame, ok := p.trafficOut.pop(); ok {

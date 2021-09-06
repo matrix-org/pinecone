@@ -65,6 +65,7 @@ func (r *Router) getGreedyRoutedNextHop(from *Peer, rx *types.Frame) types.Switc
 		case peerDist < bestDist:
 			// The peer is closer to the destination.
 			bestPeer, bestDist = p.port, peerDist
+
 		default:
 		}
 	}
