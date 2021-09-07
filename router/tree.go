@@ -23,7 +23,6 @@ import (
 	"time"
 
 	"github.com/matrix-org/pinecone/types"
-	"go.uber.org/atomic"
 )
 
 // announcementInterval is the frequency at which this
@@ -91,14 +90,47 @@ type rootAnnouncementWithTime struct {
 	at time.Time
 }
 
+func (a *rootAnnouncementWithTime) ForPeer(p *Peer) *types.Frame {
+	if p.port == 0 {
+		return nil
+	}
+	announcement := a.SwitchAnnouncement
+	announcement.Signatures = append([]types.SignatureWithHop{}, a.Signatures...)
+	for _, sig := range announcement.Signatures {
+		if p.r.public.EqualTo(sig.PublicKey) {
+			// For some reason the announcement that we want to send already
+			// includes our signature. This shouldn't really happen but if we
+			// did send it, other nodes would end up ignoring the announcement
+			// anyway since it would appear to be a routing loop.
+			return nil
+		}
+	}
+	// Sign the announcement.
+	if err := announcement.Sign(p.r.private[:], p.port); err != nil {
+		p.r.log.Println("Failed to sign switch announcement:", err)
+		return nil
+	}
+	var payload [MaxPayloadSize]byte
+	n, err := announcement.MarshalBinary(payload[:])
+	if err != nil {
+		p.r.log.Println("Failed to marshal switch announcement:", err)
+		return nil
+	}
+	frame := types.GetFrame()
+	frame.Version = types.Version0
+	frame.Type = types.TypeSTP
+	frame.Destination = types.SwitchPorts{}
+	frame.Payload = payload[:n]
+	return frame
+}
+
 type spanningTree struct {
-	r           *Router         //
-	context     context.Context //
-	rootReset   chan struct{}   //
-	updateMutex sync.Mutex      //
-	parent      atomic.Value    // types.SwitchPortID
-	reparenting atomic.Bool     //
-	callback    func(parent types.SwitchPortID, coords types.SwitchPorts)
+	r         *Router
+	context   context.Context
+	rootReset chan struct{}
+	mutex     sync.Mutex
+	parent    types.SwitchPortID
+	callback  func(parent types.SwitchPortID, coords types.SwitchPorts)
 }
 
 func newSpanningTree(r *Router, f func(parent types.SwitchPortID, coords types.SwitchPorts)) *spanningTree {
@@ -143,14 +175,12 @@ func (t *spanningTree) portWasDisconnected(port types.SwitchPortID) {
 		t.becomeRoot()
 		return
 	}
-	if t.Parent() == port && t.reparenting.CAS(false, true) {
+	if t.Parent() == port {
 		t.selectNewParentAndAdvertise()
 	}
 }
 
 func (t *spanningTree) selectNewParentAndAdvertise() {
-	t.reparenting.Store(false)
-
 	lastParentUpdate := t.Root()
 	lastParentPort := t.Parent()
 
@@ -172,9 +202,6 @@ func (t *spanningTree) selectNewParentAndAdvertise() {
 }
 
 func (t *spanningTree) selectNewParent() {
-	t.updateMutex.Lock()
-	defer t.updateMutex.Unlock()
-
 	lastUpdate := t.Root()
 	bestDist := math.MaxInt32
 	bestKey := t.r.public
@@ -182,6 +209,8 @@ func (t *spanningTree) selectNewParent() {
 	var bestPort types.SwitchPortID
 	var bestAnn *rootAnnouncementWithTime
 	var bestSeq types.Varu64
+
+	t.mutex.Lock()
 
 	for _, p := range t.r.activePorts() {
 		if p.child.Load() {
@@ -226,8 +255,10 @@ func (t *spanningTree) selectNewParent() {
 		}
 	}
 
+	t.mutex.Unlock()
+
 	if bestAnn != nil && bestAnn.RootPublicKey.CompareTo(t.r.public) > 0 {
-		t.parent.Store(bestPort)
+		t.parent = bestPort
 		newcoords, newroot := t.Coords(), t.Root().RootPublicKey
 
 		if t.callback != nil && !lastUpdate.Coords().EqualTo(newcoords) {
@@ -243,18 +274,23 @@ func (t *spanningTree) selectNewParent() {
 }
 
 func (t *spanningTree) advertise() {
+	ann := t.Root()
 	for _, p := range t.r.startedPorts() {
-		p.protoOut.push(p.generateAnnouncement())
+		p.protoOut.push(ann.ForPeer(p))
 	}
 }
 
 func (t *spanningTree) becomeRoot() {
-	t.parent.Store(types.SwitchPortID(0))
+	t.mutex.Lock()
+	t.parent = 0
+	t.mutex.Unlock()
+
 	newCoords := types.SwitchPorts{}
 	if !t.Coords().EqualTo(newCoords) {
 		go t.callback(0, types.SwitchPorts{})
 		defer t.r.snake.rootNodeChanged(t.r.public)
 	}
+
 	t.advertise()
 }
 
@@ -284,7 +320,7 @@ func (t *spanningTree) workerForRoot() {
 		case <-t.rootReset:
 
 		case <-time.After(announcementTimeout):
-			if !t.IsRoot() && t.reparenting.CAS(false, true) {
+			if !t.IsRoot() {
 				t.selectNewParentAndAdvertise()
 			}
 		}
@@ -318,10 +354,9 @@ func (t *spanningTree) Root() *rootAnnouncementWithTime {
 }
 
 func (t *spanningTree) Parent() types.SwitchPortID {
-	if parent, ok := t.parent.Load().(types.SwitchPortID); ok {
-		return parent
-	}
-	return 0
+	t.mutex.Lock()
+	defer t.mutex.Unlock()
+	return t.parent
 }
 
 func (t *spanningTree) UpdateParentIfNeeded(p *Peer, newUpdate types.SwitchAnnouncement) {
@@ -348,9 +383,7 @@ func (t *spanningTree) UpdateParentIfNeeded(p *Peer, newUpdate types.SwitchAnnou
 
 	switch {
 	case updateParent:
-		if t.reparenting.CAS(false, true) {
-			t.selectNewParentAndAdvertise()
-		}
+		t.selectNewParentAndAdvertise()
 
 	case p.IsParent():
 		if newUpdate.Sequence >= lastParentUpdate.Sequence {

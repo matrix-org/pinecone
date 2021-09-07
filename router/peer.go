@@ -195,39 +195,6 @@ func (p *Peer) generateKeepalive() *types.Frame {
 	return frame
 }
 
-func (p *Peer) generateAnnouncement() *types.Frame {
-	if p.port == 0 {
-		return nil
-	}
-	announcement := p.r.tree.Root()
-	for _, sig := range announcement.Signatures {
-		if p.r.public.EqualTo(sig.PublicKey) {
-			// For some reason the announcement that we want to send already
-			// includes our signature. This shouldn't really happen but if we
-			// did send it, other nodes would end up ignoring the announcement
-			// anyway since it would appear to be a routing loop.
-			return nil
-		}
-	}
-	// Sign the announcement.
-	if err := announcement.Sign(p.r.private[:], p.port); err != nil {
-		p.r.log.Println("Failed to sign switch announcement:", err)
-		return nil
-	}
-	var payload [MaxPayloadSize]byte
-	n, err := announcement.MarshalBinary(payload[:])
-	if err != nil {
-		p.r.log.Println("Failed to marshal switch announcement:", err)
-		return nil
-	}
-	frame := types.GetFrame()
-	frame.Version = types.Version0
-	frame.Type = types.TypeSTP
-	frame.Destination = types.SwitchPorts{}
-	frame.Payload = payload[:n]
-	return frame
-}
-
 func (p *Peer) reader(ctx context.Context) {
 	buf := make([]byte, MaxFrameSize)
 	for {

@@ -394,7 +394,7 @@ func (r *Router) Connect(conn net.Conn, public types.PublicKey, zone string, pee
 		port.conn = conn // util.NewBufferedRWCSize(conn, MaxFrameSize)
 		port.public = public
 		port.mutex.Unlock()
-		port.protoOut.push(port.generateAnnouncement())
+		port.protoOut.push(r.tree.Root().ForPeer(port))
 		if err := port.start(); err != nil {
 			return fmt.Errorf("port.start: %w", err)
 		}
@@ -451,8 +451,8 @@ func (r *Router) Disconnect(i types.SwitchPortID, err error) error {
 		r.simulator.ReportDeadLink(r.public, r.ports[i].public)
 	}
 	r.log.Printf("Disconnected port %d: %s\n", i, err)
-	r.tree.portWasDisconnected(i)
 	r.snake.portWasDisconnected(i)
+	r.tree.portWasDisconnected(i)
 	go r.callbacks.onDisconnected(i, r.ports[i].public, r.ports[i].peertype, err)
 	return nil
 }
