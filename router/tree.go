@@ -368,7 +368,7 @@ func (t *spanningTree) UpdateParentIfNeeded(p *Peer, newUpdate types.SwitchAnnou
 	case time.Since(lastParentUpdate.at) > announcementTimeout:
 		updateParent = true
 
-	case keyDeltaSinceLastParentUpdate != 0:
+	case keyDeltaSinceLastParentUpdate > 0:
 		updateParent = true
 
 	case keyDeltaSinceLastParentUpdate == 0:

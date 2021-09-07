@@ -19,7 +19,6 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -42,6 +41,7 @@ const (
 type Peer struct {
 	r            *Router                   //
 	port         types.SwitchPortID        //
+	allocated    atomic.Bool               //
 	started      atomic.Bool               // worker goroutines started?
 	child        atomic.Bool               // is this node a child of ours?
 	mutex        sync.RWMutex              // protects everything below this line
@@ -58,21 +58,70 @@ type Peer struct {
 	statistics   peerStatistics            //
 }
 
+func (p *Peer) start() {
+	if !p.started.CAS(false, true) {
+		return
+	}
+
+	var err error
+	ctx := p.context
+	index := hex.EncodeToString(p.public[:]) + p.zone
+	errors := make(chan error)
+	wg := &sync.WaitGroup{}
+	wg.Add(2)
+
+	p.r.active.Store(index, p.port)
+
+	go func() {
+		errors <- p.reader(wg, ctx)
+	}()
+	go func() {
+		errors <- p.writer(wg, ctx)
+	}()
+
+	select {
+	case <-ctx.Done():
+	case err = <-errors:
+		p.r.log.Println("Peer", p.port, "workers stopping due to error:", err)
+		ctx.Done()
+	}
+
+	p.started.Store(false)
+
+	if p.port != 0 {
+		p.r.dht.deleteNode(p.public)
+	}
+	if p.r.simulator != nil {
+		p.r.simulator.ReportDeadLink(p.r.public, p.public)
+	}
+	p.r.log.Printf("Disconnected port %d: %s\n", p.port, err)
+	p.r.snake.portWasDisconnected(p.port)
+	p.r.tree.portWasDisconnected(p.port)
+	go p.r.callbacks.onDisconnected(p.port, p.public, p.peertype, err)
+
+	wg.Wait()
+	_ = p.conn.Close()
+
+	p.reset()
+	p.r.active.Delete(index)
+}
+
 func (p *Peer) reset() {
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
+	p.allocated.Store(false)
 	p.started.Store(false)
 	p.child.Store(false)
 	p.zone = ""
 	p.peertype = 0
 	p.context, p.cancel = nil, nil
-	//p.conn = nil
+	p.conn = nil
 	p.public = types.PublicKey{}
 	p.trafficOut.reset()
 	p.protoOut.reset()
+	p.statistics.reset()
 	p.coords = nil
 	p.announcement = nil
-	p.statistics.reset()
 }
 
 type peerStatistics struct {
@@ -165,26 +214,10 @@ func (p *Peer) lastAnnouncement() *rootAnnouncementWithTime {
 	return p.announcement
 }
 
-func (p *Peer) start() error {
-	if !p.started.CAS(false, true) {
-		return errors.New("switch peer is already started")
-	}
-	p.r.active.Store(hex.EncodeToString(p.public[:])+p.zone, p.port)
-	go p.reader(p.context)
-	go p.writer(p.context)
-	return nil
-}
-
 func (p *Peer) stop() error {
-	if !p.started.CAS(true, false) {
-		return errors.New("switch peer is already stopped")
-	}
-	defer p.r.active.Delete(hex.EncodeToString(p.public[:]) + p.zone)
 	p.mutex.Lock()
-	_ = p.conn.Close()
 	p.cancel()
 	p.mutex.Unlock()
-	p.reset()
 	return nil
 }
 
@@ -195,34 +228,31 @@ func (p *Peer) generateKeepalive() *types.Frame {
 	return frame
 }
 
-func (p *Peer) reader(ctx context.Context) {
+func (p *Peer) reader(wg *sync.WaitGroup, ctx context.Context) error {
+	defer wg.Done()
 	buf := make([]byte, MaxFrameSize)
 	for {
 		select {
 		case <-ctx.Done():
 			// The switch peer is shutting down.
-			return
+			return context.Canceled
 
 		default:
 			if p.port != 0 {
 				if err := p.conn.SetReadDeadline(time.Now().Add(PeerKeepaliveTimeout)); err != nil {
-					_ = p.r.Disconnect(p.port, fmt.Errorf("conn.SetReadDeadline: %w", err))
-					return
+					return fmt.Errorf("conn.SetReadDeadline: %w", err)
 				}
 			}
 			if _, err := io.ReadFull(p.conn, buf[:8]); err != nil {
-				_ = p.r.Disconnect(p.port, fmt.Errorf("p.conn.Peek: %w", err))
-				return
+				return fmt.Errorf("p.conn.Peek: %w", err)
 			}
 			if !bytes.Equal(buf[:4], types.FrameMagicBytes) {
-				_ = p.r.Disconnect(p.port, fmt.Errorf("missing magic bytes"))
-				return
+				return fmt.Errorf("missing magic bytes")
 			}
 			expecting := int(binary.BigEndian.Uint16(buf[6:8]))
 			n, err := io.ReadFull(p.conn, buf[8:expecting])
 			if err != nil {
-				_ = p.r.Disconnect(p.port, fmt.Errorf("io.ReadFull: %w", err))
-				return
+				return fmt.Errorf("io.ReadFull: %w", err)
 			}
 			if n < expecting-8 {
 				p.r.log.Println("Expecting", expecting, "bytes but got", n, "bytes")
@@ -230,16 +260,13 @@ func (p *Peer) reader(ctx context.Context) {
 			}
 			frame := types.GetFrame()
 			if _, err := frame.UnmarshalBinary(buf[:n+8]); err != nil {
-				p.r.log.Println("Port", p.port, "error unmarshalling frame:", err)
 				frame.Done()
-				return
+				return fmt.Errorf("frame.UnmarshalBinary: %w", err)
 			}
-			if frame.Version != types.Version0 {
-				p.r.log.Println("Port", p.port, "incorrect version in frame")
-				frame.Done()
-				return
-			}
-			if frame.Type == types.TypeKeepalive {
+			switch {
+			case frame.Version != types.Version0:
+				fallthrough
+			case frame.Type == types.TypeKeepalive:
 				frame.Done()
 				continue
 			}
@@ -302,52 +329,62 @@ var bufPool = sync.Pool{
 	},
 }
 
-func (p *Peer) writer(ctx context.Context) {
+func (p *Peer) writer(wg *sync.WaitGroup, ctx context.Context) error {
+	defer wg.Done()
+
 	tick := time.NewTicker(PeerKeepaliveInterval)
 	defer tick.Stop()
-	send := func(frame *types.Frame) {
+
+	send := func(frame *types.Frame) error {
 		if frame == nil {
-			return
+			return nil
 		}
 		buf := bufPool.Get().([]byte)
 		defer bufPool.Put(buf) // nolint:staticcheck
 		fn, err := frame.MarshalBinary(buf)
 		frame.Done()
 		if err != nil {
-			p.r.log.Println("Port", p.port, "error marshalling frame:", err)
-			return
+			return nil
+			//return fmt.Errorf("frame.MarshalBinary: %w", err)
 		}
 		if !bytes.Equal(buf[:4], types.FrameMagicBytes) {
-			panic("expected magic bytes")
+			return nil
+			//return fmt.Errorf("expected magic bytes")
+		}
+		if err := p.conn.SetWriteDeadline(time.Now().Add(PeerKeepaliveTimeout)); err != nil {
+			return fmt.Errorf("p.conn.SetWriteDeadline: %w", err)
 		}
 		if _, err = p.conn.Write(buf[:fn]); err != nil {
-			_ = p.r.Disconnect(p.port, fmt.Errorf("p.conn.Write: %w", err))
-			return
+			return fmt.Errorf("p.conn.Write: %w", err)
 		}
+		return nil
 	}
 
 	for {
 		select {
 		case <-ctx.Done():
-			return
+			return context.Canceled
 		case frame := <-p.protoOut.pop():
+			if err := send(frame); err != nil {
+				return fmt.Errorf("send: %w", err)
+			}
 			p.protoOut.ack()
-			send(frame)
 			p.statistics.txProtoSuccessful.Inc()
 			continue
 		default:
 		}
 		select {
 		case <-ctx.Done():
-			return
+			return context.Canceled
 		case frame := <-p.protoOut.pop():
+			if err := send(frame); err != nil {
+				return fmt.Errorf("send: %w", err)
+			}
 			p.protoOut.ack()
-			send(frame)
 			p.statistics.txProtoSuccessful.Inc()
 			continue
 		case <-p.trafficOut.wait():
-			if frame, ok := p.trafficOut.pop(); ok {
-				send(frame)
+			if frame, ok := p.trafficOut.pop(); ok && send(frame) == nil {
 				p.statistics.txTrafficSuccessful.Inc()
 			} else {
 				p.statistics.txTrafficDropped.Inc()
@@ -357,22 +394,26 @@ func (p *Peer) writer(ctx context.Context) {
 		}
 		select {
 		case <-ctx.Done():
-			return
+			return context.Canceled
 		case frame := <-p.protoOut.pop():
+			if err := send(frame); err != nil {
+				return fmt.Errorf("send: %w", err)
+			}
 			p.protoOut.ack()
-			send(frame)
 			p.statistics.txProtoSuccessful.Inc()
 			continue
 		case <-p.trafficOut.wait():
-			if frame, ok := p.trafficOut.pop(); ok {
-				send(frame)
+			if frame, ok := p.trafficOut.pop(); ok && send(frame) == nil {
+
 				p.statistics.txTrafficSuccessful.Inc()
 			} else {
 				p.statistics.txTrafficDropped.Inc()
 			}
 			continue
 		case <-tick.C:
-			send(p.generateKeepalive())
+			if err := send(p.generateKeepalive()); err != nil {
+				return fmt.Errorf("send: %w", err)
+			}
 			p.statistics.txProtoSuccessful.Inc()
 			continue
 		}

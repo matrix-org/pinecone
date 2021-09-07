@@ -381,23 +381,26 @@ func (r *Router) AuthenticatedConnect(conn net.Conn, zone string, peertype int) 
 // returned in the event of a successful connection.
 func (r *Router) Connect(conn net.Conn, public types.PublicKey, zone string, peertype int) (types.SwitchPortID, error) {
 	var reusePort types.SwitchPortID
-	if p, ok := r.active.Load(hex.EncodeToString(public[:]) + zone); ok {
-		if err := r.Disconnect(p.(types.SwitchPortID), fmt.Errorf("another incoming connection from the same node")); err == nil {
-			reusePort = p.(types.SwitchPortID)
+	if _, ok := r.active.Load(hex.EncodeToString(public[:]) + zone); ok {
+		if p, ok := r.active.Load(hex.EncodeToString(public[:]) + zone); ok {
+			if err := r.Disconnect(p.(types.SwitchPortID), fmt.Errorf("another incoming connection from the same node")); err != nil {
+				return 0, conn.Close()
+			}
 		}
 	}
-	usePort := func(port *Peer) error {
+	usePort := func(port *Peer) bool {
+		if !port.allocated.CAS(false, true) {
+			return false
+		}
 		port.mutex.Lock()
 		port.context, port.cancel = context.WithCancel(r.context)
 		port.zone = zone
 		port.peertype = peertype
-		port.conn = conn // util.NewBufferedRWCSize(conn, MaxFrameSize)
+		port.conn = conn
 		port.public = public
 		port.mutex.Unlock()
 		port.protoOut.push(r.tree.Root().ForPeer(port))
-		if err := port.start(); err != nil {
-			return fmt.Errorf("port.start: %w", err)
-		}
+		go port.start()
 		if port.port != 0 {
 			r.dht.insertNode(port)
 		}
@@ -406,27 +409,20 @@ func (r *Router) Connect(conn net.Conn, public types.PublicKey, zone string, pee
 		}
 		go r.callbacks.onConnected(port.port, public, peertype)
 		r.log.Printf("Connected port %d to %s (zone %q)\n", port.port, conn.RemoteAddr(), zone)
-		return nil
+		return true
 	}
 	r.connections.Lock()
 	defer r.connections.Unlock()
-	if reusePort != 0 {
-		if err := usePort(r.ports[reusePort]); err != nil {
-			return 0, fmt.Errorf("error reusing port: %w", err)
-		}
+	if reusePort != 0 && usePort(r.ports[reusePort]) {
 		return reusePort, nil
 	}
 	for i := types.SwitchPortID(0); i < PortCount; i++ {
 		if i != 0 && bytes.Equal(r.public[:], public[:]) {
 			return 0, fmt.Errorf("loopback connection prohibited")
 		}
-		if r.ports[i].started.Load() {
-			continue
+		if usePort(r.ports[i]) {
+			return i, nil
 		}
-		if err := usePort(r.ports[i]); err != nil {
-			return 0, fmt.Errorf("error allocating new port: %w", err)
-		}
-		return i, nil
 	}
 	return 0, fmt.Errorf("no free switch ports")
 }
@@ -444,16 +440,6 @@ func (r *Router) Disconnect(i types.SwitchPortID, err error) error {
 	if stoperr := r.ports[i].stop(); stoperr != nil {
 		return fmt.Errorf("port.stop: %w", stoperr)
 	}
-	if r.ports[i].port != 0 {
-		r.dht.deleteNode(r.ports[i].public)
-	}
-	if r.simulator != nil {
-		r.simulator.ReportDeadLink(r.public, r.ports[i].public)
-	}
-	r.log.Printf("Disconnected port %d: %s\n", i, err)
-	r.snake.portWasDisconnected(i)
-	r.tree.portWasDisconnected(i)
-	go r.callbacks.onDisconnected(i, r.ports[i].public, r.ports[i].peertype, err)
 	return nil
 }
 
