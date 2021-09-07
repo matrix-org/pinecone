@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/matrix-org/pinecone/types"
+	"go.uber.org/atomic"
 )
 
 // announcementInterval is the frequency at which this
@@ -130,6 +131,7 @@ type spanningTree struct {
 	rootReset chan struct{}
 	mutex     sync.Mutex
 	parent    types.SwitchPortID
+	sequence  atomic.Uint64
 	callback  func(parent types.SwitchPortID, coords types.SwitchPorts)
 }
 
@@ -242,14 +244,14 @@ func (t *spanningTree) selectNewParent() {
 			accept()
 		case ann.Sequence < bestSeq:
 			// ignore lower sequence numbers
-		case annAt.Before(bestTime):
-			accept()
-		case annAt.After(bestTime):
-			// ignore updates that arrived more recently
 		case len(ann.Signatures) < bestDist:
 			accept()
 		case len(ann.Signatures) > bestDist:
 			// ignore longer paths
+		case annAt.Before(bestTime):
+			accept()
+		case annAt.After(bestTime):
+			// ignore updates that arrived more recently
 		case p.public.CompareTo(bestKey) > 0:
 			accept()
 		}
@@ -274,6 +276,7 @@ func (t *spanningTree) selectNewParent() {
 }
 
 func (t *spanningTree) advertise() {
+	t.sequence.Inc()
 	ann := t.Root()
 	for _, p := range t.r.startedPorts() {
 		p.protoOut.push(ann.ForPeer(p))
@@ -339,7 +342,7 @@ func (t *spanningTree) Root() *rootAnnouncementWithTime {
 			at: time.Now(),
 			SwitchAnnouncement: types.SwitchAnnouncement{
 				RootPublicKey: t.r.public,
-				Sequence:      types.Varu64(time.Now().UnixNano()),
+				Sequence:      types.Varu64(t.sequence.Load()),
 			},
 		}
 	}
@@ -368,12 +371,12 @@ func (t *spanningTree) UpdateParentIfNeeded(p *Peer, newUpdate types.SwitchAnnou
 	case time.Since(lastParentUpdate.at) > announcementTimeout:
 		updateParent = true
 
-	case keyDeltaSinceLastParentUpdate > 0:
+	case keyDeltaSinceLastParentUpdate != 0:
 		updateParent = true
 
 	case keyDeltaSinceLastParentUpdate == 0:
 		switch {
-		case newUpdate.Sequence < lastParentUpdate.Sequence:
+		case newUpdate.Sequence <= lastParentUpdate.Sequence:
 			// Ignore an update with an old sequence number
 
 		case len(newUpdate.Signatures) != len(lastParentUpdate.Signatures):

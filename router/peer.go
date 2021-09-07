@@ -82,7 +82,6 @@ func (p *Peer) start() {
 	select {
 	case <-ctx.Done():
 	case err = <-errors:
-		p.r.log.Println("Peer", p.port, "workers stopping due to error:", err)
 		ctx.Done()
 	}
 
@@ -94,7 +93,11 @@ func (p *Peer) start() {
 	if p.r.simulator != nil {
 		p.r.simulator.ReportDeadLink(p.r.public, p.public)
 	}
-	p.r.log.Printf("Disconnected port %d: %s\n", p.port, err)
+	if err != nil {
+		p.r.log.Printf("Disconnected port %d: %s\n", p.port, err)
+	} else {
+		p.r.log.Printf("Disconnected port %d\n", p.port)
+	}
 	p.r.snake.portWasDisconnected(p.port)
 	p.r.tree.portWasDisconnected(p.port)
 	go p.r.callbacks.onDisconnected(p.port, p.public, p.peertype, err)
