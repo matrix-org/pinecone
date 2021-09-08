@@ -25,7 +25,6 @@ import (
 	"net"
 	"sort"
 	"sync"
-	"time"
 
 	"github.com/matrix-org/pinecone/types"
 	"go.uber.org/atomic"
@@ -147,7 +146,7 @@ func (r *Router) Close() error {
 	r.cancel()
 	for _, port := range r.ports {
 		if port.started.Load() {
-			_ = port.stop()
+			port.stop()
 		}
 	}
 	return nil
@@ -326,52 +325,49 @@ func (r *Router) activePorts() peers {
 // the node was connected to will be returned in the event
 // of a successful connection.
 func (r *Router) AuthenticatedConnect(conn net.Conn, zone string, peertype int) (types.SwitchPortID, error) {
-	select {
-	case <-time.After(time.Second * 5):
-		return 0, fmt.Errorf("handshake timed out")
-	default:
-		handshake := []byte{
-			ourVersion,
-			ourCapabilities,
-			0, // unused
-			0, // unused
-		}
-		handshake = append(handshake, r.public[:ed25519.PublicKeySize]...)
-		handshake = append(handshake, ed25519.Sign(r.private[:], handshake)...)
-		_ = conn.SetDeadline(time.Now().Add(time.Second * 5))
-		if _, err := conn.Write(handshake); err != nil {
-			conn.Close()
-			return 0, fmt.Errorf("conn.Write: %w", err)
-		}
-		if _, err := io.ReadFull(conn, handshake); err != nil {
-			conn.Close()
-			return 0, fmt.Errorf("io.ReadFull: %w", err)
-		}
-		_ = conn.SetDeadline(time.Time{})
-		if theirVersion := handshake[0]; theirVersion != ourVersion {
-			conn.Close()
-			return 0, fmt.Errorf("mismatched node version")
-		}
-		if theirCapabilities := handshake[1]; theirCapabilities&ourCapabilities != ourCapabilities {
-			conn.Close()
-			return 0, fmt.Errorf("mismatched node capabilities")
-		}
-		var public types.PublicKey
-		var signature types.Signature
-		offset := 4
-		offset += copy(public[:], handshake[offset:offset+ed25519.PublicKeySize])
-		copy(signature[:], handshake[offset:offset+ed25519.SignatureSize])
-		if !ed25519.Verify(public[:], handshake[:offset], signature[:]) {
-			conn.Close()
-			return 0, fmt.Errorf("peer sent invalid signature")
-		}
-		port, err := r.Connect(conn, public, zone, peertype)
-		if err != nil {
-			conn.Close()
-			return 0, err
-		}
-		return port, nil
+	handshake := []byte{
+		ourVersion,
+		ourCapabilities,
+		0, // unused
+		0, // unused
 	}
+	handshake = append(handshake, r.public[:ed25519.PublicKeySize]...)
+	handshake = append(handshake, ed25519.Sign(r.private[:], handshake)...)
+	//_ = conn.SetWriteDeadline(time.Now().Add(time.Second * 5))
+	if _, err := conn.Write(handshake); err != nil {
+		conn.Close()
+		return 0, fmt.Errorf("conn.Write: %w", err)
+	}
+	//_ = conn.SetWriteDeadline(time.Time{})
+	//_ = conn.SetReadDeadline(time.Now().Add(time.Second * 5))
+	if _, err := io.ReadFull(conn, handshake); err != nil {
+		conn.Close()
+		return 0, fmt.Errorf("io.ReadFull: %w", err)
+	}
+	//_ = conn.SetReadDeadline(time.Time{})
+	if theirVersion := handshake[0]; theirVersion != ourVersion {
+		conn.Close()
+		return 0, fmt.Errorf("mismatched node version")
+	}
+	if theirCapabilities := handshake[1]; theirCapabilities&ourCapabilities != ourCapabilities {
+		conn.Close()
+		return 0, fmt.Errorf("mismatched node capabilities")
+	}
+	var public types.PublicKey
+	var signature types.Signature
+	offset := 4
+	offset += copy(public[:], handshake[offset:offset+ed25519.PublicKeySize])
+	copy(signature[:], handshake[offset:offset+ed25519.SignatureSize])
+	if !ed25519.Verify(public[:], handshake[:offset], signature[:]) {
+		conn.Close()
+		return 0, fmt.Errorf("peer sent invalid signature")
+	}
+	port, err := r.Connect(conn, public, zone, peertype)
+	if err != nil {
+		conn.Close()
+		return 0, err
+	}
+	return port, nil
 }
 
 // Connect initiates a peer connection using the given
@@ -380,13 +376,11 @@ func (r *Router) AuthenticatedConnect(conn net.Conn, zone string, peertype int) 
 // port number that the node was connected to will be
 // returned in the event of a successful connection.
 func (r *Router) Connect(conn net.Conn, public types.PublicKey, zone string, peertype int) (types.SwitchPortID, error) {
+	r.connections.Lock()
+	defer r.connections.Unlock()
 	var reusePort types.SwitchPortID
-	if _, ok := r.active.Load(hex.EncodeToString(public[:]) + zone); ok {
-		if p, ok := r.active.Load(hex.EncodeToString(public[:]) + zone); ok {
-			if err := r.Disconnect(p.(types.SwitchPortID), fmt.Errorf("another incoming connection from the same node")); err != nil {
-				return 0, conn.Close()
-			}
-		}
+	if r.IsConnected(public, zone) {
+		return 0, conn.Close()
 	}
 	usePort := func(port *Peer) bool {
 		if !port.allocated.CAS(false, true) {
@@ -401,18 +395,8 @@ func (r *Router) Connect(conn net.Conn, public types.PublicKey, zone string, pee
 		port.mutex.Unlock()
 		port.protoOut.push(r.tree.Root().ForPeer(port))
 		go port.start()
-		if port.port != 0 {
-			r.dht.insertNode(port)
-		}
-		if r.simulator != nil {
-			r.simulator.ReportNewLink(conn, r.public, public)
-		}
-		go r.callbacks.onConnected(port.port, public, peertype)
-		r.log.Printf("Connected port %d to %s (zone %q)\n", port.port, conn.RemoteAddr(), zone)
 		return true
 	}
-	r.connections.Lock()
-	defer r.connections.Unlock()
 	if reusePort != 0 && usePort(r.ports[reusePort]) {
 		return reusePort, nil
 	}
@@ -437,9 +421,7 @@ func (r *Router) Disconnect(i types.SwitchPortID, err error) error {
 	}
 	r.connections.Lock()
 	defer r.connections.Unlock()
-	if stoperr := r.ports[i].stop(); stoperr != nil {
-		return fmt.Errorf("port.stop: %w", stoperr)
-	}
+	r.ports[i].stop()
 	return nil
 }
 
@@ -465,12 +447,8 @@ func (r *Router) PeerCount(peertype int) int {
 // IsConnected returns true if the node is connected within the
 // given zone, or false otherwise.
 func (r *Router) IsConnected(key types.PublicKey, zone string) bool {
-	v, ok := r.active.Load(hex.EncodeToString(key[:]) + zone)
-	if !ok {
-		return false
-	}
-	port := v.(types.SwitchPortID)
-	return r.ports[port].Alive()
+	_, ok := r.active.Load(hex.EncodeToString(key[:]) + zone)
+	return ok
 }
 
 // PeerInfo is a gomobile-friendly type that represents a peer

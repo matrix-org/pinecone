@@ -308,7 +308,7 @@ func (m *Multicast) listen(intf *multicastInterface, conn net.PacketConn, srcadd
 		}
 
 		if _, err := m.r.AuthenticatedConnect(peer, udpaddr.Zone, router.PeerTypeMulticast); err != nil {
-			m.log.Println("m.s.AuthenticatedConnect:", err)
+			m.log.Println("m.s.AuthenticatedConnect:", err, peer.Close())
 			continue
 		}
 	}

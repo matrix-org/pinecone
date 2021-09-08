@@ -24,7 +24,6 @@ import (
 
 	"github.com/matrix-org/pinecone/types"
 	"github.com/matrix-org/pinecone/util"
-	"go.uber.org/atomic"
 )
 
 const virtualSnakeNeighExpiryPeriod = time.Minute * 30
@@ -37,7 +36,7 @@ type virtualSnake struct {
 	ascendingMutex  sync.RWMutex
 	_descending     *virtualSnakeNeighbour
 	descendingMutex sync.RWMutex
-	bootstrapping   atomic.Bool
+	bootstrap       *time.Timer
 }
 
 type virtualSnakeIndex struct {
@@ -74,6 +73,8 @@ func newVirtualSnake(r *Router) *virtualSnake {
 		r:     r,
 		table: make(virtualSnakeTable),
 	}
+	snake.bootstrap = time.AfterFunc(time.Second, snake.bootstrapNow)
+	snake.bootstrap.Stop()
 	go snake.maintain()
 	return snake
 }
@@ -147,14 +148,17 @@ func (t *virtualSnake) maintain() {
 		// predefined interval, but for now we'll continue to send
 		// them on a regular interval until we can derive some better
 		// connection state.
-		if bootstrapNow && t.bootstrapping.CAS(false, true) {
-			t.bootstrapNow()
+		if bootstrapNow {
+			t.bootstrapIn(0)
 		}
 	}
 }
 
+func (t *virtualSnake) bootstrapIn(d time.Duration) {
+	t.bootstrap.Reset(d)
+}
+
 func (t *virtualSnake) bootstrapNow() {
-	t.bootstrapping.Store(false)
 	if t.r.IsRoot() {
 		return
 	}
@@ -183,9 +187,7 @@ func (t *virtualSnake) bootstrapNow() {
 func (t *virtualSnake) rootNodeChanged(root types.PublicKey) {
 	if asc := t.ascending(); asc != nil && !asc.RootPublicKey.EqualTo(root) {
 		t.teardownPath(t.r.public, asc.PathID, asc.Port, true, fmt.Errorf("root changed and asc no longer matches"))
-		if t.bootstrapping.CAS(false, true) {
-			time.AfterFunc(time.Second, t.bootstrapNow)
-		}
+		t.bootstrapIn(time.Second)
 	}
 	if desc := t.descending(); desc != nil && !desc.RootPublicKey.EqualTo(root) {
 		t.teardownPath(desc.PublicKey, desc.PathID, desc.Port, false, fmt.Errorf("root changed and desc no longer matches"))
@@ -227,6 +229,7 @@ func (t *virtualSnake) portWasDisconnected(port types.SwitchPortID) {
 	// this port change.
 	if asc := t.ascending(); asc != nil && asc.Port == port {
 		t.teardownPath(t.r.public, asc.PathID, asc.Port, true, fmt.Errorf("port teardown"))
+		t.bootstrapIn(time.Second)
 	}
 	if desc := t.descending(); desc != nil && desc.Port == port {
 		t.teardownPath(desc.PublicKey, desc.PathID, desc.Port, false, fmt.Errorf("port teardown"))
@@ -376,7 +379,7 @@ func (t *virtualSnake) getVirtualSnakeTeardownNextHop(from *Peer, rx *types.Fram
 	}
 	if asc := t.ascending(); asc != nil && t.r.public.EqualTo(rx.DestinationKey) && asc.PathID == teardown.PathID {
 		t.setAscending(nil)
-		defer time.AfterFunc(time.Second, t.bootstrapNow)
+		t.bootstrapIn(time.Second)
 	}
 	t.tableMutex.Lock()
 	defer t.tableMutex.Unlock()
@@ -441,7 +444,7 @@ func (t *virtualSnake) handleBootstrap(from *Peer, rx *types.Frame) error {
 		return fmt.Errorf("util.VerifySignedTimestamp")
 	}
 	if !bootstrap.RootPublicKey.EqualTo(t.r.RootPublicKey()) {
-		return fmt.Errorf("root key doesn't match")
+		return fmt.Errorf("bootstrap root key doesn't match")
 	}
 	bootstrapACK := types.VirtualSnakeBootstrapACK{ // nolint:gosimple
 		PathID:        bootstrap.PathID,
@@ -478,7 +481,7 @@ func (t *virtualSnake) handleBootstrapACK(from *Peer, rx *types.Frame) error {
 		return fmt.Errorf("util.VerifySignedTimestamp")
 	}
 	if !bootstrapACK.RootPublicKey.EqualTo(t.r.RootPublicKey()) {
-		return fmt.Errorf("root key doesn't match")
+		return fmt.Errorf("bootstrap ACK root key doesn't match")
 	}
 	update := false
 	asc := t.ascending()
@@ -583,7 +586,7 @@ func (t *virtualSnake) handleSetup(from *Peer, rx *types.Frame, nextHops types.S
 	}
 	if !setup.RootPublicKey.EqualTo(t.r.RootPublicKey()) {
 		t.teardownPath(rx.SourceKey, setup.PathID, from.port, false, fmt.Errorf("rejecting setup (root key doesn't match)"))
-		return fmt.Errorf("root key doesn't match")
+		return fmt.Errorf("setup root key doesn't match")
 	}
 
 	// Did the setup hit a dead end on the way to the ascending node?

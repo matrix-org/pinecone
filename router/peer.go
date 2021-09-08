@@ -62,6 +62,7 @@ func (p *Peer) start() {
 	if !p.started.CAS(false, true) {
 		return
 	}
+	defer p.reset()
 
 	var err error
 	ctx := p.context
@@ -71,6 +72,7 @@ func (p *Peer) start() {
 	wg.Add(2)
 
 	p.r.active.Store(index, p.port)
+	defer p.r.active.Delete(index)
 
 	go func() {
 		errors <- p.reader(wg, ctx)
@@ -79,13 +81,23 @@ func (p *Peer) start() {
 		errors <- p.writer(wg, ctx)
 	}()
 
+	if p.port != 0 {
+		p.r.dht.insertNode(p)
+	}
+	if p.r.simulator != nil {
+		p.r.simulator.ReportNewLink(p.conn, p.r.public, p.public)
+	}
+	go p.r.callbacks.onConnected(p.port, p.public, p.peertype)
+
+	p.r.log.Printf("Connected port %d to %s (zone %q)\n", p.port, p.conn.RemoteAddr(), p.zone)
+
 	select {
 	case <-ctx.Done():
 	case err = <-errors:
 		ctx.Done()
 	}
 
-	p.started.Store(false)
+	p.stop()
 
 	if p.port != 0 {
 		p.r.dht.deleteNode(p.public)
@@ -98,15 +110,13 @@ func (p *Peer) start() {
 	} else {
 		p.r.log.Printf("Disconnected port %d\n", p.port)
 	}
+
 	p.r.snake.portWasDisconnected(p.port)
 	p.r.tree.portWasDisconnected(p.port)
 	go p.r.callbacks.onDisconnected(p.port, p.public, p.peertype, err)
 
 	wg.Wait()
 	_ = p.conn.Close()
-
-	p.reset()
-	p.r.active.Delete(index)
 }
 
 func (p *Peer) reset() {
@@ -217,11 +227,11 @@ func (p *Peer) lastAnnouncement() *rootAnnouncementWithTime {
 	return p.announcement
 }
 
-func (p *Peer) stop() error {
+func (p *Peer) stop() {
+	p.started.Store(false)
 	p.mutex.Lock()
 	p.cancel()
 	p.mutex.Unlock()
-	return nil
 }
 
 func (p *Peer) generateKeepalive() *types.Frame {
@@ -248,6 +258,9 @@ func (p *Peer) reader(wg *sync.WaitGroup, ctx context.Context) error {
 			}
 			if _, err := io.ReadFull(p.conn, buf[:8]); err != nil {
 				return fmt.Errorf("p.conn.Peek: %w", err)
+			}
+			if err := p.conn.SetReadDeadline(time.Time{}); err != nil {
+				return fmt.Errorf("conn.SetReadDeadline: %w", err)
 			}
 			if !bytes.Equal(buf[:4], types.FrameMagicBytes) {
 				return fmt.Errorf("missing magic bytes")
@@ -334,7 +347,6 @@ var bufPool = sync.Pool{
 
 func (p *Peer) writer(wg *sync.WaitGroup, ctx context.Context) error {
 	defer wg.Done()
-
 	tick := time.NewTicker(PeerKeepaliveInterval)
 	defer tick.Stop()
 
@@ -348,17 +360,18 @@ func (p *Peer) writer(wg *sync.WaitGroup, ctx context.Context) error {
 		frame.Done()
 		if err != nil {
 			return nil
-			//return fmt.Errorf("frame.MarshalBinary: %w", err)
 		}
 		if !bytes.Equal(buf[:4], types.FrameMagicBytes) {
 			return nil
-			//return fmt.Errorf("expected magic bytes")
 		}
 		if err := p.conn.SetWriteDeadline(time.Now().Add(PeerKeepaliveTimeout)); err != nil {
 			return fmt.Errorf("p.conn.SetWriteDeadline: %w", err)
 		}
 		if _, err = p.conn.Write(buf[:fn]); err != nil {
 			return fmt.Errorf("p.conn.Write: %w", err)
+		}
+		if err := p.conn.SetWriteDeadline(time.Time{}); err != nil {
+			return fmt.Errorf("p.conn.SetWriteDeadline: %w", err)
 		}
 		return nil
 	}

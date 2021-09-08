@@ -47,9 +47,6 @@ func (sim *Simulator) ConnectNodes(a, b string) error {
 	if err := c.SetNoDelay(true); err != nil {
 		panic(err)
 	}
-	if err := c.SetLinger(0); err != nil {
-		panic(err)
-	}
 	sc := &util.SlowConn{
 		Conn: c,
 		//ReadDelay:  5 * time.Millisecond,
