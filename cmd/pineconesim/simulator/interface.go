@@ -23,6 +23,8 @@ import (
 )
 
 func (sim *Simulator) LookupCoords(target string) (types.SwitchPorts, error) {
+	sim.nodesMutex.RLock()
+	defer sim.nodesMutex.RUnlock()
 	node, ok := sim.nodes[target]
 	if !ok {
 		return nil, fmt.Errorf("node %q not known", target)
@@ -31,6 +33,8 @@ func (sim *Simulator) LookupCoords(target string) (types.SwitchPorts, error) {
 }
 
 func (sim *Simulator) LookupNodeID(target types.SwitchPorts) (string, error) {
+	sim.nodesMutex.RLock()
+	defer sim.nodesMutex.RUnlock()
 	for id, n := range sim.nodes {
 		if n.Coords().EqualTo(target) {
 			return id, nil
@@ -40,6 +44,8 @@ func (sim *Simulator) LookupNodeID(target types.SwitchPorts) (string, error) {
 }
 
 func (sim *Simulator) LookupPublicKey(target types.PublicKey) (string, error) {
+	sim.nodesMutex.RLock()
+	defer sim.nodesMutex.RUnlock()
 	for id, n := range sim.nodes {
 		if n.PublicKey().EqualTo(target) {
 			return id, nil

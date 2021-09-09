@@ -69,21 +69,8 @@ func (r *Router) handleAnnouncement(peer *Peer, rx *types.Frame) error {
 		sigs[pk] = struct{}{}
 	}
 
-	lastPortUpdate := peer.lastAnnouncement()
-	if lastPortUpdate != nil && lastPortUpdate.RootPublicKey == newUpdate.RootPublicKey {
-		if newUpdate.Sequence < lastPortUpdate.Sequence {
-			// The update is a replay of a previous announcement which doesn't
-			// make sense
-			return fmt.Errorf("root announcement is a replay of an old sequence number")
-		}
-	}
-
-	if err := peer.updateAnnouncement(&newUpdate); err != nil {
-		return fmt.Errorf("updating the peer last root announcement failed: %w", err)
-	}
-
-	r.tree.UpdateParentIfNeeded(peer, newUpdate)
-	return nil
+	defer r.tree.UpdateParentIfNeeded(peer, newUpdate)
+	return peer.updateAnnouncement(&newUpdate)
 }
 
 type rootAnnouncementWithTime struct {
@@ -191,44 +178,17 @@ func (t *spanningTree) selectNewParentAndAdvertiseIn(d time.Duration) {
 }
 
 func (t *spanningTree) selectNewParentAndAdvertise() {
-	lastParentUpdate := t.Root()
-	lastParentPort := t.Parent()
-
-	if !t.selectNewParent() {
-		// We became the root so no point in continuing.
-		return
-	}
-
-	newParentUpdate := t.Root()
-	newParentPort := t.Parent()
-
-	switch {
-	case lastParentUpdate.RootPublicKey != newParentUpdate.RootPublicKey:
-		fallthrough
-
-	case lastParentUpdate.AncestorParent() != newParentUpdate.AncestorParent():
-		fallthrough
-
-	case lastParentPort != newParentPort:
-		t.advertise()
-	}
-}
-
-func (t *spanningTree) selectNewParent() bool {
 	lastUpdate := t.Root()
+	bestKey := lastUpdate.RootPublicKey
+	bestSeq := lastUpdate.Sequence
 	bestDist := math.MaxInt32
-	bestKey := t.r.public
-	bestTime := t.Root().at
+	bestTime := time.Now()
 	var bestPort types.SwitchPortID
 	var bestAnn *rootAnnouncementWithTime
-	var bestSeq types.Varu64
 
 	t.mutex.Lock()
 
 	for _, p := range t.r.activePorts() {
-		if p.child.Load() {
-			continue
-		}
 		ann := p.lastAnnouncement()
 		if ann == nil {
 			continue
@@ -244,6 +204,8 @@ func (t *spanningTree) selectNewParent() bool {
 		keyDelta := ann.RootPublicKey.CompareTo(bestKey)
 		annAt := ann.at.Round(time.Millisecond)
 		switch {
+		case ann.IsLoopOrChildOf(p.r.public):
+			// ignore our children or loopy announcements
 		case keyDelta > 0:
 			accept()
 		case keyDelta < 0:
@@ -266,40 +228,48 @@ func (t *spanningTree) selectNewParent() bool {
 	}
 
 	if bestAnn != nil {
-		switch {
-		case bestAnn.RootPublicKey.CompareTo(t.r.public) == 0 && bestSeq >= lastUpdate.Sequence:
-			fallthrough
+		t.parent = bestPort
+		t.mutex.Unlock()
 
-		case bestAnn.RootPublicKey.CompareTo(t.r.public) > 0:
-			t.parent = bestPort
-			t.mutex.Unlock()
+		newCoords := bestAnn.Coords()
+		coordsChanged := !lastUpdate.Coords().EqualTo(bestAnn.Coords())
+		rootChanged := bestAnn.RootPublicKey != lastUpdate.RootPublicKey
 
-			newAnn := t.Root()
-			newCoords, newRoot := newAnn.Coords(), newAnn.RootPublicKey
-
-			if t.callback != nil && !lastUpdate.Coords().EqualTo(newCoords) {
-				defer t.callback(bestPort, newCoords)
-			}
-
-			if newRoot != lastUpdate.RootPublicKey {
-				defer t.r.snake.rootNodeChanged(newRoot)
-			}
-
-			return true
+		if rootChanged {
+			t.r.snake.rootNodeChanged(bestAnn.RootPublicKey)
 		}
+		if rootChanged || coordsChanged {
+			t.callback(bestPort, newCoords)
+		}
+
+		t.advertise()
+		return
 	}
 
+	// No suitable other peer was found, so we'll just become the root
+	// and hope that one of our peers corrects us if it matters.
 	t.mutex.Unlock()
 	t.becomeRoot()
-
-	return false
 }
 
 func (t *spanningTree) advertise() {
-	if t.IsRoot() {
-		t.sequence.Inc()
+	t.mutex.Lock()
+	defer t.mutex.Unlock()
+
+	t.r.ports[t.parent].mutex.RLock()
+	ann := t.r.ports[t.parent].announcement
+	t.r.ports[t.parent].mutex.RUnlock()
+
+	if t.parent == 0 || ann == nil { // we are the root
+		ann = &rootAnnouncementWithTime{
+			at: time.Now(),
+			SwitchAnnouncement: types.SwitchAnnouncement{
+				RootPublicKey: t.r.public,
+				Sequence:      types.Varu64(t.sequence.Inc()),
+			},
+		}
 	}
-	ann := t.Root()
+
 	for _, p := range t.r.startedPorts() {
 		p.protoOut.push(ann.ForPeer(p))
 	}
@@ -308,9 +278,6 @@ func (t *spanningTree) advertise() {
 func (t *spanningTree) becomeRoot() {
 	t.mutex.Lock()
 	t.parent = 0
-	for _, p := range t.r.ports {
-		p.child.Store(false)
-	}
 	t.mutex.Unlock()
 
 	newCoords := types.SwitchPorts{}
@@ -388,59 +355,41 @@ func (t *spanningTree) Parent() types.SwitchPortID {
 }
 
 func (t *spanningTree) UpdateParentIfNeeded(p *Peer, newUpdate types.SwitchAnnouncement) {
-	updateParent, gotBadNews := false, false
+	updateParentNow, gotBadNews := false, false
 	lastParentUpdate, isParent := t.Root(), p.IsParent()
 	keyDeltaSinceLastParentUpdate := newUpdate.RootPublicKey.CompareTo(lastParentUpdate.RootPublicKey)
 
 	switch {
 	case keyDeltaSinceLastParentUpdate > 0:
 		// The peer has sent us a key that is stronger than our last update.
-		updateParent = true
+		updateParentNow = true
 
 	case time.Since(lastParentUpdate.at) >= announcementTimeout:
 		// It's been a while since we last heard from our parent so we should
 		// really choose a new one if we can.
-		updateParent = true
+		updateParentNow = true
 
 	case isParent && keyDeltaSinceLastParentUpdate < 0:
 		// Our parent sent us a weaker key than before — this implies that
 		// something bad happened.
 		gotBadNews = true
 
-	case isParent && keyDeltaSinceLastParentUpdate == 0:
-		if newUpdate.Sequence <= lastParentUpdate.Sequence {
-			// Our parent sent us a lower sequence number than before for the
-			// same root — this isn't good news either.
-			gotBadNews = true
-		}
+	case isParent && keyDeltaSinceLastParentUpdate == 0 && newUpdate.Sequence <= lastParentUpdate.Sequence:
+		// Our parent sent us a lower sequence number than before for the
+		// same root — this isn't good news either.
+		gotBadNews = true
 	}
 
 	switch {
 	case gotBadNews:
 		t.becomeRoot()
 		t.selectNewParentAndAdvertiseIn(time.Second)
-		return
 
-	case updateParent:
-		t.selectNewParentAndAdvertise()
-		return
+	case updateParentNow:
+		t.selectNewParentAndAdvertiseIn(0)
 
-	case p.IsParent():
-		switch {
-		case newUpdate.RootPublicKey != lastParentUpdate.RootPublicKey:
-			// The parent's root key has changed, for better or worse.
-			fallthrough
-
-		case newUpdate.RootPublicKey == lastParentUpdate.RootPublicKey && newUpdate.Sequence > lastParentUpdate.Sequence:
-			// The parent's root key has not changed but we've got a nice
-			// new sequence number.
-			t.advertise()
-			t.rootReset <- struct{}{}
-
-		default:
-			// If we aren't notifying anyone else, we should at least
-			// notify our parent that we chose them as a parent.
-			p.protoOut.push(t.Root().ForPeer(p))
-		}
+	case isParent && keyDeltaSinceLastParentUpdate == 0 && newUpdate.Sequence > lastParentUpdate.Sequence:
+		t.advertise()
+		t.rootReset <- struct{}{}
 	}
 }

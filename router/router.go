@@ -109,6 +109,7 @@ func NewRouter(log *log.Logger, id string, private ed25519.PrivateKey, public ed
 		sw.ports[i] = &Peer{
 			r:          sw,
 			port:       types.SwitchPortID(i),
+			wg:         &sync.WaitGroup{},
 			protoOut:   newFIFOQueue(),
 			trafficOut: newLIFOQueue(TrafficBufferSize),
 		}
@@ -376,12 +377,12 @@ func (r *Router) AuthenticatedConnect(conn net.Conn, zone string, peertype int) 
 // port number that the node was connected to will be
 // returned in the event of a successful connection.
 func (r *Router) Connect(conn net.Conn, public types.PublicKey, zone string, peertype int) (types.SwitchPortID, error) {
+	if r.IsConnected(public, zone) {
+		_ = conn.Close()
+		return 0, fmt.Errorf("already connected")
+	}
 	r.connections.Lock()
 	defer r.connections.Unlock()
-	var reusePort types.SwitchPortID
-	if r.IsConnected(public, zone) {
-		return 0, conn.Close()
-	}
 	usePort := func(port *Peer) bool {
 		if !port.allocated.CAS(false, true) {
 			return false
@@ -393,12 +394,8 @@ func (r *Router) Connect(conn net.Conn, public types.PublicKey, zone string, pee
 		port.conn = conn
 		port.public = public
 		port.mutex.Unlock()
-		port.protoOut.push(r.tree.Root().ForPeer(port))
 		go port.start()
 		return true
-	}
-	if reusePort != 0 && usePort(r.ports[reusePort]) {
-		return reusePort, nil
 	}
 	for i := types.SwitchPortID(0); i < PortCount; i++ {
 		if i != 0 && bytes.Equal(r.public[:], public[:]) {
@@ -419,8 +416,6 @@ func (r *Router) Disconnect(i types.SwitchPortID, err error) error {
 	if i == 0 {
 		return fmt.Errorf("cannot disconnect port %d", i)
 	}
-	r.connections.Lock()
-	defer r.connections.Unlock()
 	r.ports[i].stop()
 	return nil
 }

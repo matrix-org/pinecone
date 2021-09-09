@@ -97,17 +97,13 @@ func (a *SwitchAnnouncement) Coords() SwitchPorts {
 	return coords
 }
 
-func (a *SwitchAnnouncement) PeerCoords(public PublicKey) (SwitchPorts, error) {
+func (a *SwitchAnnouncement) PeerCoords() SwitchPorts {
 	sigs := a.Signatures
-	last := len(sigs) - 1
-	if sigs[last].PublicKey != public {
-		return nil, fmt.Errorf("invalid last hop")
-	}
-	coords := make(SwitchPorts, 0, len(sigs))
-	for _, sig := range sigs[:last] {
+	coords := make(SwitchPorts, 0, len(sigs)-1)
+	for _, sig := range sigs[:len(sigs)-1] {
 		coords = append(coords, SwitchPortID(sig.Hop))
 	}
-	return coords, nil
+	return coords
 }
 
 func (a *SwitchAnnouncement) AncestorParent() PublicKey {
@@ -115,4 +111,18 @@ func (a *SwitchAnnouncement) AncestorParent() PublicKey {
 		return a.RootPublicKey
 	}
 	return a.Signatures[len(a.Signatures)-2].PublicKey
+}
+
+func (a *SwitchAnnouncement) IsLoopOrChildOf(pk PublicKey) bool {
+	m := map[PublicKey]struct{}{}
+	for _, sig := range a.Signatures {
+		if sig.PublicKey.EqualTo(pk) {
+			return true
+		}
+		if _, ok := m[sig.PublicKey]; ok {
+			return true
+		}
+		m[sig.PublicKey] = struct{}{}
+	}
+	return false
 }

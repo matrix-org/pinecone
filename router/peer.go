@@ -43,7 +43,7 @@ type Peer struct {
 	port         types.SwitchPortID        //
 	allocated    atomic.Bool               //
 	started      atomic.Bool               // worker goroutines started?
-	child        atomic.Bool               // is this node a child of ours?
+	wg           *sync.WaitGroup           // wait group for worker goroutines
 	mutex        sync.RWMutex              // protects everything below this line
 	zone         string                    //
 	peertype     int                       //
@@ -54,7 +54,7 @@ type Peer struct {
 	trafficOut   *lifoQueue                // queue traffic message to peer
 	protoOut     *fifoQueue                // queue protocol message to peer
 	coords       types.SwitchPorts         //
-	announcement *rootAnnouncementWithTime //
+	announcement *rootAnnouncementWithTime // last received announcement from peer
 	statistics   peerStatistics            //
 }
 
@@ -62,25 +62,46 @@ func (p *Peer) start() {
 	if !p.started.CAS(false, true) {
 		return
 	}
-	defer p.reset()
 
-	var err error
-	ctx := p.context
+	// When the peer dies, we need to clean up.
+	var lasterr error
+	var lasterrMutex sync.Mutex
+	defer func() {
+		p.reset()
+		p.r.snake.portWasDisconnected(p.port)
+		p.r.tree.portWasDisconnected(p.port)
+		go p.r.callbacks.onDisconnected(p.port, p.public, p.peertype, lasterr)
+	}()
+
+	// Store the fact that we're connected to this public key in
+	// this zone, so that the multicast code can ignore nodes we
+	// are already connected to.
 	index := hex.EncodeToString(p.public[:]) + p.zone
-	errors := make(chan error)
-	wg := &sync.WaitGroup{}
-	wg.Add(2)
-
 	p.r.active.Store(index, p.port)
 	defer p.r.active.Delete(index)
 
+	// Push a root update to our new peer. This will notify them
+	// of our coordinates and that we are alive.
+	p.protoOut.push(p.r.tree.Root().ForPeer(p))
+
+	// Start the reader and writer goroutines for this peer.
+	p.wg.Add(2)
 	go func() {
-		errors <- p.reader(wg, ctx)
+		if err := p.reader(p.context); err != nil && err != context.Canceled {
+			lasterrMutex.Lock()
+			lasterr = fmt.Errorf("reader error: %w", err)
+			lasterrMutex.Unlock()
+		}
 	}()
 	go func() {
-		errors <- p.writer(wg, ctx)
+		if err := p.writer(p.context); err != nil && err != context.Canceled {
+			lasterrMutex.Lock()
+			lasterr = fmt.Errorf("writer error: %w", err)
+			lasterrMutex.Unlock()
+		}
 	}()
 
+	// Report the new connection.
 	if p.port != 0 {
 		p.r.dht.insertNode(p)
 	}
@@ -91,32 +112,29 @@ func (p *Peer) start() {
 
 	p.r.log.Printf("Connected port %d to %s (zone %q)\n", p.port, p.conn.RemoteAddr(), p.zone)
 
-	select {
-	case <-ctx.Done():
-	case err = <-errors:
-		ctx.Done()
-	}
+	// Wait for the cancellation, and then for the goroutines to stop.
+	<-p.context.Done()
+	p.wg.Wait()
 
-	p.stop()
-
+	// Report the dicsonnection.
 	if p.port != 0 {
 		p.r.dht.deleteNode(p.public)
 	}
 	if p.r.simulator != nil {
 		p.r.simulator.ReportDeadLink(p.r.public, p.public)
 	}
-	if err != nil {
-		p.r.log.Printf("Disconnected port %d: %s\n", p.port, err)
+
+	// Make sure the connection is closed.
+	_ = p.conn.Close()
+
+	// ... and finally, yell about it.
+	lasterrMutex.Lock()
+	if lasterr != nil {
+		p.r.log.Printf("Disconnected port %d: %s\n", p.port, lasterr)
 	} else {
 		p.r.log.Printf("Disconnected port %d\n", p.port)
 	}
-
-	p.r.snake.portWasDisconnected(p.port)
-	p.r.tree.portWasDisconnected(p.port)
-	go p.r.callbacks.onDisconnected(p.port, p.public, p.peertype, err)
-
-	wg.Wait()
-	_ = p.conn.Close()
+	lasterrMutex.Unlock()
 }
 
 func (p *Peer) reset() {
@@ -124,7 +142,6 @@ func (p *Peer) reset() {
 	defer p.mutex.Unlock()
 	p.allocated.Store(false)
 	p.started.Store(false)
-	p.child.Store(false)
 	p.zone = ""
 	p.peertype = 0
 	p.context, p.cancel = nil, nil
@@ -193,25 +210,18 @@ func (p *Peer) SeenCommonRootRecently() bool {
 func (p *Peer) updateAnnouncement(new *types.SwitchAnnouncement) error {
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
-	coords, err := new.PeerCoords(p.public)
-	if err != nil {
-		p.announcement = nil
-		p.coords = nil
-		return fmt.Errorf("new.PeerCoords: %w", err)
+	if p.announcement != nil {
+		if new.RootPublicKey == p.announcement.RootPublicKey && new.Sequence < p.announcement.Sequence {
+			p.announcement = nil
+			p.coords = nil
+			return fmt.Errorf("root announcement replays sequence number")
+		}
 	}
 	p.announcement = &rootAnnouncementWithTime{
 		SwitchAnnouncement: *new,
 		at:                 time.Now(),
 	}
-	p.coords = coords
-	isChild := false
-	for _, sig := range new.Signatures {
-		if sig.PublicKey.EqualTo(p.r.public) {
-			isChild = true
-			break
-		}
-	}
-	p.child.Store(isChild)
+	p.coords = new.PeerCoords()
 	return nil
 }
 
@@ -241,8 +251,10 @@ func (p *Peer) generateKeepalive() *types.Frame {
 	return frame
 }
 
-func (p *Peer) reader(wg *sync.WaitGroup, ctx context.Context) error {
-	defer wg.Done()
+func (p *Peer) reader(ctx context.Context) error {
+	defer p.wg.Done()
+	defer p.cancel()
+
 	buf := make([]byte, MaxFrameSize)
 	for {
 		select {
@@ -345,8 +357,10 @@ var bufPool = sync.Pool{
 	},
 }
 
-func (p *Peer) writer(wg *sync.WaitGroup, ctx context.Context) error {
-	defer wg.Done()
+func (p *Peer) writer(ctx context.Context) error {
+	defer p.wg.Done()
+	defer p.cancel()
+
 	tick := time.NewTicker(PeerKeepaliveInterval)
 	defer tick.Stop()
 
@@ -420,7 +434,6 @@ func (p *Peer) writer(wg *sync.WaitGroup, ctx context.Context) error {
 			continue
 		case <-p.trafficOut.wait():
 			if frame, ok := p.trafficOut.pop(); ok && send(frame) == nil {
-
 				p.statistics.txTrafficSuccessful.Inc()
 			} else {
 				p.statistics.txTrafficDropped.Inc()
