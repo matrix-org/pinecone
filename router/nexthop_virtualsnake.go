@@ -26,7 +26,7 @@ import (
 	"github.com/matrix-org/pinecone/util"
 )
 
-const virtualSnakeNeighExpiryPeriod = time.Minute * 30
+const virtualSnakeNeighExpiryPeriod = time.Hour
 
 type virtualSnake struct {
 	r               *Router
@@ -108,37 +108,34 @@ func (t *virtualSnake) setDescending(desc *virtualSnakeNeighbour) {
 // bootstraps and setup messages as needed.
 func (t *virtualSnake) maintain() {
 	for {
-		peerCount := t.r.PeerCount(-1)
-		bootstrapNow := false
 		select {
 		case <-t.r.context.Done():
 			return
 		case <-time.After(time.Second):
 		}
-		if peerCount == 0 {
-			// If there are no peers connected then we don't need
-			// to do any hard maintenance work.
-			continue
-		}
+
+		rootKey := t.r.RootPublicKey()
+		canBootstrap := rootKey != t.r.public && t.r.PeerCount(-1) > 0
+		willBootstrap := false
 
 		if asc := t.ascending(); asc != nil {
 			switch {
 			case time.Since(asc.LastSeen) > virtualSnakeNeighExpiryPeriod:
 				t.teardownPath(t.r.public, asc.PathID, asc.Port, true, fmt.Errorf("ascending neighbour expired"))
-				bootstrapNow = true
-			case asc.RootPublicKey != t.r.RootPublicKey():
+				willBootstrap = canBootstrap
+			case asc.RootPublicKey != rootKey:
 				t.teardownPath(t.r.public, asc.PathID, asc.Port, true, fmt.Errorf("ascending root changed"))
-				bootstrapNow = true
+				willBootstrap = canBootstrap
 			}
 		} else {
-			bootstrapNow = true
+			willBootstrap = canBootstrap
 		}
 
 		if desc := t.descending(); desc != nil {
 			switch {
 			case time.Since(desc.LastSeen) > virtualSnakeNeighExpiryPeriod:
 				t.teardownPath(desc.PublicKey, desc.PathID, desc.Port, false, fmt.Errorf("descending neighbour expired"))
-			case !desc.RootPublicKey.EqualTo(t.r.RootPublicKey()):
+			case !desc.RootPublicKey.EqualTo(rootKey):
 				t.teardownPath(desc.PublicKey, desc.PathID, desc.Port, false, fmt.Errorf("descending root changed"))
 			}
 		}
@@ -148,8 +145,8 @@ func (t *virtualSnake) maintain() {
 		// predefined interval, but for now we'll continue to send
 		// them on a regular interval until we can derive some better
 		// connection state.
-		if bootstrapNow {
-			t.bootstrapIn(0)
+		if willBootstrap {
+			t.bootstrapIn(time.Second)
 		}
 	}
 }
@@ -159,7 +156,7 @@ func (t *virtualSnake) bootstrapIn(d time.Duration) {
 }
 
 func (t *virtualSnake) bootstrapNow() {
-	if t.r.IsRoot() {
+	if t.r.IsRoot() || t.r.PeerCount(-1) == 0 {
 		return
 	}
 	ts, err := util.SignedTimestamp(t.r.private)
@@ -187,7 +184,7 @@ func (t *virtualSnake) bootstrapNow() {
 func (t *virtualSnake) rootNodeChanged(root types.PublicKey) {
 	if asc := t.ascending(); asc != nil && !asc.RootPublicKey.EqualTo(root) {
 		t.teardownPath(t.r.public, asc.PathID, asc.Port, true, fmt.Errorf("root changed and asc no longer matches"))
-		t.bootstrapIn(time.Second)
+		defer t.bootstrapIn(time.Second)
 	}
 	if desc := t.descending(); desc != nil && !desc.RootPublicKey.EqualTo(root) {
 		t.teardownPath(desc.PublicKey, desc.PathID, desc.Port, false, fmt.Errorf("root changed and desc no longer matches"))
@@ -229,7 +226,7 @@ func (t *virtualSnake) portWasDisconnected(port types.SwitchPortID) {
 	// this port change.
 	if asc := t.ascending(); asc != nil && asc.Port == port {
 		t.teardownPath(t.r.public, asc.PathID, asc.Port, true, fmt.Errorf("port teardown"))
-		t.bootstrapIn(0)
+		defer t.bootstrapIn(0)
 	}
 	if desc := t.descending(); desc != nil && desc.Port == port {
 		t.teardownPath(desc.PublicKey, desc.PathID, desc.Port, false, fmt.Errorf("port teardown"))
@@ -382,7 +379,7 @@ func (t *virtualSnake) getVirtualSnakeTeardownNextHop(from *Peer, rx *types.Fram
 	}
 	if asc := t.ascending(); asc != nil && t.r.public.EqualTo(rx.DestinationKey) && asc.PathID == teardown.PathID {
 		t.setAscending(nil)
-		t.bootstrapIn(time.Second)
+		defer t.bootstrapIn(time.Second / 4)
 	}
 	t.tableMutex.Lock()
 	defer t.tableMutex.Unlock()
@@ -423,10 +420,9 @@ func (t *virtualSnake) teardownPath(pk types.PublicKey, pathID types.VirtualSnak
 		Payload:        payload[:],
 	}
 	_ = t.getVirtualSnakeTeardownNextHop(t.r.ports[0], &frame)
-	if !t.r.ports[via].started.Load() {
-		return
+	if t.r.ports[via].started.Load() {
+		t.r.ports[via].protoOut.push(frame.Borrow())
 	}
-	t.r.ports[via].protoOut.push(frame.Borrow())
 }
 
 // handleBootstrap is called in response to an incoming bootstrap
