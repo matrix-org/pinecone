@@ -442,8 +442,12 @@ func (r *Router) PeerCount(peertype int) int {
 // IsConnected returns true if the node is connected within the
 // given zone, or false otherwise.
 func (r *Router) IsConnected(key types.PublicKey, zone string) bool {
-	_, ok := r.active.Load(hex.EncodeToString(key[:]) + zone)
-	return ok
+	v, ok := r.active.Load(hex.EncodeToString(key[:]) + zone)
+	if !ok {
+		return false
+	}
+	port := v.(types.SwitchPortID)
+	return r.ports[port].started.Load()
 }
 
 // PeerInfo is a gomobile-friendly type that represents a peer

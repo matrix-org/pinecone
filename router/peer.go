@@ -114,9 +114,10 @@ func (p *Peer) start() {
 
 	// Wait for the cancellation, and then for the goroutines to stop.
 	<-p.context.Done()
+	p.started.Store(false)
 	p.wg.Wait()
 
-	// Report the dicsonnection.
+	// Report the disconnection.
 	if p.port != 0 {
 		p.r.dht.deleteNode(p.public)
 	}
