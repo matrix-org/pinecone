@@ -229,7 +229,7 @@ func (t *virtualSnake) portWasDisconnected(port types.SwitchPortID) {
 	// this port change.
 	if asc := t.ascending(); asc != nil && asc.Port == port {
 		t.teardownPath(t.r.public, asc.PathID, asc.Port, true, fmt.Errorf("port teardown"))
-		t.bootstrapIn(time.Second)
+		t.bootstrapIn(0)
 	}
 	if desc := t.descending(); desc != nil && desc.Port == port {
 		t.teardownPath(desc.PublicKey, desc.PathID, desc.Port, false, fmt.Errorf("port teardown"))
