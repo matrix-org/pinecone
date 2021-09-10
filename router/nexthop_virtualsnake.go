@@ -338,8 +338,9 @@ func (t *virtualSnake) getVirtualSnakeNextHop(from *Peer, destKey types.PublicKe
 		switch {
 		case !entry.Valid():
 			continue
+		default:
+			newCheckedCandidate(dhtKey.PublicKey, entry.SourcePort)
 		}
-		newCheckedCandidate(dhtKey.PublicKey, entry.SourcePort)
 	}
 	t.tableMutex.RUnlock()
 
@@ -353,6 +354,8 @@ func (t *virtualSnake) getVirtualSnakeNextHop(from *Peer, destKey types.PublicKe
 			// are directly peered with that node, so use the more direct
 			// path instead
 			newCandidate(peerKey, peer.port)
+		default:
+			newCheckedCandidate(peerKey, peer.port)
 		}
 	}
 
