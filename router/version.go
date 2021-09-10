@@ -16,12 +16,13 @@ package router
 
 const (
 	// reserved = 1
-	capabilityVirtualSnake  = 2
-	capabilityHardState     = 4
-	capabilityPathIDs       = 8
-	capabilityRootInUpdates = 16
-	capabilityNewHeaders    = 32
+	capabilityVirtualSnake     = 2
+	capabilityHardState        = 4
+	capabilityPathIDs          = 8
+	capabilityRootInUpdates    = 16
+	capabilityNewHeaders       = 32
+	capabilitySlowRootInterval = 64
 )
 
 const ourVersion = 0
-const ourCapabilities = capabilityVirtualSnake | capabilityHardState | capabilityPathIDs | capabilityRootInUpdates | capabilityNewHeaders
+const ourCapabilities = capabilityVirtualSnake | capabilityHardState | capabilityPathIDs | capabilityRootInUpdates | capabilityNewHeaders | capabilitySlowRootInterval

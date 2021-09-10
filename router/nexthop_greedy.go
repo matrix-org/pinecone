@@ -58,12 +58,14 @@ func (r *Router) getGreedyRoutedNextHop(from *Peer, rx *types.Frame) types.Switc
 		peerCoords := p.Coordinates()
 		peerDist := int64(peerCoords.DistanceTo(rx.Destination))
 		switch {
-		case peerDist == 0:
+		case peerDist == 0 || rx.Destination.EqualTo(peerCoords):
+			// The peer is the actual destination.
 			return []types.SwitchPortID{p.port}
-		case rx.Destination.EqualTo(peerCoords):
-			return []types.SwitchPortID{p.port}
+
 		case peerDist < bestDist:
+			// The peer is closer to the destination.
 			bestPeer, bestDist = p.port, peerDist
+
 		default:
 		}
 	}

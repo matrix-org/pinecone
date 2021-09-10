@@ -18,7 +18,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
-	"errors"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"net"
@@ -29,7 +29,7 @@ import (
 	"go.uber.org/atomic"
 )
 
-const PeerKeepaliveInterval = time.Second * 2
+const PeerKeepaliveInterval = time.Second * 3
 const PeerKeepaliveTimeout = PeerKeepaliveInterval * 3
 
 const (
@@ -41,8 +41,9 @@ const (
 type Peer struct {
 	r            *Router                   //
 	port         types.SwitchPortID        //
+	allocated    atomic.Bool               //
 	started      atomic.Bool               // worker goroutines started?
-	alive        atomic.Bool               // have we received a handshake?
+	wg           *sync.WaitGroup           // wait group for worker goroutines
 	mutex        sync.RWMutex              // protects everything below this line
 	zone         string                    //
 	peertype     int                       //
@@ -50,12 +51,108 @@ type Peer struct {
 	cancel       context.CancelFunc        //
 	conn         net.Conn                  // underlying connection to peer
 	public       types.PublicKey           //
-	trafficOut   queue                     // queue traffic message to peer
-	protoOut     queue                     // queue protocol message to peer
+	trafficOut   *lifoQueue                // queue traffic message to peer
+	protoOut     *fifoQueue                // queue protocol message to peer
 	coords       types.SwitchPorts         //
-	announce     chan struct{}             //
-	announcement *rootAnnouncementWithTime //
+	announcement *rootAnnouncementWithTime // last received announcement from peer
 	statistics   peerStatistics            //
+}
+
+func (p *Peer) start() {
+	if !p.started.CAS(false, true) {
+		return
+	}
+
+	// When the peer dies, we need to clean up.
+	var lasterr error
+	var lasterrMutex sync.Mutex
+	defer func() {
+		p.reset()
+		p.r.snake.portWasDisconnected(p.port)
+		p.r.tree.portWasDisconnected(p.port)
+		go p.r.callbacks.onDisconnected(p.port, p.public, p.peertype, lasterr)
+	}()
+
+	// Store the fact that we're connected to this public key in
+	// this zone, so that the multicast code can ignore nodes we
+	// are already connected to.
+	index := hex.EncodeToString(p.public[:]) + p.zone
+	p.r.active.Store(index, p.port)
+	defer p.r.active.Delete(index)
+
+	// Push a root update to our new peer. This will notify them
+	// of our coordinates and that we are alive.
+	p.protoOut.push(p.r.tree.Root().ForPeer(p))
+
+	// Start the reader and writer goroutines for this peer.
+	p.wg.Add(2)
+	go func() {
+		if err := p.reader(p.context); err != nil && err != context.Canceled {
+			lasterrMutex.Lock()
+			lasterr = fmt.Errorf("reader error: %w", err)
+			lasterrMutex.Unlock()
+		}
+	}()
+	go func() {
+		if err := p.writer(p.context); err != nil && err != context.Canceled {
+			lasterrMutex.Lock()
+			lasterr = fmt.Errorf("writer error: %w", err)
+			lasterrMutex.Unlock()
+		}
+	}()
+
+	// Report the new connection.
+	if p.port != 0 {
+		p.r.dht.insertNode(p)
+	}
+	if p.r.simulator != nil {
+		p.r.simulator.ReportNewLink(p.conn, p.r.public, p.public)
+	}
+	go p.r.callbacks.onConnected(p.port, p.public, p.peertype)
+
+	p.r.log.Printf("Connected port %d to %s (zone %q)\n", p.port, p.conn.RemoteAddr(), p.zone)
+
+	// Wait for the cancellation, and then for the goroutines to stop.
+	<-p.context.Done()
+	p.started.Store(false)
+	p.wg.Wait()
+
+	// Report the disconnection.
+	if p.port != 0 {
+		p.r.dht.deleteNode(p.public)
+	}
+	if p.r.simulator != nil {
+		p.r.simulator.ReportDeadLink(p.r.public, p.public)
+	}
+
+	// Make sure the connection is closed.
+	_ = p.conn.Close()
+
+	// ... and finally, yell about it.
+	lasterrMutex.Lock()
+	if lasterr != nil {
+		p.r.log.Printf("Disconnected port %d: %s\n", p.port, lasterr)
+	} else {
+		p.r.log.Printf("Disconnected port %d\n", p.port)
+	}
+	lasterrMutex.Unlock()
+}
+
+func (p *Peer) reset() {
+	p.mutex.Lock()
+	defer p.mutex.Unlock()
+	p.allocated.Store(false)
+	p.started.Store(false)
+	p.zone = ""
+	p.peertype = 0
+	p.context, p.cancel = nil, nil
+	p.conn = nil
+	p.public = types.PublicKey{}
+	p.trafficOut.reset()
+	p.protoOut.reset()
+	p.statistics.reset()
+	p.coords = nil
+	p.announcement = nil
 }
 
 type peerStatistics struct {
@@ -76,6 +173,16 @@ func (s *peerStatistics) reset() {
 	s.rxTraffic.Store(0)
 }
 
+func (p *Peer) IsParent() bool {
+	return p.r.tree.Parent() == p.port
+}
+
+func (p *Peer) Alive() bool {
+	p.mutex.RLock()
+	defer p.mutex.RUnlock()
+	return p.announcement != nil && time.Since(p.announcement.at) < announcementTimeout
+}
+
 func (p *Peer) PublicKey() types.PublicKey {
 	p.mutex.RLock()
 	defer p.mutex.RUnlock()
@@ -89,7 +196,7 @@ func (p *Peer) Coordinates() types.SwitchPorts {
 }
 
 func (p *Peer) SeenCommonRootRecently() bool {
-	if !p.alive.Load() {
+	if !p.Alive() {
 		return false
 	}
 	last := p.lastAnnouncement()
@@ -101,31 +208,21 @@ func (p *Peer) SeenCommonRootRecently() bool {
 	return lpk == rpk
 }
 
-func (p *Peer) SeenRecently() bool {
-	if last := p.lastAnnouncement(); last != nil {
-		return true
-	}
-	return false
-}
-
 func (p *Peer) updateAnnouncement(new *types.SwitchAnnouncement) error {
 	p.mutex.Lock()
 	defer p.mutex.Unlock()
-	coords, err := new.PeerCoords(p.public)
-	if err != nil {
-		p.alive.Store(false)
-		p.announcement = nil
-		p.coords = nil
-		return fmt.Errorf("new.PeerCoords: %w", err)
-	}
-	if p.alive.CAS(false, true) {
-		p.r.snake.portWasConnected(p.port)
+	if p.announcement != nil {
+		if new.RootPublicKey == p.announcement.RootPublicKey && new.Sequence < p.announcement.Sequence {
+			p.announcement = nil
+			p.coords = nil
+			return fmt.Errorf("root announcement replays sequence number")
+		}
 	}
 	p.announcement = &rootAnnouncementWithTime{
 		SwitchAnnouncement: *new,
 		at:                 time.Now(),
 	}
-	p.coords = coords
+	p.coords = new.PeerCoords()
 	return nil
 }
 
@@ -141,96 +238,50 @@ func (p *Peer) lastAnnouncement() *rootAnnouncementWithTime {
 	return p.announcement
 }
 
-func (p *Peer) start() error {
-	if !p.started.CAS(false, true) {
-		return errors.New("switch peer is already started")
-	}
-	p.alive.Store(false)
-	go p.reader(p.context)
-	go p.writer(p.context)
-	return nil
-}
-
-func (p *Peer) stop() error {
-	if !p.started.CAS(true, false) {
-		return errors.New("switch peer is already stopped")
-	}
-	p.alive.Store(false)
+func (p *Peer) stop() {
+	p.started.Store(false)
+	p.mutex.Lock()
 	p.cancel()
-	_ = p.conn.Close()
-	return nil
+	p.mutex.Unlock()
 }
 
-/*
 func (p *Peer) generateKeepalive() *types.Frame {
 	frame := types.GetFrame()
 	frame.Version = types.Version0
 	frame.Type = types.TypeKeepalive
 	return frame
 }
-*/
 
-func (p *Peer) generateAnnouncement() *types.Frame {
-	if p.port == 0 {
-		return nil
-	}
-	announcement := p.r.tree.Root()
-	for _, sig := range announcement.Signatures {
-		if p.r.public.EqualTo(sig.PublicKey) {
-			// For some reason the announcement that we want to send already
-			// includes our signature. This shouldn't really happen but if we
-			// did send it, other nodes would end up ignoring the announcement
-			// anyway since it would appear to be a routing loop.
-			return nil
-		}
-	}
-	// Sign the announcement.
-	if err := announcement.Sign(p.r.private[:], p.port); err != nil {
-		p.r.log.Println("Failed to sign switch announcement:", err)
-		return nil
-	}
-	var payload [MaxPayloadSize]byte
-	n, err := announcement.MarshalBinary(payload[:])
-	if err != nil {
-		p.r.log.Println("Failed to marshal switch announcement:", err)
-		return nil
-	}
-	frame := types.GetFrame()
-	frame.Version = types.Version0
-	frame.Type = types.TypeSTP
-	frame.Destination = types.SwitchPorts{}
-	frame.Payload = payload[:n]
-	return frame
-}
+func (p *Peer) reader(ctx context.Context) error {
+	defer p.wg.Done()
+	defer p.cancel()
 
-func (p *Peer) reader(ctx context.Context) {
 	buf := make([]byte, MaxFrameSize)
 	for {
 		select {
 		case <-ctx.Done():
 			// The switch peer is shutting down.
-			return
+			return context.Canceled
 
 		default:
 			if p.port != 0 {
 				if err := p.conn.SetReadDeadline(time.Now().Add(PeerKeepaliveTimeout)); err != nil {
-					_ = p.r.Disconnect(p.port, fmt.Errorf("conn.SetReadDeadline: %w", err))
-					return
+					return fmt.Errorf("conn.SetReadDeadline: %w", err)
 				}
 			}
 			if _, err := io.ReadFull(p.conn, buf[:8]); err != nil {
-				_ = p.r.Disconnect(p.port, fmt.Errorf("p.conn.Peek: %w", err))
-				return
+				return fmt.Errorf("p.conn.Peek: %w", err)
+			}
+			if err := p.conn.SetReadDeadline(time.Time{}); err != nil {
+				return fmt.Errorf("conn.SetReadDeadline: %w", err)
 			}
 			if !bytes.Equal(buf[:4], types.FrameMagicBytes) {
-				_ = p.r.Disconnect(p.port, fmt.Errorf("missing magic bytes"))
-				return
+				return fmt.Errorf("missing magic bytes")
 			}
 			expecting := int(binary.BigEndian.Uint16(buf[6:8]))
 			n, err := io.ReadFull(p.conn, buf[8:expecting])
 			if err != nil {
-				_ = p.r.Disconnect(p.port, fmt.Errorf("io.ReadFull: %w", err))
-				return
+				return fmt.Errorf("io.ReadFull: %w", err)
 			}
 			if n < expecting-8 {
 				p.r.log.Println("Expecting", expecting, "bytes but got", n, "bytes")
@@ -238,16 +289,13 @@ func (p *Peer) reader(ctx context.Context) {
 			}
 			frame := types.GetFrame()
 			if _, err := frame.UnmarshalBinary(buf[:n+8]); err != nil {
-				p.r.log.Println("Port", p.port, "error unmarshalling frame:", err)
 				frame.Done()
-				return
+				return fmt.Errorf("frame.UnmarshalBinary: %w", err)
 			}
-			if frame.Version != types.Version0 {
-				p.r.log.Println("Port", p.port, "incorrect version in frame")
-				frame.Done()
-				return
-			}
-			if frame.Type == types.TypeKeepalive {
+			switch {
+			case frame.Version != types.Version0:
+				fallthrough
+			case frame.Type == types.TypeKeepalive:
 				frame.Done()
 				continue
 			}
@@ -257,7 +305,7 @@ func (p *Peer) reader(ctx context.Context) {
 				for _, port := range p.getNextHops(frame, p.port) {
 					// Ignore ports that are not good candidates.
 					dest := p.r.ports[port]
-					if !dest.started.Load() || (dest.port != 0 && !dest.alive.Load()) {
+					if !dest.started.Load() || (dest.port != 0 && !dest.Alive()) {
 						continue
 					}
 					if p.port != 0 && dest.port != 0 {
@@ -310,85 +358,64 @@ var bufPool = sync.Pool{
 	},
 }
 
-func (p *Peer) writer(ctx context.Context) {
-	//tick := time.NewTicker(PeerKeepaliveInterval)
-	//defer tick.Stop()
-	send := func(frame *types.Frame) {
+func (p *Peer) writer(ctx context.Context) error {
+	defer p.wg.Done()
+	defer p.cancel()
+
+	tick := time.NewTicker(PeerKeepaliveInterval)
+	defer tick.Stop()
+
+	send := func(frame *types.Frame) error {
 		if frame == nil {
-			return
+			return nil
 		}
 		buf := bufPool.Get().([]byte)
 		defer bufPool.Put(buf) // nolint:staticcheck
 		fn, err := frame.MarshalBinary(buf)
 		frame.Done()
 		if err != nil {
-			p.r.log.Println("Port", p.port, "error marshalling frame:", err)
-			return
+			return nil
 		}
 		if !bytes.Equal(buf[:4], types.FrameMagicBytes) {
-			panic("expected magic bytes")
+			return nil
 		}
-		remaining := buf[:fn]
-		for len(remaining) > 0 {
-			n, err := p.conn.Write(remaining)
-			if err != nil {
-				_ = p.r.Disconnect(p.port, fmt.Errorf("p.conn.Write: %w", err))
-				return
-			}
-			remaining = remaining[n:]
+		if err := p.conn.SetWriteDeadline(time.Now().Add(PeerKeepaliveTimeout)); err != nil {
+			return fmt.Errorf("p.conn.SetWriteDeadline: %w", err)
 		}
+		if _, err = p.conn.Write(buf[:fn]); err != nil {
+			return fmt.Errorf("p.conn.Write: %w", err)
+		}
+		if err := p.conn.SetWriteDeadline(time.Time{}); err != nil {
+			return fmt.Errorf("p.conn.SetWriteDeadline: %w", err)
+		}
+		return nil
 	}
-
-	// The very first thing we send should be a tree announcement,
-	// so that the remote side can work out our coords and consider
-	// us to be "alive".
-	send(p.generateAnnouncement())
 
 	for {
 		select {
 		case <-ctx.Done():
-			return
-		case <-p.announce:
-			send(p.generateAnnouncement())
+			return context.Canceled
+		case frame := <-p.protoOut.pop():
+			if err := send(frame); err != nil {
+				return fmt.Errorf("send: %w", err)
+			}
+			p.protoOut.ack()
 			p.statistics.txProtoSuccessful.Inc()
 			continue
 		default:
 		}
 		select {
 		case <-ctx.Done():
-			return
-		case <-p.announce:
-			send(p.generateAnnouncement())
-			p.statistics.txProtoSuccessful.Inc()
-			continue
-		case <-p.protoOut.wait():
-			if frame, ok := p.protoOut.pop(); ok {
-				send(frame)
-				p.statistics.txProtoSuccessful.Inc()
-			} else {
-				p.statistics.txProtoDropped.Inc()
+			return context.Canceled
+		case frame := <-p.protoOut.pop():
+			if err := send(frame); err != nil {
+				return fmt.Errorf("send: %w", err)
 			}
-			continue
-		default:
-		}
-		select {
-		case <-ctx.Done():
-			return
-		case <-p.announce:
-			send(p.generateAnnouncement())
+			p.protoOut.ack()
 			p.statistics.txProtoSuccessful.Inc()
-			continue
-		case <-p.protoOut.wait():
-			if frame, ok := p.protoOut.pop(); ok {
-				send(frame)
-				p.statistics.txProtoSuccessful.Inc()
-			} else {
-				p.statistics.txProtoDropped.Inc()
-			}
 			continue
 		case <-p.trafficOut.wait():
-			if frame, ok := p.trafficOut.pop(); ok {
-				send(frame)
+			if frame, ok := p.trafficOut.pop(); ok && send(frame) == nil {
 				p.statistics.txTrafficSuccessful.Inc()
 			} else {
 				p.statistics.txTrafficDropped.Inc()
@@ -398,31 +425,27 @@ func (p *Peer) writer(ctx context.Context) {
 		}
 		select {
 		case <-ctx.Done():
-			return
-		case <-p.announce:
-			send(p.generateAnnouncement())
+			return context.Canceled
+		case frame := <-p.protoOut.pop():
+			if err := send(frame); err != nil {
+				return fmt.Errorf("send: %w", err)
+			}
+			p.protoOut.ack()
 			p.statistics.txProtoSuccessful.Inc()
 			continue
-		case <-p.protoOut.wait():
-			if frame, ok := p.protoOut.pop(); ok {
-				send(frame)
-				p.statistics.txProtoSuccessful.Inc()
-			} else {
-				p.statistics.txProtoDropped.Inc()
-			}
-			continue
 		case <-p.trafficOut.wait():
-			if frame, ok := p.trafficOut.pop(); ok {
-				send(frame)
+			if frame, ok := p.trafficOut.pop(); ok && send(frame) == nil {
 				p.statistics.txTrafficSuccessful.Inc()
 			} else {
 				p.statistics.txTrafficDropped.Inc()
 			}
 			continue
-			//case <-tick.C:
-			//	send(p.generateKeepalive())
-			//  p.statistics.txProtoSuccessful.Inc()
-			//	continue
+		case <-tick.C:
+			if err := send(p.generateKeepalive()); err != nil {
+				return fmt.Errorf("send: %w", err)
+			}
+			p.statistics.txProtoSuccessful.Inc()
+			continue
 		}
 	}
 }

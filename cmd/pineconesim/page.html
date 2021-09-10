@@ -125,7 +125,7 @@
                     </tr>
                     {{range .Nodes}}
                     {{if not .IsExternal}}<tr>
-                        <td>{{.Name}}</td>
+                        <td><a href="?view=snek&pk={{.Key}}">{{.Name}}</a></td>
                         <td><code>{{.Port}}</code></td>
                         <td><code>{{.Coords}}</code></td>
                         <td><a href="?view=snek&pk={{.Root}}"><code>{{.Root}}</code></a></td>
@@ -208,7 +208,7 @@
                     </tr>
                     {{range .NodeInfo.Peers}}
                     <tr>
-                        <td><code>{{.Name}}</code></td>
+                        <td><code><a href="?view=snek&pk={{.PublicKey}}">{{.Name}}</a></code></td>
                         <td><code><a href="?view=snek&pk={{.PublicKey}}">{{.PublicKey}}</a></code></td>
                         <td><code>{{.Port}}</code></td>
                         <td><code><a href="?view=snek&pk={{.RootPublicKey}}">{{.RootPublicKey}}</a></code></td>

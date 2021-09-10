@@ -21,6 +21,10 @@ import (
 	"log"
 	"net"
 	"os"
+	"os/signal"
+	"runtime/pprof"
+	"syscall"
+	"time"
 
 	"net/http"
 	_ "net/http/pprof"
@@ -52,9 +56,15 @@ func main() {
 
 	logger := log.New(os.Stdout, "", 0)
 	if hostPort := os.Getenv("PPROFLISTEN"); hostPort != "" {
-		logger.Println("Starting pprof on", hostPort)
 		go func() {
-			_ = http.ListenAndServe(hostPort, nil)
+			listener, err := net.Listen("tcp", hostPort)
+			if err != nil {
+				panic(err)
+			}
+			logger.Println("Starting pprof on", listener.Addr())
+			if err := http.Serve(listener, nil); err != nil {
+				panic(err)
+			}
 		}()
 	}
 
@@ -72,14 +82,6 @@ func main() {
 		if err := conn.SetNoDelay(true); err != nil {
 			return fmt.Errorf("conn.SetNoDelay: %w", err)
 		}
-		/*
-			if err := conn.SetKeepAlive(true); err != nil {
-				return fmt.Errorf("conn.SetKeepAlive: %w", err)
-			}
-			if err := conn.SetKeepAlivePeriod(time.Second); err != nil {
-				return fmt.Errorf("conn.SetKeepAlivePeriod: %w", err)
-			}
-		*/
 		if err := conn.SetLinger(0); err != nil {
 			return fmt.Errorf("conn.SetLinger: %w", err)
 		}
@@ -133,5 +135,27 @@ func main() {
 		}
 	}()
 
-	select {}
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, syscall.SIGUSR1)
+	for {
+		switch <-sigs {
+		case syscall.SIGUSR1:
+			fn := fmt.Sprintf("/tmp/profile.%d", os.Getpid())
+			logger.Println("Requested profile:", fn)
+			fp, err := os.Create(fn)
+			if err != nil {
+				logger.Println("Failed to create profile:", err)
+				return
+			}
+			defer fp.Close()
+			if err := pprof.StartCPUProfile(fp); err != nil {
+				logger.Println("Failed to start profiling:", err)
+				return
+			}
+			time.AfterFunc(time.Second*10, func() {
+				pprof.StopCPUProfile()
+				logger.Println("Profile written:", fn)
+			})
+		}
+	}
 }

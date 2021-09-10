@@ -65,15 +65,14 @@ func NewMulticast(
 	}
 	m.tcpLC = net.ListenConfig{
 		Control:   m.tcpOptions,
-		KeepAlive: time.Second,
+		KeepAlive: time.Second * 3,
 	}
 	m.udpLC = net.ListenConfig{
 		Control: m.udpOptions,
 	}
 	m.dialer = net.Dialer{
-		Control:   m.tcpOptions,
-		Timeout:   time.Second * 5,
-		KeepAlive: time.Second,
+		Control: m.tcpOptions,
+		//	Timeout: time.Second * 5,
 	}
 	return m
 }
@@ -163,6 +162,7 @@ func (m *Multicast) accept(listener net.Listener) {
 
 		if _, err := m.r.AuthenticatedConnect(conn, tcpaddr.Zone, router.PeerTypeMulticast); err != nil {
 			//m.log.Println("m.s.AuthenticatedConnect:", err)
+			_ = conn.Close()
 			continue
 		}
 	}
@@ -309,6 +309,7 @@ func (m *Multicast) listen(intf *multicastInterface, conn net.PacketConn, srcadd
 
 		if _, err := m.r.AuthenticatedConnect(peer, udpaddr.Zone, router.PeerTypeMulticast); err != nil {
 			m.log.Println("m.s.AuthenticatedConnect:", err)
+			_ = peer.Close()
 			continue
 		}
 	}

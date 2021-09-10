@@ -25,7 +25,6 @@ import (
 	"net"
 	"sort"
 	"sync"
-	"time"
 
 	"github.com/matrix-org/pinecone/types"
 	"go.uber.org/atomic"
@@ -110,7 +109,7 @@ func NewRouter(log *log.Logger, id string, private ed25519.PrivateKey, public ed
 		sw.ports[i] = &Peer{
 			r:          sw,
 			port:       types.SwitchPortID(i),
-			announce:   make(chan struct{}),
+			wg:         &sync.WaitGroup{},
 			protoOut:   newFIFOQueue(),
 			trafficOut: newLIFOQueue(TrafficBufferSize),
 		}
@@ -148,7 +147,7 @@ func (r *Router) Close() error {
 	r.cancel()
 	for _, port := range r.ports {
 		if port.started.Load() {
-			_ = port.stop()
+			port.stop()
 		}
 	}
 	return nil
@@ -313,10 +312,7 @@ func (r *Router) startedPorts() peers {
 func (r *Router) activePorts() peers {
 	peers := make(peers, 0, PortCount)
 	for _, p := range r.startedPorts() {
-		switch {
-		case !p.alive.Load():
-			continue
-		default:
+		if p.Alive() {
 			peers = append(peers, p)
 		}
 	}
@@ -330,52 +326,49 @@ func (r *Router) activePorts() peers {
 // the node was connected to will be returned in the event
 // of a successful connection.
 func (r *Router) AuthenticatedConnect(conn net.Conn, zone string, peertype int) (types.SwitchPortID, error) {
-	select {
-	case <-time.After(time.Second * 5):
-		return 0, fmt.Errorf("handshake timed out")
-	default:
-		handshake := []byte{
-			ourVersion,
-			ourCapabilities,
-			0, // unused
-			0, // unused
-		}
-		handshake = append(handshake, r.public[:ed25519.PublicKeySize]...)
-		handshake = append(handshake, ed25519.Sign(r.private[:], handshake)...)
-		_ = conn.SetDeadline(time.Now().Add(time.Second * 5))
-		if _, err := conn.Write(handshake); err != nil {
-			conn.Close()
-			return 0, fmt.Errorf("conn.Write: %w", err)
-		}
-		if _, err := io.ReadFull(conn, handshake); err != nil {
-			conn.Close()
-			return 0, fmt.Errorf("io.ReadFull: %w", err)
-		}
-		_ = conn.SetDeadline(time.Time{})
-		if theirVersion := handshake[0]; theirVersion != ourVersion {
-			conn.Close()
-			return 0, fmt.Errorf("mismatched node version")
-		}
-		if theirCapabilities := handshake[1]; theirCapabilities&ourCapabilities != ourCapabilities {
-			conn.Close()
-			return 0, fmt.Errorf("mismatched node capabilities")
-		}
-		var public types.PublicKey
-		var signature types.Signature
-		offset := 4
-		offset += copy(public[:], handshake[offset:offset+ed25519.PublicKeySize])
-		copy(signature[:], handshake[offset:offset+ed25519.SignatureSize])
-		if !ed25519.Verify(public[:], handshake[:offset], signature[:]) {
-			conn.Close()
-			return 0, fmt.Errorf("peer sent invalid signature")
-		}
-		port, err := r.Connect(conn, public, zone, peertype)
-		if err != nil {
-			conn.Close()
-			return 0, err
-		}
-		return port, nil
+	handshake := []byte{
+		ourVersion,
+		ourCapabilities,
+		0, // unused
+		0, // unused
 	}
+	handshake = append(handshake, r.public[:ed25519.PublicKeySize]...)
+	handshake = append(handshake, ed25519.Sign(r.private[:], handshake)...)
+	//_ = conn.SetWriteDeadline(time.Now().Add(time.Second * 5))
+	if _, err := conn.Write(handshake); err != nil {
+		conn.Close()
+		return 0, fmt.Errorf("conn.Write: %w", err)
+	}
+	//_ = conn.SetWriteDeadline(time.Time{})
+	//_ = conn.SetReadDeadline(time.Now().Add(time.Second * 5))
+	if _, err := io.ReadFull(conn, handshake); err != nil {
+		conn.Close()
+		return 0, fmt.Errorf("io.ReadFull: %w", err)
+	}
+	//_ = conn.SetReadDeadline(time.Time{})
+	if theirVersion := handshake[0]; theirVersion != ourVersion {
+		conn.Close()
+		return 0, fmt.Errorf("mismatched node version")
+	}
+	if theirCapabilities := handshake[1]; theirCapabilities&ourCapabilities != ourCapabilities {
+		conn.Close()
+		return 0, fmt.Errorf("mismatched node capabilities")
+	}
+	var public types.PublicKey
+	var signature types.Signature
+	offset := 4
+	offset += copy(public[:], handshake[offset:offset+ed25519.PublicKeySize])
+	copy(signature[:], handshake[offset:offset+ed25519.SignatureSize])
+	if !ed25519.Verify(public[:], handshake[:offset], signature[:]) {
+		conn.Close()
+		return 0, fmt.Errorf("peer sent invalid signature")
+	}
+	port, err := r.Connect(conn, public, zone, peertype)
+	if err != nil {
+		conn.Close()
+		return 0, err
+	}
+	return port, nil
 }
 
 // Connect initiates a peer connection using the given
@@ -384,43 +377,33 @@ func (r *Router) AuthenticatedConnect(conn net.Conn, zone string, peertype int) 
 // port number that the node was connected to will be
 // returned in the event of a successful connection.
 func (r *Router) Connect(conn net.Conn, public types.PublicKey, zone string, peertype int) (types.SwitchPortID, error) {
-	if p, ok := r.active.Load(hex.EncodeToString(public[:]) + zone); ok {
-		_ = r.Disconnect(p.(types.SwitchPortID), fmt.Errorf("another incoming connection from the same node"))
+	if r.IsConnected(public, zone) {
+		_ = conn.Close()
+		return 0, fmt.Errorf("already connected")
 	}
 	r.connections.Lock()
 	defer r.connections.Unlock()
+	usePort := func(port *Peer) bool {
+		if !port.allocated.CAS(false, true) {
+			return false
+		}
+		port.mutex.Lock()
+		port.context, port.cancel = context.WithCancel(r.context)
+		port.zone = zone
+		port.peertype = peertype
+		port.conn = conn
+		port.public = public
+		port.mutex.Unlock()
+		go port.start()
+		return true
+	}
 	for i := types.SwitchPortID(0); i < PortCount; i++ {
 		if i != 0 && bytes.Equal(r.public[:], public[:]) {
 			return 0, fmt.Errorf("loopback connection prohibited")
 		}
-		if r.ports[i].started.Load() {
-			continue
+		if usePort(r.ports[i]) {
+			return i, nil
 		}
-		r.ports[i].mutex.Lock()
-		r.ports[i].context, r.ports[i].cancel = context.WithCancel(r.context)
-		r.ports[i].zone = zone
-		r.ports[i].peertype = peertype
-		r.ports[i].conn = conn // util.NewBufferedRWCSize(conn, MaxFrameSize)
-		r.ports[i].public = public
-		r.ports[i].coords = nil
-		r.ports[i].protoOut.reset()
-		r.ports[i].trafficOut.reset()
-		r.ports[i].announcement = nil
-		r.ports[i].statistics.reset()
-		r.ports[i].mutex.Unlock()
-		if err := r.ports[i].start(); err != nil {
-			return 0, fmt.Errorf("port.start: %w", err)
-		}
-		r.active.Store(hex.EncodeToString(public[:])+zone, i)
-		if i != 0 {
-			r.dht.insertNode(r.ports[i])
-		}
-		if r.simulator != nil {
-			r.simulator.ReportNewLink(conn, r.public, public)
-		}
-		go r.callbacks.onConnected(i, public, peertype)
-		r.log.Printf("Connected port %d to %s (zone %q)\n", i, conn.RemoteAddr(), zone)
-		return i, nil
 	}
 	return 0, fmt.Errorf("no free switch ports")
 }
@@ -433,31 +416,7 @@ func (r *Router) Disconnect(i types.SwitchPortID, err error) error {
 	if i == 0 {
 		return fmt.Errorf("cannot disconnect port %d", i)
 	}
-	r.connections.Lock()
-	defer r.connections.Unlock()
-	if stoperr := r.ports[i].stop(); stoperr != nil {
-		return fmt.Errorf("port.stop: %w", stoperr)
-	}
-	r.active.Delete(hex.EncodeToString(r.ports[i].public[:]) + r.ports[i].zone)
-	r.ports[i].mutex.Lock()
-	r.ports[i].peertype = 0
-	r.ports[i].zone = ""
-	r.ports[i].public = types.PublicKey{}
-	r.ports[i].coords = nil
-	r.ports[i].announcement = nil
-	r.ports[i].protoOut.reset()
-	r.ports[i].trafficOut.reset()
-	r.ports[i].mutex.Unlock()
-	if r.ports[i].port != 0 {
-		r.dht.deleteNode(r.ports[i].public)
-	}
-	if r.simulator != nil {
-		r.simulator.ReportDeadLink(r.public, r.ports[i].public)
-	}
-	r.log.Printf("Disconnected port %d: %s\n", i, err)
-	r.tree.portWasDisconnected(i)
-	r.snake.portWasDisconnected(i)
-	go r.callbacks.onDisconnected(i, r.ports[i].public, r.ports[i].peertype, err)
+	r.ports[i].stop()
 	return nil
 }
 

@@ -31,7 +31,9 @@ func (p *Peer) getNextHops(frame *types.Frame, from types.SwitchPortID) types.Sw
 	switch frame.Type {
 	case types.TypeSTP:
 		if from != 0 {
-			p.r.handleAnnouncement(p, frame)
+			if err := p.r.handleAnnouncement(p, frame); err != nil {
+				p.r.log.Println("Failed to handle announcement:", err)
+			}
 		}
 
 	case types.TypeVirtualSnakeBootstrap:

@@ -47,12 +47,9 @@ func main() {
 	}
 
 	dialer := net.Dialer{
-		Timeout:   time.Second * 5,
-		KeepAlive: time.Second * 2,
+		Timeout: time.Second * 5,
 	}
-	listener := net.ListenConfig{
-		KeepAlive: time.Second * 2,
-	}
+	listener := net.ListenConfig{}
 
 	pineconeRouter := router.NewRouter(logger, "router", sk, pk, nil)
 	_ = sessions.NewSessions(logger, pineconeRouter)

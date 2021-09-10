@@ -31,7 +31,7 @@ import (
 type dhtEntry interface {
 	PublicKey() types.PublicKey
 	Coordinates() types.SwitchPorts
-	SeenRecently() bool
+	Alive() bool
 }
 
 type dht struct {
@@ -59,7 +59,7 @@ func (d *dht) table() []dhtEntry {
 
 	results := make([]dhtEntry, 0, len(d.sorted))
 	for _, n := range d.sorted {
-		if n.SeenRecently() {
+		if n.Alive() {
 			results = append(results, n)
 		}
 	}
