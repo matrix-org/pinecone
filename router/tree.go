@@ -355,38 +355,44 @@ func (t *spanningTree) Parent() types.SwitchPortID {
 }
 
 func (t *spanningTree) UpdateParentIfNeeded(p *Peer, newUpdate types.SwitchAnnouncement) {
-	updateParentNow, gotBadNews := false, false
+	const immediately = time.Duration(0)
+	reparentIn, becomeRoot := time.Duration(-1), false
 	lastParentUpdate, isParent := t.Root(), p.IsParent()
 	keyDeltaSinceLastParentUpdate := newUpdate.RootPublicKey.CompareTo(lastParentUpdate.RootPublicKey)
 
 	switch {
 	case keyDeltaSinceLastParentUpdate > 0:
 		// The peer has sent us a key that is stronger than our last update.
-		updateParentNow = true
+		reparentIn = immediately
 
 	case time.Since(lastParentUpdate.at) >= announcementTimeout:
 		// It's been a while since we last heard from our parent so we should
 		// really choose a new one if we can.
-		updateParentNow = true
+		reparentIn = immediately
 
 	case isParent && keyDeltaSinceLastParentUpdate < 0:
 		// Our parent sent us a weaker key than before — this implies that
 		// something bad happened.
-		gotBadNews = true
+		reparentIn, becomeRoot = time.Second/2, true
 
-	case isParent && keyDeltaSinceLastParentUpdate == 0 && newUpdate.Sequence <= lastParentUpdate.Sequence:
+	case isParent && keyDeltaSinceLastParentUpdate == 0 && newUpdate.Sequence < lastParentUpdate.Sequence:
 		// Our parent sent us a lower sequence number than before for the
 		// same root — this isn't good news either.
-		gotBadNews = true
+		reparentIn, becomeRoot = time.Second/2, true
+
+	case isParent && keyDeltaSinceLastParentUpdate == 0 && newUpdate.Sequence == lastParentUpdate.Sequence:
+		// Our parent sent us an equal sequence number, which probably means
+		// that their path to the root has changed. This isn't as bad news as
+		// a weaker key but we should still try to find a new parent.
+		reparentIn, becomeRoot = time.Second/4, false
 	}
 
 	switch {
-	case gotBadNews:
-		t.becomeRoot()
-		t.selectNewParentAndAdvertiseIn(time.Second)
-
-	case updateParentNow:
-		t.selectNewParentAndAdvertiseIn(0)
+	case reparentIn >= 0:
+		if becomeRoot {
+			t.becomeRoot()
+		}
+		t.selectNewParentAndAdvertiseIn(reparentIn)
 
 	case isParent && keyDeltaSinceLastParentUpdate == 0 && newUpdate.Sequence > lastParentUpdate.Sequence:
 		t.advertise()

@@ -332,6 +332,17 @@ func (t *virtualSnake) getVirtualSnakeNextHop(from *Peer, destKey types.PublicKe
 		}
 	}
 
+	// Check our DHT entries
+	t.tableMutex.RLock()
+	for dhtKey, entry := range t.table {
+		switch {
+		case !entry.Valid():
+			continue
+		}
+		newCheckedCandidate(dhtKey.PublicKey, entry.SourcePort)
+	}
+	t.tableMutex.RUnlock()
+
 	// Check our direct peers
 	for _, peer := range activePorts {
 		peerKey := peer.PublicKey()
@@ -344,17 +355,6 @@ func (t *virtualSnake) getVirtualSnakeNextHop(from *Peer, destKey types.PublicKe
 			newCandidate(peerKey, peer.port)
 		}
 	}
-
-	// Check our DHT entries
-	t.tableMutex.RLock()
-	for dhtKey, entry := range t.table {
-		switch {
-		case !entry.Valid():
-			continue
-		}
-		newCheckedCandidate(dhtKey.PublicKey, entry.SourcePort)
-	}
-	t.tableMutex.RUnlock()
 
 	if bootstrap {
 		return types.SwitchPorts{bestPort}
