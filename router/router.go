@@ -146,9 +146,7 @@ func NewRouter(log *log.Logger, id string, private ed25519.PrivateKey, public ed
 func (r *Router) Close() error {
 	r.cancel()
 	for _, port := range r.ports {
-		if port.started.Load() {
-			port.stop()
-		}
+		port.stop()
 	}
 	return nil
 }

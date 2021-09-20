@@ -276,14 +276,18 @@ func (t *spanningTree) advertise() {
 }
 
 func (t *spanningTree) becomeRoot() {
+	oldCoords := t.Coords()
+	newCoords := types.SwitchPorts{}
+
 	t.mutex.Lock()
+	if t.parent != 0 {
+		defer t.r.snake.rootNodeChanged(t.r.public)
+	}
 	t.parent = 0
 	t.mutex.Unlock()
 
-	newCoords := types.SwitchPorts{}
-	if !t.Coords().EqualTo(newCoords) {
-		go t.callback(0, types.SwitchPorts{})
-		defer t.r.snake.rootNodeChanged(t.r.public)
+	if !oldCoords.EqualTo(newCoords) {
+		go t.callback(0, newCoords)
 	}
 
 	t.advertise()
@@ -397,5 +401,12 @@ func (t *spanningTree) UpdateParentIfNeeded(p *Peer, newUpdate types.SwitchAnnou
 	case isParent && keyDeltaSinceLastParentUpdate == 0 && newUpdate.Sequence > lastParentUpdate.Sequence:
 		t.advertise()
 		t.rootReset <- struct{}{}
+
+	case keyDeltaSinceLastParentUpdate < 0:
+		// This peer sent us an update that is weaker than our own root, and
+		// none of the other conditions have been met, so the best thing to do
+		// is to announce our root back to them quickly so that they will
+		// hopefully converge.
+		p.protoOut.push(lastParentUpdate.ForPeer(p))
 	}
 }

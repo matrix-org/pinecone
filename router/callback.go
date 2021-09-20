@@ -48,7 +48,7 @@ func (c *callbacks) onConnected(port types.SwitchPortID, publickey types.PublicK
 	c.mutex.RLock()
 	defer c.mutex.RUnlock()
 	if c.connected != nil {
-		c.connected(port, publickey, peertype)
+		go c.connected(port, publickey, peertype)
 	}
 }
 
@@ -56,6 +56,6 @@ func (c *callbacks) onDisconnected(port types.SwitchPortID, publickey types.Publ
 	c.mutex.RLock()
 	defer c.mutex.RUnlock()
 	if c.disconnected != nil {
-		c.disconnected(port, publickey, peertype, err)
+		go c.disconnected(port, publickey, peertype, err)
 	}
 }

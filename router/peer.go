@@ -63,22 +63,20 @@ func (p *Peer) start() {
 		return
 	}
 
-	// When the peer dies, we need to clean up.
-	var lasterr error
-	var lasterrMutex sync.Mutex
-	defer func() {
-		p.reset()
-		p.r.snake.portWasDisconnected(p.port)
-		p.r.tree.portWasDisconnected(p.port)
-		go p.r.callbacks.onDisconnected(p.port, p.public, p.peertype, lasterr)
-	}()
-
 	// Store the fact that we're connected to this public key in
 	// this zone, so that the multicast code can ignore nodes we
 	// are already connected to.
 	index := hex.EncodeToString(p.public[:]) + p.zone
 	p.r.active.Store(index, p.port)
-	defer p.r.active.Delete(index)
+
+	// When the peer dies, we need to clean up.
+	var lasterr error
+	var lasterrMutex sync.Mutex
+	defer func() {
+		p.r.callbacks.onDisconnected(p.port, p.public, p.peertype, lasterr)
+		p.reset()
+		p.r.active.Delete(index)
+	}()
 
 	// Push a root update to our new peer. This will notify them
 	// of our coordinates and that we are alive.
@@ -108,13 +106,21 @@ func (p *Peer) start() {
 	if p.r.simulator != nil {
 		p.r.simulator.ReportNewLink(p.conn, p.r.public, p.public)
 	}
-	go p.r.callbacks.onConnected(p.port, p.public, p.peertype)
+	p.r.callbacks.onConnected(p.port, p.public, p.peertype)
 
 	p.r.log.Printf("Connected port %d to %s (zone %q)\n", p.port, p.conn.RemoteAddr(), p.zone)
 
 	// Wait for the cancellation, and then for the goroutines to stop.
 	<-p.context.Done()
 	p.started.Store(false)
+
+	// Notify the tree and DHT about the peer cancellation. We need
+	// to do this quickly so that they have more time to recover, even
+	// if the goroutines take a while to stop.
+	p.r.snake.portWasDisconnected(p.port)
+	p.r.tree.portWasDisconnected(p.port)
+
+	// Now wait for the goroutines to stop.
 	p.wg.Wait()
 
 	// Report the disconnection.
@@ -230,6 +236,8 @@ func (p *Peer) lastAnnouncement() *rootAnnouncementWithTime {
 	p.mutex.RLock()
 	defer p.mutex.RUnlock()
 	switch {
+	case !p.allocated.Load():
+		return nil
 	case !p.started.Load():
 		return nil
 	case p.announcement != nil && time.Since(p.announcement.at) >= announcementTimeout:
@@ -239,10 +247,11 @@ func (p *Peer) lastAnnouncement() *rootAnnouncementWithTime {
 }
 
 func (p *Peer) stop() {
-	p.started.Store(false)
-	p.mutex.Lock()
-	p.cancel()
-	p.mutex.Unlock()
+	if p.started.CAS(true, false) {
+		p.mutex.Lock()
+		p.cancel()
+		p.mutex.Unlock()
+	}
 }
 
 func (p *Peer) generateKeepalive() *types.Frame {
