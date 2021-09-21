@@ -141,12 +141,14 @@ func (r *Router) signPathfind(frame *types.Frame, from, to *Peer) (*types.Frame,
 	if err != nil {
 		return nil, fmt.Errorf("pathfind.Sign: %w", err)
 	}
-	var buf [MaxPayloadSize]byte
-	n, err := signed.MarshalBinary(buf[:])
+
+	buf := bufPool.Get().([]byte)
+	defer bufPool.Put(buf) // nolint:staticcheck
+	n, err := signed.MarshalBinary(buf[:MaxPayloadSize])
 	if err != nil {
 		return nil, fmt.Errorf("signed.MarshalBinary: %w", err)
 	}
-	signedFrame.Payload = buf[:n]
+	signedFrame.Payload = append(signedFrame.Payload[:0], buf[:n]...)
 	return signedFrame, nil
 }
 
