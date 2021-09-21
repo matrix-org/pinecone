@@ -43,6 +43,7 @@ func main() {
 	}()
 
 	filename := flag.String("filename", "cmd/pineconesim/graphs/sim.txt", "the file that describes the simulated topology")
+	sockets := flag.Bool("sockets", false, "use real TCP sockets to connect simulated nodes")
 	flag.Parse()
 
 	file, err := os.Open(*filename)
@@ -74,7 +75,7 @@ func main() {
 	}
 
 	log := log.New(os.Stdout, "\u001b[36m***\u001b[0m ", 0)
-	sim := simulator.NewSimulator(log)
+	sim := simulator.NewSimulator(log, *sockets)
 	configureHTTPRouting(sim)
 	sim.CalculateShortestPaths(nodes, wires)
 
@@ -268,7 +269,7 @@ func configureHTTPRouting(sim *simulator.Simulator) {
 			asc, desc, table := node.DHTInfo()
 			entry := Node{
 				Name:    n,
-				Port:    "N/A",
+				Port:    "—",
 				Coords:  fmt.Sprintf("%v", node.Coords()),
 				Key:     hex.EncodeToString(public[:2]),
 				IsRoot:  node.IsRoot(),

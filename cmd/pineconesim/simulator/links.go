@@ -40,7 +40,16 @@ func (sim *Simulator) ConnectNodes(a, b string) error {
 		return fmt.Errorf("already connected")
 	}
 
-	/*
+	register := func(conn net.Conn) {
+		sim.wiresMutex.Lock()
+		defer sim.wiresMutex.Unlock()
+		if sim.wires[a] == nil {
+			sim.wires[a] = map[string]net.Conn{}
+		}
+		sim.wires[a][b] = conn
+	}
+
+	if sim.sockets {
 		c, err := net.DialTCP(na.l.Addr().Network(), nil, na.ListenAddr)
 		if err != nil {
 			return fmt.Errorf("net.Dial: %w", err)
@@ -48,37 +57,27 @@ func (sim *Simulator) ConnectNodes(a, b string) error {
 		if err := c.SetNoDelay(true); err != nil {
 			panic(err)
 		}
-		sc := &util.SlowConn{
-			Conn: c,
-			//ReadDelay:  5 * time.Millisecond,
-			//ReadJitter: 2 * time.Millisecond,
-		}
+		sc := &util.SlowConn{Conn: c, ReadJitter: 5 * time.Millisecond}
 		if _, err := nb.AuthenticatedConnect(sc, "sim", router.PeerTypeRemote); err != nil {
 			return fmt.Errorf("nb.AuthenticatedConnect: %w", err)
 		}
-	*/
-
-	pa, pb := net.Pipe()
-	pa = &util.SlowConn{Conn: pa, ReadJitter: 5 * time.Millisecond}
-	pb = &util.SlowConn{Conn: pb, ReadJitter: 5 * time.Millisecond}
-	go func() {
-		if _, err := na.Connect(pa, nb.PublicKey(), "sim", router.PeerTypeRemote); err != nil {
-			return
-		}
-	}()
-	go func() {
-		if _, err := nb.Connect(pb, na.PublicKey(), "sim", router.PeerTypeRemote); err != nil {
-			return
-		}
-	}()
-
-	sim.wiresMutex.Lock()
-	defer sim.wiresMutex.Unlock()
-	if sim.wires[a] == nil {
-		sim.wires[a] = map[string]net.Conn{}
+		register(sc)
+	} else {
+		pa, pb := net.Pipe()
+		pa = &util.SlowConn{Conn: pa, ReadJitter: 5 * time.Millisecond}
+		pb = &util.SlowConn{Conn: pb, ReadJitter: 5 * time.Millisecond}
+		go func() {
+			if _, err := na.Connect(pa, nb.PublicKey(), "sim", router.PeerTypeRemote); err != nil {
+				return
+			}
+		}()
+		go func() {
+			if _, err := nb.Connect(pb, na.PublicKey(), "sim", router.PeerTypeRemote); err != nil {
+				return
+			}
+		}()
+		register(pa)
 	}
-	//sim.wires[a][b] = sc
-	sim.wires[a][b] = pa
 
 	sim.log.Printf("Connected node %q to node %q\n", a, b)
 	return nil

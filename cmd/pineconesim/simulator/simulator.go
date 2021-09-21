@@ -25,6 +25,7 @@ import (
 
 type Simulator struct {
 	log                      *log.Logger
+	sockets                  bool
 	nodes                    map[string]*Node
 	nodesMutex               sync.RWMutex
 	graph                    *dijkstra.Graph
@@ -40,9 +41,10 @@ type Simulator struct {
 	startTime                time.Time
 }
 
-func NewSimulator(log *log.Logger) *Simulator {
+func NewSimulator(log *log.Logger, sockets bool) *Simulator {
 	sim := &Simulator{
 		log:                 log,
+		sockets:             sockets,
 		nodes:               make(map[string]*Node),
 		wires:               make(map[string]map[string]net.Conn),
 		dists:               make(map[string]map[string]*Distance),

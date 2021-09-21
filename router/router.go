@@ -136,7 +136,9 @@ func NewRouter(log *log.Logger, id string, private ed25519.PrivateKey, public ed
 	}
 	go sw.reader(pipelocal)
 	go sw.writer(pipelocal)
-	go sw.startManhole()
+	if simulator == nil {
+		go sw.startManhole()
+	}
 
 	return sw
 }
