@@ -120,7 +120,6 @@ func (p *pathfinder) pathfind(ctx context.Context, addr net.Addr) (net.Addr, err
 
 func (r *Router) signPathfind(frame *types.Frame, from, to *Peer) (*types.Frame, error) {
 	var pathfind types.Pathfind
-	signedFrame := frame.Copy()
 	if _, err := pathfind.UnmarshalBinary(frame.Payload); err != nil {
 		return nil, fmt.Errorf("pathfind.UnmarshalBinary: %w", err)
 	}
@@ -134,6 +133,7 @@ func (r *Router) signPathfind(frame *types.Frame, from, to *Peer) (*types.Frame,
 	if pathfind.Boundary > 0 {
 		port = from.port
 	}
+	signedFrame := frame.Copy()
 	if port == 0 {
 		return signedFrame, nil
 	}

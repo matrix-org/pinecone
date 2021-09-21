@@ -292,7 +292,7 @@ func (r *Router) KnownNodes() []types.PublicKey {
 }
 
 func (r *Router) startedPorts() peers {
-	peers := make(peers, 0, PortCount)
+	peers := peersPool.Get().(peers)[:0]
 	for _, p := range r.ports {
 		switch {
 		case p.port == 0: // ignore the router
@@ -303,13 +303,24 @@ func (r *Router) startedPorts() peers {
 			peers = append(peers, p)
 		}
 	}
+	// Sorting requires us to hold the port mutexes so that
+	// we don't have to take and release the mutexes for each
+	// step in the sort operation (lower complexity).
+	for _, p := range peers {
+		p.mutex.RLock()
+	}
 	sort.Sort(peers)
+	for _, p := range peers {
+		p.mutex.RUnlock()
+	}
 	return peers
 }
 
 func (r *Router) activePorts() peers {
-	peers := make(peers, 0, PortCount)
-	for _, p := range r.startedPorts() {
+	started := r.startedPorts()
+	peers := make(peers, 0, len(started))
+	defer peersPool.Put(started) // nolint:staticcheck
+	for _, p := range started {
 		if p.Alive() {
 			peers = append(peers, p)
 		}

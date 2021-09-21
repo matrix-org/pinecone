@@ -469,13 +469,18 @@ func (p peers) Swap(i, j int) {
 	p[i], p[j] = p[j], p[i]
 }
 
+// The mutexes should be held on the ports before sorting. It
+// is more efficient to hold them already for each port rather
+// than taking and releasing the mutexes for each sort operation.
 func (p peers) Less(i, j int) bool {
-	p[i].mutex.RLock()
-	p[j].mutex.RLock()
-	defer p[i].mutex.RUnlock()
-	defer p[j].mutex.RUnlock()
 	if p[i].peertype < p[j].peertype {
 		return true
 	}
 	return p[i].port < p[j].port
+}
+
+var peersPool = &sync.Pool{
+	New: func() interface{} {
+		return make(peers, 0, PortCount)
+	},
 }

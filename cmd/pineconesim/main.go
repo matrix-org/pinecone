@@ -268,11 +268,14 @@ func configureHTTPRouting(sim *simulator.Simulator) {
 			asc, desc, table := node.DHTInfo()
 			entry := Node{
 				Name:    n,
-				Port:    fmt.Sprintf("%d", node.ListenAddr.Port),
+				Port:    "N/A",
 				Coords:  fmt.Sprintf("%v", node.Coords()),
 				Key:     hex.EncodeToString(public[:2]),
 				IsRoot:  node.IsRoot(),
 				DHTSize: len(table),
+			}
+			if node.ListenAddr != nil {
+				entry.Port = fmt.Sprintf("%d", node.ListenAddr.Port)
 			}
 			shortcuts[entry.Key] = n
 			rootkey := node.RootPublicKey()

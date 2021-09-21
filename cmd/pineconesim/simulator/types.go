@@ -22,7 +22,7 @@ import (
 
 type Node struct {
 	*router.Router
-	l          *net.TCPListener
+	l          *net.TCPListener // nolint:structcheck,unused
 	ListenAddr *net.TCPAddr
 }
 

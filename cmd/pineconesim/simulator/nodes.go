@@ -19,7 +19,6 @@ import (
 	"fmt"
 	"hash/crc32"
 	"log"
-	"net"
 
 	"github.com/matrix-org/pinecone/router"
 )
@@ -31,17 +30,19 @@ func (sim *Simulator) Node(t string) *Node {
 }
 
 func (sim *Simulator) CreateNode(t string) error {
-	l, err := net.ListenTCP("tcp", &net.TCPAddr{
-		IP:   net.IPv4zero,
-		Port: 0,
-	})
-	tcpaddr, ok := l.Addr().(*net.TCPAddr)
-	if !ok {
-		panic("Not tcpaddr")
-	}
-	if err != nil {
-		return fmt.Errorf("net.Listen: %w", err)
-	}
+	/*
+		l, err := net.ListenTCP("tcp", &net.TCPAddr{
+			IP:   net.IPv4zero,
+			Port: 0,
+		})
+		tcpaddr, ok := l.Addr().(*net.TCPAddr)
+		if !ok {
+			panic("Not tcpaddr")
+		}
+		if err != nil {
+			return fmt.Errorf("net.Listen: %w", err)
+		}
+	*/
 	pk, sk, err := ed25519.GenerateKey(nil)
 	if err != nil {
 		return fmt.Errorf("ed25519.GenerateKey: %w", err)
@@ -50,33 +51,35 @@ func (sim *Simulator) CreateNode(t string) error {
 	color := 31 + (crc % 6)
 	log := log.New(sim.log.Writer(), fmt.Sprintf("\033[%dmNode %s:\033[0m ", color, t), 0)
 	n := &Node{
-		Router:     router.NewRouter(log, t, sk, pk, sim),
-		l:          l,
-		ListenAddr: tcpaddr,
+		Router: router.NewRouter(log, t, sk, pk, sim),
+		//l:          l,
+		//ListenAddr: tcpaddr,
 	}
 	sim.nodesMutex.Lock()
 	sim.nodes[t] = n
 	sim.nodesMutex.Unlock()
 
-	go func(n *Node) {
-		for {
-			c, err := l.AcceptTCP()
-			if err != nil {
-				continue
+	/*
+		go func(n *Node) {
+			for {
+				c, err := l.AcceptTCP()
+				if err != nil {
+					continue
+				}
+				if err := c.SetNoDelay(true); err != nil {
+					panic(err)
+				}
+				if err := c.SetLinger(0); err != nil {
+					panic(err)
+				}
+				if _, err = n.AuthenticatedConnect(c, "sim", router.PeerTypeRemote); err != nil {
+					continue
+				}
 			}
-			if err := c.SetNoDelay(true); err != nil {
-				panic(err)
-			}
-			if err := c.SetLinger(0); err != nil {
-				panic(err)
-			}
-			if _, err = n.AuthenticatedConnect(c, "sim", router.PeerTypeRemote); err != nil {
-				continue
-			}
-		}
-	}(n)
+		}(n)
+	*/
 
-	sim.log.Printf("Created node %q (listening on %s)\n", t, l.Addr())
+	sim.log.Printf("Created node %q (listening on %s)\n", t, "none" /*l.Addr()*/)
 	//sim.log.Printf("Created node %q\n", t)
 	return nil
 }

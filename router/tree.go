@@ -188,7 +188,10 @@ func (t *spanningTree) selectNewParentAndAdvertise() {
 
 	t.mutex.Lock()
 
-	for _, p := range t.r.activePorts() {
+	active := t.r.activePorts()
+	defer peersPool.Put(active) // nolint:staticcheck
+
+	for _, p := range active {
 		ann := p.lastAnnouncement()
 		if ann == nil {
 			continue
@@ -270,7 +273,9 @@ func (t *spanningTree) advertise() {
 		}
 	}
 
-	for _, p := range t.r.startedPorts() {
+	started := t.r.startedPorts()
+	defer peersPool.Put(started) // nolint:staticcheck
+	for _, p := range started {
 		p.protoOut.push(ann.ForPeer(p))
 	}
 }
@@ -332,22 +337,14 @@ func (t *spanningTree) IsRoot() bool {
 }
 
 func (t *spanningTree) Root() *rootAnnouncementWithTime {
-	root := t.r.ports[t.Parent()].lastAnnouncement()
-	if root == nil {
-		return &rootAnnouncementWithTime{
-			at: time.Now(),
-			SwitchAnnouncement: types.SwitchAnnouncement{
-				RootPublicKey: t.r.public,
-				Sequence:      types.Varu64(t.sequence.Load()),
-			},
-		}
+	if root := t.r.ports[t.Parent()].lastAnnouncement(); root != nil {
+		return root
 	}
 	return &rootAnnouncementWithTime{
 		at: time.Now(),
-		SwitchAnnouncement: types.SwitchAnnouncement{ // return a copy
-			RootPublicKey: root.RootPublicKey,
-			Sequence:      root.Sequence,
-			Signatures:    append([]types.SignatureWithHop{}, root.Signatures...),
+		SwitchAnnouncement: types.SwitchAnnouncement{
+			RootPublicKey: t.r.public,
+			Sequence:      types.Varu64(t.sequence.Load()),
 		},
 	}
 }
