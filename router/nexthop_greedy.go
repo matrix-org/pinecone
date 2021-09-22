@@ -24,6 +24,17 @@ import (
 // (as the router is always connected to switch port 0). Otherwise, zero
 // or one next-hop ports can be returned.
 func (r *Router) getGreedyRoutedNextHop(from *Peer, rx *types.Frame) types.SwitchPorts {
+	// We'll collect all possible candidates. We start at PortCount-1
+	// because that guarantees the last candidate port is always 0, so
+	// that if we don't know what else to do with a packet, we hand it
+	// up to the local router.
+	candidates := make(types.SwitchPorts, PortCount)
+	canlength := PortCount - 1
+	newCandidate := func(port types.SwitchPortID) {
+		canlength--
+		candidates[canlength] = port
+	}
+
 	// If it's loopback then don't bother doing anything else.
 	ourCoords := r.Coords()
 	if rx.Destination.EqualTo(ourCoords) {
@@ -43,7 +54,6 @@ func (r *Router) getGreedyRoutedNextHop(from *Peer, rx *types.Frame) types.Switc
 	}
 
 	// Now work out which of our peers takes the message closer.
-	bestPeer := types.SwitchPortID(0)
 	bestDist := ourDist
 	for _, p := range r.activePorts() {
 		// Don't deliberately create routing loops by forwarding
@@ -64,7 +74,8 @@ func (r *Router) getGreedyRoutedNextHop(from *Peer, rx *types.Frame) types.Switc
 
 		case peerDist < bestDist:
 			// The peer is closer to the destination.
-			bestPeer, bestDist = p.port, peerDist
+			bestDist = peerDist
+			newCandidate(p.port)
 
 		default:
 		}
@@ -73,5 +84,5 @@ func (r *Router) getGreedyRoutedNextHop(from *Peer, rx *types.Frame) types.Switc
 	// If we've got an eligible next peer, and it doesn't create a
 	// routing loop by sending the frame back where it came from,
 	// then return it.
-	return types.SwitchPorts{bestPeer}
+	return candidates[canlength:]
 }

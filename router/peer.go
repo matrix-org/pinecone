@@ -314,15 +314,10 @@ func (p *Peer) reader(ctx context.Context) error {
 				defer frame.Done()
 				//	p.r.log.Println("Frame type", frame.Type.String(), frame.DestinationKey)
 				for _, port := range p.getNextHops(frame, p.port) {
-					// Ignore ports that are not good candidates.
 					dest := p.r.ports[port]
 					if !dest.started.Load() || (dest.port != 0 && !dest.Alive()) {
+						// Ignore ports that are not good candidates.
 						continue
-					}
-					if p.port != 0 && dest.port != 0 {
-						if p.port == dest.port || p.public.EqualTo(dest.public) {
-							continue
-						}
 					}
 					switch frame.Type {
 					case types.TypePathfind, types.TypeVirtualSnakePathfind:
