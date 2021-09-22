@@ -188,6 +188,7 @@ func (t *spanningTree) selectNewParentAndAdvertise() {
 	var bestAnn *rootAnnouncementWithTime
 
 	t.mutex.Lock()
+	lastParent := t.parent
 
 	active := t.r.activePorts()
 	defer peersPool.Put(active) // nolint:staticcheck
@@ -228,6 +229,7 @@ func (t *spanningTree) selectNewParentAndAdvertise() {
 		newCoords := bestAnn.Coords()
 		coordsChanged := !lastUpdate.Coords().EqualTo(bestAnn.Coords())
 		rootChanged := bestAnn.RootPublicKey != lastUpdate.RootPublicKey
+		sequenceChanged := lastUpdate.RootPublicKey == bestKey && bestSeq > lastUpdate.Sequence
 
 		if rootChanged {
 			t.r.snake.rootNodeChanged(bestAnn.RootPublicKey)
@@ -236,7 +238,12 @@ func (t *spanningTree) selectNewParentAndAdvertise() {
 			t.callback(bestPort, newCoords)
 		}
 
-		t.advertise()
+		switch {
+		case bestPort != lastParent:
+			fallthrough
+		case rootChanged, coordsChanged, sequenceChanged:
+			t.advertise()
+		}
 		return
 	}
 
@@ -367,21 +374,15 @@ func (t *spanningTree) UpdateParentIfNeeded(p *Peer, newUpdate types.SwitchAnnou
 		// something bad happened.
 		reparentIn, becomeRoot = time.Second/2, true
 
-	case isParent && keyDeltaSinceLastParentUpdate == 0 && newUpdate.Sequence < lastParentUpdate.Sequence:
-		// Our parent sent us a lower sequence number than before for the
-		// same root — this isn't good news either.
+	case isParent && keyDeltaSinceLastParentUpdate == 0 && newUpdate.Sequence <= lastParentUpdate.Sequence:
+		// Our parent sent us a repeated sequence number for the same root -
+		// this isn't good news either.
 		reparentIn, becomeRoot = time.Second/2, true
-
-	case isParent && keyDeltaSinceLastParentUpdate == 0 && newUpdate.Sequence == lastParentUpdate.Sequence:
-		// Our parent sent us an equal sequence number, which probably means
-		// that their path to the root has changed. This isn't as bad news as
-		// a weaker key but we should still try to find a new parent.
-		reparentIn, becomeRoot = time.Second/4, false
 	}
 
 	switch {
 	case reparentIn >= 0:
-		if becomeRoot {
+		if becomeRoot && lastParentUpdate.RootPublicKey != t.r.public {
 			t.becomeRoot()
 		}
 		t.selectNewParentAndAdvertiseIn(reparentIn)
@@ -389,12 +390,5 @@ func (t *spanningTree) UpdateParentIfNeeded(p *Peer, newUpdate types.SwitchAnnou
 	case isParent && keyDeltaSinceLastParentUpdate == 0 && newUpdate.Sequence > lastParentUpdate.Sequence:
 		t.advertise()
 		t.rootReset <- struct{}{}
-
-	case keyDeltaSinceLastParentUpdate < 0:
-		// This peer sent us an update that is weaker than our own root, and
-		// none of the other conditions have been met, so the best thing to do
-		// is to announce our root back to them quickly so that they will
-		// hopefully converge.
-		p.protoOut.push(lastParentUpdate.ForPeer(p))
 	}
 }
