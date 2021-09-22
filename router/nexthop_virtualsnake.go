@@ -263,7 +263,7 @@ func (t *virtualSnake) getVirtualSnakeNextHop(from *Peer, destKey types.PublicKe
 	if !bootstrap && t.r.public.EqualTo(destKey) {
 		return types.SwitchPorts{0}
 	}
-	rootKey := t.r.public
+	rootKey := t.r.RootPublicKey()
 	ancestors, parentPort := t.r.tree.Ancestors()
 	if len(ancestors) > 0 {
 		rootKey = ancestors[0]
@@ -315,14 +315,17 @@ func (t *virtualSnake) getVirtualSnakeNextHop(from *Peer, destKey types.PublicKe
 	}
 
 	// The next section needs us to check direct peers
-	activePorts := t.r.activePorts()
-
-	// Check our direct peers ancestors
-	for _, peer := range activePorts {
-		peerAnn := peer.lastAnnouncement()
-		if peerAnn == nil {
+	activePeers := map[*Peer]*rootAnnouncementWithTime{}
+	for _, peer := range t.r.activePorts() {
+		ann := peer.lastAnnouncement()
+		if ann == nil || ann.RootPublicKey != rootKey {
 			continue
 		}
+		activePeers[peer] = ann
+	}
+
+	// Check our direct peers ancestors
+	for peer, peerAnn := range activePeers {
 		newCheckedCandidate(peerAnn.RootPublicKey, peer.port)
 		for _, hop := range peerAnn.Signatures {
 			newCheckedCandidate(hop.PublicKey, peer.port)
@@ -342,7 +345,7 @@ func (t *virtualSnake) getVirtualSnakeNextHop(from *Peer, destKey types.PublicKe
 	t.tableMutex.RUnlock()
 
 	// Check our direct peers
-	for _, peer := range activePorts {
+	for peer := range activePeers {
 		peerKey := peer.PublicKey()
 		switch {
 		case bestKey.EqualTo(peerKey):
