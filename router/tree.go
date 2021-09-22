@@ -75,7 +75,8 @@ func (r *Router) handleAnnouncement(peer *Peer, rx *types.Frame) error {
 
 type rootAnnouncementWithTime struct {
 	types.SwitchAnnouncement
-	at time.Time
+	receiveTime  time.Time // when did we receive the update?
+	receiveOrder uint64    // the relative order that the update was received
 }
 
 func (a *rootAnnouncementWithTime) ForPeer(p *Peer) *types.Frame {
@@ -120,6 +121,7 @@ type spanningTree struct {
 	parent    types.SwitchPortID
 	reparent  *time.Timer
 	sequence  atomic.Uint64
+	ordering  uint64
 	callback  func(parent types.SwitchPortID, coords types.SwitchPorts)
 }
 
@@ -181,8 +183,7 @@ func (t *spanningTree) selectNewParentAndAdvertise() {
 	lastUpdate := t.Root()
 	bestKey := lastUpdate.RootPublicKey
 	bestSeq := lastUpdate.Sequence
-	bestDist := math.MaxInt32
-	bestTime := time.Now()
+	bestOrder := uint64(math.MaxUint64)
 	var bestPort types.SwitchPortID
 	var bestAnn *rootAnnouncementWithTime
 
@@ -198,14 +199,12 @@ func (t *spanningTree) selectNewParentAndAdvertise() {
 		}
 		accept := func() {
 			bestKey = ann.RootPublicKey
-			bestDist = len(ann.Signatures)
 			bestPort = p.port
-			bestTime = ann.at
+			bestOrder = ann.receiveOrder
 			bestSeq = ann.Sequence
 			bestAnn = ann
 		}
 		keyDelta := ann.RootPublicKey.CompareTo(bestKey)
-		annAt := ann.at.Round(time.Millisecond)
 		switch {
 		case ann.IsLoopOrChildOf(p.r.public):
 			// ignore our children or loopy announcements
@@ -217,15 +216,7 @@ func (t *spanningTree) selectNewParentAndAdvertise() {
 			accept()
 		case ann.Sequence < bestSeq:
 			// ignore lower sequence numbers
-		case annAt.Before(bestTime):
-			accept()
-		case annAt.After(bestTime):
-			// ignore updates that arrived more recently
-		case len(ann.Signatures) < bestDist:
-			accept()
-		case len(ann.Signatures) > bestDist:
-			// ignore longer paths
-		case p.public.CompareTo(bestKey) > 0:
+		case ann.receiveOrder < bestOrder:
 			accept()
 		}
 	}
@@ -265,7 +256,7 @@ func (t *spanningTree) advertise() {
 
 	if t.parent == 0 || ann == nil { // we are the root
 		ann = &rootAnnouncementWithTime{
-			at: time.Now(),
+			receiveTime: time.Now(),
 			SwitchAnnouncement: types.SwitchAnnouncement{
 				RootPublicKey: t.r.public,
 				Sequence:      types.Varu64(t.sequence.Inc()),
@@ -333,7 +324,7 @@ func (t *spanningTree) workerForRoot() {
 
 func (t *spanningTree) IsRoot() bool {
 	root := t.Root()
-	return root.RootPublicKey.EqualTo(t.r.public) || time.Since(root.at) >= announcementTimeout
+	return root.RootPublicKey.EqualTo(t.r.public) || time.Since(root.receiveTime) >= announcementTimeout
 }
 
 func (t *spanningTree) Root() *rootAnnouncementWithTime {
@@ -341,7 +332,7 @@ func (t *spanningTree) Root() *rootAnnouncementWithTime {
 		return root
 	}
 	return &rootAnnouncementWithTime{
-		at: time.Now(),
+		receiveTime: time.Now(),
 		SwitchAnnouncement: types.SwitchAnnouncement{
 			RootPublicKey: t.r.public,
 			Sequence:      types.Varu64(t.sequence.Load()),
@@ -366,7 +357,7 @@ func (t *spanningTree) UpdateParentIfNeeded(p *Peer, newUpdate types.SwitchAnnou
 		// The peer has sent us a key that is stronger than our last update.
 		reparentIn = immediately
 
-	case time.Since(lastParentUpdate.at) >= announcementTimeout:
+	case time.Since(lastParentUpdate.receiveTime) >= announcementTimeout:
 		// It's been a while since we last heard from our parent so we should
 		// really choose a new one if we can.
 		reparentIn = immediately

@@ -29,7 +29,7 @@ func (q *fifoQueue) _initialise() {
 func (q *fifoQueue) queuecount() int {
 	q.mutex.Lock()
 	defer q.mutex.Unlock()
-	return len(q.entries)
+	return len(q.entries) - 1
 }
 
 func (q *fifoQueue) queuesize() int {

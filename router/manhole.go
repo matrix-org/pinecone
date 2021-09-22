@@ -16,7 +16,6 @@ package router
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"net/http/pprof"
 	"time"
@@ -32,13 +31,15 @@ func (r *Router) startManhole() {
 	mux.Handle("/debug/pprof/profile", pprof.Handler("profile"))
 	mux.HandleFunc("/", func(w http.ResponseWriter, req *http.Request) {
 		results := map[string]interface{}{}
-		results["self"] = map[string]string{
+		results["self"] = map[string]interface{}{
 			"public_key": r.PublicKey().String(),
 			"coords":     r.Coords().String(),
 		}
-		results["tree"] = map[string]string{
-			"root":      r.tree.Root().RootPublicKey.String(),
-			"last_seen": time.Since(r.tree.Root().at).String(),
+		root := r.tree.Root()
+		results["tree"] = map[string]interface{}{
+			"root":      root.RootPublicKey.String(),
+			"last_seen": time.Since(root.receiveTime).String(),
+			"ordering":  root.receiveOrder,
 		}
 		ports := map[types.SwitchPortID]map[string]interface{}{}
 		for _, p := range r.activePorts() {
@@ -48,8 +49,8 @@ func (r *Router) startManhole() {
 				"public_key":            p.public.String(),
 				"coords":                p.coords.String(),
 				"peer_type":             p.peertype,
-				"queued_proto":          fmt.Sprintf("%d/%d", p.protoOut.queuecount(), p.protoOut.queuesize()),
-				"queued_traffic":        fmt.Sprintf("%d/%d", p.trafficOut.queuecount(), p.trafficOut.queuesize()),
+				"queued_proto":          []int{p.protoOut.queuecount(), p.protoOut.queuesize()},
+				"queued_traffic":        []int{p.trafficOut.queuecount(), p.trafficOut.queuesize()},
 				"tx_proto_successful":   p.statistics.txProtoSuccessful.Load(),
 				"tx_proto_dropped":      p.statistics.txProtoDropped.Load(),
 				"tx_traffic_successful": p.statistics.txTrafficSuccessful.Load(),
@@ -57,7 +58,8 @@ func (r *Router) startManhole() {
 			}
 			if ann := p.lastAnnouncement(); ann != nil {
 				ports[p.port]["root"] = ann.RootPublicKey.String()
-				ports[p.port]["last_seen"] = time.Since(ann.at).String()
+				ports[p.port]["last_seen"] = time.Since(ann.receiveTime).String()
+				ports[p.port]["ordering"] = ann.receiveOrder
 			}
 			p.mutex.RUnlock()
 		}

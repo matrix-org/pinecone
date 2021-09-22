@@ -186,7 +186,7 @@ func (p *Peer) IsParent() bool {
 func (p *Peer) Alive() bool {
 	p.mutex.RLock()
 	defer p.mutex.RUnlock()
-	return p.announcement != nil && time.Since(p.announcement.at) < announcementTimeout
+	return p.announcement != nil && time.Since(p.announcement.receiveTime) < announcementTimeout
 }
 
 func (p *Peer) PublicKey() types.PublicKey {
@@ -224,9 +224,11 @@ func (p *Peer) updateAnnouncement(new *types.SwitchAnnouncement) error {
 			return fmt.Errorf("root announcement replays sequence number")
 		}
 	}
+	p.r.tree.ordering++
 	p.announcement = &rootAnnouncementWithTime{
 		SwitchAnnouncement: *new,
-		at:                 time.Now(),
+		receiveTime:        time.Now(),
+		receiveOrder:       p.r.tree.ordering,
 	}
 	p.coords = new.PeerCoords()
 	return nil
@@ -240,7 +242,7 @@ func (p *Peer) lastAnnouncement() *rootAnnouncementWithTime {
 		return nil
 	case !p.started.Load():
 		return nil
-	case p.announcement != nil && time.Since(p.announcement.at) >= announcementTimeout:
+	case p.announcement != nil && time.Since(p.announcement.receiveTime) >= announcementTimeout:
 		return nil
 	}
 	return p.announcement
