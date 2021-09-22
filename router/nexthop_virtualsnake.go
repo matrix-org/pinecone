@@ -346,16 +346,12 @@ func (t *virtualSnake) getVirtualSnakeNextHop(from *Peer, destKey types.PublicKe
 
 	// Check our direct peers
 	for peer := range activePeers {
-		peerKey := peer.PublicKey()
-		switch {
-		case bestKey.EqualTo(peerKey):
+		if peerKey := peer.PublicKey(); bestKey.EqualTo(peerKey) {
 			// We've seen this key already, either as one of our ancestors
 			// or as an ancestor of one of our peers, but it turns out we
 			// are directly peered with that node, so use the more direct
 			// path instead
 			newCandidate(peerKey, peer.port)
-		default:
-			newCheckedCandidate(peerKey, peer.port)
 		}
 	}
 
