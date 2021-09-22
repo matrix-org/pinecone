@@ -40,7 +40,9 @@ var framePool = &sync.Pool{
 
 func GetFrame() *Frame {
 	frame := framePool.Get().(*Frame)
-	frame.refs.Store(1)
+	if !frame.refs.CAS(0, 1) {
+		panic("invalid frame reuse after Done call")
+	}
 	return frame
 }
 
@@ -364,6 +366,8 @@ func (t FrameType) String() string {
 		return "TypeVirtualSnakePathfind"
 	case TypeVirtualSnakeTeardown:
 		return "TypeVirtualSnakeTeardown"
+	case TypeKeepalive:
+		return "TypeKeepalive"
 	default:
 		return "TypeUnknown"
 	}
