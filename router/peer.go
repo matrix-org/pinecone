@@ -298,21 +298,18 @@ func (p *Peer) reader(ctx context.Context) error {
 				p.r.log.Println("Expecting", expecting, "bytes but got", n, "bytes")
 				continue
 			}
-			frame := types.GetFrame()
-			if _, err := frame.UnmarshalBinary(buf[:n+8]); err != nil {
-				frame.Done()
-				return fmt.Errorf("frame.UnmarshalBinary: %w", err)
-			}
-			switch {
-			case frame.Version != types.Version0:
-				fallthrough
-			case frame.Type == types.TypeKeepalive:
-				frame.Done()
-				continue
-			}
 			func(frame *types.Frame) {
 				defer frame.Done()
-				//	p.r.log.Println("Frame type", frame.Type.String(), frame.DestinationKey)
+				if _, err := frame.UnmarshalBinary(buf[:n+8]); err != nil {
+					p.r.log.Println("frame.UnmarshalBinary:", err)
+					return
+				}
+				switch {
+				case frame.Version != types.Version0:
+					fallthrough
+				case frame.Type == types.TypeKeepalive:
+					return
+				}
 				for _, port := range p.getNextHops(frame, p.port) {
 					dest := p.r.ports[port]
 					if !dest.started.Load() || (dest.port != 0 && !dest.Alive()) {
@@ -321,7 +318,7 @@ func (p *Peer) reader(ctx context.Context) error {
 					}
 					switch frame.Type {
 					case types.TypePathfind, types.TypeVirtualSnakePathfind:
-						signedframe, err := p.r.signPathfind(frame, p, dest)
+						signedframe, err := p.r.signPathfind(frame.Borrow(), p, dest)
 						if err != nil {
 							p.r.log.Println("WARNING: Failed to sign pathfind:", err)
 							continue
@@ -353,7 +350,7 @@ func (p *Peer) reader(ctx context.Context) error {
 						}
 					}
 				}
-			}(frame)
+			}(types.GetFrame())
 		}
 	}
 }

@@ -61,6 +61,8 @@ func (a GreedyAddr) String() string {
 // contain the source-routed path back to the sender.
 func (r *Router) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
 	frame := <-r.recv
+	defer frame.Done()
+
 	switch frame.Type {
 	case types.TypeGreedy:
 		addr = GreedyAddr{frame.Source}

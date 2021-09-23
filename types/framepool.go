@@ -37,7 +37,7 @@ var framePool = &sync.Pool{
 func GetFrame() *Frame {
 	frame := framePool.Get().(*Frame)
 	if !frame.refs.CAS(0, 1) {
-		panic("invalid frame reuse after Done call")
+		panic("invalid frame reuse")
 	}
 	frame.Reset()
 	return frame
@@ -64,6 +64,9 @@ func (f *Frame) Copy() *Frame {
 }
 
 func (f *Frame) Borrow() *Frame {
+	if f.refs.Load() == 0 {
+		panic("invalid Borrow call after final Done call")
+	}
 	f.refs.Inc()
 	return f
 }

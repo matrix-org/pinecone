@@ -134,6 +134,7 @@ func (r *Router) signPathfind(frame *types.Frame, from, to *Peer) (*types.Frame,
 		port = from.port
 	}
 	signedFrame := frame.Copy()
+	frame.Done()
 	if port == 0 {
 		return signedFrame, nil
 	}
