@@ -39,14 +39,6 @@ const PortCount = 256
 // buffer on a slow port.
 const TrafficBufferSize = 256
 
-// MaxPayloadSize is the maximum size that a single frame can contain
-// as a payload, not including headers.
-const MaxPayloadSize = 65535
-
-// MaxFrameSize is the maximum size that a single frame can be, including
-// all headers.
-const MaxFrameSize = 65535*3 + 14
-
 // Simulator is not used by normal Pinecone nodes and specifies the
 // functions that must be satisfied if running under pineconesim.
 type Simulator interface {
@@ -77,8 +69,8 @@ type Router struct {
 	dht         *dht               // Chord-like DHT tables
 	pathfinder  *pathfinder        // source routing pathfinder
 	active      sync.Map           // node public keys that we have active peerings with
-	send        chan types.Frame   // local node -> network
-	recv        chan types.Frame   // local node <- network
+	send        chan *types.Frame  // local node -> network
+	recv        chan *types.Frame  // local node <- network
 }
 
 // NewRouter instantiates a new Pinecone Router instance. The logger
@@ -96,8 +88,8 @@ func NewRouter(log *log.Logger, id string, private ed25519.PrivateKey, public ed
 		cancel:    cancel,
 		id:        id,
 		simulator: simulator,
-		send:      make(chan types.Frame),
-		recv:      make(chan types.Frame),
+		send:      make(chan *types.Frame),
+		recv:      make(chan *types.Frame),
 	}
 	sw.callbacks = &callbacks{r: sw}
 	copy(sw.private[:], private)

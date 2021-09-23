@@ -99,43 +99,43 @@ func (r *Router) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 
 	switch ga := addr.(type) {
 	case GreedyAddr:
+		frame := types.GetFrame()
+		frame.Type = types.TypeGreedy
+		frame.Destination = ga.SwitchPorts
+		frame.Source = r.Coords()
+		frame.Payload = append(frame.Payload[:0], p...)
 		select {
 		case <-timer.C:
+			frame.Done()
 			return 0, fmt.Errorf("router appears to be deadlocked")
-		case r.send <- types.Frame{
-			Version:     types.Version0,
-			Type:        types.TypeGreedy,
-			Destination: ga.SwitchPorts,
-			Source:      r.Coords(),
-			Payload:     append([]byte{}, p...),
-		}:
+		case r.send <- frame:
 			return len(p), nil
 		}
 
 	case SourceAddr:
+		frame := types.GetFrame()
+		frame.Type = types.TypeSource
+		frame.Destination = ga.SwitchPorts
+		frame.Payload = append(frame.Payload[:0], p...)
 		select {
 		case <-timer.C:
+			frame.Done()
 			return 0, fmt.Errorf("router appears to be deadlocked")
-		case r.send <- types.Frame{
-			Version:     types.Version0,
-			Type:        types.TypeSource,
-			Destination: ga.SwitchPorts,
-			Payload:     append([]byte{}, p...),
-		}:
+		case r.send <- frame:
 			return len(p), nil
 		}
 
 	case types.PublicKey:
+		frame := types.GetFrame()
+		frame.Type = types.TypeVirtualSnake
+		frame.DestinationKey = ga
+		frame.SourceKey = r.PublicKey()
+		frame.Payload = append(frame.Payload[:0], p...)
 		select {
 		case <-timer.C:
+			frame.Done()
 			return 0, fmt.Errorf("router appears to be deadlocked")
-		case r.send <- types.Frame{
-			Version:        types.Version0,
-			Type:           types.TypeVirtualSnake,
-			DestinationKey: ga,
-			SourceKey:      r.PublicKey(),
-			Payload:        append([]byte{}, p...),
-		}:
+		case r.send <- frame:
 			return len(p), nil
 		}
 

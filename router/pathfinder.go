@@ -53,15 +53,15 @@ func (p *pathfinder) pathfind(ctx context.Context, addr net.Addr) (net.Addr, err
 		if a.SwitchPorts.EqualTo(p.r.Coords()) {
 			return SourceAddr{types.SwitchPorts{}}, nil
 		}
+		frame := types.GetFrame()
+		frame.Type = types.TypePathfind
+		frame.Destination = a.SwitchPorts
+		frame.Source = p.r.Coords()
+		frame.Payload = append(frame.Payload[:0], payload[:]...)
 		select {
-		case p.r.send <- types.Frame{
-			Version:     types.Version0,
-			Type:        types.TypePathfind,
-			Destination: a.SwitchPorts,
-			Source:      p.r.Coords(),
-			Payload:     payload[:],
-		}:
+		case p.r.send <- frame:
 		case <-ctx.Done():
+			frame.Done()
 			return nil, ctx.Err()
 		}
 		select {
@@ -85,15 +85,15 @@ func (p *pathfinder) pathfind(ctx context.Context, addr net.Addr) (net.Addr, err
 		if a.EqualTo(p.r.PublicKey()) {
 			return SourceAddr{types.SwitchPorts{}}, nil
 		}
+		frame := types.GetFrame()
+		frame.Type = types.TypeVirtualSnakePathfind
+		frame.DestinationKey = a
+		frame.SourceKey = p.r.PublicKey()
+		frame.Payload = append(frame.Payload[:0], payload[:]...)
 		select {
-		case p.r.send <- types.Frame{
-			Version:        types.Version0,
-			Type:           types.TypeVirtualSnakePathfind,
-			DestinationKey: a,
-			SourceKey:      p.r.PublicKey(),
-			Payload:        payload[:],
-		}:
+		case p.r.send <- frame:
 		case <-ctx.Done():
+			frame.Done()
 			return nil, ctx.Err()
 		}
 		select {
@@ -142,9 +142,9 @@ func (r *Router) signPathfind(frame *types.Frame, from, to *Peer) (*types.Frame,
 		return nil, fmt.Errorf("pathfind.Sign: %w", err)
 	}
 
-	buf := bufPool.Get().([]byte)
+	buf := bufPool.Get().(*[types.MaxFrameSize]byte)
 	defer bufPool.Put(buf) // nolint:staticcheck
-	n, err := signed.MarshalBinary(buf[:MaxPayloadSize])
+	n, err := signed.MarshalBinary(buf[:types.MaxPayloadSize])
 	if err != nil {
 		return nil, fmt.Errorf("signed.MarshalBinary: %w", err)
 	}

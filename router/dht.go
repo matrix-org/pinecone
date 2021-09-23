@@ -224,7 +224,8 @@ func (d *dht) request(coords types.SwitchPorts, pk types.PublicKey) (types.Publi
 
 	// Marshal it into binary so that we can send the request out
 	// to the network.
-	var buffer [MaxPayloadSize]byte
+	buffer := bufPool.Get().(*[types.MaxFrameSize]byte)
+	defer bufPool.Put(buffer)
 	n, err := req.MarshalBinary(buffer[:])
 	if err != nil {
 		return types.PublicKey{}, nil, fmt.Errorf("res.MarshalBinary: %w", err)
@@ -232,12 +233,12 @@ func (d *dht) request(coords types.SwitchPorts, pk types.PublicKey) (types.Publi
 
 	// Send the request frame to the switch. The switch will then
 	// forward it onto the destination as appropriate.
-	d.r.send <- types.Frame{
-		Source:      d.r.Coords(),
-		Destination: coords,
-		Type:        types.TypeDHTRequest,
-		Payload:     buffer[:n],
-	}
+	frame := types.GetFrame()
+	frame.Source = d.r.Coords()
+	frame.Destination = coords
+	frame.Type = types.TypeDHTRequest
+	frame.Payload = append(frame.Payload[:0], buffer[:n]...)
+	d.r.send <- frame
 
 	// Wait for a response that matches our search ID, or for the
 	// timeout to kick in instead.
@@ -349,7 +350,7 @@ func (d *dht) onDHTRequest(req *types.DHTQueryRequest, from types.SwitchPorts) {
 
 	// Marshal the response into binary format so we can send it
 	// back.
-	var buffer [MaxPayloadSize]byte
+	var buffer [types.MaxPayloadSize]byte
 	n, err := res.MarshalBinary(buffer[:], d.r.private[:])
 	if err != nil {
 		fmt.Println("Failed to sign DHT response:", err)
@@ -357,12 +358,12 @@ func (d *dht) onDHTRequest(req *types.DHTQueryRequest, from types.SwitchPorts) {
 	}
 
 	// Send the DHT response back to the requestor.
-	d.r.send <- types.Frame{
-		Source:      d.r.Coords(),
-		Destination: from,
-		Type:        types.TypeDHTResponse,
-		Payload:     buffer[:n],
-	}
+	frame := types.GetFrame()
+	frame.Source = d.r.Coords()
+	frame.Destination = from
+	frame.Type = types.TypeDHTResponse
+	frame.Payload = append(frame.Payload[:0], buffer[:n]...)
+	d.r.send <- frame
 }
 
 // onDHTResponse is called when the router receives a DHT response.

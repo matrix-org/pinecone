@@ -40,6 +40,9 @@ func (r *Router) handleAnnouncement(peer *Peer, rx *types.Frame) error {
 	if _, err := newUpdate.UnmarshalBinary(rx.Payload); err != nil {
 		return fmt.Errorf("failed to unmarshal root announcement: %w", err)
 	}
+	if len(newUpdate.Signatures) == 0 {
+		return fmt.Errorf("root announcement is not signed")
+	}
 	sigs := make(map[string]struct{})
 	for index, sig := range newUpdate.Signatures {
 		if index == 0 && sig.PublicKey != newUpdate.RootPublicKey {
@@ -99,7 +102,8 @@ func (a *rootAnnouncementWithTime) ForPeer(p *Peer) *types.Frame {
 		p.r.log.Println("Failed to sign switch announcement:", err)
 		return nil
 	}
-	var payload [MaxPayloadSize]byte
+	payload := bufPool.Get().(*[types.MaxFrameSize]byte)
+	defer bufPool.Put(payload)
 	n, err := announcement.MarshalBinary(payload[:])
 	if err != nil {
 		p.r.log.Println("Failed to marshal switch announcement:", err)
@@ -109,7 +113,7 @@ func (a *rootAnnouncementWithTime) ForPeer(p *Peer) *types.Frame {
 	frame.Version = types.Version0
 	frame.Type = types.TypeSTP
 	frame.Destination = types.SwitchPorts{}
-	frame.Payload = payload[:n]
+	frame.Payload = append(frame.Payload[:0], payload[:n]...)
 	return frame
 }
 

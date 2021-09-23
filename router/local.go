@@ -24,27 +24,29 @@ import (
 // The writer goroutine is responsible for sending traffic from
 // the router to the switch.
 func (r *Router) writer(conn net.Conn) {
-	buf := make([]byte, MaxFrameSize)
+	buf := make([]byte, types.MaxFrameSize)
 	for {
 		select {
 		case <-r.context.Done():
 			return
 
 		default:
-			frame := <-r.send
-			n, err := frame.MarshalBinary(buf)
-			if err != nil {
-				r.log.Printf("frame.MarshalBinary: %s\n", err)
-				continue
-			}
-			if !bytes.Equal(buf[:len(types.FrameMagicBytes)], types.FrameMagicBytes) {
-				r.log.Println("Should be sending magic bytes", types.FrameMagicBytes)
-				continue
-			}
-			if _, err = conn.Write(buf[:n]); err != nil {
-				r.log.Println("s.conn.Write:", err)
-				continue
-			}
+			func(frame *types.Frame) {
+				defer frame.Done()
+				n, err := frame.MarshalBinary(buf)
+				if err != nil {
+					r.log.Printf("frame.MarshalBinary: %s\n", err)
+					return
+				}
+				if !bytes.Equal(buf[:len(types.FrameMagicBytes)], types.FrameMagicBytes) {
+					r.log.Println("Should be sending magic bytes", types.FrameMagicBytes)
+					return
+				}
+				if _, err = conn.Write(buf[:n]); err != nil {
+					r.log.Println("s.conn.Write:", err)
+					return
+				}
+			}(<-r.send)
 		}
 	}
 }
@@ -52,8 +54,7 @@ func (r *Router) writer(conn net.Conn) {
 // The reader goroutine is responsible for receiving traffic
 // for the router from the switch.
 func (r *Router) reader(conn net.Conn) {
-	buf := make([]byte, MaxFrameSize)
-	var frame types.Frame
+	buf := make([]byte, types.MaxFrameSize)
 	for {
 		select {
 		case <-r.context.Done():
@@ -66,114 +67,118 @@ func (r *Router) reader(conn net.Conn) {
 				continue
 			}
 
-			if _, err = frame.UnmarshalBinary(buf[:n]); err != nil {
-				r.log.Printf("frame.UnmarshalBinary: %s\n", err)
-				continue
-			}
-
-			switch frame.Type {
-			case types.TypeGreedy:
-				// If the frame doesn't appear as if it's meant to be for
-				// us then we'll drop it.
-				if !r.imprecise.Load() && !frame.Destination.EqualTo(r.Coords()) {
-					//r.log.Println("Router received frame that isn't for us")
-					continue
+			func(frame *types.Frame) {
+				defer frame.Done()
+				if _, err = frame.UnmarshalBinary(buf[:n]); err != nil {
+					r.log.Printf("frame.UnmarshalBinary: %s\n", err)
+					return
 				}
-				r.recv <- frame
 
-			case types.TypeVirtualSnake:
-				// If the frame doesn't appear as if it's meant to be for
-				// us then we'll drop it.
-				if !r.imprecise.Load() && !frame.DestinationKey.EqualTo(r.PublicKey()) {
-					//	r.log.Println("Router received frame that isn't for us")
-					continue
-				}
-				r.recv <- frame
-
-			case types.TypeSource:
-				// Check if the source path seems to be finished.
-				if len(frame.Destination) > 0 {
-					if frame.Destination[0] != 0 {
-						//r.log.Println("Dropping frame that has invalid next-port")
-						continue
+				switch frame.Type {
+				case types.TypeGreedy:
+					// If the frame doesn't appear as if it's meant to be for
+					// us then we'll drop it.
+					if !r.imprecise.Load() && !frame.Destination.EqualTo(r.Coords()) {
+						//r.log.Println("Router received frame that isn't for us")
+						return
 					}
-					frame.Destination = frame.Destination[1:]
-				}
-				r.recv <- frame
+					r.recv <- frame.Borrow()
 
-			case types.TypeDHTRequest:
-				var request types.DHTQueryRequest
-				if _, err := request.UnmarshalBinary(frame.Payload); err != nil {
-					r.log.Println("DHTQueryRequest.MarshalBinary:", err)
-					continue
-				}
-				r.dht.onDHTRequest(&request, frame.Source)
-
-			case types.TypeDHTResponse:
-				var response types.DHTQueryResponse
-				if _, err := response.UnmarshalBinary(frame.Payload); err != nil {
-					r.log.Println("DHTQueryResponse.UnmarshalBinary:", err)
-					continue
-				}
-				r.dht.onDHTResponse(&response, frame.Source)
-
-			case types.TypePathfind, types.TypeVirtualSnakePathfind:
-				if len(frame.Payload) == 0 {
-					continue
-				}
-				var pathfind types.Pathfind
-				if _, err := pathfind.UnmarshalBinary(frame.Payload); err != nil {
-					r.log.Println("pathfind.UnmarshalBinary:", err)
-					continue
-				}
-				if pathfind.Boundary == 0 {
-					// The search has been sent to us. Now let's set the boundary and
-					// send it back. This lets the other end work out how much of the
-					// body was the path here and how much of it was the path back.
-					signed, err := pathfind.Sign(r.private[:], 0)
-					if err != nil {
-						r.log.Println("pathfind.Sign:", err)
-						continue
+				case types.TypeVirtualSnake:
+					// If the frame doesn't appear as if it's meant to be for
+					// us then we'll drop it.
+					if !r.imprecise.Load() && !frame.DestinationKey.EqualTo(r.PublicKey()) {
+						//	r.log.Println("Router received frame that isn't for us")
+						return
 					}
-					signed.Boundary = uint8(len(signed.Signatures))
-					var buffer [MaxPayloadSize]byte
-					n, err := signed.MarshalBinary(buffer[:])
-					if err != nil {
-						r.log.Println("signed.MarshalBinary:", err)
-						continue
-					}
-					switch frame.Type {
-					case types.TypePathfind:
-						r.send <- types.Frame{
-							Destination: frame.Source,
-							Source:      frame.Destination,
-							Type:        types.TypePathfind,
-							Payload:     buffer[:n],
+					r.recv <- frame.Borrow()
+
+				case types.TypeSource:
+					// Check if the source path seems to be finished.
+					if len(frame.Destination) > 0 {
+						if frame.Destination[0] != 0 {
+							//r.log.Println("Dropping frame that has invalid next-port")
+							return
 						}
-					case types.TypeVirtualSnakePathfind:
-						r.send <- types.Frame{
-							DestinationKey: frame.SourceKey,
-							SourceKey:      frame.DestinationKey,
-							Type:           types.TypeVirtualSnakePathfind,
-							Payload:        buffer[:n],
+						frame.Destination = frame.Destination[1:]
+					}
+					r.recv <- frame.Borrow()
+
+				case types.TypeDHTRequest:
+					var request types.DHTQueryRequest
+					if _, err := request.UnmarshalBinary(frame.Payload); err != nil {
+						r.log.Println("DHTQueryRequest.MarshalBinary:", err)
+						return
+					}
+					r.dht.onDHTRequest(&request, frame.Source)
+
+				case types.TypeDHTResponse:
+					var response types.DHTQueryResponse
+					if _, err := response.UnmarshalBinary(frame.Payload); err != nil {
+						r.log.Println("DHTQueryResponse.UnmarshalBinary:", err)
+						return
+					}
+					r.dht.onDHTResponse(&response, frame.Source)
+
+				case types.TypePathfind, types.TypeVirtualSnakePathfind:
+					if len(frame.Payload) == 0 {
+						return
+					}
+					var pathfind types.Pathfind
+					if _, err := pathfind.UnmarshalBinary(frame.Payload); err != nil {
+						r.log.Println("pathfind.UnmarshalBinary:", err)
+						return
+					}
+					if pathfind.Boundary == 0 {
+						// The search has been sent to us. Now let's set the boundary and
+						// send it back. This lets the other end work out how much of the
+						// body was the path here and how much of it was the path back.
+						signed, err := pathfind.Sign(r.private[:], 0)
+						if err != nil {
+							r.log.Println("pathfind.Sign:", err)
+							return
+						}
+						signed.Boundary = uint8(len(signed.Signatures))
+						buffer := bufPool.Get().(*[types.MaxFrameSize]byte)
+						n, err := signed.MarshalBinary(buffer[:])
+						if err != nil {
+							r.log.Println("signed.MarshalBinary:", err)
+							return
+						}
+						switch frame.Type {
+						case types.TypePathfind:
+							f := types.GetFrame()
+							f.Destination = frame.Source
+							f.Source = frame.Destination
+							f.Type = types.TypePathfind
+							f.Payload = append(f.Payload[:0], buffer[:n]...)
+							r.send <- f
+						case types.TypeVirtualSnakePathfind:
+							f := types.GetFrame()
+							f.DestinationKey = frame.SourceKey
+							f.SourceKey = frame.DestinationKey
+							f.Type = types.TypeVirtualSnakePathfind
+							f.Payload = append(f.Payload[:0], buffer[:n]...)
+							r.send <- f
+						}
+						bufPool.Put(buffer)
+					} else {
+						// This is a response to a search that we sent out. It will contain
+						// both the path we took to the destination (before the boundary)
+						// and the return path (after the boundary). We can pick which of
+						// the routes was shorter to reduce stretch.
+						if len(pathfind.Signatures) < int(pathfind.Boundary) {
+							return
+						}
+						switch frame.Type {
+						case types.TypePathfind:
+							r.pathfinder.onPathfindResponse(&GreedyAddr{frame.Source}, pathfind)
+						case types.TypeVirtualSnakePathfind:
+							r.pathfinder.onPathfindResponse(frame.SourceKey, pathfind)
 						}
 					}
-				} else {
-					// This is a response to a search that we sent out. It will contain
-					// both the path we took to the destination (before the boundary)
-					// and the return path (after the boundary). We can pick which of
-					// the routes was shorter to reduce stretch.
-					if len(pathfind.Signatures) < int(pathfind.Boundary) {
-						continue
-					}
-					switch frame.Type {
-					case types.TypePathfind:
-						r.pathfinder.onPathfindResponse(&GreedyAddr{frame.Source}, pathfind)
-					case types.TypeVirtualSnakePathfind:
-						r.pathfinder.onPathfindResponse(frame.SourceKey, pathfind)
-					}
 				}
-			}
+			}(types.GetFrame())
 		}
 	}
 }

@@ -20,49 +20,17 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math"
-	"runtime"
-	"sync"
 
 	"go.uber.org/atomic"
 )
 
-var framePool = &sync.Pool{
-	New: func() interface{} {
-		f := &Frame{}
-		runtime.SetFinalizer(f, func(f *Frame) {
-			if refs := f.refs.Load(); refs != 0 {
-				panic(fmt.Sprintf("frame was garbage collected with %d remaining references, this is a bug", refs))
-			}
-		})
-		return f
-	},
-}
+// MaxPayloadSize is the maximum size that a single frame can contain
+// as a payload, not including headers.
+const MaxPayloadSize = 65535
 
-func GetFrame() *Frame {
-	frame := framePool.Get().(*Frame)
-	if !frame.refs.CAS(0, 1) {
-		panic("invalid frame reuse after Done call")
-	}
-	return frame
-}
-
-func (f *Frame) Borrow() *Frame {
-	f.refs.Inc()
-	return f
-}
-
-func (f *Frame) Done() bool {
-	refs := f.refs.Dec()
-	if refs < 0 {
-		panic("invalid Done call")
-	}
-	if refs == 0 {
-		f.Reset()
-		framePool.Put(f)
-		return true
-	}
-	return false
-}
+// MaxFrameSize is the maximum size that a single frame can be, including
+// all headers.
+const MaxFrameSize = 65535*3 + 14
 
 type FrameVersion uint8
 type FrameType uint8
@@ -99,22 +67,6 @@ type Frame struct {
 	Source         SwitchPorts
 	SourceKey      PublicKey
 	Payload        []byte
-}
-
-func (f *Frame) Reset() {
-	f.Version, f.Type = 0, 0
-	f.Destination = SwitchPorts{}
-	f.DestinationKey = PublicKey{}
-	f.Source = SwitchPorts{}
-	f.SourceKey = PublicKey{}
-	f.Payload = f.Payload[:0]
-}
-
-func (f *Frame) Copy() *Frame {
-	copy := *f
-	copy.refs.Store(1)
-	copy.Payload = append([]byte{}, f.Payload...)
-	return &copy
 }
 
 func (f *Frame) MarshalBinary(buffer []byte) (int, error) {
@@ -245,8 +197,9 @@ func (f *Frame) UnmarshalBinary(data []byte) (int, error) {
 		}
 		offset += 4 + srcLen
 		offset += copy(f.DestinationKey[:], data[offset:])
-		f.Payload = make([]byte, payloadLen)
-		offset += copy(f.Payload, data[offset:])
+		//f.Payload = f.Payload[:payloadLen]
+		//offset += copy(f.Payload, data[offset:])
+		f.Payload = append(f.Payload[:0], data[offset:offset+payloadLen]...)
 		return offset, nil
 
 	case TypeVirtualSnakeBootstrapACK:
@@ -264,8 +217,9 @@ func (f *Frame) UnmarshalBinary(data []byte) (int, error) {
 		offset += srcLen
 		offset += copy(f.DestinationKey[:], data[offset:])
 		offset += copy(f.SourceKey[:], data[offset:])
-		f.Payload = make([]byte, payloadLen)
-		offset += copy(f.Payload, data[offset:])
+		//f.Payload = f.Payload[:payloadLen]
+		//offset += copy(f.Payload, data[offset:])
+		f.Payload = append(f.Payload[:0], data[offset:offset+payloadLen]...)
 		return offset, nil
 
 	case TypeVirtualSnakeSetup: // destination = coords & key, source = key
@@ -277,16 +231,18 @@ func (f *Frame) UnmarshalBinary(data []byte) (int, error) {
 		offset += 4 + dstLen
 		offset += copy(f.SourceKey[:], data[offset:])
 		offset += copy(f.DestinationKey[:], data[offset:])
-		f.Payload = make([]byte, payloadLen)
-		offset += copy(f.Payload, data[offset:])
+		//f.Payload = f.Payload[:payloadLen]
+		//offset += copy(f.Payload, data[offset:])
+		f.Payload = append(f.Payload[:0], data[offset:offset+payloadLen]...)
 		return offset, nil
 
 	case TypeVirtualSnakeTeardown: // destination = key
 		payloadLen := int(binary.BigEndian.Uint16(data[offset+0 : offset+2]))
 		offset += 2
 		offset += copy(f.DestinationKey[:], data[offset:])
-		f.Payload = make([]byte, payloadLen)
-		offset += copy(f.Payload, data[offset:])
+		//f.Payload = f.Payload[:payloadLen]
+		//offset += copy(f.Payload, data[offset:])
+		f.Payload = append(f.Payload[:0], data[offset:offset+payloadLen]...)
 		return offset, nil
 
 	case TypeVirtualSnake, TypeVirtualSnakePathfind: // destination = key, source = key
@@ -294,8 +250,9 @@ func (f *Frame) UnmarshalBinary(data []byte) (int, error) {
 		offset += 2
 		offset += copy(f.DestinationKey[:], data[offset:])
 		offset += copy(f.SourceKey[:], data[offset:])
-		f.Payload = make([]byte, payloadLen)
-		offset += copy(f.Payload, data[offset:])
+		//f.Payload = f.Payload[:payloadLen]
+		//offset += copy(f.Payload, data[offset:])
+		f.Payload = append(f.Payload[:0], data[offset:offset+payloadLen]...)
 		return offset + payloadLen, nil
 
 	case TypeKeepalive:
@@ -317,8 +274,9 @@ func (f *Frame) UnmarshalBinary(data []byte) (int, error) {
 			return 0, fmt.Errorf("f.Source.UnmarshalBinary: %w", err)
 		}
 		offset += srcLen
-		f.Payload = make([]byte, payloadLen)
-		offset += copy(f.Payload, data[offset:])
+		//f.Payload = f.Payload[:payloadLen]
+		//offset += copy(f.Payload, data[offset:])
+		f.Payload = append(f.Payload[:0], data[offset:offset+payloadLen]...)
 		return offset + payloadLen, nil
 	}
 }

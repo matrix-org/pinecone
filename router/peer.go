@@ -267,7 +267,7 @@ func (p *Peer) reader(ctx context.Context) error {
 	defer p.wg.Done()
 	defer p.cancel()
 
-	buf := make([]byte, MaxFrameSize)
+	buf := make([]byte, types.MaxFrameSize)
 	for {
 		select {
 		case <-ctx.Done():
@@ -360,7 +360,8 @@ func (p *Peer) reader(ctx context.Context) error {
 
 var bufPool = sync.Pool{
 	New: func() interface{} {
-		return make([]byte, MaxFrameSize)
+		b := [types.MaxFrameSize]byte{}
+		return &b
 	},
 }
 
@@ -375,9 +376,9 @@ func (p *Peer) writer(ctx context.Context) error {
 		if frame == nil {
 			return nil
 		}
-		buf := bufPool.Get().([]byte)
+		buf := bufPool.Get().(*[types.MaxFrameSize]byte)
 		defer bufPool.Put(buf) // nolint:staticcheck
-		fn, err := frame.MarshalBinary(buf)
+		fn, err := frame.MarshalBinary(buf[:])
 		frame.Done()
 		if err != nil {
 			return nil

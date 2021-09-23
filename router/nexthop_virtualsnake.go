@@ -173,12 +173,13 @@ func (t *virtualSnake) bootstrapNow() {
 	if _, err := bootstrap.MarshalBinary(payload[:]); err != nil {
 		return
 	}
-	t.r.send <- types.Frame{
-		Type:           types.TypeVirtualSnakeBootstrap,
-		DestinationKey: t.r.PublicKey(), // routes using keys
-		Source:         t.r.Coords(),    // used to send back a setup using ygg greedy routing
-		Payload:        append(payload[:], ts...),
-	}
+
+	frame := types.GetFrame()
+	frame.Type = types.TypeVirtualSnakeBootstrap
+	frame.DestinationKey = t.r.PublicKey()
+	frame.Source = t.r.Coords()
+	frame.Payload = append(frame.Payload[:0], append(payload[:], ts...)...)
+	t.r.send <- frame
 }
 
 func (t *virtualSnake) rootNodeChanged(root types.PublicKey) {
@@ -366,6 +367,7 @@ func (t *virtualSnake) getVirtualSnakeNextHop(from *Peer, destKey types.PublicKe
 }
 
 func (t *virtualSnake) getVirtualSnakeTeardownNextHop(from *Peer, rx *types.Frame) types.SwitchPorts {
+	defer rx.Done()
 	if len(rx.Payload) < 1 {
 		return types.SwitchPorts{}
 	}
@@ -412,13 +414,13 @@ func (t *virtualSnake) teardownPath(pk types.PublicKey, pathID types.VirtualSnak
 	if _, err := teardown.MarshalBinary(payload[:]); err != nil {
 		return
 	}
-	frame := types.Frame{
-		Type:           types.TypeVirtualSnakeTeardown,
-		SourceKey:      t.r.public,
-		DestinationKey: pk,
-		Payload:        payload[:],
-	}
-	_ = t.getVirtualSnakeTeardownNextHop(t.r.ports[0], &frame)
+	frame := types.GetFrame()
+	defer frame.Done()
+	frame.Type = types.TypeVirtualSnakeTeardown
+	frame.SourceKey = t.r.public
+	frame.DestinationKey = pk
+	frame.Payload = append(frame.Payload[:0], payload[:]...)
+	_ = t.getVirtualSnakeTeardownNextHop(t.r.ports[0], frame.Borrow())
 	if t.r.ports[via].started.Load() {
 		t.r.ports[via].protoOut.push(frame.Borrow())
 	}
@@ -456,14 +458,15 @@ func (t *virtualSnake) handleBootstrap(from *Peer, rx *types.Frame) error {
 	if err != nil {
 		return fmt.Errorf("util.SignedTimestamp: %w", err)
 	}
-	t.r.send <- types.Frame{
-		Destination:    rx.Source,
-		DestinationKey: rx.DestinationKey,
-		Source:         t.r.Coords(),
-		SourceKey:      t.r.public,
-		Type:           types.TypeVirtualSnakeBootstrapACK,
-		Payload:        append(buf[:], ts...),
-	}
+
+	frame := types.GetFrame()
+	frame.Type = types.TypeVirtualSnakeBootstrapACK
+	frame.Destination = rx.Source
+	frame.DestinationKey = rx.DestinationKey
+	frame.Source = t.r.Coords()
+	frame.SourceKey = t.r.public
+	frame.Payload = append(frame.Payload[:0], append(buf[:], ts...)...)
+	t.r.send <- frame
 	return nil
 }
 
@@ -553,13 +556,13 @@ func (t *virtualSnake) handleBootstrapACK(from *Peer, rx *types.Frame) error {
 		if err != nil {
 			return fmt.Errorf("util.SignedTimestamp: %w", err)
 		}
-		frame := types.Frame{
-			Destination:    rx.Source,
-			DestinationKey: rx.SourceKey,
-			SourceKey:      t.r.public,
-			Type:           types.TypeVirtualSnakeSetup,
-			Payload:        append(buf[:], ts...),
-		}
+
+		frame := types.GetFrame()
+		frame.Type = types.TypeVirtualSnakeSetup
+		frame.Destination = rx.Source
+		frame.DestinationKey = rx.SourceKey
+		frame.SourceKey = t.r.public
+		frame.Payload = append(frame.Payload[:0], append(buf[:], ts...)...)
 		t.r.send <- frame
 	}
 	return nil
