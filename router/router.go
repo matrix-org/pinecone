@@ -380,10 +380,6 @@ func (r *Router) AuthenticatedConnect(conn net.Conn, zone string, peertype int) 
 // port number that the node was connected to will be
 // returned in the event of a successful connection.
 func (r *Router) Connect(conn net.Conn, public types.PublicKey, zone string, peertype int) (types.SwitchPortID, error) {
-	if r.IsConnected(public, zone) {
-		_ = conn.Close()
-		return 0, fmt.Errorf("already connected")
-	}
 	r.connections.Lock()
 	defer r.connections.Unlock()
 	usePort := func(port *Peer) bool {
@@ -449,8 +445,7 @@ func (r *Router) IsConnected(key types.PublicKey, zone string) bool {
 	if !ok {
 		return false
 	}
-	port := v.(types.SwitchPortID)
-	return r.ports[port].started.Load()
+	return v.(*atomic.Uint64).Load() > 0
 }
 
 // PeerInfo is a gomobile-friendly type that represents a peer

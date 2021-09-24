@@ -67,7 +67,8 @@ func (p *Peer) start() {
 	// this zone, so that the multicast code can ignore nodes we
 	// are already connected to.
 	index := hex.EncodeToString(p.public[:]) + p.zone
-	p.r.active.Store(index, p.port)
+	v, _ := p.r.active.LoadOrStore(index, atomic.NewUint64(0))
+	v.(*atomic.Uint64).Inc()
 
 	// When the peer dies, we need to clean up.
 	var lasterr error
@@ -75,7 +76,6 @@ func (p *Peer) start() {
 	defer func() {
 		p.r.callbacks.onDisconnected(p.port, p.public, p.peertype, lasterr)
 		p.reset()
-		p.r.active.Delete(index)
 	}()
 
 	// Push a root update to our new peer. This will notify them
@@ -117,8 +117,14 @@ func (p *Peer) start() {
 	// Notify the tree and DHT about the peer cancellation. We need
 	// to do this quickly so that they have more time to recover, even
 	// if the goroutines take a while to stop.
-	p.r.snake.portWasDisconnected(p.port)
 	p.r.tree.portWasDisconnected(p.port)
+	p.r.snake.portWasDisconnected(p.port)
+
+	// Reduce the number of connections in this zone. This will mean
+	// that we can reconnect to this node if another multicast comes in.
+	if v, ok := p.r.active.Load(index); ok && v.(*atomic.Uint64).Dec() == 0 {
+		p.r.active.Delete(index)
+	}
 
 	// Now wait for the goroutines to stop.
 	p.wg.Wait()
