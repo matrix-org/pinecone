@@ -60,6 +60,7 @@ var FrameMagicBytes = []byte{0x70, 0x69, 0x6e, 0x65}
 
 type Frame struct {
 	refs           atomic.Int32
+	stack          []byte
 	Version        FrameVersion
 	Type           FrameType
 	Destination    SwitchPorts

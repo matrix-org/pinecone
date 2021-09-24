@@ -17,6 +17,7 @@ package types
 import (
 	"fmt"
 	"runtime"
+	"runtime/debug"
 	"sync"
 )
 
@@ -27,6 +28,9 @@ var framePool = &sync.Pool{
 		}
 		runtime.SetFinalizer(f, func(f *Frame) {
 			if refs := f.refs.Load(); refs != 0 {
+				fmt.Println("Frame type:", f.Type)
+				fmt.Println("Frame taken out at:")
+				fmt.Println(string(f.stack))
 				panic(fmt.Sprintf("frame was garbage collected with %d remaining references, this is a bug", refs))
 			}
 		})
@@ -40,6 +44,7 @@ func GetFrame() *Frame {
 		panic("invalid frame reuse")
 	}
 	frame.Reset()
+	frame.stack = debug.Stack()
 	return frame
 }
 
