@@ -37,12 +37,12 @@ type virtualSnake struct {
 	bootstrap   *time.Timer
 }
 
+type virtualSnakeTable map[virtualSnakeIndex]virtualSnakeEntry
+
 type virtualSnakeIndex struct {
 	PublicKey types.PublicKey
 	PathID    types.VirtualSnakePathID
 }
-
-type virtualSnakeTable map[virtualSnakeIndex]virtualSnakeEntry
 
 type virtualSnakeEntry struct {
 	SourcePort      types.SwitchPortID
@@ -107,10 +107,10 @@ func (t *virtualSnake) maintain() {
 		if asc := t.ascending(); asc != nil {
 			switch {
 			case time.Since(asc.LastSeen) > virtualSnakeNeighExpiryPeriod:
-				t.teardownPath(t.r.public, asc.PathID, 0, fmt.Errorf("ascending neighbour expired"))
+				t.teardownPath(asc.PublicKey, asc.PathID, asc.Port, true, fmt.Errorf("ascending neighbour expired"))
 				willBootstrap = canBootstrap
 			case asc.RootPublicKey != rootKey:
-				t.teardownPath(t.r.public, asc.PathID, 0, fmt.Errorf("ascending root changed"))
+				t.teardownPath(asc.PublicKey, asc.PathID, asc.Port, true, fmt.Errorf("ascending root changed"))
 				willBootstrap = canBootstrap
 			}
 		} else {
@@ -120,9 +120,9 @@ func (t *virtualSnake) maintain() {
 		if desc := t.descending(); desc != nil {
 			switch {
 			case time.Since(desc.LastSeen) > virtualSnakeNeighExpiryPeriod:
-				t.teardownPath(desc.PublicKey, desc.PathID, 0, fmt.Errorf("descending neighbour expired"))
+				t.teardownPath(desc.PublicKey, desc.PathID, 0, false, fmt.Errorf("descending neighbour expired"))
 			case !desc.RootPublicKey.EqualTo(rootKey):
-				t.teardownPath(desc.PublicKey, desc.PathID, 0, fmt.Errorf("descending root changed"))
+				t.teardownPath(desc.PublicKey, desc.PathID, 0, false, fmt.Errorf("descending root changed"))
 			}
 		}
 
@@ -172,11 +172,11 @@ func (t *virtualSnake) rootNodeChanged(root types.PublicKey) {
 	t.mutex.Lock()
 	defer t.mutex.Unlock()
 	if asc := t._ascending; asc != nil && !asc.RootPublicKey.EqualTo(root) {
-		t.teardownPath(t.r.public, asc.PathID, 0, fmt.Errorf("root changed and asc no longer matches"))
+		t.teardownPath(asc.PublicKey, asc.PathID, asc.Port, true, fmt.Errorf("root changed and asc no longer matches"))
 		defer t.bootstrapIn(time.Second)
 	}
 	if desc := t._descending; desc != nil && !desc.RootPublicKey.EqualTo(root) {
-		t.teardownPath(desc.PublicKey, desc.PathID, 0, fmt.Errorf("root changed and desc no longer matches"))
+		t.teardownPath(desc.PublicKey, desc.PathID, 0, false, fmt.Errorf("root changed and desc no longer matches"))
 	}
 	teardown := map[virtualSnakeIndex]virtualSnakeEntry{}
 	for k, v := range t._table {
@@ -185,7 +185,7 @@ func (t *virtualSnake) rootNodeChanged(root types.PublicKey) {
 		}
 	}
 	for k := range teardown {
-		t.teardownPath(k.PublicKey, k.PathID, 0, fmt.Errorf("root or parent changed and tearing paths"))
+		t.teardownPath(k.PublicKey, k.PathID, 0, false, fmt.Errorf("root or parent changed and tearing paths"))
 	}
 }
 
@@ -208,11 +208,11 @@ func (t *virtualSnake) portWasDisconnected(port types.SwitchPortID) {
 	// Check if our ascending or descending directions are affected by
 	// this port change.
 	if asc := t._ascending; asc != nil && asc.Port == port {
-		t.teardownPath(t.r.public, asc.PathID, 0, fmt.Errorf("port teardown"))
+		t.teardownPath(asc.PublicKey, asc.PathID, asc.Port, true, fmt.Errorf("port teardown"))
 		defer t.bootstrapIn(0)
 	}
 	if desc := t._descending; desc != nil && desc.Port == port {
-		t.teardownPath(desc.PublicKey, desc.PathID, 0, fmt.Errorf("port teardown"))
+		t.teardownPath(desc.PublicKey, desc.PathID, 0, false, fmt.Errorf("port teardown"))
 	}
 
 	// Check if any of our routing table entries are
@@ -226,7 +226,7 @@ func (t *virtualSnake) portWasDisconnected(port types.SwitchPortID) {
 		}
 	}
 	for k := range teardown {
-		t.teardownPath(k.PublicKey, k.PathID, 0, fmt.Errorf("port teardown"))
+		t.teardownPath(k.PublicKey, k.PathID, 0, false, fmt.Errorf("port teardown"))
 	}
 }
 
@@ -349,10 +349,10 @@ func (t *virtualSnake) handleVirtualSnakeTeardownFrame(from *Peer, rx *types.Fra
 	if _, err := teardown.UnmarshalBinary(rx.Payload); err != nil {
 		return
 	}
-	t.handleVirtualSnakeTeardown(from, rx.Borrow(), rx.DestinationKey, teardown.PathID)
+	t.handleVirtualSnakeTeardown(from, rx.Borrow(), rx.DestinationKey, teardown.PathID, true)
 }
 
-func (t *virtualSnake) handleVirtualSnakeTeardown(from *Peer, rx *types.Frame, pathKey types.PublicKey, pathID types.VirtualSnakePathID) {
+func (t *virtualSnake) handleVirtualSnakeTeardown(from *Peer, rx *types.Frame, pathKey types.PublicKey, pathID types.VirtualSnakePathID, send bool) {
 	defer rx.Done()
 	sendTeardownsVia := func(nexthops types.SwitchPorts) {
 		for _, via := range nexthops {
@@ -371,27 +371,29 @@ func (t *virtualSnake) handleVirtualSnakeTeardown(from *Peer, rx *types.Frame, p
 	for k, v := range t._table {
 		if k.PublicKey == pathKey && k.PathID == pathID {
 			delete(t._table, k)
-			switch {
-			case from.port == v.DestinationPort:
-				sendTeardownsVia(types.SwitchPorts{v.SourcePort})
-			case from.port == v.SourcePort:
-				sendTeardownsVia(types.SwitchPorts{v.DestinationPort})
-			case from.port == 0:
-				if v.DestinationPort != 0 && v.SourcePort != 0 {
-					sendTeardownsVia(types.SwitchPorts{v.DestinationPort, v.SourcePort})
-				} else if v.DestinationPort != 0 {
-					sendTeardownsVia(types.SwitchPorts{v.DestinationPort})
-				} else if v.SourcePort != 0 {
+			if send {
+				switch {
+				case from.port == v.DestinationPort:
 					sendTeardownsVia(types.SwitchPorts{v.SourcePort})
+				case from.port == v.SourcePort:
+					sendTeardownsVia(types.SwitchPorts{v.DestinationPort})
+				case from.port == 0:
+					if v.DestinationPort != 0 && v.SourcePort != 0 {
+						sendTeardownsVia(types.SwitchPorts{v.DestinationPort, v.SourcePort})
+					} else if v.DestinationPort != 0 {
+						sendTeardownsVia(types.SwitchPorts{v.DestinationPort})
+					} else if v.SourcePort != 0 {
+						sendTeardownsVia(types.SwitchPorts{v.SourcePort})
+					}
+				default:
+					fmt.Println("Teardown arriving on unexpected port", from.port, "where it is actually", v.SourcePort, "->", v.DestinationPort)
 				}
-			default:
-				fmt.Println("Teardown arriving on unexpected port", from.port, "where it is actually", v.SourcePort, "->", v.DestinationPort)
 			}
 		}
 	}
 }
 
-func (t *virtualSnake) teardownPath(pathKey types.PublicKey, pathID types.VirtualSnakePathID, via types.SwitchPortID, err error) {
+func (t *virtualSnake) teardownPath(pathKey types.PublicKey, pathID types.VirtualSnakePathID, via types.SwitchPortID, asc bool, err error) {
 	var payload [9]byte
 	teardown := types.VirtualSnakeTeardown{ // nolint:gosimple
 		PathID: pathID,
@@ -403,7 +405,7 @@ func (t *virtualSnake) teardownPath(pathKey types.PublicKey, pathID types.Virtua
 	defer frame.Done()
 	frame.Type = types.TypeVirtualSnakeTeardown
 	frame.SourceKey = t.r.public
-	if pathKey.CompareTo(t.r.public) > 0 {
+	if asc {
 		// If it's an ascending path then the path will have our key
 		// in it, not the destination key, so we should make sure we
 		// set that in the teardown properly.
@@ -413,7 +415,7 @@ func (t *virtualSnake) teardownPath(pathKey types.PublicKey, pathID types.Virtua
 	}
 	frame.Payload = append(frame.Payload[:0], payload[:]...)
 	if via == 0 {
-		t.handleVirtualSnakeTeardown(t.r.ports[0], frame.Borrow(), pathKey, pathID)
+		t.handleVirtualSnakeTeardown(t.r.ports[0], frame.Borrow(), pathKey, pathID, !asc)
 	} else if t.r.ports[via].started.Load() {
 		t.r.ports[via].protoOut.push(frame.Borrow())
 	}
@@ -519,7 +521,7 @@ func (t *virtualSnake) handleBootstrapACK(from *Peer, rx *types.Frame) error {
 	if update {
 		if asc != nil {
 			// Tear down the previous path, if there was one.
-			t.teardownPath(t.r.public, asc.PathID, 0, fmt.Errorf("replacing ascending"))
+			t.teardownPath(asc.PublicKey, asc.PathID, asc.Port, true, fmt.Errorf("replacing ascending"))
 		}
 		t._ascending = &virtualSnakeNeighbour{
 			PublicKey:     rx.SourceKey,
@@ -569,18 +571,18 @@ func (t *virtualSnake) handleSetup(from *Peer, rx *types.Frame, nextHops types.S
 
 	// Check if the setup packet has a valid signed timestamp.
 	if !util.VerifySignedTimestamp(rx.SourceKey, rx.Payload[n:]) {
-		t.teardownPath(rx.SourceKey, setup.PathID, from.port, fmt.Errorf("rejecting setup (invalid signature)"))
+		t.teardownPath(rx.SourceKey, setup.PathID, from.port, false, fmt.Errorf("rejecting setup (invalid signature)"))
 		return fmt.Errorf("invalid signature")
 	}
 	if !setup.RootPublicKey.EqualTo(t.r.RootPublicKey()) {
-		t.teardownPath(rx.SourceKey, setup.PathID, from.port, fmt.Errorf("rejecting setup (root key doesn't match)"))
+		t.teardownPath(rx.SourceKey, setup.PathID, from.port, false, fmt.Errorf("rejecting setup (root key doesn't match)"))
 		return fmt.Errorf("setup root key doesn't match")
 	}
 
 	// Did the setup hit a dead end on the way to the ascending node?
 	if nextHops.EqualTo(types.SwitchPorts{0}) || nextHops.EqualTo(types.SwitchPorts{}) {
 		if !rx.DestinationKey.EqualTo(t.r.public) {
-			t.teardownPath(rx.SourceKey, setup.PathID, from.port, fmt.Errorf("rejecting setup (hit dead end)"))
+			t.teardownPath(rx.SourceKey, setup.PathID, from.port, false, fmt.Errorf("rejecting setup (hit dead end)"))
 			return fmt.Errorf("setup for %q (%s) en route to %q %s hit dead end at %s", rx.SourceKey, hex.EncodeToString(setup.PathID[:]), rx.DestinationKey, rx.Destination, t.r.Coords())
 		}
 	}
@@ -590,8 +592,8 @@ func (t *virtualSnake) handleSetup(from *Peer, rx *types.Frame, nextHops types.S
 	// Is the setup a duplicate of one we already have in our table?
 	_, ok := t._table[virtualSnakeIndex{rx.SourceKey, setup.PathID}]
 	if ok {
-		t.teardownPath(rx.SourceKey, setup.PathID, 0, fmt.Errorf("rejecting setup (duplicate)"))
-		t.teardownPath(rx.SourceKey, setup.PathID, from.port, fmt.Errorf("rejecting setup (duplicate)"))
+		t.teardownPath(rx.SourceKey, setup.PathID, 0, false, fmt.Errorf("rejecting setup (duplicate)"))
+		t.teardownPath(rx.SourceKey, setup.PathID, from.port, false, fmt.Errorf("rejecting setup (duplicate)"))
 		return fmt.Errorf("setup is a duplicate")
 	}
 
@@ -635,7 +637,7 @@ func (t *virtualSnake) handleSetup(from *Peer, rx *types.Frame, nextHops types.S
 		if update {
 			if desc != nil {
 				// Tear down the previous path, if there was one.
-				t.teardownPath(desc.PublicKey, desc.PathID, 0, fmt.Errorf("replacing descending"))
+				t.teardownPath(desc.PublicKey, desc.PathID, 0, false, fmt.Errorf("replacing descending"))
 			}
 			t._descending = &virtualSnakeNeighbour{
 				PublicKey:     rx.SourceKey,
@@ -670,6 +672,6 @@ func (t *virtualSnake) handleSetup(from *Peer, rx *types.Frame, nextHops types.S
 		return nil
 	}
 
-	t.teardownPath(rx.SourceKey, setup.PathID, from.port, fmt.Errorf("rejecting setup (no conditions met)"))
+	t.teardownPath(rx.SourceKey, setup.PathID, from.port, false, fmt.Errorf("rejecting setup (no conditions met)"))
 	return fmt.Errorf("no conditions met")
 }
