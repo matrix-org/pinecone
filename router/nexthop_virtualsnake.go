@@ -120,9 +120,9 @@ func (t *virtualSnake) maintain() {
 		if desc := t.descending(); desc != nil {
 			switch {
 			case time.Since(desc.LastSeen) > virtualSnakeNeighExpiryPeriod:
-				t.teardownPath(desc.PublicKey, desc.PathID, 0, false, fmt.Errorf("descending neighbour expired"))
+				t.teardownPath(desc.PublicKey, desc.PathID, desc.Port, false, fmt.Errorf("descending neighbour expired"))
 			case !desc.RootPublicKey.EqualTo(rootKey):
-				t.teardownPath(desc.PublicKey, desc.PathID, 0, false, fmt.Errorf("descending root changed"))
+				t.teardownPath(desc.PublicKey, desc.PathID, desc.Port, false, fmt.Errorf("descending root changed"))
 			}
 		}
 
@@ -176,7 +176,7 @@ func (t *virtualSnake) rootNodeChanged(root types.PublicKey) {
 		defer t.bootstrapIn(time.Second)
 	}
 	if desc := t._descending; desc != nil && !desc.RootPublicKey.EqualTo(root) {
-		t.teardownPath(desc.PublicKey, desc.PathID, 0, false, fmt.Errorf("root changed and desc no longer matches"))
+		t.teardownPath(desc.PublicKey, desc.PathID, desc.Port, false, fmt.Errorf("root changed and desc no longer matches"))
 	}
 	teardown := map[virtualSnakeIndex]virtualSnakeEntry{}
 	for k, v := range t._table {
@@ -212,7 +212,7 @@ func (t *virtualSnake) portWasDisconnected(port types.SwitchPortID) {
 		defer t.bootstrapIn(0)
 	}
 	if desc := t._descending; desc != nil && desc.Port == port {
-		t.teardownPath(desc.PublicKey, desc.PathID, 0, false, fmt.Errorf("port teardown"))
+		t.teardownPath(desc.PublicKey, desc.PathID, desc.Port, false, fmt.Errorf("port teardown"))
 	}
 
 	// Check if any of our routing table entries are
@@ -297,6 +297,9 @@ func (t *virtualSnake) getVirtualSnakeNextHop(from *Peer, destKey types.PublicKe
 			continue
 		}
 		activePeers[peer] = ann
+		if bootstrap {
+			newCheckedCandidate(peer.public, peer.port)
+		}
 	}
 
 	// Check our direct peers ancestors
@@ -338,7 +341,7 @@ func (t *virtualSnake) getVirtualSnakeNextHop(from *Peer, destKey types.PublicKe
 	}
 }
 
-func (t *virtualSnake) handleVirtualSnakeTeardownFrame(from *Peer, rx *types.Frame) {
+func (t *virtualSnake) handleVirtualSnakeTeardownFromNetwork(from *Peer, rx *types.Frame) {
 	t.mutex.Lock()
 	defer t.mutex.Unlock()
 	defer rx.Done()
@@ -349,48 +352,41 @@ func (t *virtualSnake) handleVirtualSnakeTeardownFrame(from *Peer, rx *types.Fra
 	if _, err := teardown.UnmarshalBinary(rx.Payload); err != nil {
 		return
 	}
-	t.handleVirtualSnakeTeardown(from, rx.Borrow(), rx.DestinationKey, teardown.PathID, true)
-}
-
-func (t *virtualSnake) handleVirtualSnakeTeardown(from *Peer, rx *types.Frame, pathKey types.PublicKey, pathID types.VirtualSnakePathID, send bool) {
-	defer rx.Done()
-	sendTeardownsVia := func(nexthops types.SwitchPorts) {
-		for _, via := range nexthops {
-			if t.r.ports[via].started.Load() {
-				t.r.ports[via].protoOut.push(rx.Borrow())
-			}
+	for _, via := range t.handleVirtualSnakeTeardown(from, rx.DestinationKey, teardown.PathID) {
+		if t.r.ports[via].started.Load() {
+			t.r.ports[via].protoOut.push(rx.Borrow())
 		}
 	}
+}
+
+func (t *virtualSnake) handleVirtualSnakeTeardown(from *Peer, pathKey types.PublicKey, pathID types.VirtualSnakePathID) types.SwitchPorts {
 	if desc := t._descending; desc != nil && desc.PublicKey.EqualTo(pathKey) && desc.PathID == pathID {
 		t._descending = nil
 	}
 	if asc := t._ascending; asc != nil && t.r.public.EqualTo(pathKey) && asc.PathID == pathID {
 		t._ascending = nil
-		defer t.bootstrapIn(time.Second / 4)
+		defer t.bootstrapIn(0)
 	}
 	for k, v := range t._table {
 		if k.PublicKey == pathKey && k.PathID == pathID {
 			delete(t._table, k)
-			if send {
-				switch {
-				case from.port == v.DestinationPort:
-					sendTeardownsVia(types.SwitchPorts{v.SourcePort})
-				case from.port == v.SourcePort:
-					sendTeardownsVia(types.SwitchPorts{v.DestinationPort})
-				case from.port == 0:
-					if v.DestinationPort != 0 && v.SourcePort != 0 {
-						sendTeardownsVia(types.SwitchPorts{v.DestinationPort, v.SourcePort})
-					} else if v.DestinationPort != 0 {
-						sendTeardownsVia(types.SwitchPorts{v.DestinationPort})
-					} else if v.SourcePort != 0 {
-						sendTeardownsVia(types.SwitchPorts{v.SourcePort})
-					}
-				default:
-					fmt.Println("Teardown arriving on unexpected port", from.port, "where it is actually", v.SourcePort, "->", v.DestinationPort)
+			switch {
+			case from == nil: // the teardown originated locally
+				if v.DestinationPort != 0 && v.SourcePort != 0 {
+					return types.SwitchPorts{v.DestinationPort, v.SourcePort}
+				} else if v.DestinationPort != 0 {
+					return types.SwitchPorts{v.DestinationPort}
+				} else if v.SourcePort != 0 {
+					return types.SwitchPorts{v.SourcePort}
 				}
+			case from.port == v.DestinationPort:
+				return types.SwitchPorts{v.SourcePort}
+			case from.port == v.SourcePort:
+				return types.SwitchPorts{v.DestinationPort}
 			}
 		}
 	}
+	return types.SwitchPorts{}
 }
 
 func (t *virtualSnake) teardownPath(pathKey types.PublicKey, pathID types.VirtualSnakePathID, via types.SwitchPortID, asc bool, err error) {
@@ -414,16 +410,20 @@ func (t *virtualSnake) teardownPath(pathKey types.PublicKey, pathID types.Virtua
 		frame.DestinationKey = pathKey
 	}
 	frame.Payload = append(frame.Payload[:0], payload[:]...)
-	if via == 0 {
-		t.handleVirtualSnakeTeardown(t.r.ports[0], frame.Borrow(), pathKey, pathID, !asc)
-	} else if t.r.ports[via].started.Load() {
+	nexthops := t.handleVirtualSnakeTeardown(nil, pathKey, pathID)
+	if via != 0 && t.r.ports[via].started.Load() {
 		t.r.ports[via].protoOut.push(frame.Borrow())
+	} else if via == 0 {
+		for _, via := range nexthops {
+			if t.r.ports[via].started.Load() {
+				t.r.ports[via].protoOut.push(frame.Borrow())
+			}
+		}
 	}
 }
 
 // handleBootstrap is called in response to an incoming bootstrap
-// packet. It will update the descending information and send a setup
-// message if needed.
+// packet.
 func (t *virtualSnake) handleBootstrap(from *Peer, rx *types.Frame) error {
 	t.mutex.Lock()
 	defer t.mutex.Unlock()
@@ -443,27 +443,62 @@ func (t *virtualSnake) handleBootstrap(from *Peer, rx *types.Frame) error {
 	if !bootstrap.RootPublicKey.EqualTo(t.r.RootPublicKey()) {
 		return fmt.Errorf("bootstrap root key doesn't match")
 	}
-	bootstrapACK := types.VirtualSnakeBootstrapACK{ // nolint:gosimple
-		PathID:        bootstrap.PathID,
-		RootPublicKey: bootstrap.RootPublicKey,
+	acknowledge := false
+	desc := t._descending
+	switch {
+	case rx.SourceKey.EqualTo(t.r.public):
+		// We received a bootstrap from ourselves. This shouldn't happen,
+		// so either another node has forwarded it to us incorrectly, or
+		// a routing loop has occurred somewhere. Don't act on the bootstrap
+		// in that case.
+	case desc != nil && desc.PublicKey.EqualTo(rx.DestinationKey):
+		// We've received another bootstrap from our direct descending node.
+		// Send back an acknowledgement as this is OK.
+		acknowledge = true
+	case desc != nil && time.Since(desc.LastSeen) >= virtualSnakeNeighExpiryPeriod:
+		// We already have a direct descending node, but we haven't seen it
+		// recently, so it's quite possible that it has disappeared. We'll
+		// therefore handle this bootstrap instead. If the original node comes
+		// back later and is closer to us then we'll end up using it again.
+		acknowledge = true
+	case desc == nil && util.LessThan(rx.DestinationKey, t.r.public):
+		// We don't know about a descending node and at the moment we don't know
+		// any better candidates, so we'll accept a bootstrap from a node with a
+		// key lower than ours (so that it matches descending order).
+		acknowledge = true
+	case desc != nil && util.DHTOrdered(desc.PublicKey, rx.DestinationKey, t.r.public):
+		// We know about a descending node already but it turns out that this
+		// new node that we've received a bootstrap from is actually closer to
+		// us than the previous node. We'll update our record to use the new
+		// node instead and then send back a bootstrap ACK.
+		acknowledge = true
+	default:
+		// The bootstrap conditions weren't met. This might just be because
+		// there's a node out there that hasn't converged to a closer node
+		// yet, so we'll just ignore the bootstrap.
 	}
-	var buf [8 + ed25519.PublicKeySize]byte
-	if _, err := bootstrapACK.MarshalBinary(buf[:]); err != nil {
-		return fmt.Errorf("bootstrapACK.MarshalBinary: %w", err)
+	if acknowledge {
+		bootstrapACK := types.VirtualSnakeBootstrapACK{ // nolint:gosimple
+			PathID:        bootstrap.PathID,
+			RootPublicKey: bootstrap.RootPublicKey,
+		}
+		var buf [8 + ed25519.PublicKeySize]byte
+		if _, err := bootstrapACK.MarshalBinary(buf[:]); err != nil {
+			return fmt.Errorf("bootstrapACK.MarshalBinary: %w", err)
+		}
+		ts, err := util.SignedTimestamp(t.r.private)
+		if err != nil {
+			return fmt.Errorf("util.SignedTimestamp: %w", err)
+		}
+		frame := types.GetFrame()
+		frame.Type = types.TypeVirtualSnakeBootstrapACK
+		frame.Destination = rx.Source
+		frame.DestinationKey = rx.DestinationKey
+		frame.Source = t.r.Coords()
+		frame.SourceKey = t.r.public
+		frame.Payload = append(frame.Payload[:0], append(buf[:], ts...)...)
+		t.r.send <- frame
 	}
-	ts, err := util.SignedTimestamp(t.r.private)
-	if err != nil {
-		return fmt.Errorf("util.SignedTimestamp: %w", err)
-	}
-
-	frame := types.GetFrame()
-	frame.Type = types.TypeVirtualSnakeBootstrapACK
-	frame.Destination = rx.Source
-	frame.DestinationKey = rx.DestinationKey
-	frame.Source = t.r.Coords()
-	frame.SourceKey = t.r.public
-	frame.Payload = append(frame.Payload[:0], append(buf[:], ts...)...)
-	t.r.send <- frame
 	return nil
 }
 
@@ -637,7 +672,7 @@ func (t *virtualSnake) handleSetup(from *Peer, rx *types.Frame, nextHops types.S
 		if update {
 			if desc != nil {
 				// Tear down the previous path, if there was one.
-				t.teardownPath(desc.PublicKey, desc.PathID, 0, false, fmt.Errorf("replacing descending"))
+				t.teardownPath(desc.PublicKey, desc.PathID, desc.Port, false, fmt.Errorf("replacing descending"))
 			}
 			t._descending = &virtualSnakeNeighbour{
 				PublicKey:     rx.SourceKey,
@@ -673,5 +708,5 @@ func (t *virtualSnake) handleSetup(from *Peer, rx *types.Frame, nextHops types.S
 	}
 
 	t.teardownPath(rx.SourceKey, setup.PathID, from.port, false, fmt.Errorf("rejecting setup (no conditions met)"))
-	return fmt.Errorf("no conditions met")
+	return nil
 }
