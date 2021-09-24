@@ -224,12 +224,12 @@ func (r *Router) DHTSearch(ctx context.Context, pk, mk ed25519.PublicKey, stopsh
 func (r *Router) DHTInfo() (asc, desc *virtualSnakeNeighbour, table map[virtualSnakeIndex]virtualSnakeEntry) {
 	asc = r.snake.ascending()
 	desc = r.snake.descending()
-	r.snake.tableMutex.RLock()
+	r.snake.mutex.Lock()
 	table = map[virtualSnakeIndex]virtualSnakeEntry{}
-	for k, v := range r.snake.table {
+	for k, v := range r.snake._table {
 		table[k] = v
 	}
-	r.snake.tableMutex.RUnlock()
+	r.snake.mutex.Unlock()
 	return
 }
 
@@ -273,11 +273,11 @@ func (r *Router) KnownNodes() []types.PublicKey {
 	if s := r.snake.ascending(); s != nil {
 		known[s.PublicKey] = struct{}{}
 	}
-	r.snake.tableMutex.RLock()
-	for k := range r.snake.table {
+	r.snake.mutex.Lock()
+	for k := range r.snake._table {
 		known[k.PublicKey] = struct{}{}
 	}
-	r.snake.tableMutex.RUnlock()
+	r.snake.mutex.Unlock()
 	list := make([]types.PublicKey, 0, len(known))
 	for n := range known {
 		list = append(list, n)

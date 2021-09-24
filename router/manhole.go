@@ -65,14 +65,14 @@ func (r *Router) startManhole() {
 		}
 		results["ports"] = ports
 
-		r.snake.tableMutex.RLock()
+		r.snake.mutex.Lock()
 		results["snake"] = map[string]interface{}{
 			"predecessor": r.snake.descending(),
 			"successor":   r.snake.ascending(),
-			"table":       r.snake.table,
+			"table":       r.snake._table,
 		}
 		b, err := json.MarshalIndent(results, "", "  ")
-		r.snake.tableMutex.RUnlock()
+		r.snake.mutex.Unlock()
 
 		if err != nil {
 			w.WriteHeader(500)

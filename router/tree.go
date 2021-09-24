@@ -235,17 +235,17 @@ func (t *spanningTree) selectNewParentAndAdvertise() {
 		rootChanged := bestAnn.RootPublicKey != lastUpdate.RootPublicKey
 		sequenceChanged := lastUpdate.RootPublicKey == bestKey && bestSeq > lastUpdate.Sequence
 
-		if rootChanged {
-			t.r.snake.rootNodeChanged(bestAnn.RootPublicKey)
-		}
 		if rootChanged || coordsChanged {
 			t.callback(bestPort, newCoords)
 		}
 
 		switch {
+		case rootChanged:
+			t.r.snake.rootNodeChanged(bestAnn.RootPublicKey)
+			fallthrough
 		case bestPort != lastParent:
 			fallthrough
-		case rootChanged, coordsChanged, sequenceChanged:
+		case coordsChanged, sequenceChanged:
 			t.advertise()
 		}
 		return
