@@ -26,15 +26,58 @@ import (
 	"github.com/matrix-org/pinecone/util"
 )
 
+// Some useful notes:
+//
+// The "ascending" node is the pointer to the node with the next highest
+// key. The "descending" node is the pointer to the node with the next
+// lowest key.
+//
+// The root key should always be the "top" of the snake. Therefore the
+// root node will not have an ascending path — there's no higher key on
+// the network for it to search for. This is also why it is important
+// for all nodes on the network to agree on who is the root node in order
+// to converge.
+//
+// There will also be a node on the network at the "bottom" of the snake,
+// as it will be the node with the weakest key. In that case, this node
+// will not have a descending path.
+//
+// All other nodes should have both an ascending and a descending path,
+// which positions them in the snake in keyspace ordering.
+//
+// Keyspace neighbours are not necessarily direct peers. Therefore all
+// nodes between any two given keyspace neighbours are aware of the
+// relationship between those two nodes — this is called a path, those
+// are what populates the DHT table.
+//
+// The DHT table is populated with routes back to the source (i.e. the
+// node that sent the setup messages) between any two keyspace neighbours.
+// These provide routes "down" through keyspace towards the lower of the
+// two keys. Meanwhile, the spanning tree provides routes "up" through
+// keyspace towards the higher key, as all nodes are aware of their own
+// path to the root node via however many ancestors.
+//
+// It is this that allows bootstrapping to work — even if a node knows
+// nothing else apart from information from the spanning tree, it still
+// has enough knowledge to route to higher keys in order to send bootstrap
+// packets into the network.
+//
+// Bootstrap ACK and setup packets are actually not routed using the DHT
+// routing. They are instead routed using tree coordinates, as this is
+// likely to approximate to being the shortest path through the network.
+// This is why tree coordinates are exchanged during setup.
+
 const virtualSnakeNeighExpiryPeriod = time.Hour
+
+const virtualSnakeMaintenanceInterval = time.Second
 
 type virtualSnake struct {
 	r           *Router
-	mutex       sync.Mutex
-	_table      virtualSnakeTable
-	_ascending  *virtualSnakeNeighbour
-	_descending *virtualSnakeNeighbour
-	bootstrap   *time.Timer
+	mutex       sync.Mutex             // protects the snake state
+	_table      virtualSnakeTable      // routing table of transitive paths
+	_ascending  *virtualSnakeNeighbour // information about the next node in the snake
+	_descending *virtualSnakeNeighbour // information about the previous node in the snake
+	bootstrap   *time.Timer            // used by bootstrapIn to delay/de-dupe calls to bootstrapNow
 }
 
 type virtualSnakeTable map[virtualSnakeIndex]virtualSnakeEntry
@@ -52,8 +95,6 @@ type virtualSnakeEntry struct {
 }
 
 func (e *virtualSnakeEntry) Valid() bool {
-	// TODO: this should not be needed, since we should only remove
-	// paths by teardown ideally
 	return time.Since(e.LastSeen) < virtualSnakeNeighExpiryPeriod
 }
 
@@ -64,6 +105,10 @@ type virtualSnakeNeighbour struct {
 	Coords        types.SwitchPorts
 	PathID        types.VirtualSnakePathID
 	RootPublicKey types.PublicKey
+}
+
+func (e *virtualSnakeNeighbour) Valid() bool {
+	return time.Since(e.LastSeen) < virtualSnakeNeighExpiryPeriod
 }
 
 func newVirtualSnake(r *Router) *virtualSnake {
@@ -93,46 +138,61 @@ func (t *virtualSnake) descending() *virtualSnakeNeighbour {
 // every 1 second and virtualSnakeSetupInterval seconds, sending
 // bootstraps and setup messages as needed.
 func (t *virtualSnake) maintain() {
-	for {
-		select {
-		case <-t.r.context.Done():
-			return
-		case <-time.After(time.Second):
-		}
+	maintain := func() {
+		// Take the snake mutex, so that nothing else happens during
+		// this update period.
+		t.mutex.Lock()
+		defer t.mutex.Unlock()
 
+		// Work out whether or not we can bootstrap — we can only do this if
+		// we actually have active peers and if we aren't the root. (If we are
+		// the root then we are already the "top" node of the snake, so there is
+		// no higher node to send a bootstrap to.)
 		rootKey := t.r.RootPublicKey()
 		canBootstrap := rootKey != t.r.public && t.r.PeerCount(-1) > 0
 		willBootstrap := false
 
-		if asc := t.ascending(); asc != nil {
-			switch {
-			case time.Since(asc.LastSeen) > virtualSnakeNeighExpiryPeriod:
-				t.teardownPath(asc.PublicKey, asc.PathID, asc.Port, true, fmt.Errorf("ascending neighbour expired"))
-				willBootstrap = canBootstrap
-			case asc.RootPublicKey != rootKey:
-				t.teardownPath(asc.PublicKey, asc.PathID, asc.Port, true, fmt.Errorf("ascending root changed"))
+		// Check the ascending node.
+		if asc := t._ascending; asc != nil {
+			// For the ascending node relationship to be valid, it has to believe that
+			// the network has the same root as we do, and it has to have not expired.
+			// If either of these are not true then we will send a bootstrap if we can.
+			if !asc.Valid() || asc.RootPublicKey != rootKey {
+				t.teardownPath(asc.PublicKey, asc.PathID, asc.Port, true)
 				willBootstrap = canBootstrap
 			}
 		} else {
+			// We don't know about an ascending node at all, so send a bootstrap if
+			// we can.
 			willBootstrap = canBootstrap
 		}
 
-		if desc := t.descending(); desc != nil {
-			switch {
-			case time.Since(desc.LastSeen) > virtualSnakeNeighExpiryPeriod:
-				t.teardownPath(desc.PublicKey, desc.PathID, desc.Port, false, fmt.Errorf("descending neighbour expired"))
-			case !desc.RootPublicKey.EqualTo(rootKey):
-				t.teardownPath(desc.PublicKey, desc.PathID, desc.Port, false, fmt.Errorf("descending root changed"))
+		// Check the descending node.
+		if desc := t._descending; desc != nil {
+			// For the descending node relationship to be valid, it has to believe that
+			// the network has the same root as we do, and it has to have not expired.
+			// If either of these are not true then we will tear down the path to the
+			// descending node, but we can't do anything else, since it is up to the
+			// remote side to send a bootstrap to us.
+			if !desc.Valid() || !desc.RootPublicKey.EqualTo(rootKey) {
+				t.teardownPath(desc.PublicKey, desc.PathID, desc.Port, false)
 			}
 		}
 
-		// Send bootstrap messages into the network. Ordinarily we
-		// would only want to do this when starting up or after a
-		// predefined interval, but for now we'll continue to send
-		// them on a regular interval until we can derive some better
-		// connection state.
+		// If we need to send a bootstrap into the network then do it straight
+		// away.
 		if willBootstrap {
-			t.bootstrapIn(0)
+			t.bootstrapIn(immediately)
+		}
+	}
+
+	// Keep maintaining on a regular interval.
+	for {
+		select {
+		case <-t.r.context.Done():
+			return
+		case <-time.After(virtualSnakeMaintenanceInterval):
+			maintain()
 		}
 	}
 }
@@ -169,23 +229,22 @@ func (t *virtualSnake) bootstrapNow() {
 }
 
 func (t *virtualSnake) rootNodeChanged(root types.PublicKey) {
+	// Take the snake lock so that nothing else happens while we are dealing
+	// with the root change.
 	t.mutex.Lock()
 	defer t.mutex.Unlock()
+
+	// Check that the ascending node matches the new root key. If it doesn't then
+	// we will tear down the path to the ascending node and bootstrap again.
 	if asc := t._ascending; asc != nil && !asc.RootPublicKey.EqualTo(root) {
-		t.teardownPath(asc.PublicKey, asc.PathID, asc.Port, true, fmt.Errorf("root changed and asc no longer matches"))
+		t.teardownPath(asc.PublicKey, asc.PathID, asc.Port, true)
 		defer t.bootstrapIn(time.Second)
 	}
+
+	// Check that the descending node matches the new root key. If it doesn't then
+	// we'll tear down the path and wait for them to bootstrap back to us.
 	if desc := t._descending; desc != nil && !desc.RootPublicKey.EqualTo(root) {
-		t.teardownPath(desc.PublicKey, desc.PathID, desc.Port, false, fmt.Errorf("root changed and desc no longer matches"))
-	}
-	teardown := map[virtualSnakeIndex]virtualSnakeEntry{}
-	for k, v := range t._table {
-		if !root.EqualTo(v.RootPublicKey) {
-			teardown[k] = v
-		}
-	}
-	for k := range teardown {
-		t.teardownPath(k.PublicKey, k.PathID, 0, false, fmt.Errorf("root or parent changed and tearing paths"))
+		t.teardownPath(desc.PublicKey, desc.PathID, desc.Port, false)
 	}
 }
 
@@ -208,11 +267,11 @@ func (t *virtualSnake) portWasDisconnected(port types.SwitchPortID) {
 	// Check if our ascending or descending directions are affected by
 	// this port change.
 	if asc := t._ascending; asc != nil && asc.Port == port {
-		t.teardownPath(asc.PublicKey, asc.PathID, asc.Port, true, fmt.Errorf("port teardown"))
+		t.teardownPath(asc.PublicKey, asc.PathID, asc.Port, true)
 		defer t.bootstrapIn(time.Second / 2)
 	}
 	if desc := t._descending; desc != nil && desc.Port == port {
-		t.teardownPath(desc.PublicKey, desc.PathID, desc.Port, false, fmt.Errorf("port teardown"))
+		t.teardownPath(desc.PublicKey, desc.PathID, desc.Port, false)
 	}
 
 	// Check if any of our routing table entries are
@@ -226,7 +285,7 @@ func (t *virtualSnake) portWasDisconnected(port types.SwitchPortID) {
 		}
 	}
 	for k := range teardown {
-		t.teardownPath(k.PublicKey, k.PathID, 0, false, fmt.Errorf("port teardown"))
+		t.teardownPath(k.PublicKey, k.PathID, 0, false)
 	}
 }
 
@@ -238,10 +297,10 @@ func (t *virtualSnake) getVirtualSnakeNextHop(from *Peer, destKey types.PublicKe
 	}
 	t.mutex.Lock()
 	defer t.mutex.Unlock()
-	rootKey := t.r.RootPublicKey()
+	rootKey := t.r.public // overwritten below if we have ancestors
 	ancestors, parentPort := t.r.tree.Ancestors()
 	if len(ancestors) > 0 {
-		rootKey = ancestors[0]
+		rootKey = ancestors[0] // the top level ancestor is the root
 		ancestors = ancestors[1:]
 	}
 	bestKey, bestPort := t.r.public, types.SwitchPortID(0) // rootKey, rootPort
@@ -292,19 +351,13 @@ func (t *virtualSnake) getVirtualSnakeNextHop(from *Peer, destKey types.PublicKe
 	// The next section needs us to check direct peers
 	activePeers := map[*Peer]*rootAnnouncementWithTime{}
 	for _, peer := range t.r.activePorts() {
-		ann := peer.lastAnnouncement()
-		if ann == nil || ann.RootPublicKey != rootKey {
-			continue
-		}
-		activePeers[peer] = ann
-		if bootstrap {
-			newCheckedCandidate(peer.public, peer.port)
+		if ann := peer.lastAnnouncement(); ann != nil {
+			activePeers[peer] = ann
 		}
 	}
 
 	// Check our direct peers ancestors
 	for peer, peerAnn := range activePeers {
-		newCheckedCandidate(peerAnn.RootPublicKey, peer.port)
 		for _, hop := range peerAnn.Signatures {
 			newCheckedCandidate(hop.PublicKey, peer.port)
 		}
@@ -312,15 +365,12 @@ func (t *virtualSnake) getVirtualSnakeNextHop(from *Peer, destKey types.PublicKe
 
 	// Check our DHT entries
 	for dhtKey, entry := range t._table {
-		switch {
-		case !entry.Valid():
-			continue
-		default:
+		if entry.Valid() {
 			newCheckedCandidate(dhtKey.PublicKey, entry.SourcePort)
 		}
 	}
 
-	// Check our direct peers
+	// Check our direct peers for our best key
 	for peer := range activePeers {
 		if peerKey := peer.PublicKey(); bestKey.EqualTo(peerKey) {
 			// We've seen this key already, either as one of our ancestors
@@ -389,7 +439,7 @@ func (t *virtualSnake) handleVirtualSnakeTeardown(from *Peer, pathKey types.Publ
 	return types.SwitchPorts{}
 }
 
-func (t *virtualSnake) teardownPath(pathKey types.PublicKey, pathID types.VirtualSnakePathID, via types.SwitchPortID, asc bool, err error) {
+func (t *virtualSnake) teardownPath(pathKey types.PublicKey, pathID types.VirtualSnakePathID, via types.SwitchPortID, asc bool) {
 	var payload [9]byte
 	teardown := types.VirtualSnakeTeardown{ // nolint:gosimple
 		PathID: pathID,
@@ -556,7 +606,7 @@ func (t *virtualSnake) handleBootstrapACK(from *Peer, rx *types.Frame) error {
 	if update {
 		if asc != nil {
 			// Tear down the previous path, if there was one.
-			t.teardownPath(asc.PublicKey, asc.PathID, asc.Port, true, fmt.Errorf("replacing ascending"))
+			t.teardownPath(asc.PublicKey, asc.PathID, asc.Port, true)
 		}
 		t._ascending = &virtualSnakeNeighbour{
 			PublicKey:     rx.SourceKey,
@@ -606,18 +656,18 @@ func (t *virtualSnake) handleSetup(from *Peer, rx *types.Frame, nextHops types.S
 
 	// Check if the setup packet has a valid signed timestamp.
 	if !util.VerifySignedTimestamp(rx.SourceKey, rx.Payload[n:]) {
-		t.teardownPath(rx.SourceKey, setup.PathID, from.port, false, fmt.Errorf("rejecting setup (invalid signature)"))
+		t.teardownPath(rx.SourceKey, setup.PathID, from.port, false)
 		return fmt.Errorf("invalid signature")
 	}
 	if !setup.RootPublicKey.EqualTo(t.r.RootPublicKey()) {
-		t.teardownPath(rx.SourceKey, setup.PathID, from.port, false, fmt.Errorf("rejecting setup (root key doesn't match)"))
+		t.teardownPath(rx.SourceKey, setup.PathID, from.port, false)
 		return fmt.Errorf("setup root key doesn't match")
 	}
 
 	// Did the setup hit a dead end on the way to the ascending node?
 	if nextHops.EqualTo(types.SwitchPorts{0}) || nextHops.EqualTo(types.SwitchPorts{}) {
 		if !rx.DestinationKey.EqualTo(t.r.public) {
-			t.teardownPath(rx.SourceKey, setup.PathID, from.port, false, fmt.Errorf("rejecting setup (hit dead end)"))
+			t.teardownPath(rx.SourceKey, setup.PathID, from.port, false)
 			return fmt.Errorf("setup for %q (%s) en route to %q %s hit dead end at %s", rx.SourceKey, hex.EncodeToString(setup.PathID[:]), rx.DestinationKey, rx.Destination, t.r.Coords())
 		}
 	}
@@ -627,8 +677,8 @@ func (t *virtualSnake) handleSetup(from *Peer, rx *types.Frame, nextHops types.S
 	// Is the setup a duplicate of one we already have in our table?
 	_, ok := t._table[virtualSnakeIndex{rx.SourceKey, setup.PathID}]
 	if ok {
-		t.teardownPath(rx.SourceKey, setup.PathID, 0, false, fmt.Errorf("rejecting setup (duplicate)"))
-		t.teardownPath(rx.SourceKey, setup.PathID, from.port, false, fmt.Errorf("rejecting setup (duplicate)"))
+		t.teardownPath(rx.SourceKey, setup.PathID, 0, false)
+		t.teardownPath(rx.SourceKey, setup.PathID, from.port, false)
 		return fmt.Errorf("setup is a duplicate")
 	}
 
@@ -672,7 +722,7 @@ func (t *virtualSnake) handleSetup(from *Peer, rx *types.Frame, nextHops types.S
 		if update {
 			if desc != nil {
 				// Tear down the previous path, if there was one.
-				t.teardownPath(desc.PublicKey, desc.PathID, desc.Port, false, fmt.Errorf("replacing descending"))
+				t.teardownPath(desc.PublicKey, desc.PathID, desc.Port, false)
 			}
 			t._descending = &virtualSnakeNeighbour{
 				PublicKey:     rx.SourceKey,
@@ -707,6 +757,6 @@ func (t *virtualSnake) handleSetup(from *Peer, rx *types.Frame, nextHops types.S
 		return nil
 	}
 
-	t.teardownPath(rx.SourceKey, setup.PathID, from.port, false, fmt.Errorf("rejecting setup (no conditions met)"))
+	t.teardownPath(rx.SourceKey, setup.PathID, from.port, false)
 	return nil
 }
