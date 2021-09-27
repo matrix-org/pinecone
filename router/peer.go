@@ -55,6 +55,7 @@ type Peer struct {
 	protoOut     *fifoQueue                // queue protocol message to peer
 	coords       types.SwitchPorts         //
 	announcement *rootAnnouncementWithTime // last received announcement from peer
+	annexpired   *time.Timer               // fires when the peer hasn't sent us an announcement for a while
 	statistics   peerStatistics            //
 }
 
@@ -81,6 +82,13 @@ func (p *Peer) start() {
 	// Push a root update to our new peer. This will notify them
 	// of our coordinates and that we are alive.
 	p.protoOut.push(p.r.tree.Root().ForPeer(p))
+
+	// Start a timer that will shut down the peer if we don't receive
+	// a root announcement in the expected interval. Port 0 is exempt
+	// from this because the local router doesn't send announcements.
+	if p.port != 0 {
+		p.annexpired = time.AfterFunc(announcementInterval, p.cancel)
+	}
 
 	// Start the reader and writer goroutines for this peer.
 	p.wg.Add(2)
@@ -113,6 +121,9 @@ func (p *Peer) start() {
 	// Wait for the cancellation, and then for the goroutines to stop.
 	<-p.context.Done()
 	p.started.Store(false)
+	if p.port != 0 {
+		p.annexpired.Stop()
+	}
 
 	// Notify the tree and DHT about the peer cancellation. We need
 	// to do this quickly so that they have more time to recover, even
@@ -237,6 +248,10 @@ func (p *Peer) updateAnnouncement(new *types.SwitchAnnouncement) error {
 		receiveOrder:       p.r.tree.ordering,
 	}
 	p.coords = new.PeerCoords()
+	if p.port != 0 {
+		p.annexpired.Stop()
+		p.annexpired = time.AfterFunc(announcementInterval, p.cancel)
+	}
 	return nil
 }
 
