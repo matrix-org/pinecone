@@ -20,49 +20,15 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math"
-	"runtime"
-	"sync"
-
-	"go.uber.org/atomic"
 )
 
-var framePool = &sync.Pool{
-	New: func() interface{} {
-		f := &Frame{}
-		runtime.SetFinalizer(f, func(f *Frame) {
-			if refs := f.refs.Load(); refs != 0 {
-				panic(fmt.Sprintf("frame was garbage collected with %d remaining references, this is a bug", refs))
-			}
-		})
-		return f
-	},
-}
+// MaxPayloadSize is the maximum size that a single frame can contain
+// as a payload, not including headers.
+const MaxPayloadSize = 65535
 
-func GetFrame() *Frame {
-	frame := framePool.Get().(*Frame)
-	if !frame.refs.CAS(0, 1) {
-		panic("invalid frame reuse after Done call")
-	}
-	return frame
-}
-
-func (f *Frame) Borrow() *Frame {
-	f.refs.Inc()
-	return f
-}
-
-func (f *Frame) Done() bool {
-	refs := f.refs.Dec()
-	if refs < 0 {
-		panic("invalid Done call")
-	}
-	if refs == 0 {
-		f.Reset()
-		framePool.Put(f)
-		return true
-	}
-	return false
-}
+// MaxFrameSize is the maximum size that a single frame can be, including
+// all headers.
+const MaxFrameSize = 65535*3 + 14
 
 type FrameVersion uint8
 type FrameType uint8
@@ -91,7 +57,6 @@ const (
 var FrameMagicBytes = []byte{0x70, 0x69, 0x6e, 0x65}
 
 type Frame struct {
-	refs           atomic.Int32
 	Version        FrameVersion
 	Type           FrameType
 	Destination    SwitchPorts
@@ -108,13 +73,6 @@ func (f *Frame) Reset() {
 	f.Source = SwitchPorts{}
 	f.SourceKey = PublicKey{}
 	f.Payload = f.Payload[:0]
-}
-
-func (f *Frame) Copy() *Frame {
-	copy := *f
-	copy.refs.Store(1)
-	copy.Payload = append([]byte{}, f.Payload...)
-	return &copy
 }
 
 func (f *Frame) MarshalBinary(buffer []byte) (int, error) {

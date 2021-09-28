@@ -12,21 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package simulator
+package router
 
-import (
-	"net"
-
-	"github.com/matrix-org/pinecone/router"
+const (
+	// reserved = 1
+	capabilityVirtualSnake        = 2
+	capabilityHardState           = 4
+	capabilityPathIDs             = 8
+	capabilityRootInUpdates       = 16
+	capabilityNewHeaders          = 32
+	capabilitySlowRootInterval    = 64
+	capabilityRefactoredTeardowns = 128
 )
 
-type Node struct {
-	*router.Router
-	l          *net.TCPListener // nolint:structcheck,unused
-	ListenAddr *net.TCPAddr
-}
-
-type Distance struct {
-	Real     int64
-	Observed int64
-}
+const ourVersion uint8 = 0
+const ourCapabilities uint8 = capabilityVirtualSnake | capabilityHardState | capabilityPathIDs | capabilityRootInUpdates | capabilityNewHeaders | capabilitySlowRootInterval | capabilityRefactoredTeardowns

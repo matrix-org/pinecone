@@ -52,21 +52,23 @@ func (q *Sessions) DialContext(ctx context.Context, network, addrstr string) (ne
 
 	var addr net.Addr
 	switch network {
-	case "ed25519+greedy":
-		_, addr, err = q.r.DHTSearch(ctx, pk, types.FullMask[:], false)
-		if err != nil {
-			return nil, fmt.Errorf("q.dht.search: %w", err)
-		}
+	/*
+		case "ed25519+greedy":
+			_, addr, err = q.r.DHTSearch(ctx, pk, types.FullMask[:], false)
+			if err != nil {
+				return nil, fmt.Errorf("q.dht.search: %w", err)
+			}
 
-	case "ed25519+source":
-		_, coords, err := q.r.DHTSearch(ctx, pk, types.FullMask[:], false)
-		if err != nil {
-			return nil, fmt.Errorf("q.dht.search: %w", err)
-		}
-		addr, err = q.r.Pathfind(ctx, coords)
-		if err != nil {
-			return nil, fmt.Errorf("q.pathfinder.pathfind: %w", err)
-		}
+		case "ed25519+source":
+			_, coords, err := q.r.DHTSearch(ctx, pk, types.FullMask[:], false)
+			if err != nil {
+				return nil, fmt.Errorf("q.dht.search: %w", err)
+			}
+			addr, err = q.r.Pathfind(ctx, coords)
+			if err != nil {
+				return nil, fmt.Errorf("q.pathfinder.pathfind: %w", err)
+			}
+	*/
 
 	case "ed25519":
 		fallthrough

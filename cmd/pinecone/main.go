@@ -33,7 +33,7 @@ import (
 )
 
 func main() {
-	pk, sk, err := ed25519.GenerateKey(nil)
+	_, sk, err := ed25519.GenerateKey(nil)
 	if err != nil {
 		panic(err)
 	}
@@ -51,7 +51,7 @@ func main() {
 	}
 	listener := net.ListenConfig{}
 
-	pineconeRouter := router.NewRouter(logger, "router", sk, pk, nil)
+	pineconeRouter := router.NewRouter(logger, sk)
 	_ = sessions.NewSessions(logger, pineconeRouter)
 	pineconeMulticast := multicast.NewMulticast(logger, pineconeRouter)
 	pineconeMulticast.Start()
@@ -67,12 +67,11 @@ func main() {
 				panic(err)
 			}
 
-			port, err := pineconeRouter.AuthenticatedConnect(conn, "", router.PeerTypeRemote)
-			if err != nil {
+			if err := pineconeRouter.AuthenticatedConnect(conn, "", router.PeerTypeRemote); err != nil {
 				panic(err)
 			}
 
-			fmt.Println("Outbound connection", conn.RemoteAddr(), "is connected to port", port)
+			fmt.Println("Outbound connection", conn.RemoteAddr(), "is connected")
 		}()
 	}
 
@@ -90,12 +89,11 @@ func main() {
 				panic(err)
 			}
 
-			port, err := pineconeRouter.AuthenticatedConnect(conn, "", router.PeerTypeRemote)
-			if err != nil {
+			if err := pineconeRouter.AuthenticatedConnect(conn, "", router.PeerTypeRemote); err != nil {
 				panic(err)
 			}
 
-			fmt.Println("Inbound connection", conn.RemoteAddr(), "is connected to port", port)
+			fmt.Println("Inbound connection", conn.RemoteAddr(), "is connected")
 		}
 	}()
 

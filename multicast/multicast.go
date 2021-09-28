@@ -160,7 +160,7 @@ func (m *Multicast) accept(listener net.Listener) {
 			return
 		}
 
-		if _, err := m.r.AuthenticatedConnect(conn, tcpaddr.Zone, router.PeerTypeMulticast); err != nil {
+		if err := m.r.AuthenticatedConnect(conn, tcpaddr.Zone, router.PeerTypeMulticast); err != nil {
 			//m.log.Println("m.s.AuthenticatedConnect:", err)
 			_ = conn.Close()
 			continue
@@ -282,9 +282,10 @@ func (m *Multicast) listen(intf *multicastInterface, conn net.PacketConn, srcadd
 			continue
 		}
 
-		if m.r.IsConnected(neighborKey, udpaddr.Zone) {
-			continue
-		}
+		// TODO: fix this
+		//if m.r.IsConnected(neighborKey, udpaddr.Zone) {
+		//	continue
+		//}
 
 		tcpaddr := &net.TCPAddr{
 			IP:   udpaddr.IP,
@@ -307,7 +308,7 @@ func (m *Multicast) listen(intf *multicastInterface, conn net.PacketConn, srcadd
 			return
 		}
 
-		if _, err := m.r.AuthenticatedConnect(peer, udpaddr.Zone, router.PeerTypeMulticast); err != nil {
+		if err := m.r.AuthenticatedConnect(peer, udpaddr.Zone, router.PeerTypeMulticast); err != nil {
 			m.log.Println("m.s.AuthenticatedConnect:", err)
 			_ = peer.Close()
 			continue
