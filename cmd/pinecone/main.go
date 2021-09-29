@@ -67,7 +67,7 @@ func main() {
 				panic(err)
 			}
 
-			if err := pineconeRouter.AuthenticatedConnect(conn, "", router.PeerTypeRemote); err != nil {
+			if _, err := pineconeRouter.AuthenticatedConnect(conn, "", router.PeerTypeRemote); err != nil {
 				panic(err)
 			}
 
@@ -89,7 +89,7 @@ func main() {
 				panic(err)
 			}
 
-			if err := pineconeRouter.AuthenticatedConnect(conn, "", router.PeerTypeRemote); err != nil {
+			if _, err := pineconeRouter.AuthenticatedConnect(conn, "", router.PeerTypeRemote); err != nil {
 				panic(err)
 			}
 

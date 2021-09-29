@@ -1,44 +1,43 @@
 package router
 
 import (
-	"time"
-
 	"github.com/Arceliar/phony"
 	"github.com/matrix-org/pinecone/types"
 )
 
 type state struct {
 	phony.Inbox
-	r           *Router
-	_ascending  bool
-	_descending bool
-	_parent     *peer
-	_table      virtualSnakeTable
+	r              *Router
+	_peers         []*peer
+	_ascending     *virtualSnakeNeighbour
+	_descending    *virtualSnakeNeighbour
+	_parent        *peer
+	_announcements map[*peer]*rootAnnouncementWithTime
+	_table         virtualSnakeTable
+	_ordering      uint64 // used to order switch announcements
+	_sequence      uint64 // sent in our own root updates
 }
 
-type virtualSnakeTable map[virtualSnakeIndex]virtualSnakeEntry
+func (s *state) _start() {
+	s._parent = nil
+	s._ascending = nil
+	s._descending = nil
+	s._announcements = map[*peer]*rootAnnouncementWithTime{}
+	s._table = virtualSnakeTable{}
+	s._ordering = 0
 
-type virtualSnakeIndex struct {
-	PublicKey types.PublicKey
-	PathID    types.VirtualSnakePathID
+	s._becomeRoot()
 }
 
-type virtualSnakeEntry struct {
-	SourcePort      types.SwitchPortID
-	DestinationPort types.SwitchPortID
-	LastSeen        time.Time
-	RootPublicKey   types.PublicKey
-}
-
-func (s *state) nextHopsFor(f *types.Frame) types.SwitchPorts {
-	var nexthops types.SwitchPorts
-	switch f.Type {
+func (s *state) nextHopsFor(from *peer, frame *types.Frame) []*peer {
+	var nexthops []*peer
+	switch frame.Type {
 	// SNEK routing
 	case types.TypeVirtualSnakeBootstrap:
 		fallthrough
 	case types.TypeGreedy:
 		phony.Block(s, func() {
-			nexthops = s._nextHopsTree(f)
+			nexthops = s._nextHopsTree(from, frame)
 		})
 
 	// Tree routing
@@ -46,8 +45,19 @@ func (s *state) nextHopsFor(f *types.Frame) types.SwitchPorts {
 		fallthrough
 	case types.TypeVirtualSnake:
 		phony.Block(s, func() {
-			nexthops = s._nextHopsSNEK(f)
+			nexthops = s._nextHopsSNEK(from, frame)
 		})
 	}
 	return nexthops
+}
+
+func (s *state) _portDisconnected(peer *peer) {
+	delete(s._announcements, peer)
+
+	if s._parent == peer {
+		s._selectNewParent()
+	}
+
+	// TODO: handle case that parent disappeared
+	// TODO: teardown transitive paths
 }

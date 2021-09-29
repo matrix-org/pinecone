@@ -3,50 +3,68 @@ package router
 import (
 	"context"
 	"crypto/ed25519"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"log"
 	"net"
-	"time"
+	"sync"
 
 	"github.com/Arceliar/phony"
 	"github.com/matrix-org/pinecone/types"
+	"go.uber.org/atomic"
 )
 
 const PortCount = 8
 const TrafficBuffer = 128
 
 type Router struct {
-	phony.Inbox
-	log     *log.Logger        // immutable
-	context context.Context    // immutable
-	cancel  context.CancelFunc // immutable
-	public  types.PublicKey    // immutable
-	private types.PrivateKey   // immutable
-	state   *state             // actor
-	_peers  []*peer
+	log       *log.Logger
+	simulator Simulator
+	context   context.Context
+	cancel    context.CancelFunc
+	public    types.PublicKey
+	private   types.PrivateKey
+	active    sync.Map
+	local     *peer
+	state     *state
 }
 
-func NewRouter(log *log.Logger, sk ed25519.PrivateKey) *Router {
+func NewRouter(log *log.Logger, sk ed25519.PrivateKey, sim Simulator) *Router {
 	ctx, cancel := context.WithCancel(context.Background())
 	r := &Router{
-		log:     log,
-		context: ctx,
-		cancel:  cancel,
-		_peers:  make([]*peer, PortCount),
+		log:       log,
+		simulator: sim,
+		context:   ctx,
+		cancel:    cancel,
 	}
 	copy(r.private[:], sk)
 	r.public = r.private.Public()
 	r.state = &state{
 		r:      r,
+		_peers: make([]*peer, PortCount),
 		_table: make(virtualSnakeTable),
 	}
+	r.local = r.localPeer()
+	r.state._peers[0] = r.local
+	r.state.Act(nil, r.state._start)
 	r.log.Println("Router identity:", r.public.String())
 	return r
 }
 
+// IsConnected returns true if the node is connected within the
+// given zone, or false otherwise.
+func (r *Router) IsConnected(key types.PublicKey, zone string) bool {
+	v, ok := r.active.Load(hex.EncodeToString(key[:]) + zone)
+	if !ok {
+		return false
+	}
+	count := v.(*atomic.Uint64)
+	return count.Load() > 0
+}
+
 func (r *Router) Close() error {
-	phony.Block(r, r.cancel)
+	phony.Block(nil, r.cancel)
 	return nil
 }
 
@@ -62,37 +80,48 @@ func (r *Router) Addr() net.Addr {
 	return r.PublicKey()
 }
 
-func (r *Router) Connect(conn net.Conn, public types.PublicKey, zone string, peertype int) error {
-	var err error
-	phony.Block(r, func() {
-		for i, p := range r._peers {
-			if p == nil {
-				ctx, cancel := context.WithCancel(r.context)
-				r._peers[i] = &peer{
-					router:   r,
-					port:     types.SwitchPortID(i),
-					conn:     conn,
-					public:   public,
-					zone:     zone,
-					peertype: peertype,
-					context:  ctx,
-					cancel:   cancel,
-					proto:    newFIFOQueue(),
-					traffic:  newLIFOQueue(TrafficBuffer),
-				}
-				r._peers[i].started.Store(true)
-				r._peers[i].reader.Act(r, r._peers[i]._read)
-				r._peers[i].writer.Act(r, r._peers[i]._write)
-				r.log.Println("Connected to peer", public.String(), "on port", i)
-				return
+func (r *Router) Connect(conn net.Conn, public types.PublicKey, zone string, peertype int) (types.SwitchPortID, error) {
+	var p *peer
+	phony.Block(r.state, func() {
+		for i, p := range r.state._peers {
+			if i == 0 {
+				// Port 0 is reserved for the local router.
+				continue
 			}
+			if p != nil {
+				continue
+			}
+			ctx, cancel := context.WithCancel(r.context)
+			p = &peer{
+				router:   r,
+				port:     types.SwitchPortID(i),
+				conn:     conn,
+				public:   public,
+				zone:     zone,
+				peertype: peertype,
+				context:  ctx,
+				cancel:   cancel,
+				proto:    newFIFOQueue(),
+				traffic:  newLIFOQueue(TrafficBuffer),
+			}
+			p.started.Store(true)
+			p.reader.Act(r.state, p._read)
+			p.writer.Act(r.state, p._write)
+			r.state._peers[i] = p
+			r.log.Println("Connected to peer", p.public.String(), "on port", p.port)
+			v, _ := r.active.LoadOrStore(hex.EncodeToString(p.public[:])+zone, atomic.NewUint64(0))
+			v.(*atomic.Uint64).Inc()
+			r.state._sendTreeAnnouncementToPeer(r.state._rootAnnouncement(), p)
+			return
 		}
-		err = fmt.Errorf("no free switch ports")
 	})
-	return err
+	if p == nil {
+		return 0, fmt.Errorf("no free switch ports")
+	}
+	return p.port, nil
 }
 
-func (r *Router) AuthenticatedConnect(conn net.Conn, zone string, peertype int) error {
+func (r *Router) AuthenticatedConnect(conn net.Conn, zone string, peertype int) (types.SwitchPortID, error) {
 	handshake := []byte{
 		ourVersion,
 		ourCapabilities,
@@ -101,25 +130,25 @@ func (r *Router) AuthenticatedConnect(conn net.Conn, zone string, peertype int) 
 	}
 	handshake = append(handshake, r.public[:ed25519.PublicKeySize]...)
 	handshake = append(handshake, ed25519.Sign(r.private[:], handshake)...)
-	_ = conn.SetWriteDeadline(time.Now().Add(PeerKeepaliveInterval))
+	//_ = conn.SetWriteDeadline(time.Now().Add(PeerKeepaliveInterval))
 	if _, err := conn.Write(handshake); err != nil {
 		conn.Close()
-		return fmt.Errorf("conn.Write: %w", err)
+		return 0, fmt.Errorf("conn.Write: %w", err)
 	}
-	_ = conn.SetWriteDeadline(time.Time{})
-	_ = conn.SetReadDeadline(time.Now().Add(PeerKeepaliveInterval))
+	//_ = conn.SetWriteDeadline(time.Time{})
+	//_ = conn.SetReadDeadline(time.Now().Add(PeerKeepaliveInterval))
 	if _, err := io.ReadFull(conn, handshake); err != nil {
 		conn.Close()
-		return fmt.Errorf("io.ReadFull: %w", err)
+		return 0, fmt.Errorf("io.ReadFull: %w", err)
 	}
-	_ = conn.SetReadDeadline(time.Time{})
+	//_ = conn.SetReadDeadline(time.Time{})
 	if theirVersion := handshake[0]; theirVersion != ourVersion {
 		conn.Close()
-		return fmt.Errorf("mismatched node version")
+		return 0, fmt.Errorf("mismatched node version")
 	}
 	if theirCapabilities := handshake[1]; theirCapabilities&ourCapabilities != ourCapabilities {
 		conn.Close()
-		return fmt.Errorf("mismatched node capabilities")
+		return 0, fmt.Errorf("mismatched node capabilities")
 	}
 	var public types.PublicKey
 	var signature types.Signature
@@ -128,11 +157,11 @@ func (r *Router) AuthenticatedConnect(conn net.Conn, zone string, peertype int) 
 	copy(signature[:], handshake[offset:offset+ed25519.SignatureSize])
 	if !ed25519.Verify(public[:], handshake[:offset], signature[:]) {
 		conn.Close()
-		return fmt.Errorf("peer sent invalid signature")
+		return 0, fmt.Errorf("peer sent invalid signature")
 	}
-	if err := r.Connect(conn, public, zone, peertype); err != nil {
+	port, err := r.Connect(conn, public, zone, peertype)
+	if err != nil {
 		conn.Close()
-		return err
 	}
-	return nil
+	return port, err
 }

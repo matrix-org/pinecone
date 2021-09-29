@@ -2,6 +2,7 @@ package router
 
 import (
 	"context"
+	"encoding/hex"
 	"fmt"
 	"net"
 	"time"
@@ -23,7 +24,7 @@ const (
 type peer struct {
 	reader struct {
 		phony.Inbox
-		// _announcement *types.SwitchAnnouncement
+		// _announcement *rootAnnouncementWithTime
 	}
 	writer struct {
 		phony.Inbox
@@ -36,7 +37,7 @@ type peer struct {
 	zone     string             // populated by router
 	peertype int                // populated by router
 	public   types.PublicKey    // populated by router
-	started  atomic.Bool        //
+	started  atomic.Bool        // prevents more than one shutdown
 	proto    *fifoQueue         // thread-safe
 	traffic  *lifoQueue         // thread-safe
 }
@@ -65,21 +66,15 @@ func (p *peer) send(f *types.Frame) bool {
 	}
 }
 
-func (p *peer) _treeAnnouncement(f *types.Frame) error {
-	return nil
-}
-
 func (p *peer) _receive(f *types.Frame) error {
 	switch f.Type {
 	// Protocol messages
 	case types.TypeSTP:
-		if err := p._treeAnnouncement(f); err != nil {
-			p.router.log.Println("p._treeAnnouncement:", err)
-		} else {
-			p.router.state.Act(&p.reader, func() {
-				p.router.state._handleTreeAnnouncement(f)
-			})
-		}
+		p.router.state.Act(&p.reader, func() {
+			if err := p.router.state._handleTreeAnnouncement(p, f); err != nil {
+				p.router.log.Printf("Failed to handle tree announcement from %d: %s", p.port, err)
+			}
+		})
 
 	case types.TypeKeepalive:
 
@@ -105,10 +100,10 @@ func (p *peer) _receive(f *types.Frame) error {
 
 	// Traffic messages
 	case types.TypeVirtualSnake, types.TypeGreedy, types.TypeSource:
-		p.router.Act(&p.reader.Inbox, func() {
-			for _, nexthop := range p.router.state.nextHopsFor(f) {
-				if peer := p.router._peers[nexthop]; peer != nil {
-					peer.send(f)
+		p.router.state.Act(&p.reader.Inbox, func() {
+			for _, peer := range p.router.state.nextHopsFor(p, f) {
+				if peer.send(f) {
+					break
 				}
 			}
 		})
@@ -121,18 +116,26 @@ func (p *peer) _stop(err error) {
 	if !p.started.CAS(true, false) {
 		return
 	}
-	if err != nil {
-		p.router.log.Println("p._stop:", err)
-	}
-	phony.Block(p.router, func() {
+	phony.Block(p.router.state, func() {
 		p.cancel()
-		for i, rp := range p.router._peers {
+		for i, rp := range p.router.state._peers {
 			if rp == p {
-				p.router._peers[i] = nil
-				p.router.log.Println("Disconnected from peer", p.public.String(), "on port", i)
-				return
+				p.router.state._peers[i] = nil
+				if err != nil {
+					p.router.log.Println("Disconnected from peer", p.public.String(), "on port", i, "due to error:", err)
+				} else {
+					p.router.log.Println("Disconnected from peer", p.public.String(), "on port", i)
+				}
+				break
 			}
 		}
+		index := hex.EncodeToString(p.public[:]) + p.zone
+		if v, ok := p.router.active.Load(index); ok && v.(*atomic.Uint64).Dec() == 0 {
+			p.router.active.Delete(index)
+		}
+	})
+	p.router.state.Act(&p.reader.Inbox, func() {
+		p.router.state._portDisconnected(p)
 	})
 }
 
@@ -155,15 +158,23 @@ func (p *peer) _write() {
 		p._stop(fmt.Errorf("frame.MarshalBinary: %w", err))
 		return
 	}
-	if err := p.conn.SetWriteDeadline(time.Now().Add(PeerKeepaliveInterval)); err != nil {
-		p._stop(fmt.Errorf("p.conn.SetWriteDeadline: %w", err))
-		return
-	}
+	/*
+		if err := p.conn.SetWriteDeadline(time.Now().Add(PeerKeepaliveInterval)); err != nil {
+			p._stop(fmt.Errorf("p.conn.SetWriteDeadline: %w", err))
+			return
+		}
+	*/
 	wn, err := p.conn.Write(buf[:n])
 	if err != nil {
 		p._stop(fmt.Errorf("p.conn.Write: %w", err))
 		return
 	}
+	/*
+		if err := p.conn.SetWriteDeadline(time.Time{}); err != nil {
+			p._stop(fmt.Errorf("p.conn.SetWriteDeadline: %w", err))
+			return
+		}
+	*/
 	if wn != n {
 		p._stop(fmt.Errorf("p.conn.Write length %d != %d", wn, n))
 		return

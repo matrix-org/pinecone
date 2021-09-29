@@ -22,6 +22,21 @@ func (a GreedyAddr) String() string {
 	return fmt.Sprintf("coords %v", a.SwitchPorts)
 }
 
+func (r *Router) localPeer() *peer {
+	peer := &peer{
+		port:     0,
+		context:  r.context,
+		cancel:   r.cancel,
+		conn:     nil,
+		zone:     "local",
+		peertype: 0,
+		public:   r.public,
+		//proto:    newFIFOQueue(),
+		traffic: newLIFOQueue(TrafficBuffer),
+	}
+	return peer
+}
+
 // ReadFrom reads the next packet that was delivered to this
 // node over the Pinecone network. Only traffic packets will
 // be returned here - no protocol messages will be included.
@@ -32,29 +47,28 @@ func (a GreedyAddr) String() string {
 // was delivered using source routing, then the net.Addr will
 // contain the source-routed path back to the sender.
 func (r *Router) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
-	/*
-		frame := <-r.recv
-		switch frame.Type {
-		case types.TypeGreedy:
-			addr = GreedyAddr{frame.Source}
+	var frame *types.Frame
+	select {
+	case <-r.local.context.Done():
+		r.local._stop(nil)
+		return
+	case <-r.local.traffic.wait():
+		frame, _ = r.local.traffic.pop()
+	}
+	switch frame.Type {
+	case types.TypeGreedy:
+		addr = GreedyAddr{frame.Source}
 
-		//case types.TypeSource:
-		//	addr = SourceAddr{frame.Source} // TODO: should get the remainder of the path
+	case types.TypeVirtualSnake:
+		addr = frame.SourceKey
 
-		case types.TypeVirtualSnakeBootstrap:
-			addr = frame.SourceKey
+	default:
+		r.log.Println("Not expecting non-source/non-greedy frame")
+		return
+	}
 
-		case types.TypeVirtualSnake:
-			addr = frame.SourceKey
-
-		default:
-			r.log.Println("Not expecting non-source/non-greedy frame")
-			return
-		}
-
-		n = len(frame.Payload)
-		copy(p, frame.Payload)
-	*/
+	n = len(frame.Payload)
+	copy(p, frame.Payload)
 	return
 }
 
@@ -64,62 +78,42 @@ func (r *Router) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
 // SourceAddr), as this will dictate the method of delivery
 // used to forward the packet.
 func (r *Router) WriteTo(p []byte, addr net.Addr) (n int, err error) {
-	/*
-		timer := time.NewTimer(time.Second * 5)
-		defer func() {
-			if !timer.Stop() {
-				<-timer.C
-			}
-		}()
+	timer := time.NewTimer(time.Second * 5)
+	defer func() {
+		if !timer.Stop() {
+			<-timer.C
+		}
+	}()
 
-		switch ga := addr.(type) {
-		case GreedyAddr:
-			select {
-			case <-timer.C:
-				return 0, fmt.Errorf("router appears to be deadlocked")
-			case r.send <- types.Frame{
+	switch ga := addr.(type) {
+	case GreedyAddr:
+		r.local.reader.Act(nil, func() {
+			_ = r.local._receive(&types.Frame{
 				Version:     types.Version0,
 				Type:        types.TypeGreedy,
 				Destination: ga.SwitchPorts,
-				Source:      r.Coords(),
+				Source:      r.state.coords(),
 				Payload:     append([]byte{}, p...),
-			}:
-				return len(p), nil
-			}
+			})
+		})
+		return len(p), nil
 
-		case SourceAddr:
-			select {
-			case <-timer.C:
-				return 0, fmt.Errorf("router appears to be deadlocked")
-			case r.send <- types.Frame{
-				Version:     types.Version0,
-				Type:        types.TypeSource,
-				Destination: ga.SwitchPorts,
-				Payload:     append([]byte{}, p...),
-			}:
-				return len(p), nil
-			}
-
-		case types.PublicKey:
-			select {
-			case <-timer.C:
-				return 0, fmt.Errorf("router appears to be deadlocked")
-			case r.send <- types.Frame{
+	case types.PublicKey:
+		r.local.reader.Act(nil, func() {
+			_ = r.local._receive(&types.Frame{
 				Version:        types.Version0,
 				Type:           types.TypeVirtualSnake,
 				DestinationKey: ga,
 				SourceKey:      r.PublicKey(),
 				Payload:        append([]byte{}, p...),
-			}:
-				return len(p), nil
-			}
+			})
+		})
+		return len(p), nil
 
-		default:
-			err = fmt.Errorf("unknown address type")
-			return
-		}
-	*/
-	return
+	default:
+		err = fmt.Errorf("unknown address type")
+		return
+	}
 }
 
 // LocalAddr returns a net.Addr containing the greedy routing
