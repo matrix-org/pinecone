@@ -8,7 +8,6 @@ import (
 type state struct {
 	phony.Inbox
 	r              *Router
-	_peers         []*peer
 	_ascending     *virtualSnakeNeighbour
 	_descending    *virtualSnakeNeighbour
 	_parent        *peer
@@ -27,25 +26,24 @@ func (s *state) _start() {
 	s._ordering = 0
 
 	s._becomeRoot()
+	s._maintain()
 }
 
 func (s *state) nextHopsFor(from *peer, frame *types.Frame) []*peer {
 	var nexthops []*peer
 	switch frame.Type {
 	// SNEK routing
-	case types.TypeVirtualSnakeBootstrap:
-		fallthrough
-	case types.TypeGreedy:
+	case types.TypeVirtualSnake, types.TypeVirtualSnakeBootstrap:
 		phony.Block(s, func() {
-			nexthops = s._nextHopsTree(from, frame)
+			nexthops = s._nextHopsSNEK(from, frame, frame.Type == types.TypeVirtualSnakeBootstrap)
 		})
 
 	// Tree routing
 	case types.TypeVirtualSnakeBootstrapACK, types.TypeVirtualSnakeSetup:
 		fallthrough
-	case types.TypeVirtualSnake:
+	case types.TypeGreedy:
 		phony.Block(s, func() {
-			nexthops = s._nextHopsSNEK(from, frame)
+			nexthops = s._nextHopsTree(from, frame)
 		})
 	}
 	return nexthops

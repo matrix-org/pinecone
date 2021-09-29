@@ -19,6 +19,7 @@ const PortCount = 8
 const TrafficBuffer = 128
 
 type Router struct {
+	phony.Inbox
 	log       *log.Logger
 	simulator Simulator
 	context   context.Context
@@ -28,6 +29,7 @@ type Router struct {
 	active    sync.Map
 	local     *peer
 	state     *state
+	_peers    []*peer
 }
 
 func NewRouter(log *log.Logger, sk ed25519.PrivateKey, sim Simulator) *Router {
@@ -37,19 +39,27 @@ func NewRouter(log *log.Logger, sk ed25519.PrivateKey, sim Simulator) *Router {
 		simulator: sim,
 		context:   ctx,
 		cancel:    cancel,
+		_peers:    make([]*peer, PortCount),
 	}
 	copy(r.private[:], sk)
 	r.public = r.private.Public()
 	r.state = &state{
 		r:      r,
-		_peers: make([]*peer, PortCount),
 		_table: make(virtualSnakeTable),
 	}
 	r.local = r.localPeer()
-	r.state._peers[0] = r.local
+	r._peers[0] = r.local
 	r.state.Act(nil, r.state._start)
 	r.log.Println("Router identity:", r.public.String())
 	return r
+}
+
+func (r *Router) peers() []*peer {
+	var peers []*peer
+	phony.Block(r, func() {
+		peers = r._peers
+	})
+	return peers
 }
 
 // IsConnected returns true if the node is connected within the
@@ -82,8 +92,8 @@ func (r *Router) Addr() net.Addr {
 
 func (r *Router) Connect(conn net.Conn, public types.PublicKey, zone string, peertype int) (types.SwitchPortID, error) {
 	var p *peer
-	phony.Block(r.state, func() {
-		for i, p := range r.state._peers {
+	phony.Block(r, func() {
+		for i, p := range r._peers {
 			if i == 0 {
 				// Port 0 is reserved for the local router.
 				continue
@@ -107,11 +117,13 @@ func (r *Router) Connect(conn net.Conn, public types.PublicKey, zone string, pee
 			p.started.Store(true)
 			p.reader.Act(r.state, p._read)
 			p.writer.Act(r.state, p._write)
-			r.state._peers[i] = p
+			r._peers[i] = p
 			r.log.Println("Connected to peer", p.public.String(), "on port", p.port)
 			v, _ := r.active.LoadOrStore(hex.EncodeToString(p.public[:])+zone, atomic.NewUint64(0))
 			v.(*atomic.Uint64).Inc()
-			r.state._sendTreeAnnouncementToPeer(r.state._rootAnnouncement(), p)
+			r.state.Act(nil, func() {
+				r.state._sendTreeAnnouncementToPeer(r.state._rootAnnouncement(), p)
+			})
 			return
 		}
 	})

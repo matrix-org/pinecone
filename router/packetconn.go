@@ -31,8 +31,8 @@ func (r *Router) localPeer() *peer {
 		zone:     "local",
 		peertype: 0,
 		public:   r.public,
-		//proto:    newFIFOQueue(),
-		traffic: newLIFOQueue(TrafficBuffer),
+		proto:    newFIFOQueue(),
+		traffic:  newLIFOQueue(TrafficBuffer),
 	}
 	return peer
 }

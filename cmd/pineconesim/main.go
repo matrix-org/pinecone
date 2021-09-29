@@ -315,8 +315,8 @@ func configureHTTPRouting(sim *simulator.Simulator) {
 						DHTEntry{
 							PublicKey:       hex.EncodeToString(k.PublicKey[:2]),
 							PathID:          hex.EncodeToString(k.PathID[:]),
-							DestinationPort: int(v.DestinationPort),
-							SourcePort:      int(v.SourcePort),
+							DestinationPort: v.Destination,
+							SourcePort:      v.Source,
 						},
 					)
 				}
@@ -502,8 +502,8 @@ func (e DHTEntries) Less(i, j int) bool {
 
 type DHTEntry struct {
 	PublicKey       string
-	DestinationPort int
-	SourcePort      int
+	DestinationPort interface{}
+	SourcePort      interface{}
 	PathID          string
 }
 

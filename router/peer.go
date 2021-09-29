@@ -43,6 +43,9 @@ type peer struct {
 }
 
 func (p *peer) send(f *types.Frame) bool {
+	if p == nil {
+		panic("why try to send to nil peer?")
+	}
 	switch f.Type {
 	// Protocol messages
 	case types.TypeSTP, types.TypeKeepalive:
@@ -67,6 +70,18 @@ func (p *peer) send(f *types.Frame) bool {
 }
 
 func (p *peer) _receive(f *types.Frame) error {
+	nexthops := p.router.state.nextHopsFor(p, f)
+	deadend := len(nexthops) == 0 || (len(nexthops) == 1 && nexthops[0] == p.router.local)
+	if !deadend {
+		defer func() {
+			for _, peer := range nexthops {
+				if peer.send(f) {
+					return
+				}
+			}
+		}()
+	}
+
 	switch f.Type {
 	// Protocol messages
 	case types.TypeSTP:
@@ -79,34 +94,39 @@ func (p *peer) _receive(f *types.Frame) error {
 	case types.TypeKeepalive:
 
 	case types.TypeVirtualSnakeBootstrap:
-		p.router.state.Act(&p.reader, func() {
-			p.router.state._handleBootstrap(f)
-		})
+		if deadend {
+			p.router.state.Act(&p.reader, func() {
+				if err := p.router.state._handleBootstrap(p, f); err != nil {
+					p.router.log.Printf("Failed to handle SNEK bootstrap from %d: %s", p.port, err)
+				}
+			})
+		}
 
 	case types.TypeVirtualSnakeBootstrapACK:
-		p.router.state.Act(&p.reader, func() {
-			p.router.state._handleBootstrapACK(f)
-		})
+		if deadend {
+			p.router.state.Act(&p.reader, func() {
+				if err := p.router.state._handleBootstrapACK(p, f); err != nil {
+					p.router.log.Printf("Failed to handle SNEK bootstrap ACK from %d: %s", p.port, err)
+				}
+			})
+		}
 
 	case types.TypeVirtualSnakeSetup:
 		p.router.state.Act(&p.reader, func() {
-			p.router.state._handleSetup(f)
+			if err := p.router.state._handleSetup(p, f); err != nil {
+				p.router.log.Printf("Failed to handle SNEK setup from %d: %s", p.port, err)
+			}
 		})
 
 	case types.TypeVirtualSnakeTeardown:
 		p.router.state.Act(&p.reader, func() {
-			p.router.state._handleTeardown(f)
+			if err := p.router.state._handleTeardown(p, f); err != nil {
+				p.router.log.Printf("Failed to handle SNEK teardown from %d: %s", p.port, err)
+			}
 		})
 
 	// Traffic messages
 	case types.TypeVirtualSnake, types.TypeGreedy, types.TypeSource:
-		p.router.state.Act(&p.reader.Inbox, func() {
-			for _, peer := range p.router.state.nextHopsFor(p, f) {
-				if peer.send(f) {
-					break
-				}
-			}
-		})
 	}
 
 	return nil
@@ -116,11 +136,11 @@ func (p *peer) _stop(err error) {
 	if !p.started.CAS(true, false) {
 		return
 	}
-	phony.Block(p.router.state, func() {
+	phony.Block(p.router, func() {
 		p.cancel()
-		for i, rp := range p.router.state._peers {
+		for i, rp := range p.router._peers {
 			if rp == p {
-				p.router.state._peers[i] = nil
+				p.router._peers[i] = nil
 				if err != nil {
 					p.router.log.Println("Disconnected from peer", p.public.String(), "on port", i, "due to error:", err)
 				} else {

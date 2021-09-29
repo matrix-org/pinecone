@@ -100,7 +100,11 @@ func (s *state) _sendTreeAnnouncementToPeer(ann *rootAnnouncementWithTime, p *pe
 func (s *state) _sendTreeAnnouncements() {
 	ann := s._rootAnnouncement()
 	s.Act(s, func() {
-		for _, p := range s._peers {
+		var peers []*peer
+		phony.Block(s.r, func() {
+			peers = s.r._peers
+		})
+		for _, p := range peers {
 			if p == nil || !p.started.Load() {
 				continue
 			}
@@ -115,7 +119,7 @@ func (s *state) _nextHopsTree(from *peer, f *types.Frame) []*peer {
 	// that if we don't know what else to do with a packet, we hand it
 	// up to the local router.
 	candidates := make([]*peer, PortCount)
-	canlength := PortCount - 1
+	canlength := PortCount
 	newCandidate := func(peer *peer) {
 		canlength--
 		candidates[canlength] = peer
@@ -139,19 +143,32 @@ func (s *state) _nextHopsTree(from *peer, f *types.Frame) []*peer {
 		return []*peer{s.r.local}
 	}
 
+	var peers []*peer
+	phony.Block(s.r, func() {
+		peers = s.r._peers
+	})
+
 	// Now work out which of our peers takes the message closer.
 	bestDist := ourDist
-	for p, ann := range s._announcements {
+	for _, p := range peers {
+		if p == nil || p == s.r.local {
+			continue
+		}
+		ann := s._announcements[p]
+		if ann == nil {
+			continue // panic(fmt.Sprintf("found nil ann for peer %+v", p)) // continue
+		}
+
 		// Don't deliberately create routing loops by forwarding
 		// to a node that doesn't share our root - the coordinate
 		// system will be different.
-		if p.port == from.port /* || !peer.SeenCommonRootRecently() */ {
+		if p == from /* || !peer.SeenCommonRootRecently() */ {
 			continue
 		}
 
 		// Look up the coordinates of the peer, and the distance
 		// across the tree to those coordinates.
-		peerCoords := ann.Coords()
+		peerCoords := ann.PeerCoords()
 		peerDist := int64(peerCoords.DistanceTo(f.Destination))
 		switch {
 		case peerDist == 0 || f.Destination.EqualTo(peerCoords):
@@ -214,7 +231,7 @@ func (s *state) _handleTreeAnnouncement(p *peer, f *types.Frame) error {
 	}
 
 	lastParent := s._parent
-	lastParentUpdate := s._announcements[lastParent]
+	lastParentUpdate := s._rootAnnouncement()
 	var lastCoords types.SwitchPorts
 	if lastParentUpdate != nil {
 		lastCoords = lastParentUpdate.Coords()
@@ -332,4 +349,19 @@ func (s *state) _selectNewParent() {
 	// No suitable other peer was found, so we'll just become the root
 	// and hope that one of our peers corrects us if it matters.
 	s._becomeRoot()
+}
+
+func (s *state) _ancestors() ([]types.PublicKey, *peer) {
+	root, parent := s._rootAnnouncement(), s._parent
+	if parent == nil {
+		return nil, nil
+	}
+	ancestors := make([]types.PublicKey, 0, 1+len(root.Signatures))
+	if len(root.Signatures) == 0 {
+		return ancestors, parent
+	}
+	for _, sig := range root.Signatures {
+		ancestors = append(ancestors, sig.PublicKey)
+	}
+	return ancestors, parent
 }
