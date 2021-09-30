@@ -12,12 +12,26 @@ import (
 
 // announcementInterval is the frequency at which this
 // node will send root announcements to other peers.
-const announcementInterval = time.Minute * 15
+const announcementInterval = time.Second * 5
 
 // announcementTimeout is the amount of time that must
 // pass without receiving a root announcement before we
 // will assume that the peer is dead.
 const announcementTimeout = announcementInterval * 2
+
+func (s *state) _maintainTree() {
+	select {
+	case <-s.r.context.Done():
+		return
+	default:
+	}
+
+	if s._parent == nil {
+		s._sendTreeAnnouncements()
+	}
+
+	s._maintainTreeIn(announcementInterval)
+}
 
 type rootAnnouncementWithTime struct {
 	types.SwitchAnnouncement
@@ -87,8 +101,8 @@ func (s *state) _coords() types.SwitchPorts {
 
 func (s *state) _becomeRoot() {
 	s._parent = nil
-	fmt.Println("New coords:", types.SwitchPorts{})
-	s._sendTreeAnnouncements()
+	s.r.log.Println("New coords:", types.SwitchPorts{})
+	s._maintainTreeIn(0)
 }
 
 func (s *state) _sendTreeAnnouncementToPeer(ann *rootAnnouncementWithTime, p *peer) {
@@ -255,10 +269,11 @@ func (s *state) _handleTreeAnnouncement(p *peer, f *types.Frame) error {
 	// a previous update from them. Let's see how it compares.
 	rootPublicKeyDelta := newUpdate.RootPublicKey.CompareTo(rootKey)
 
+	var foundNewParent bool
 	switch {
 	case time.Since(rootTime) >= announcementTimeout:
 		// We haven't seen our previous parent recently, something is wrong.
-		s._selectNewParent()
+		foundNewParent = s._selectNewParent()
 
 	case rootPublicKeyDelta > 0:
 		// The update has come from a better root key, so this is a better parent!
@@ -272,7 +287,7 @@ func (s *state) _handleTreeAnnouncement(p *peer, f *types.Frame) error {
 	case p == s._parent && rootPublicKeyDelta < 0:
 		// Our parent's key has suddenly got weaker, which is suspicious. Try selecting
 		// a new parent.
-		s._selectNewParent()
+		foundNewParent = s._selectNewParent()
 
 	case p == s._parent && newUpdate.Sequence > lastParentUpdate.Sequence:
 		// Our parent sent us an update from the same root key but with a better sequence
@@ -294,21 +309,20 @@ func (s *state) _handleTreeAnnouncement(p *peer, f *types.Frame) error {
 
 	switch {
 	case !lastCoords.EqualTo(latestCoords): // the parent changed
-		fmt.Println("New coords:", latestCoords)
+		s.r.log.Println("New coords:", latestCoords)
 		fallthrough
-	case s._parent != lastParent:
+	case foundNewParent && s._parent != lastParent:
 		s._sendTreeAnnouncements()
 	}
 
-	switch {
-	case rootKey != latestParentUpdate.RootPublicKey:
+	if rootKey != latestParentUpdate.RootPublicKey {
 		s._rootChanged(latestParentUpdate.RootPublicKey)
 	}
 
 	return nil
 }
 
-func (s *state) _selectNewParent() {
+func (s *state) _selectNewParent() bool {
 	bestKey := s.r.public
 	bestSeq := types.Varu64(0)
 	bestOrder := uint64(math.MaxUint64)
@@ -343,12 +357,13 @@ func (s *state) _selectNewParent() {
 
 	if bestPeer != nil {
 		s._parent = bestPeer
-		return
+		return true
 	}
 
 	// No suitable other peer was found, so we'll just become the root
 	// and hope that one of our peers corrects us if it matters.
 	s._becomeRoot()
+	return false
 }
 
 func (s *state) _ancestors() ([]types.PublicKey, *peer) {

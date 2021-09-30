@@ -44,7 +44,7 @@ type peer struct {
 
 func (p *peer) send(f *types.Frame) bool {
 	if p == nil {
-		panic("why try to send to nil peer?")
+		return false // panic("why try to send to nil peer?")
 	}
 	switch f.Type {
 	// Protocol messages
@@ -120,8 +120,15 @@ func (p *peer) _receive(f *types.Frame) error {
 
 	case types.TypeVirtualSnakeTeardown:
 		p.router.state.Act(&p.reader, func() {
-			if err := p.router.state._handleTeardown(p, f); err != nil {
+			if nexthops, err := p.router.state._handleTeardown(p, f); err != nil {
 				p.router.log.Printf("Failed to handle SNEK teardown from %d: %s", p.port, err)
+			} else {
+				// Teardowns are a special case where we need to send to all
+				// of the returned candidate ports, not just the first one that
+				// we can.
+				for _, peer := range nexthops {
+					peer.send(f)
+				}
 			}
 		})
 
@@ -146,6 +153,11 @@ func (p *peer) _stop(err error) {
 				} else {
 					p.router.log.Println("Disconnected from peer", p.public.String(), "on port", i)
 				}
+				// TODO: what makes more sense here?
+				// p.router.state.Act(nil, func() {
+				phony.Block(p.router.state, func() {
+					p.router.state._portDisconnected(p)
+				})
 				break
 			}
 		}
@@ -153,9 +165,6 @@ func (p *peer) _stop(err error) {
 		if v, ok := p.router.active.Load(index); ok && v.(*atomic.Uint64).Dec() == 0 {
 			p.router.active.Delete(index)
 		}
-	})
-	p.router.state.Act(&p.reader.Inbox, func() {
-		p.router.state._portDisconnected(p)
 	})
 }
 
