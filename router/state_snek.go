@@ -580,7 +580,7 @@ func (s *state) _teardownPath(pathKey types.PublicKey, pathID types.VirtualSnake
 	if asc := s._ascending; asc != nil && s.r.public.EqualTo(pathKey) && asc.PathID == pathID {
 		s._ascending = nil
 		nexthops[asc.Port] = struct{}{}
-		s._bootstrapNow()
+		s._maintainSnakeIn(time.Second / 2)
 	}
 	if desc := s._descending; desc != nil && desc.PublicKey.EqualTo(pathKey) && desc.PathID == pathID {
 		s._descending = nil

@@ -173,13 +173,13 @@ func (s *state) _nextHopsTree(from *peer, f *types.Frame) []*peer {
 		}
 		ann := s._announcements[p]
 		if ann == nil {
-			continue // panic(fmt.Sprintf("found nil ann for peer %+v", p)) // continue
+			continue
 		}
 
 		// Don't deliberately create routing loops by forwarding
 		// to a node that doesn't share our root - the coordinate
 		// system will be different.
-		if p == from /* || !peer.SeenCommonRootRecently() */ {
+		if p == from || ann.RootPublicKey != s._rootAnnouncement().RootPublicKey {
 			continue
 		}
 
@@ -217,43 +217,31 @@ func (s *state) _handleTreeAnnouncement(p *peer, f *types.Frame) error {
 		// The update must have signatures.
 		return fmt.Errorf("update has no signatures")
 	}
-
 	sigs := make(map[string]struct{})
 	for index, sig := range newUpdate.Signatures {
 		if index == 0 && sig.PublicKey != newUpdate.RootPublicKey {
-			// The first signature in the announcement must be from the
-			// key that claims to be the root.
 			return fmt.Errorf("update first signature doesn't match root key")
 		}
 		if sig.Hop == 0 {
-			// None of the hops in the update should have a port number of 0
-			// as this would imply that another node has sent their router
-			// port, which is impossible. We'll therefore reject any update
-			// that tries to do that.
 			return fmt.Errorf("update contains invalid 0 hop")
 		}
 		if index == len(newUpdate.Signatures)-1 && p.public != sig.PublicKey {
-			// The last signature in the announcement must be from the
-			// direct peer. If it isn't then it sounds like someone is
-			// trying to replay someone else's announcement to us.
 			return fmt.Errorf("update last signature is not from direct peer")
 		}
 		pk := hex.EncodeToString(sig.PublicKey[:])
 		if _, ok := sigs[pk]; ok {
-			// One of the signatures has appeared in the update more than
-			// once, which would suggest that there's a loop somewhere.
 			return fmt.Errorf("update contains routing loop")
 		}
 		sigs[pk] = struct{}{}
 	}
 
-	lastParent := s._parent
 	lastParentUpdate := s._rootAnnouncement()
 	var lastCoords types.SwitchPorts
 	if lastParentUpdate != nil {
 		lastCoords = lastParentUpdate.Coords()
 	}
 
+	// Save the root announcement against the peer.
 	s._ordering++
 	s._announcements[p] = &rootAnnouncementWithTime{
 		SwitchAnnouncement: newUpdate,
@@ -261,74 +249,74 @@ func (s *state) _handleTreeAnnouncement(p *peer, f *types.Frame) error {
 		receiveOrder:       s._ordering,
 	}
 
-	rootKey := s.r.public
-	rootTime := time.Now()
+	// Work out what the last root key and time were.
+	lastRootKey := s.r.public
+	lastRootTime := time.Now()
 	if lastParentUpdate != nil {
-		rootKey = lastParentUpdate.RootPublicKey
-		rootTime = lastParentUpdate.receiveTime
+		lastRootKey = lastParentUpdate.RootPublicKey
+		lastRootTime = lastParentUpdate.receiveTime
 	}
 
-	// We don't think we're the root, we have chosen a parent already and have
-	// a previous update from them. Let's see how it compares.
-	rootPublicKeyDelta := newUpdate.RootPublicKey.CompareTo(rootKey)
-
-	var foundNewParent bool
+	rootKeyDelta := newUpdate.RootPublicKey.CompareTo(lastRootKey)
+	updateFromParent := p == s._parent // did the update come from our current parent?
 	switch {
-	case time.Since(rootTime) >= announcementTimeout:
+	case time.Since(lastRootTime) >= announcementTimeout:
 		// We haven't seen our previous parent recently, something is wrong.
-		foundNewParent = s._selectNewParent()
+		s._selectNewParent()
 
-	case rootPublicKeyDelta > 0:
+	case rootKeyDelta > 0:
 		// The update has come from a better root key, so this is a better parent!
 		s._parent = p
+		s._sendTreeAnnouncements()
 
-	case p != s._parent && rootPublicKeyDelta < 0:
-		// The update has come from a worse root key, let's send our announcement back
-		// to this peer in the hope that they choose us as their parent instead.
-		s._sendTreeAnnouncementToPeer(s._rootAnnouncement(), p)
-
-	case p == s._parent && rootPublicKeyDelta < 0:
-		// Our parent's key has suddenly got weaker, which is suspicious. Try selecting
-		// a new parent.
-		foundNewParent = s._selectNewParent()
-
-	case p == s._parent && newUpdate.Sequence > lastParentUpdate.Sequence:
+	case updateFromParent && rootKeyDelta == 0 && newUpdate.Sequence > lastParentUpdate.Sequence:
 		// Our parent sent us an update from the same root key but with a better sequence
 		// number, so repeat it to our peers.
 		s._sendTreeAnnouncements()
-		return nil
-	}
 
-	if s._parent == nil {
-		// We are the root apparently.
-		if lastParent != nil {
-			s._becomeRoot()
-		}
-		return nil
-	}
-
-	latestParentUpdate := s._announcements[s._parent]
-	latestCoords := latestParentUpdate.Coords()
-
-	switch {
-	case !lastCoords.EqualTo(latestCoords): // the parent changed
-		s.r.log.Println("New coords:", latestCoords)
+	case updateFromParent && newUpdate.IsLoopOrChildOf(s.r.public):
+		// Our parent seems to have switched to using us as their parent so we need
+		// to select a new parent as well.
 		fallthrough
-	case foundNewParent && s._parent != lastParent:
-		s._sendTreeAnnouncements()
+
+	case updateFromParent && rootKeyDelta < 0:
+		// Our parent's key has suddenly got weaker, which is bad news.
+		fallthrough
+
+	case updateFromParent && rootKeyDelta == 0 && lastParentUpdate.Sequence <= newUpdate.Sequence:
+		// Our parent is repeating updates to us, which is bad news.
+		//s._becomeRoot()
+		//s._parent = nil
+		//time.AfterFunc(time.Second, func() {
+		//	s.Act(nil, func() {
+		s._selectNewParent()
+		//	})
+		//})
 	}
 
-	if rootKey != latestParentUpdate.RootPublicKey {
-		s._rootChanged(latestParentUpdate.RootPublicKey)
+	latestRootKey := s.r.public
+	latestCoords := types.SwitchPorts{}
+	if s._parent != nil && s._announcements[s._parent] != nil {
+		latestRootKey = s._announcements[s._parent].RootPublicKey
+		latestCoords = s._announcements[s._parent].Coords()
+	}
+
+	if !lastCoords.EqualTo(latestCoords) {
+		s.r.log.Println("New coords:", latestCoords)
+	}
+
+	if lastRootKey != latestRootKey {
+		s._rootChanged(latestRootKey)
 	}
 
 	return nil
 }
 
-func (s *state) _selectNewParent() bool {
+func (s *state) _selectNewParent() {
 	bestKey := s.r.public
 	bestSeq := types.Varu64(0)
 	bestOrder := uint64(math.MaxUint64)
+	//bestLen := math.MaxInt32
 	var bestPeer *peer
 
 	for peer, ann := range s._announcements {
@@ -340,6 +328,7 @@ func (s *state) _selectNewParent() bool {
 			bestPeer = peer
 			bestOrder = ann.receiveOrder
 			bestSeq = ann.Sequence
+			//bestLen = len(ann.Signatures)
 		}
 		keyDelta := ann.RootPublicKey.CompareTo(bestKey)
 		switch {
@@ -353,20 +342,35 @@ func (s *state) _selectNewParent() bool {
 			accept()
 		case ann.Sequence < bestSeq:
 			// ignore lower sequence numbers
+		/*
+			case len(ann.Signatures) < bestLen:
+				accept()
+			case len(ann.Signatures) > bestLen:
+				// ignore longer paths to the root
+		*/
+		/*
+			case peer == bestPeer:
+				// TODO: does preferring our existing parent if we can actually
+				// help anything in this case?
+				accept()
+		*/
 		case ann.receiveOrder < bestOrder:
 			accept()
 		}
 	}
 
 	if bestPeer != nil {
-		s._parent = bestPeer
-		return true
+		// Only send tree announcements if the parent actually changed.
+		if bestPeer != s._parent {
+			s._parent = bestPeer
+			s._sendTreeAnnouncements()
+		}
+		return
 	}
 
 	// No suitable other peer was found, so we'll just become the root
 	// and hope that one of our peers corrects us if it matters.
 	s._becomeRoot()
-	return false
 }
 
 func (s *state) _ancestors() ([]types.PublicKey, *peer) {
