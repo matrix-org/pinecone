@@ -180,7 +180,6 @@ func (p *peer) _write() {
 		p.proto.ack()
 	case <-p.traffic.wait():
 		frame, _ = p.traffic.pop()
-		p.router.log.Println("Writing traffic frame to port", p.port)
 	}
 	b := frameBufferPool.Get().(*[types.MaxFrameSize]byte)
 	defer frameBufferPool.Put(b)
