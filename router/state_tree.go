@@ -260,6 +260,14 @@ func (s *state) _handleTreeAnnouncement(p *peer, f *types.Frame) error {
 	rootKeyDelta := newUpdate.RootPublicKey.CompareTo(lastRootKey)
 	updateFromParent := p == s._parent // did the update come from our current parent?
 	switch {
+	case newUpdate.IsLoopOrChildOf(s.r.public):
+		// The update is loopy. If it's from our parent then choose a new parent,
+		// otherwise we're just going to stop here and do nothing further.
+		if updateFromParent {
+			s._selectNewParent()
+		}
+		return nil
+
 	case time.Since(lastRootTime) >= announcementTimeout:
 		// We haven't seen our previous parent recently, something is wrong.
 		s._selectNewParent()
@@ -273,11 +281,6 @@ func (s *state) _handleTreeAnnouncement(p *peer, f *types.Frame) error {
 		// Our parent sent us an update from the same root key but with a better sequence
 		// number, so repeat it to our peers.
 		s._sendTreeAnnouncements()
-
-	case updateFromParent && newUpdate.IsLoopOrChildOf(s.r.public):
-		// Our parent seems to have switched to using us as their parent so we need
-		// to select a new parent as well.
-		fallthrough
 
 	case updateFromParent && rootKeyDelta < 0:
 		// Our parent's key has suddenly got weaker, which is bad news.
