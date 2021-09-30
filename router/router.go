@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math"
 	"net"
 	"sync"
 
@@ -15,7 +16,7 @@ import (
 	"go.uber.org/atomic"
 )
 
-const PortCount = 8
+const PortCount = math.MaxUint16
 const TrafficBuffer = 128
 
 type Router struct {
@@ -93,7 +94,7 @@ func (r *Router) Addr() net.Addr {
 }
 
 func (r *Router) Connect(conn net.Conn, public types.PublicKey, zone string, peertype int) (types.SwitchPortID, error) {
-	var p *peer
+	var new *peer
 	phony.Block(r, func() {
 		for i, p := range r._peers {
 			if i == 0 {
@@ -104,7 +105,7 @@ func (r *Router) Connect(conn net.Conn, public types.PublicKey, zone string, pee
 				continue
 			}
 			ctx, cancel := context.WithCancel(r.context)
-			p = &peer{
+			new = &peer{
 				router:   r,
 				port:     types.SwitchPortID(i),
 				conn:     conn,
@@ -116,23 +117,23 @@ func (r *Router) Connect(conn net.Conn, public types.PublicKey, zone string, pee
 				proto:    newFIFOQueue(),
 				traffic:  newLIFOQueue(TrafficBuffer),
 			}
-			p.started.Store(true)
-			r._peers[i] = p
-			r.log.Println("Connected to peer", p.public.String(), "on port", p.port)
-			v, _ := r.active.LoadOrStore(hex.EncodeToString(p.public[:])+zone, atomic.NewUint64(0))
+			new.started.Store(true)
+			r._peers[i] = new
+			r.log.Println("Connected to peer", new.public.String(), "on port", new.port)
+			v, _ := r.active.LoadOrStore(hex.EncodeToString(new.public[:])+zone, atomic.NewUint64(0))
 			v.(*atomic.Uint64).Inc()
-			p.reader.Act(nil, p._read)
-			p.writer.Act(nil, p._write)
+			new.reader.Act(nil, new._read)
+			new.writer.Act(nil, new._write)
 			r.state.Act(nil, func() {
-				r.state._sendTreeAnnouncementToPeer(r.state._rootAnnouncement(), p)
+				r.state._sendTreeAnnouncementToPeer(r.state._rootAnnouncement(), new)
 			})
 			return
 		}
 	})
-	if p == nil {
+	if new == nil {
 		return 0, fmt.Errorf("no free switch ports")
 	}
-	return p.port, nil
+	return new.port, nil
 }
 
 func (r *Router) AuthenticatedConnect(conn net.Conn, zone string, peertype int) (types.SwitchPortID, error) {
@@ -175,7 +176,7 @@ func (r *Router) AuthenticatedConnect(conn net.Conn, zone string, peertype int) 
 	}
 	port, err := r.Connect(conn, public, zone, peertype)
 	if err != nil {
-		conn.Close()
+		return 0, fmt.Errorf("r.Connect failed: %w (close: %s)", err, conn.Close())
 	}
 	return port, err
 }
