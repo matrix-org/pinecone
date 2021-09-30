@@ -35,7 +35,7 @@ import (
 )
 
 func main() {
-	pk, sk, err := ed25519.GenerateKey(nil)
+	_, sk, err := ed25519.GenerateKey(nil)
 	if err != nil {
 		panic(err)
 	}
@@ -68,8 +68,8 @@ func main() {
 		}()
 	}
 
-	pineconeRouter := router.NewRouter(logger, "router", sk, pk, nil)
-	pineconeRouter.AllowImpreciseTraffic(true)
+	pineconeRouter := router.NewRouter(logger, sk, "", nil)
+	//pineconeRouter.AllowImpreciseTraffic(true)
 	pineconeMulticast := multicast.NewMulticast(logger, pineconeRouter)
 	pineconeMulticast.Start()
 	pineconeTUN, err := tun.NewTUN(pineconeRouter)

@@ -56,7 +56,7 @@ func (sim *Simulator) CreateNode(t string) error {
 	color := 31 + (crc % 6)
 	log := log.New(sim.log.Writer(), fmt.Sprintf("\033[%dmNode %s:\033[0m ", color, t), 0)
 	n := &Node{
-		Router:     router.NewRouter(log, sk, sim),
+		Router:     router.NewRouter(log, sk, t, sim),
 		l:          l,
 		ListenAddr: tcpaddr,
 	}

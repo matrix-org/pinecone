@@ -79,6 +79,23 @@ func (s *state) nextHopsFor(from *peer, frame *types.Frame) []*peer {
 		phony.Block(s, func() {
 			nexthops = s._nextHopsTree(from, frame)
 		})
+
+	// Source routing
+	case types.TypePathfind, types.TypeSource:
+		if len(frame.Destination) == 0 {
+			return []*peer{s.r.local}
+		}
+		var nexthop *peer
+		phony.Block(s.r, func() {
+			port := s.r._peers[frame.Destination[0]]
+			frame.Destination = frame.Destination[1:]
+			if from != nexthop && nexthop != nil && nexthop.started.Load() {
+				nexthop = port
+			}
+		})
+		if nexthop != nil {
+			return []*peer{nexthop}
+		}
 	}
 	return nexthops
 }

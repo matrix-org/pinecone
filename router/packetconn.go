@@ -8,6 +8,20 @@ import (
 	"github.com/matrix-org/pinecone/types"
 )
 
+// SourceAddr implements net.Addr, containing a source-routed
+// path to another node.
+type SourceAddr struct {
+	types.SwitchPorts
+}
+
+func (a SourceAddr) Network() string {
+	return "ps"
+}
+
+func (a SourceAddr) String() string {
+	return fmt.Sprintf("path %v", a.SwitchPorts)
+}
+
 // GreedyAddr implements net.Addr, containing a greedy-routed
 // set of destination coordinates to another node.
 type GreedyAddr struct {
@@ -24,6 +38,7 @@ func (a GreedyAddr) String() string {
 
 func (r *Router) localPeer() *peer {
 	peer := &peer{
+		router:   r,
 		port:     0,
 		context:  r.context,
 		cancel:   r.cancel,

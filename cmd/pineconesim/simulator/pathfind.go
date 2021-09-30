@@ -37,7 +37,6 @@ func (sim *Simulator) PathfindTree(from, to string) error {
 	}()
 
 	_, _, _ = fromnode, tonode, ctx
-
 	/*
 		if _, err := fromnode.Pathfind(ctx, router.GreedyAddr{SwitchPorts: tonode.Coords()}); err != nil {
 			return fmt.Errorf("fromnode.r.Pathfind: %w", err)
@@ -67,7 +66,6 @@ func (sim *Simulator) PathfindSNEK(from, to string) error {
 	}()
 
 	_, _, _ = fromnode, tonode, ctx
-
 	/*
 		if _, err := fromnode.Pathfind(ctx, tonode.PublicKey()); err != nil {
 			return fmt.Errorf("fromnode.r.Pathfind: %w", err)
@@ -75,6 +73,5 @@ func (sim *Simulator) PathfindSNEK(from, to string) error {
 			success = true
 		}
 	*/
-
 	return nil
 }

@@ -72,15 +72,15 @@ func (p *peer) send(f *types.Frame) bool {
 func (p *peer) _receive(f *types.Frame) error {
 	nexthops := p.router.state.nextHopsFor(p, f)
 	deadend := len(nexthops) == 0 || (len(nexthops) == 1 && nexthops[0] == p.router.local)
-	if !deadend {
-		defer func() {
+	defer func() {
+		if !deadend {
 			for _, peer := range nexthops {
 				if peer.send(f) {
 					return
 				}
 			}
-		}()
-	}
+		}
+	}()
 
 	switch f.Type {
 	// Protocol messages
@@ -208,7 +208,7 @@ func (p *peer) _write() {
 		p._stop(fmt.Errorf("p.conn.Write length %d != %d", wn, n))
 		return
 	}
-	p.writer.Act(nil, p._write)
+	p.writer.Act(&p.writer.Inbox, p._write)
 }
 
 func (p *peer) _read() {
@@ -235,5 +235,5 @@ func (p *peer) _read() {
 		p._stop(fmt.Errorf("p._receive: %w", err))
 		return
 	}
-	p.reader.Act(nil, p._read)
+	p.reader.Act(&p.reader.Inbox, p._read)
 }
