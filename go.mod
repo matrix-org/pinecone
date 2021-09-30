@@ -12,9 +12,9 @@ require (
 	github.com/niemeyer/pretty v0.0.0-20200227124842-a10e7caefd8e // indirect
 	github.com/vishvananda/netlink v1.1.0
 	go.uber.org/atomic v1.7.0
-	golang.org/x/net v0.0.0-20210226172049-e18ecbb05110
-	golang.org/x/sys v0.0.0-20210309040221-94ec62e08169
-	golang.zx2c4.com/wireguard v0.0.0-20210510202332-9844c74f67ec
+	golang.org/x/net v0.0.0-20210927181540-4e4d966f7476
+	golang.org/x/sys v0.0.0-20210927094055-39ccf1dd6fa6
+	golang.zx2c4.com/wireguard v0.0.0-20210927201915-bb745b2ea326
 	gopkg.in/check.v1 v1.0.0-20200902074654-038fdea0a05b // indirect
 	gopkg.in/yaml.v3 v3.0.0-20200615113413-eeeca48fe776 // indirect
 )
