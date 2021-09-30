@@ -210,6 +210,8 @@ func (s *state) _nextHopsSNEK(from *peer, rx *types.Frame, bootstrap bool) []*pe
 	// Return the candidate ports
 	if bootstrap {
 		return []*peer{bestPeer}
+	} else if canlength == PortCount {
+		return []*peer{s.r.local}
 	} else {
 		return candidates[canlength:]
 	}

@@ -46,7 +46,6 @@ func (r *Router) localPeer() *peer {
 		zone:     "local",
 		peertype: 0,
 		public:   r.public,
-		proto:    newFIFOQueue(),
 		traffic:  newLIFOQueue(TrafficBuffer),
 	}
 	return peer
@@ -119,7 +118,7 @@ func (r *Router) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 				Version:        types.Version0,
 				Type:           types.TypeVirtualSnake,
 				DestinationKey: ga,
-				SourceKey:      r.PublicKey(),
+				SourceKey:      r.public,
 				Payload:        append([]byte{}, p...),
 			})
 		})

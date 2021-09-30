@@ -44,40 +44,40 @@ type peer struct {
 
 func (p *peer) send(f *types.Frame) bool {
 	if p == nil {
-		return false // panic("why try to send to nil peer?")
+		return false
 	}
 	switch f.Type {
 	// Protocol messages
 	case types.TypeSTP, types.TypeKeepalive:
 		fallthrough
-	case types.TypeDHTRequest, types.TypeDHTResponse:
-		fallthrough
+	//case types.TypeDHTRequest, types.TypeDHTResponse:
+	//	fallthrough
 	case types.TypeVirtualSnakeBootstrap, types.TypeVirtualSnakeBootstrapACK:
 		fallthrough
 	case types.TypeVirtualSnakeSetup, types.TypeVirtualSnakeTeardown:
-		return p.proto.push(f)
+		if p.proto != nil {
+			return p.proto.push(f)
+		}
 
 	// Traffic messages
+	//case types.TypePathfind, types.TypeVirtualSnakePathfind:
+	//	fallthrough
 	case types.TypeVirtualSnake, types.TypeGreedy, types.TypeSource:
-		fallthrough
-	case types.TypePathfind, types.TypeVirtualSnakePathfind:
-		return p.traffic.push(f)
-
-	// Unknown messages
-	default:
-		return false
+		if p.traffic != nil {
+			return p.traffic.push(f)
+		}
 	}
+
+	return false
 }
 
 func (p *peer) _receive(f *types.Frame) error {
 	nexthops := p.router.state.nextHopsFor(p, f)
 	deadend := len(nexthops) == 0 || (len(nexthops) == 1 && nexthops[0] == p.router.local)
 	defer func() {
-		if !deadend {
-			for _, peer := range nexthops {
-				if peer.send(f) {
-					return
-				}
+		for _, peer := range nexthops {
+			if peer.send(f) {
+				return
 			}
 		}
 	}()
@@ -100,6 +100,7 @@ func (p *peer) _receive(f *types.Frame) error {
 					p.router.log.Printf("Failed to handle SNEK bootstrap from %d: %s", p.port, err)
 				}
 			})
+			nexthops = nil
 		}
 
 	case types.TypeVirtualSnakeBootstrapACK:
@@ -109,6 +110,7 @@ func (p *peer) _receive(f *types.Frame) error {
 					p.router.log.Printf("Failed to handle SNEK bootstrap ACK from %d: %s", p.port, err)
 				}
 			})
+			nexthops = nil
 		}
 
 	case types.TypeVirtualSnakeSetup:
@@ -178,6 +180,7 @@ func (p *peer) _write() {
 		p.proto.ack()
 	case <-p.traffic.wait():
 		frame, _ = p.traffic.pop()
+		p.router.log.Println("Writing traffic frame to port", p.port)
 	}
 	b := frameBufferPool.Get().(*[types.MaxFrameSize]byte)
 	defer frameBufferPool.Put(b)
