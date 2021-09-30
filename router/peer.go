@@ -1,9 +1,12 @@
 package router
 
 import (
+	"bytes"
 	"context"
+	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"net"
 	"time"
 
@@ -50,8 +53,6 @@ func (p *peer) send(f *types.Frame) bool {
 	// Protocol messages
 	case types.TypeSTP, types.TypeKeepalive:
 		fallthrough
-	//case types.TypeDHTRequest, types.TypeDHTResponse:
-	//	fallthrough
 	case types.TypeVirtualSnakeBootstrap, types.TypeVirtualSnakeBootstrapACK:
 		fallthrough
 	case types.TypeVirtualSnakeSetup, types.TypeVirtualSnakeTeardown:
@@ -60,8 +61,6 @@ func (p *peer) send(f *types.Frame) bool {
 		}
 
 	// Traffic messages
-	//case types.TypePathfind, types.TypeVirtualSnakePathfind:
-	//	fallthrough
 	case types.TypeVirtualSnake, types.TypeGreedy, types.TypeSource:
 		if p.traffic != nil {
 			return p.traffic.push(f)
@@ -189,23 +188,11 @@ func (p *peer) _write() {
 		p._stop(fmt.Errorf("frame.MarshalBinary: %w", err))
 		return
 	}
-	/*
-		if err := p.conn.SetWriteDeadline(time.Now().Add(PeerKeepaliveInterval)); err != nil {
-			p._stop(fmt.Errorf("p.conn.SetWriteDeadline: %w", err))
-			return
-		}
-	*/
 	wn, err := p.conn.Write(buf[:n])
 	if err != nil {
 		p._stop(fmt.Errorf("p.conn.Write: %w", err))
 		return
 	}
-	/*
-		if err := p.conn.SetWriteDeadline(time.Time{}); err != nil {
-			p._stop(fmt.Errorf("p.conn.SetWriteDeadline: %w", err))
-			return
-		}
-	*/
 	if wn != n {
 		p._stop(fmt.Errorf("p.conn.Write length %d != %d", wn, n))
 		return
@@ -222,14 +209,32 @@ func (p *peer) _read() {
 	}
 	b := frameBufferPool.Get().(*[types.MaxFrameSize]byte)
 	defer frameBufferPool.Put(b)
-	n, err := p.conn.Read(b[:])
-	if err != nil {
-		p._stop(fmt.Errorf("p.conn.Read: %w", err))
+	if _, err := io.ReadFull(p.conn, b[:8]); err != nil {
+		p._stop(fmt.Errorf("io.ReadFull: %w", err))
 		return
 	}
-	f := framePool.Get().(*types.Frame)
-	f.Reset()
-	if _, err := f.UnmarshalBinary(b[:n]); err != nil {
+	if err := p.conn.SetReadDeadline(time.Time{}); err != nil {
+		p._stop(fmt.Errorf("conn.SetReadDeadline: %w", err))
+		return
+	}
+	if !bytes.Equal(b[:4], types.FrameMagicBytes) {
+		p._stop(fmt.Errorf("missing magic bytes"))
+		return
+	}
+	expecting := int(binary.BigEndian.Uint16(b[6:8]))
+	n, err := io.ReadFull(p.conn, b[8:expecting])
+	if err != nil {
+		p._stop(fmt.Errorf("io.ReadFull: %w", err))
+		return
+	}
+	if n < expecting-8 {
+		p._stop(fmt.Errorf("expecting %d bytes but got %d bytes", expecting, n))
+		return
+	}
+	f := &types.Frame{
+		Payload: make([]byte, 0, types.MaxPayloadSize),
+	}
+	if _, err := f.UnmarshalBinary(b[:n+8]); err != nil {
 		p._stop(fmt.Errorf("f.UnmarshalBinary: %w", err))
 		return
 	}

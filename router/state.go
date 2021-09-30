@@ -107,6 +107,16 @@ func (s *state) _portDisconnected(peer *peer) {
 		s._selectNewParent()
 	}
 
-	// TODO: handle case that parent disappeared
-	// TODO: teardown transitive paths
+	if asc := s._ascending; asc != nil && asc.Port == peer {
+		s._teardownPath(asc.PublicKey, asc.PathID)
+		defer s._bootstrapNow()
+	}
+	if desc := s._descending; desc != nil && desc.Port == peer {
+		s._teardownPath(desc.PublicKey, desc.PathID)
+	}
+	for k, v := range s._table {
+		if v.Destination == peer || v.Source == peer {
+			s._teardownPath(k.PublicKey, k.PathID)
+		}
+	}
 }

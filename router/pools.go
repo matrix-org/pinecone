@@ -13,6 +13,7 @@ var frameBufferPool = &sync.Pool{
 	},
 }
 
+/*
 var framePool = &sync.Pool{
 	New: func() interface{} {
 		f := &types.Frame{
@@ -21,3 +22,4 @@ var framePool = &sync.Pool{
 		return f
 	},
 }
+*/

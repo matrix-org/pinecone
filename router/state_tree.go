@@ -100,6 +100,9 @@ func (s *state) _coords() types.SwitchPorts {
 }
 
 func (s *state) _becomeRoot() {
+	if s._parent == nil {
+		return
+	}
 	s._parent = nil
 	s.r.log.Println("New coords:", types.SwitchPorts{})
 	s._maintainTreeIn(0)
