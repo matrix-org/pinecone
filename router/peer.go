@@ -91,6 +91,7 @@ func (p *peer) _receive(f *types.Frame) error {
 		})
 
 	case types.TypeKeepalive:
+		// p.router.log.Println("Got keepalive")
 
 	case types.TypeVirtualSnakeBootstrap:
 		if deadend {
@@ -179,6 +180,10 @@ func (p *peer) _write() {
 		p.proto.ack()
 	case <-p.traffic.wait():
 		frame, _ = p.traffic.pop()
+	case <-time.After(PeerKeepaliveInterval):
+		frame = &types.Frame{
+			Type: types.TypeKeepalive,
+		}
 	}
 	b := frameBufferPool.Get().(*[types.MaxFrameSize]byte)
 	defer frameBufferPool.Put(b)
@@ -188,6 +193,10 @@ func (p *peer) _write() {
 		p._stop(fmt.Errorf("frame.MarshalBinary: %w", err))
 		return
 	}
+	if err := p.conn.SetWriteDeadline(time.Now().Add(PeerKeepaliveInterval)); err != nil {
+		p._stop(fmt.Errorf("p.conn.SetWriteDeadline: %w", err))
+		return
+	}
 	wn, err := p.conn.Write(buf[:n])
 	if err != nil {
 		p._stop(fmt.Errorf("p.conn.Write: %w", err))
@@ -195,6 +204,10 @@ func (p *peer) _write() {
 	}
 	if wn != n {
 		p._stop(fmt.Errorf("p.conn.Write length %d != %d", wn, n))
+		return
+	}
+	if err := p.conn.SetWriteDeadline(time.Time{}); err != nil {
+		p._stop(fmt.Errorf("p.conn.SetWriteDeadline: %w", err))
 		return
 	}
 	p.writer.Act(&p.writer.Inbox, p._write)
@@ -209,12 +222,12 @@ func (p *peer) _read() {
 	}
 	b := frameBufferPool.Get().(*[types.MaxFrameSize]byte)
 	defer frameBufferPool.Put(b)
-	if _, err := io.ReadFull(p.conn, b[:8]); err != nil {
-		p._stop(fmt.Errorf("io.ReadFull: %w", err))
+	if err := p.conn.SetReadDeadline(time.Now().Add(PeerKeepaliveTimeout)); err != nil {
+		p._stop(fmt.Errorf("p.conn.SetReadDeadline: %w", err))
 		return
 	}
-	if err := p.conn.SetReadDeadline(time.Time{}); err != nil {
-		p._stop(fmt.Errorf("conn.SetReadDeadline: %w", err))
+	if _, err := io.ReadFull(p.conn, b[:8]); err != nil {
+		p._stop(fmt.Errorf("io.ReadFull: %w", err))
 		return
 	}
 	if !bytes.Equal(b[:4], types.FrameMagicBytes) {
@@ -225,6 +238,10 @@ func (p *peer) _read() {
 	n, err := io.ReadFull(p.conn, b[8:expecting])
 	if err != nil {
 		p._stop(fmt.Errorf("io.ReadFull: %w", err))
+		return
+	}
+	if err := p.conn.SetReadDeadline(time.Time{}); err != nil {
+		p._stop(fmt.Errorf("conn.SetReadDeadline: %w", err))
 		return
 	}
 	if n < expecting-8 {
