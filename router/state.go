@@ -19,6 +19,7 @@ type state struct {
 	_sequence      uint64 // sent in our own root updates
 	_treetimer     *time.Timer
 	_snaketimer    *time.Timer
+	_waiting       bool // is the tree waiting to reparent?
 }
 
 func (s *state) _start() {
@@ -38,8 +39,7 @@ func (s *state) _start() {
 	s._treetimer.Stop()
 	s._snaketimer.Stop()
 
-	s._becomeRoot()
-
+	s._maintainTreeIn(announcementInterval)
 	s._maintainSnakeIn(virtualSnakeMaintainInterval)
 }
 

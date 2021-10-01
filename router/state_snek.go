@@ -36,6 +36,7 @@ type virtualSnakeNeighbour struct {
 	Coords        types.SwitchPorts
 	PathID        types.VirtualSnakePathID
 	RootPublicKey types.PublicKey
+	RootSequence  types.Varu64
 }
 
 func (s *state) _maintainSnake() {
@@ -83,10 +84,15 @@ func (s *state) _maintainSnake() {
 }
 
 func (s *state) _bootstrapNow() {
-	var payload [8 + ed25519.PublicKeySize]byte
+	ann := s._rootAnnouncement()
+	if asc := s._ascending; asc != nil && asc.RootPublicKey == ann.RootPublicKey && asc.RootSequence == ann.Sequence {
+		return
+	}
+	payload := make([]byte, 8+ed25519.PublicKeySize+ann.Sequence.Length())
 	bootstrap := types.VirtualSnakeBootstrap{
-		RootPublicKey: s._rootAnnouncement().RootPublicKey,
-	} // nolint:gosimple
+		RootPublicKey: ann.RootPublicKey,
+		RootSequence:  ann.Sequence,
+	}
 	if _, err := rand.Read(bootstrap.PathID[:]); err != nil {
 		return
 	}
@@ -209,14 +215,19 @@ func (s *state) _nextHopsSNEK(from *peer, rx *types.Frame, bootstrap bool) []*pe
 
 	// Return the candidate ports
 	if bootstrap {
-		return []*peer{bestPeer}
-	} else if canlength == PortCount {
-		return []*peer{s.r.local}
-	} else {
-		return candidates[canlength:]
+		if bestPeer != nil {
+			return []*peer{bestPeer}
+		}
+		return []*peer{}
 	}
+	if canlength == PortCount {
+		// We have nowhere better to send it, so we'll handle it locally.
+		return []*peer{s.r.local}
+	}
+	return candidates[canlength:]
 }
 
+/*
 func (s *state) _rootChanged(root types.PublicKey) {
 	if asc := s._ascending; asc == nil || (asc != nil && !asc.RootPublicKey.EqualTo(root)) {
 		if asc != nil {
@@ -233,6 +244,7 @@ func (s *state) _rootChanged(root types.PublicKey) {
 		}
 	}
 }
+*/
 
 func (s *state) _handleBootstrap(from *peer, rx *types.Frame) error {
 	if rx.DestinationKey.EqualTo(s.r.public) {
@@ -244,15 +256,13 @@ func (s *state) _handleBootstrap(from *peer, rx *types.Frame) error {
 	if err != nil {
 		return fmt.Errorf("bootstrap.UnmarshalBinary: %w", err)
 	}
-	rootKey := s._rootAnnouncement().RootPublicKey
-	if !bootstrap.RootPublicKey.EqualTo(rootKey) {
-		return nil
-	}
-	bootstrapACK := types.VirtualSnakeBootstrapACK{ // nolint:gosimple
+	root := s._rootAnnouncement()
+	bootstrapACK := types.VirtualSnakeBootstrapACK{
 		PathID:        bootstrap.PathID,
-		RootPublicKey: rootKey,
+		RootPublicKey: root.RootPublicKey,
+		RootSequence:  root.Sequence,
 	}
-	var buf [8 + ed25519.PublicKeySize]byte
+	buf := make([]byte, 8+ed25519.PublicKeySize+root.Sequence.Length())
 	if _, err := bootstrapACK.MarshalBinary(buf[:]); err != nil {
 		return fmt.Errorf("bootstrapACK.MarshalBinary: %w", err)
 	}
@@ -264,6 +274,8 @@ func (s *state) _handleBootstrap(from *peer, rx *types.Frame) error {
 		// so either another node has forwarded it to us incorrectly, or
 		// a routing loop has occurred somewhere. Don't act on the bootstrap
 		// in that case.
+	case !bootstrap.RootPublicKey.EqualTo(root.RootPublicKey) || bootstrap.RootSequence != root.Sequence:
+		// The root or sequence don't match so we won't act on the bootstrap.
 	case desc != nil && desc.PublicKey.EqualTo(rx.DestinationKey):
 		// We've received another bootstrap from our direct descending node.
 		// Send back an acknowledgement as this is OK.
@@ -316,9 +328,7 @@ func (s *state) _handleBootstrapACK(from *peer, rx *types.Frame) error {
 	if err != nil {
 		return fmt.Errorf("bootstrapACK.UnmarshalBinary: %w", err)
 	}
-	if !bootstrapACK.RootPublicKey.EqualTo(s._rootAnnouncement().RootPublicKey) {
-		return nil
-	}
+	root := s._rootAnnouncement()
 	update := false
 	asc := s._ascending
 	switch {
@@ -327,6 +337,8 @@ func (s *state) _handleBootstrapACK(from *peer, rx *types.Frame) error {
 		// so either another node has forwarded it to us incorrectly, or
 		// a routing loop has occurred somewhere. Don't act on the bootstrap
 		// in that case.
+	case !bootstrapACK.RootPublicKey.EqualTo(root.RootPublicKey) || bootstrapACK.RootSequence != root.Sequence:
+		// The root or sequence don't match so we won't act on the bootstrap.
 	case asc != nil && asc.PublicKey.EqualTo(rx.SourceKey) && asc.PathID != bootstrapACK.PathID:
 		// We've received another bootstrap ACK from our direct ascending node.
 		// Just refresh the record and then send a new path setup message to
@@ -373,12 +385,14 @@ func (s *state) _handleBootstrapACK(from *peer, rx *types.Frame) error {
 			Coords:        rx.Source,
 			PathID:        bootstrapACK.PathID,
 			RootPublicKey: bootstrapACK.RootPublicKey,
+			RootSequence:  bootstrapACK.RootSequence,
 		}
 		setup := types.VirtualSnakeSetup{ // nolint:gosimple
 			PathID:        bootstrapACK.PathID,
-			RootPublicKey: bootstrapACK.RootPublicKey,
+			RootPublicKey: root.RootPublicKey,
+			RootSequence:  root.Sequence,
 		}
-		var buf [8 + ed25519.PublicKeySize]byte
+		buf := make([]byte, 8+ed25519.PublicKeySize+root.Sequence.Length())
 		if _, err := setup.MarshalBinary(buf[:]); err != nil {
 			return fmt.Errorf("setup.MarshalBinary: %w", err)
 		}
@@ -404,16 +418,12 @@ func (s *state) _handleBootstrapACK(from *peer, rx *types.Frame) error {
 }
 
 func (s *state) _handleSetup(from *peer, rx *types.Frame) error {
+	root := s._rootAnnouncement()
+
 	// Unmarshal the setup.
 	var setup types.VirtualSnakeSetup
 	if _, err := setup.UnmarshalBinary(rx.Payload); err != nil {
 		return fmt.Errorf("setup.UnmarshalBinary: %w", err)
-	}
-
-	rootKey := s._rootAnnouncement().RootPublicKey
-	if !setup.RootPublicKey.EqualTo(rootKey) {
-		s._sendTeardownForPath(rx.SourceKey, setup.PathID, from, false)
-		return nil
 	}
 
 	// Did the setup hit a dead end on the way to the ascending node?
@@ -446,6 +456,9 @@ func (s *state) _handleSetup(from *peer, rx *types.Frame) error {
 			// so either another node has forwarded it to us incorrectly, or
 			// a routing loop has occurred somewhere. Don't act on the bootstrap
 			// in that case.
+		case !setup.RootPublicKey.EqualTo(root.RootPublicKey) || setup.RootSequence != root.Sequence:
+			// The root or sequence don't match so we won't act on the setup
+			// and send a teardown back to the sender.
 		case desc != nil && desc.PublicKey.EqualTo(rx.SourceKey):
 			// We've received another bootstrap from our direct descending node.
 			// Just refresh the record and then send back an acknowledgement.
@@ -557,7 +570,7 @@ func (s *state) _sendTeardownForPath(pathKey types.PublicKey, pathID types.Virtu
 
 func (s *state) _getTeardown(pathKey types.PublicKey, pathID types.VirtualSnakePathID, ascending bool) *types.Frame {
 	var payload [8]byte
-	teardown := types.VirtualSnakeTeardown{ // nolint:gosimple
+	teardown := types.VirtualSnakeTeardown{
 		PathID: pathID,
 	}
 	if _, err := teardown.MarshalBinary(payload[:]); err != nil {
@@ -580,7 +593,7 @@ func (s *state) _teardownPath(pathKey types.PublicKey, pathID types.VirtualSnake
 	if asc := s._ascending; asc != nil && s.r.public.EqualTo(pathKey) && asc.PathID == pathID {
 		s._ascending = nil
 		nexthops[asc.Port] = struct{}{}
-		s._maintainSnakeIn(time.Second / 2)
+		defer s._bootstrapNow()
 	}
 	if desc := s._descending; desc != nil && desc.PublicKey.EqualTo(pathKey) && desc.PathID == pathID {
 		s._descending = nil

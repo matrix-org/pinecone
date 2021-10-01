@@ -12,7 +12,7 @@ import (
 
 // announcementInterval is the frequency at which this
 // node will send root announcements to other peers.
-const announcementInterval = time.Second * 5
+const announcementInterval = time.Minute * 15
 
 // announcementTimeout is the amount of time that must
 // pass without receiving a root announcement before we
@@ -27,6 +27,7 @@ func (s *state) _maintainTree() {
 	}
 
 	if s._parent == nil {
+		s._sequence++
 		s._sendTreeAnnouncements()
 	}
 
@@ -104,8 +105,8 @@ func (s *state) _becomeRoot() {
 		return
 	}
 	s._parent = nil
-	s.r.log.Println("New coords:", types.SwitchPorts{})
-	s._maintainTreeIn(0)
+	s._sendTreeAnnouncements()
+	s._maintainTreeIn(announcementInterval)
 }
 
 func (s *state) _sendTreeAnnouncementToPeer(ann *rootAnnouncementWithTime, p *peer) {
@@ -236,9 +237,9 @@ func (s *state) _handleTreeAnnouncement(p *peer, f *types.Frame) error {
 	}
 
 	lastParentUpdate := s._rootAnnouncement()
-	var lastCoords types.SwitchPorts
+	lastRootKey := s.r.public
 	if lastParentUpdate != nil {
-		lastCoords = lastParentUpdate.Coords()
+		lastRootKey = lastParentUpdate.RootPublicKey
 	}
 
 	// Save the root announcement against the peer.
@@ -249,77 +250,45 @@ func (s *state) _handleTreeAnnouncement(p *peer, f *types.Frame) error {
 		receiveOrder:       s._ordering,
 	}
 
-	// Work out what the last root key and time were.
-	lastRootKey := s.r.public
-	lastRootTime := time.Now()
-	if lastParentUpdate != nil {
-		lastRootKey = lastParentUpdate.RootPublicKey
-		lastRootTime = lastParentUpdate.receiveTime
-	}
-
-	rootKeyDelta := newUpdate.RootPublicKey.CompareTo(lastRootKey)
-	updateFromParent := p == s._parent // did the update come from our current parent?
-	switch {
-	case newUpdate.IsLoopOrChildOf(s.r.public):
-		// The update is loopy. If it's from our parent then choose a new parent,
-		// otherwise we're just going to stop here and do nothing further.
-		if updateFromParent {
-			s._selectNewParent()
+	if p == s._parent {
+		if s._waiting {
+			return fmt.Errorf("invalid update from parent whilst waiting to re-parent")
 		}
-		return nil
 
-	case time.Since(lastRootTime) >= announcementTimeout:
-		// We haven't seen our previous parent recently, something is wrong.
-		s._selectNewParent()
-
-	case rootKeyDelta > 0:
-		// The update has come from a better root key, so this is a better parent!
-		s._parent = p
-		s._sendTreeAnnouncements()
-
-	case updateFromParent && rootKeyDelta == 0 && newUpdate.Sequence > lastParentUpdate.Sequence:
-		// Our parent sent us an update from the same root key but with a better sequence
-		// number, so repeat it to our peers.
-		s._sendTreeAnnouncements()
-
-	case updateFromParent && rootKeyDelta < 0:
-		// Our parent's key has suddenly got weaker, which is bad news.
-		fallthrough
-
-	case updateFromParent && rootKeyDelta == 0 && lastParentUpdate.Sequence <= newUpdate.Sequence:
-		// Our parent is repeating updates to us, which is bad news.
-		//s._becomeRoot()
-		//s._parent = nil
-		//time.AfterFunc(time.Second, func() {
-		//	s.Act(nil, func() {
-		s._selectNewParent()
-		//	})
-		//})
+		rootDelta := newUpdate.RootPublicKey.CompareTo(lastRootKey)
+		doWait := false
+		if rootDelta < 0 {
+			doWait = true
+		} else if rootDelta == 0 && newUpdate.Sequence <= lastParentUpdate.Sequence {
+			doWait = true
+		}
+		s._parent = nil
+		if doWait {
+			s._waiting = true
+			s._becomeRoot()
+			time.AfterFunc(time.Second/2, func() {
+				s.Act(nil, func() {
+					s._waiting = false
+					if s._selectNewParent() {
+						s._bootstrapNow()
+					}
+				})
+			})
+		}
 	}
-
-	latestRootKey := s.r.public
-	latestCoords := types.SwitchPorts{}
-	if s._parent != nil && s._announcements[s._parent] != nil {
-		latestRootKey = s._announcements[s._parent].RootPublicKey
-		latestCoords = s._announcements[s._parent].Coords()
-	}
-
-	if !lastCoords.EqualTo(latestCoords) {
-		s.r.log.Println("New coords:", latestCoords)
-	}
-
-	if lastRootKey != latestRootKey {
-		s._rootChanged(latestRootKey)
+	if !s._waiting {
+		if s._selectNewParent() {
+			s._bootstrapNow()
+		}
 	}
 
 	return nil
 }
 
-func (s *state) _selectNewParent() {
+func (s *state) _selectNewParent() bool {
 	bestKey := s.r.public
 	bestSeq := types.Varu64(0)
 	bestOrder := uint64(math.MaxUint64)
-	//bestLen := math.MaxInt32
 	var bestPeer *peer
 
 	for peer, ann := range s._announcements {
@@ -331,7 +300,6 @@ func (s *state) _selectNewParent() {
 			bestPeer = peer
 			bestOrder = ann.receiveOrder
 			bestSeq = ann.Sequence
-			//bestLen = len(ann.Signatures)
 		}
 		keyDelta := ann.RootPublicKey.CompareTo(bestKey)
 		switch {
@@ -345,18 +313,6 @@ func (s *state) _selectNewParent() {
 			accept()
 		case ann.Sequence < bestSeq:
 			// ignore lower sequence numbers
-		/*
-			case len(ann.Signatures) < bestLen:
-				accept()
-			case len(ann.Signatures) > bestLen:
-				// ignore longer paths to the root
-		*/
-		/*
-			case peer == bestPeer:
-				// TODO: does preferring our existing parent if we can actually
-				// help anything in this case?
-				accept()
-		*/
 		case ann.receiveOrder < bestOrder:
 			accept()
 		}
@@ -367,13 +323,15 @@ func (s *state) _selectNewParent() {
 		if bestPeer != s._parent {
 			s._parent = bestPeer
 			s._sendTreeAnnouncements()
+			return true
 		}
-		return
+		return false
 	}
 
 	// No suitable other peer was found, so we'll just become the root
 	// and hope that one of our peers corrects us if it matters.
 	s._becomeRoot()
+	return false
 }
 
 func (s *state) _ancestors() ([]types.PublicKey, *peer) {

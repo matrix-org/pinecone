@@ -38,7 +38,7 @@ func TestUnmarshalBinaryVaru64(t *testing.T) {
 	input := []byte{133, 241, 194, 78, 0, 1, 2, 3, 4, 5, 6}
 	expected := Varu64(12345678)
 	var num Varu64
-	if err := num.UnmarshalBinary(input); err != nil {
+	if _, err := num.UnmarshalBinary(input); err != nil {
 		t.Fatal(err)
 	}
 	if num != expected {

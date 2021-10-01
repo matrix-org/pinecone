@@ -27,7 +27,7 @@ func (n Varu64) MarshalBinary() ([]byte, error) {
 	return b[i:], nil
 }
 
-func (n *Varu64) UnmarshalBinary(buf []byte) error {
+func (n *Varu64) UnmarshalBinary(buf []byte) (int, error) {
 	l := 0
 	*n = Varu64(0)
 	for _, b := range buf {
@@ -38,7 +38,7 @@ func (n *Varu64) UnmarshalBinary(buf []byte) error {
 			break
 		}
 	}
-	return nil
+	return l, nil
 }
 
 func (n Varu64) Length() int {

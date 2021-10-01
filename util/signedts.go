@@ -41,7 +41,7 @@ func VerifySignedTimestamp(public types.PublicKey, payload []byte) bool {
 		return false
 	}
 	var ts types.Varu64
-	if err := ts.UnmarshalBinary(payload); err != nil {
+	if _, err := ts.UnmarshalBinary(payload); err != nil {
 		return false
 	}
 	offset := ts.Length()
