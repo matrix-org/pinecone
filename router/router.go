@@ -18,12 +18,13 @@ import (
 )
 
 const PortCount = math.MaxUint8
-const TrafficBuffer = 128
+const TrafficBuffer = math.MaxUint8
 
 type Router struct {
 	phony.Inbox
 	log       *log.Logger
 	id        string
+	debug     atomic.Bool
 	simulator Simulator
 	context   context.Context
 	cancel    context.CancelFunc
@@ -56,7 +57,25 @@ func NewRouter(log *log.Logger, sk ed25519.PrivateKey, id string, sim Simulator)
 	r._peers[0] = r.local
 	r.state.Act(nil, r.state._start)
 	r.log.Println("Router identity:", r.public.String())
+	go func() {
+		for {
+			time.Sleep(time.Second * 1)
+			if r.debug.Load() {
+				counterMutex.Lock()
+				fmt.Println(counter)
+				counterMutex.Unlock()
+			}
+		}
+	}()
 	return r
+}
+
+func (r *Router) ToggleDebug() {
+	if r.debug.Toggle() {
+		r.log.Println("Enabled debug logging")
+	} else {
+		r.log.Println("Disabled debug logging")
+	}
 }
 
 func (r *Router) peers() []*peer {
@@ -104,6 +123,7 @@ func (r *Router) Connect(conn net.Conn, public types.PublicKey, zone string, pee
 				continue
 			}
 			if p != nil {
+				// This port is already allocated.
 				continue
 			}
 			ctx, cancel := context.WithCancel(r.context)
@@ -124,11 +144,11 @@ func (r *Router) Connect(conn net.Conn, public types.PublicKey, zone string, pee
 			r.log.Println("Connected to peer", new.public.String(), "on port", new.port)
 			v, _ := r.active.LoadOrStore(hex.EncodeToString(new.public[:])+zone, atomic.NewUint64(0))
 			v.(*atomic.Uint64).Inc()
+			r.state.Act(&new.writer, func() {
+				r.state.sendTreeAnnouncementToPeer(r.state._rootAnnouncement(), new)
+			})
 			new.reader.Act(nil, new._read)
 			new.writer.Act(nil, new._write)
-			r.state.Act(nil, func() {
-				r.state._sendTreeAnnouncementToPeer(r.state._rootAnnouncement(), new)
-			})
 			return
 		}
 	})
@@ -147,18 +167,20 @@ func (r *Router) AuthenticatedConnect(conn net.Conn, zone string, peertype int) 
 	}
 	handshake = append(handshake, r.public[:ed25519.PublicKeySize]...)
 	handshake = append(handshake, ed25519.Sign(r.private[:], handshake)...)
-	//_ = conn.SetWriteDeadline(time.Now().Add(PeerKeepaliveInterval))
+	if err := conn.SetDeadline(time.Now().Add(PeerKeepaliveInterval)); err != nil {
+		return 0, fmt.Errorf("conn.SetDeadline: %w", err)
+	}
 	if _, err := conn.Write(handshake); err != nil {
 		conn.Close()
 		return 0, fmt.Errorf("conn.Write: %w", err)
 	}
-	//_ = conn.SetWriteDeadline(time.Time{})
-	//_ = conn.SetReadDeadline(time.Now().Add(PeerKeepaliveInterval))
 	if _, err := io.ReadFull(conn, handshake); err != nil {
 		conn.Close()
 		return 0, fmt.Errorf("io.ReadFull: %w", err)
 	}
-	//_ = conn.SetReadDeadline(time.Time{})
+	if err := conn.SetDeadline(time.Time{}); err != nil {
+		return 0, fmt.Errorf("conn.SetDeadline: %w", err)
+	}
 	if theirVersion := handshake[0]; theirVersion != ourVersion {
 		conn.Close()
 		return 0, fmt.Errorf("mismatched node version")
@@ -185,7 +207,7 @@ func (r *Router) AuthenticatedConnect(conn net.Conn, zone string, peertype int) 
 
 func (r *Router) SNEKPing(ctx context.Context, dst types.PublicKey) (time.Duration, error) {
 	r.local.reader.Act(nil, func() {
-		_ = r.local._receive(r.local, &types.Frame{
+		_ = r.local._receive(&types.Frame{
 			Type:           types.TypeSNEKPing,
 			DestinationKey: dst,
 			SourceKey:      r.public,
@@ -208,7 +230,7 @@ func (r *Router) SNEKPing(ctx context.Context, dst types.PublicKey) (time.Durati
 
 func (r *Router) TreePing(ctx context.Context, dst types.SwitchPorts) (time.Duration, error) {
 	r.local.reader.Act(nil, func() {
-		_ = r.local._receive(r.local, &types.Frame{
+		_ = r.local._receive(&types.Frame{
 			Type:        types.TypeTreePing,
 			Destination: dst,
 			Source:      r.state.coords(),

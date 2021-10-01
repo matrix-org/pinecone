@@ -161,15 +161,10 @@ func (s *state) _nextHopsSNEK(from *peer, rx *types.Frame, bootstrap bool) []*pe
 
 	// Check our direct peers ancestors
 	for _, p := range peers {
-		if p == nil {
+		if p == nil || s._announcements[p] == nil {
 			continue
 		}
-		peerAnn := s._announcements[p]
-		if peerAnn == nil {
-			continue
-		}
-		newCheckedCandidate(peerAnn.RootPublicKey, p)
-		for _, hop := range peerAnn.Signatures {
+		for _, hop := range s._announcements[p].Signatures {
 			newCheckedCandidate(hop.PublicKey, p)
 		}
 	}

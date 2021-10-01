@@ -298,29 +298,33 @@ func (f *Frame) UpdateSourceRoutedPath(from SwitchPortID) {
 func (t FrameType) String() string {
 	switch t {
 	case TypeSTP:
-		return "TypeSTP"
+		return "STP"
 	case TypeSource:
-		return "TypeSource"
+		return "Source"
 	case TypeGreedy:
-		return "TypeGreedy"
-	case TypeSNEKPing:
-		return "TypePing"
-	case TypeSNEKPong:
-		return "TypePong"
+		return "Greedy"
 	case TypeVirtualSnakeBootstrap:
-		return "TypeVirtualSnakeBootstrap"
+		return "VirtualSnakeBootstrap"
 	case TypeVirtualSnakeBootstrapACK:
-		return "TypeVirtualSnakeBootstrapACK"
+		return "VirtualSnakeBootstrapACK"
 	case TypeVirtualSnakeSetup:
-		return "TypeVirtualSnakeSetup"
+		return "VirtualSnakeSetup"
 	case TypeVirtualSnake:
-		return "TypeVirtualSnake"
+		return "VirtualSnake"
 	case TypeVirtualSnakeTeardown:
-		return "TypeVirtualSnakeTeardown"
+		return "VirtualSnakeTeardown"
 	case TypeKeepalive:
-		return "TypeKeepalive"
+		return "Keepalive"
+	case TypeSNEKPing:
+		return "SNEKPing"
+	case TypeSNEKPong:
+		return "SNEKPong"
+	case TypeTreePing:
+		return "TreePing"
+	case TypeTreePong:
+		return "TreePong"
 	default:
-		return "TypeUnknown"
+		return "Unknown"
 	}
 }
 

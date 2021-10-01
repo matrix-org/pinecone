@@ -109,7 +109,7 @@ func (s *state) _becomeRoot() {
 	s._maintainTreeIn(announcementInterval)
 }
 
-func (s *state) _sendTreeAnnouncementToPeer(ann *rootAnnouncementWithTime, p *peer) {
+func (s *state) sendTreeAnnouncementToPeer(ann *rootAnnouncementWithTime, p *peer) {
 	if peerAnn := ann.forPeer(p); peerAnn != nil {
 		p.proto.push(peerAnn)
 	}
@@ -117,18 +117,12 @@ func (s *state) _sendTreeAnnouncementToPeer(ann *rootAnnouncementWithTime, p *pe
 
 func (s *state) _sendTreeAnnouncements() {
 	ann := s._rootAnnouncement()
-	s.Act(s, func() {
-		var peers []*peer
-		phony.Block(s.r, func() {
-			peers = s.r._peers
-		})
-		for _, p := range peers {
-			if p == nil || !p.started.Load() {
-				continue
-			}
-			s._sendTreeAnnouncementToPeer(ann, p)
+	for _, p := range s.r.peers() {
+		if p == nil || !p.started.Load() {
+			continue
 		}
-	})
+		s.sendTreeAnnouncementToPeer(ann, p)
+	}
 }
 
 func (s *state) _nextHopsTree(from *peer, f *types.Frame) []*peer {
@@ -145,6 +139,7 @@ func (s *state) _nextHopsTree(from *peer, f *types.Frame) []*peer {
 
 	// If it's loopback then don't bother doing anything else.
 	ourCoords := s._coords()
+	ourRoot := s._rootAnnouncement()
 	if f.Destination.EqualTo(ourCoords) {
 		return []*peer{s.r.local}
 	}
@@ -161,26 +156,21 @@ func (s *state) _nextHopsTree(from *peer, f *types.Frame) []*peer {
 		return []*peer{s.r.local}
 	}
 
-	var peers []*peer
-	phony.Block(s.r, func() {
-		peers = s.r._peers
-	})
-
 	// Now work out which of our peers takes the message closer.
 	bestDist := ourDist
-	for _, p := range peers {
-		if p == nil || p == s.r.local {
+	bestSeq := ourRoot.Sequence
+	for _, p := range s.r.peers() {
+		if p == nil {
 			continue
 		}
 		ann := s._announcements[p]
-		if ann == nil {
-			continue
-		}
 
 		// Don't deliberately create routing loops by forwarding
 		// to a node that doesn't share our root - the coordinate
-		// system will be different.
-		if p == from || ann.RootPublicKey != s._rootAnnouncement().RootPublicKey {
+		// system will be different - or to the node that sent us
+		// the packet. Also don't bother looking at nodes for which
+		// we have no announcement yet.
+		if ann == nil || p == from || ann.RootPublicKey != ourRoot.RootPublicKey {
 			continue
 		}
 
@@ -196,6 +186,15 @@ func (s *state) _nextHopsTree(from *peer, f *types.Frame) []*peer {
 		case peerDist < bestDist:
 			// The peer is closer to the destination.
 			bestDist = peerDist
+			newCandidate(p)
+
+		case peerDist > bestDist:
+			// The peer is further away than our best candidate so far.
+
+		case ann.Sequence > bestSeq:
+			// It's the same distance but a higher sequence number, so
+			// probably has a faster path to the root.
+			bestSeq = ann.Sequence
 			newCandidate(p)
 
 		default:
@@ -266,7 +265,7 @@ func (s *state) _handleTreeAnnouncement(p *peer, f *types.Frame) error {
 		if doWait {
 			s._waiting = true
 			s._becomeRoot()
-			time.AfterFunc(time.Second/2, func() {
+			time.AfterFunc(time.Second, func() {
 				s.Act(nil, func() {
 					s._waiting = false
 					if s._selectNewParent() {

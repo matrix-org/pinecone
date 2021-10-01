@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"sync"
 	"time"
 
 	"github.com/Arceliar/phony"
@@ -25,13 +26,8 @@ const (
 )
 
 type peer struct {
-	reader struct {
-		phony.Inbox
-		// _announcement *rootAnnouncementWithTime
-	}
-	writer struct {
-		phony.Inbox
-	}
+	reader   phony.Inbox
+	writer   phony.Inbox
 	router   *Router            // populated by router
 	port     types.SwitchPortID // populated by router
 	context  context.Context    // populated by router
@@ -56,6 +52,8 @@ func (p *peer) send(f *types.Frame) bool {
 	case types.TypeVirtualSnakeBootstrap, types.TypeVirtualSnakeBootstrapACK:
 		fallthrough
 	case types.TypeVirtualSnakeSetup, types.TypeVirtualSnakeTeardown:
+		// The local peer doesn't have a protocol queue so we should check
+		// for nils to prevent panics.
 		if p.proto != nil {
 			return p.proto.push(f)
 		}
@@ -64,15 +62,16 @@ func (p *peer) send(f *types.Frame) bool {
 	case types.TypeVirtualSnake, types.TypeGreedy, types.TypeSource:
 		fallthrough
 	case types.TypeSNEKPing, types.TypeSNEKPong, types.TypeTreePing, types.TypeTreePong:
-		if p.traffic != nil {
-			return p.traffic.push(f)
-		}
+		return p.traffic.push(f)
 	}
 
 	return false
 }
 
-func (p *peer) _receive(from *peer, f *types.Frame) error {
+var counter = map[types.FrameType]uint64{}
+var counterMutex sync.Mutex
+
+func (p *peer) _receive(f *types.Frame) error {
 	nexthops := p.router.state.nextHopsFor(p, f)
 	deadend := len(nexthops) == 0 || (len(nexthops) == 1 && nexthops[0] == p.router.local)
 	defer func() {
@@ -82,6 +81,10 @@ func (p *peer) _receive(from *peer, f *types.Frame) error {
 			}
 		}
 	}()
+
+	counterMutex.Lock()
+	counter[f.Type]++
+	counterMutex.Unlock()
 
 	switch f.Type {
 	// Protocol messages
@@ -142,7 +145,7 @@ func (p *peer) _receive(from *peer, f *types.Frame) error {
 	case types.TypeSNEKPing:
 		if f.DestinationKey == p.router.public {
 			nexthops = nil
-			from.traffic.push(&types.Frame{
+			p.traffic.push(&types.Frame{
 				Type:           types.TypeSNEKPong,
 				DestinationKey: f.SourceKey,
 				SourceKey:      p.router.public,
@@ -163,7 +166,7 @@ func (p *peer) _receive(from *peer, f *types.Frame) error {
 	case types.TypeTreePing:
 		if deadend {
 			nexthops = nil
-			from.traffic.push(&types.Frame{
+			p.traffic.push(&types.Frame{
 				Type:        types.TypeTreePong,
 				Destination: f.Source,
 				Source:      p.router.state.coords(),
@@ -201,7 +204,7 @@ func (p *peer) _stop(err error) {
 					p.router.log.Println("Disconnected from peer", p.public.String(), "on port", i)
 				}
 				// TODO: what makes more sense here?
-				// p.router.state.Act(nil, func() {
+				// p.router.state.Act(p.router, func() {
 				phony.Block(p.router.state, func() {
 					p.router.state._portDisconnected(p)
 				})
@@ -255,7 +258,7 @@ func (p *peer) _write() {
 		p._stop(fmt.Errorf("p.conn.SetWriteDeadline: %w", err))
 		return
 	}
-	p.writer.Act(&p.writer.Inbox, p._write)
+	p.writer.Act(nil, p._write)
 }
 
 func (p *peer) _read() {
@@ -300,9 +303,9 @@ func (p *peer) _read() {
 		p._stop(fmt.Errorf("f.UnmarshalBinary: %w", err))
 		return
 	}
-	if err := p._receive(p, f); err != nil {
+	if err := p._receive(f); err != nil {
 		p._stop(fmt.Errorf("p._receive: %w", err))
 		return
 	}
-	p.reader.Act(&p.reader.Inbox, p._read)
+	p.reader.Act(nil, p._read)
 }

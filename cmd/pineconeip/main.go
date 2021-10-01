@@ -156,6 +156,9 @@ func main() {
 				pprof.StopCPUProfile()
 				logger.Println("Profile written:", fn)
 			})
+
+		case syscall.SIGUSR2:
+			pineconeRouter.ToggleDebug()
 		}
 	}
 }

@@ -88,6 +88,9 @@ func (s *state) nextHopsFor(from *peer, frame *types.Frame) []*peer {
 		var nexthop *peer
 		phony.Block(s.r, func() {
 			port := s.r._peers[frame.Destination[0]]
+			if frame.Destination[0] == from.port {
+				return
+			}
 			frame.Destination = frame.Destination[1:]
 			if from != nexthop && nexthop != nil && nexthop.started.Load() {
 				nexthop = port
