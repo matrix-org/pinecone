@@ -34,20 +34,19 @@ type FrameVersion uint8
 type FrameType uint8
 
 const (
-	TypeSTP                      FrameType = iota // protocol frame, bypasses queues
-	TypeSource                                    // traffic frame, forwarded using source routing
-	TypeGreedy                                    // traffic frame, forwarded using greedy routing
-	TypePathfind                                  // protocol frame, sign the update before forwarding it greedily
-	TypeSwitchUpdate                              // sent from the switch to the router to update about peers
-	TypeDHTRequest                                // protocol frame, forwarded using greedy routing
-	TypeDHTResponse                               // protocol frame, forwarded using greedy routing
-	TypeVirtualSnakeBootstrap                     // protocol frame, forwarded using SNEK predecessor ordering
-	TypeVirtualSnakeBootstrapACK                  // protocol frame, forwarded using greedy routing
-	TypeVirtualSnakeSetup                         // protocol frame, forwarded using greedy routing
-	TypeVirtualSnake                              // traffic frame, forwarded using SNEK successor ordering
-	TypeVirtualSnakePathfind                      // protocol frame, forwarded using SNEK successor ordering
-	TypeVirtualSnakeTeardown                      // protocol frame
-	TypeKeepalive                                 // protocol frame, bypasses queues
+	TypeSTP                      FrameType = iota       // protocol frame, bypasses queues
+	TypeSource                                          // traffic frame, forwarded using source routing
+	TypeGreedy                                          // traffic frame, forwarded using tree routing
+	TypeVirtualSnakeBootstrap                           // protocol frame, forwarded using SNEK
+	TypeVirtualSnakeBootstrapACK                        // protocol frame, forwarded using tree routing
+	TypeVirtualSnakeSetup                               // protocol frame, forwarded using tree routing
+	TypeVirtualSnake                                    // traffic frame, forwarded using SNEK
+	TypeVirtualSnakeTeardown                            // protocol frame, forwarded using special rules
+	TypeKeepalive                                       // protocol frame, direct to peers only
+	TypeSNEKPing                 FrameType = iota + 200 // traffic frame, forwarded using SNEK
+	TypeSNEKPong                                        // traffic frame, forwarded using SNEK
+	TypeTreePing                                        // traffic frame, forwarded using tree
+	TypeTreePong                                        // traffic frame, forwarded using tree
 )
 
 const (
@@ -140,7 +139,7 @@ func (f *Frame) MarshalBinary(buffer []byte) (int, error) {
 			offset += copy(buffer[offset:], f.Payload[:payloadLen])
 		}
 
-	case TypeVirtualSnake, TypeVirtualSnakePathfind: // destination = key, source = key
+	case TypeVirtualSnake, TypeSNEKPing, TypeSNEKPong: // destination = key, source = key
 		payloadLen := len(f.Payload)
 		binary.BigEndian.PutUint16(buffer[offset+0:offset+2], uint16(payloadLen))
 		offset += 2
@@ -247,7 +246,7 @@ func (f *Frame) UnmarshalBinary(data []byte) (int, error) {
 		offset += copy(f.Payload, data[offset:])
 		return offset, nil
 
-	case TypeVirtualSnake, TypeVirtualSnakePathfind: // destination = key, source = key
+	case TypeVirtualSnake, TypeSNEKPing, TypeSNEKPong: // destination = key, source = key
 		payloadLen := int(binary.BigEndian.Uint16(data[offset+0 : offset+2]))
 		offset += 2
 		offset += copy(f.DestinationKey[:], data[offset:])
@@ -304,14 +303,10 @@ func (t FrameType) String() string {
 		return "TypeSource"
 	case TypeGreedy:
 		return "TypeGreedy"
-	case TypePathfind:
-		return "TypePathfind"
-	case TypeSwitchUpdate:
-		return "TypeSwitchUpdate"
-	case TypeDHTRequest:
-		return "TypeDHTRequest"
-	case TypeDHTResponse:
-		return "TypeDHTResponse"
+	case TypeSNEKPing:
+		return "TypePing"
+	case TypeSNEKPong:
+		return "TypePong"
 	case TypeVirtualSnakeBootstrap:
 		return "TypeVirtualSnakeBootstrap"
 	case TypeVirtualSnakeBootstrapACK:
@@ -320,8 +315,6 @@ func (t FrameType) String() string {
 		return "TypeVirtualSnakeSetup"
 	case TypeVirtualSnake:
 		return "TypeVirtualSnake"
-	case TypeVirtualSnakePathfind:
-		return "TypeVirtualSnakePathfind"
 	case TypeVirtualSnakeTeardown:
 		return "TypeVirtualSnakeTeardown"
 	case TypeKeepalive:

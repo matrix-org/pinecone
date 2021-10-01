@@ -102,7 +102,7 @@ func (r *Router) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 	switch ga := addr.(type) {
 	case GreedyAddr:
 		r.local.reader.Act(nil, func() {
-			_ = r.local._receive(&types.Frame{
+			_ = r.local._receive(r.local, &types.Frame{
 				Version:     types.Version0,
 				Type:        types.TypeGreedy,
 				Destination: ga.SwitchPorts,
@@ -114,7 +114,7 @@ func (r *Router) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 
 	case types.PublicKey:
 		r.local.reader.Act(nil, func() {
-			_ = r.local._receive(&types.Frame{
+			_ = r.local._receive(r.local, &types.Frame{
 				Version:        types.Version0,
 				Type:           types.TypeVirtualSnake,
 				DestinationKey: ga,

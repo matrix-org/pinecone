@@ -10,13 +10,14 @@ import (
 	"math"
 	"net"
 	"sync"
+	"time"
 
 	"github.com/Arceliar/phony"
 	"github.com/matrix-org/pinecone/types"
 	"go.uber.org/atomic"
 )
 
-const PortCount = math.MaxUint16
+const PortCount = math.MaxUint8
 const TrafficBuffer = 128
 
 type Router struct {
@@ -29,6 +30,7 @@ type Router struct {
 	public    types.PublicKey
 	private   types.PrivateKey
 	active    sync.Map
+	pings     sync.Map // types.PublicKey -> chan struct{}
 	local     *peer
 	state     *state
 	_peers    []*peer
@@ -179,4 +181,50 @@ func (r *Router) AuthenticatedConnect(conn net.Conn, zone string, peertype int) 
 		return 0, fmt.Errorf("r.Connect failed: %w (close: %s)", err, conn.Close())
 	}
 	return port, err
+}
+
+func (r *Router) SNEKPing(ctx context.Context, dst types.PublicKey) (time.Duration, error) {
+	r.local.reader.Act(nil, func() {
+		_ = r.local._receive(r.local, &types.Frame{
+			Type:           types.TypeSNEKPing,
+			DestinationKey: dst,
+			SourceKey:      r.public,
+		})
+	})
+	start := time.Now()
+	v, existing := r.pings.LoadOrStore(dst, make(chan struct{}))
+	if existing {
+		return 0, fmt.Errorf("a ping to this node is already in progress")
+	}
+	defer r.pings.Delete(dst)
+	ch := v.(chan struct{})
+	select {
+	case <-ctx.Done():
+		return 0, fmt.Errorf("ping timed out")
+	case <-ch:
+		return time.Since(start), nil
+	}
+}
+
+func (r *Router) TreePing(ctx context.Context, dst types.SwitchPorts) (time.Duration, error) {
+	r.local.reader.Act(nil, func() {
+		_ = r.local._receive(r.local, &types.Frame{
+			Type:        types.TypeTreePing,
+			Destination: dst,
+			Source:      r.state.coords(),
+		})
+	})
+	start := time.Now()
+	v, existing := r.pings.LoadOrStore(dst.String(), make(chan struct{}))
+	if existing {
+		return 0, fmt.Errorf("a ping to this node is already in progress")
+	}
+	defer r.pings.Delete(dst.String())
+	ch := v.(chan struct{})
+	select {
+	case <-ctx.Done():
+		return 0, fmt.Errorf("ping timed out")
+	case <-ch:
+		return time.Since(start), nil
+	}
 }

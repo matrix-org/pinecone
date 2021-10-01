@@ -16,15 +16,16 @@ package simulator
 
 import (
 	"context"
+	"fmt"
 	"time"
 )
 
-func (sim *Simulator) PathfindTree(from, to string) error {
+func (sim *Simulator) PingTree(from, to string) error {
 	fromnode := sim.nodes[from]
 	tonode := sim.nodes[to]
 	success := false
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*2)
 	defer cancel()
 
 	defer func() {
@@ -36,24 +37,20 @@ func (sim *Simulator) PathfindTree(from, to string) error {
 		sim.treePathConvergenceMutex.Unlock()
 	}()
 
-	_, _, _ = fromnode, tonode, ctx
-	/*
-		if _, err := fromnode.Pathfind(ctx, router.GreedyAddr{SwitchPorts: tonode.Coords()}); err != nil {
-			return fmt.Errorf("fromnode.r.Pathfind: %w", err)
-		} else {
-			success = true
-		}
-	*/
+	if _, err := fromnode.TreePing(ctx, tonode.Coords()); err != nil {
+		return fmt.Errorf("fromnode.Ping: %w", err)
+	}
 
+	success = true
 	return nil
 }
 
-func (sim *Simulator) PathfindSNEK(from, to string) error {
+func (sim *Simulator) PingSNEK(from, to string) error {
 	fromnode := sim.nodes[from]
 	tonode := sim.nodes[to]
 	success := false
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*2)
 	defer cancel()
 
 	defer func() {
@@ -65,13 +62,10 @@ func (sim *Simulator) PathfindSNEK(from, to string) error {
 		sim.snekPathConvergenceMutex.Unlock()
 	}()
 
-	_, _, _ = fromnode, tonode, ctx
-	/*
-		if _, err := fromnode.Pathfind(ctx, tonode.PublicKey()); err != nil {
-			return fmt.Errorf("fromnode.r.Pathfind: %w", err)
-		} else {
-			success = true
-		}
-	*/
+	if _, err := fromnode.SNEKPing(ctx, tonode.PublicKey()); err != nil {
+		return fmt.Errorf("fromnode.Ping: %w", err)
+	}
+
+	success = true
 	return nil
 }

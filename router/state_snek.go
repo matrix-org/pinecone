@@ -124,27 +124,16 @@ func (s *state) _nextHopsSNEK(from *peer, rx *types.Frame, bootstrap bool) []*pe
 	}
 	bestKey := s.r.public
 	bestPeer := s.r.local
-	var candidates []*peer
-	var canlength int
-	if !bootstrap {
-		candidates, canlength = make([]*peer, PortCount), PortCount
-	}
-	newCandidate := func(key types.PublicKey, p *peer) bool {
-		if !bootstrap && p != bestPeer {
-			canlength--
-			candidates[canlength] = p
-		}
+	newCandidate := func(key types.PublicKey, p *peer) {
 		bestKey, bestPeer = key, p
-		return true
 	}
-	newCheckedCandidate := func(candidate types.PublicKey, p *peer) bool {
+	newCheckedCandidate := func(candidate types.PublicKey, p *peer) {
 		switch {
 		case !bootstrap && candidate.EqualTo(destKey) && !bestKey.EqualTo(destKey):
-			return newCandidate(candidate, p)
+			newCandidate(candidate, p)
 		case util.DHTOrdered(destKey, candidate, bestKey):
-			return newCandidate(candidate, p)
+			newCandidate(candidate, p)
 		}
-		return false
 	}
 
 	// Check if we can use the path to the root as a starting point
@@ -210,17 +199,11 @@ func (s *state) _nextHopsSNEK(from *peer, rx *types.Frame, bootstrap bool) []*pe
 	}
 
 	// Return the candidate ports
-	if bootstrap {
-		if bestPeer != nil {
-			return []*peer{bestPeer}
-		}
-		return []*peer{}
+	//if bootstrap {
+	if bestPeer != nil {
+		return []*peer{bestPeer}
 	}
-	if canlength == PortCount {
-		// We have nowhere better to send it, so we'll handle it locally.
-		return []*peer{s.r.local}
-	}
-	return candidates[canlength:]
+	return []*peer{}
 }
 
 func (s *state) _handleBootstrap(from *peer, rx *types.Frame) error {

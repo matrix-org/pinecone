@@ -62,6 +62,8 @@ func (p *peer) send(f *types.Frame) bool {
 
 	// Traffic messages
 	case types.TypeVirtualSnake, types.TypeGreedy, types.TypeSource:
+		fallthrough
+	case types.TypeSNEKPing, types.TypeSNEKPong, types.TypeTreePing, types.TypeTreePong:
 		if p.traffic != nil {
 			return p.traffic.push(f)
 		}
@@ -70,7 +72,7 @@ func (p *peer) send(f *types.Frame) bool {
 	return false
 }
 
-func (p *peer) _receive(f *types.Frame) error {
+func (p *peer) _receive(from *peer, f *types.Frame) error {
 	nexthops := p.router.state.nextHopsFor(p, f)
 	deadend := len(nexthops) == 0 || (len(nexthops) == 1 && nexthops[0] == p.router.local)
 	defer func() {
@@ -136,6 +138,49 @@ func (p *peer) _receive(f *types.Frame) error {
 
 	// Traffic messages
 	case types.TypeVirtualSnake, types.TypeGreedy, types.TypeSource:
+
+	case types.TypeSNEKPing:
+		if f.DestinationKey == p.router.public {
+			nexthops = nil
+			from.traffic.push(&types.Frame{
+				Type:           types.TypeSNEKPong,
+				DestinationKey: f.SourceKey,
+				SourceKey:      p.router.public,
+			})
+		}
+
+	case types.TypeSNEKPong:
+		if f.DestinationKey == p.router.public {
+			nexthops = nil
+			v, ok := p.router.pings.Load(f.SourceKey)
+			if !ok {
+				return nil
+			}
+			ch := v.(chan struct{})
+			close(ch)
+		}
+
+	case types.TypeTreePing:
+		if deadend {
+			nexthops = nil
+			from.traffic.push(&types.Frame{
+				Type:        types.TypeTreePong,
+				Destination: f.Source,
+				Source:      p.router.state.coords(),
+			})
+		}
+
+	case types.TypeTreePong:
+		if deadend {
+			nexthops = nil
+			v, ok := p.router.pings.Load(f.Source.String())
+			if !ok {
+				return nil
+			}
+			ch := v.(chan struct{})
+			close(ch)
+		}
+
 	}
 
 	return nil
@@ -255,7 +300,7 @@ func (p *peer) _read() {
 		p._stop(fmt.Errorf("f.UnmarshalBinary: %w", err))
 		return
 	}
-	if err := p._receive(f); err != nil {
+	if err := p._receive(p, f); err != nil {
 		p._stop(fmt.Errorf("p._receive: %w", err))
 		return
 	}

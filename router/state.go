@@ -67,7 +67,7 @@ func (s *state) nextHopsFor(from *peer, frame *types.Frame) []*peer {
 	var nexthops []*peer
 	switch frame.Type {
 	// SNEK routing
-	case types.TypeVirtualSnake, types.TypeVirtualSnakeBootstrap:
+	case types.TypeVirtualSnake, types.TypeVirtualSnakeBootstrap, types.TypeSNEKPing, types.TypeSNEKPong:
 		phony.Block(s, func() {
 			nexthops = s._nextHopsSNEK(from, frame, frame.Type == types.TypeVirtualSnakeBootstrap)
 		})
@@ -75,13 +75,13 @@ func (s *state) nextHopsFor(from *peer, frame *types.Frame) []*peer {
 	// Tree routing
 	case types.TypeVirtualSnakeBootstrapACK, types.TypeVirtualSnakeSetup:
 		fallthrough
-	case types.TypeGreedy:
+	case types.TypeGreedy, types.TypeTreePing, types.TypeTreePong:
 		phony.Block(s, func() {
 			nexthops = s._nextHopsTree(from, frame)
 		})
 
 	// Source routing
-	case types.TypePathfind, types.TypeSource:
+	case types.TypeSource:
 		if len(frame.Destination) == 0 {
 			return []*peer{s.r.local}
 		}

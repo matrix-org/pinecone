@@ -154,7 +154,7 @@ func main() {
 	go func() {
 		for {
 			time.Sleep(time.Second * 15)
-			log.Println("Starting pathfinds...")
+			log.Println("Starting pings...")
 
 			tasks := make(chan pair, 2*(len(nodes)*len(nodes)))
 			for from := range nodes {
@@ -170,13 +170,13 @@ func main() {
 			for i := 0; i < numworkers; i++ {
 				go func() {
 					for pair := range tasks {
-						log.Println("Tree pathfind from", pair.from, "to", pair.to)
-						if err := sim.PathfindTree(pair.from, pair.to); err != nil {
-							log.Println("Tree pathfind from", pair.from, "to", pair.to, "failed:", err)
+						log.Println("Tree ping from", pair.from, "to", pair.to)
+						if err := sim.PingTree(pair.from, pair.to); err != nil {
+							log.Println("Tree ping from", pair.from, "to", pair.to, "failed:", err)
 						}
-						log.Println("SNEK pathfind from", pair.from, "to", pair.to)
-						if err := sim.PathfindSNEK(pair.from, pair.to); err != nil {
-							log.Println("SNEK pathfind from", pair.from, "to", pair.to, "failed:", err)
+						log.Println("SNEK ping from", pair.from, "to", pair.to)
+						if err := sim.PingSNEK(pair.from, pair.to); err != nil {
+							log.Println("SNEK ping from", pair.from, "to", pair.to, "failed:", err)
 						}
 					}
 					wg.Done()
@@ -184,7 +184,7 @@ func main() {
 			}
 
 			wg.Wait()
-			log.Println("All pathfinds finished, repeating shortly...")
+			log.Println("All pings finished, repeating shortly...")
 		}
 	}()
 
