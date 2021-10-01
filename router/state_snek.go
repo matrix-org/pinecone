@@ -3,7 +3,6 @@ package router
 import (
 	"crypto/ed25519"
 	"crypto/rand"
-	"encoding/hex"
 	"fmt"
 	"time"
 
@@ -186,22 +185,9 @@ func (s *state) _nextHopsSNEK(from *peer, rx *types.Frame, bootstrap bool) []*pe
 		}
 	}
 
-	// Check our DHT entries
-	for dhtKey, entry := range s._table {
-		switch {
-		//case !entry.Valid():
-		//	continue
-		default:
-			newCheckedCandidate(dhtKey.PublicKey, entry.Source)
-		}
-	}
-
 	// Check our direct peers
 	for _, p := range peers {
-		if p == nil {
-			continue
-		}
-		if s._announcements[p] == nil {
+		if p == nil || s._announcements[p] == nil {
 			continue
 		}
 		if peerKey := p.public; bestKey.EqualTo(peerKey) {
@@ -210,6 +196,16 @@ func (s *state) _nextHopsSNEK(from *peer, rx *types.Frame, bootstrap bool) []*pe
 			// are directly peered with that node, so use the more direct
 			// path instead
 			newCandidate(peerKey, p)
+		}
+	}
+
+	// Check our DHT entries
+	for dhtKey, entry := range s._table {
+		switch {
+		case time.Since(entry.LastSeen) >= virtualSnakeNeighExpiryPeriod:
+			continue
+		default:
+			newCheckedCandidate(dhtKey.PublicKey, entry.Source)
 		}
 	}
 
@@ -226,25 +222,6 @@ func (s *state) _nextHopsSNEK(from *peer, rx *types.Frame, bootstrap bool) []*pe
 	}
 	return candidates[canlength:]
 }
-
-/*
-func (s *state) _rootChanged(root types.PublicKey) {
-	if asc := s._ascending; asc == nil || (asc != nil && !asc.RootPublicKey.EqualTo(root)) {
-		if asc != nil {
-			s._sendTeardownForPath(asc.PublicKey, asc.PathID, nil, true)
-		}
-		defer s._maintainSnakeIn(time.Second)
-	}
-	if desc := s._descending; desc != nil && !desc.RootPublicKey.EqualTo(root) {
-		s._sendTeardownForPath(desc.PublicKey, desc.PathID, nil, false)
-	}
-	for k, v := range s._table {
-		if !v.RootPublicKey.EqualTo(v.RootPublicKey) {
-			s._sendTeardownForPath(k.PublicKey, k.PathID, nil, false)
-		}
-	}
-}
-*/
 
 func (s *state) _handleBootstrap(from *peer, rx *types.Frame) error {
 	if rx.DestinationKey.EqualTo(s.r.public) {
@@ -316,9 +293,9 @@ func (s *state) _handleBootstrap(from *peer, rx *types.Frame) error {
 				return nil
 			}
 		}
-		return fmt.Errorf("failed to send bootstrap ACK to a peer")
+		return nil
 	}
-	return fmt.Errorf("bootstrap conditions not met")
+	return nil
 }
 
 func (s *state) _handleBootstrapACK(from *peer, rx *types.Frame) error {
@@ -412,7 +389,7 @@ func (s *state) _handleBootstrapACK(from *peer, rx *types.Frame) error {
 				return nil
 			}
 		}
-		return fmt.Errorf("failed to send bootstrap ACK to a peer")
+		return nil
 	}
 	return nil
 }
@@ -430,7 +407,7 @@ func (s *state) _handleSetup(from *peer, rx *types.Frame) error {
 	nextHops := s._nextHopsTree(from, rx)
 	if (len(nextHops) == 0 || nextHops[0] == s.r.local) && !rx.DestinationKey.EqualTo(s.r.public) {
 		s._sendTeardownForPath(rx.SourceKey, setup.PathID, from, false)
-		return fmt.Errorf("setup for %q (%s) en route to %q %s hit dead end at %s", rx.SourceKey, hex.EncodeToString(setup.PathID[:]), rx.DestinationKey, rx.Destination, s._coords())
+		return nil
 	}
 
 	var addToRoutingTable bool
@@ -439,9 +416,9 @@ func (s *state) _handleSetup(from *peer, rx *types.Frame) error {
 	if _, ok := s._table[virtualSnakeIndex{rx.SourceKey, setup.PathID}]; ok {
 		s._sendTeardownForPath(rx.SourceKey, setup.PathID, nil, false)  // first call fixes routing table
 		s._sendTeardownForPath(rx.SourceKey, setup.PathID, from, false) // second call sends back to origin
-		if s.r.simulator != nil {
-			panic("should never encounter a duplicate path")
-		}
+		//if s.r.simulator != nil {
+		//	panic("should never encounter a duplicate path")
+		//}
 		return fmt.Errorf("setup is a duplicate")
 	}
 
@@ -531,7 +508,7 @@ func (s *state) _handleSetup(from *peer, rx *types.Frame) error {
 	}
 
 	s._sendTeardownForPath(rx.SourceKey, setup.PathID, from, false)
-	return fmt.Errorf("no conditions met")
+	return nil
 }
 
 func (s *state) _handleTeardown(from *peer, rx *types.Frame) ([]*peer, error) {
@@ -593,7 +570,7 @@ func (s *state) _teardownPath(pathKey types.PublicKey, pathID types.VirtualSnake
 	if asc := s._ascending; asc != nil && s.r.public.EqualTo(pathKey) && asc.PathID == pathID {
 		s._ascending = nil
 		nexthops[asc.Port] = struct{}{}
-		defer s._bootstrapNow()
+		s._maintainSnakeIn(0)
 	}
 	if desc := s._descending; desc != nil && desc.PublicKey.EqualTo(pathKey) && desc.PathID == pathID {
 		s._descending = nil

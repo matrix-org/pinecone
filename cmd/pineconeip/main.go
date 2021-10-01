@@ -136,7 +136,7 @@ func main() {
 	}()
 
 	sigs := make(chan os.Signal, 1)
-	signal.Notify(sigs, syscall.SIGUSR1)
+	signal.Notify(sigs, syscall.SIGUSR1, syscall.SIGUSR2)
 	for {
 		switch <-sigs {
 		case syscall.SIGUSR1:
