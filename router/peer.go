@@ -104,7 +104,7 @@ func (p *peer) _receive(f *types.Frame) error {
 	switch f.Type {
 	// Protocol messages
 	case types.TypeSTP:
-		p.router.state.Act(&p.reader, func() {
+		p.router.state.Act(nil, func() {
 			if err := p.router.state._handleTreeAnnouncement(p, f); err != nil {
 				p.router.log.Printf("Failed to handle tree announcement from %d: %s", p.port, err)
 			}
@@ -115,7 +115,7 @@ func (p *peer) _receive(f *types.Frame) error {
 
 	case types.TypeVirtualSnakeBootstrap:
 		if deadend {
-			p.router.state.Act(&p.reader, func() {
+			p.router.state.Act(nil, func() {
 				if err := p.router.state._handleBootstrap(p, f); err != nil {
 					p.router.log.Printf("Failed to handle SNEK bootstrap from %d: %s", p.port, err)
 				}
@@ -125,7 +125,7 @@ func (p *peer) _receive(f *types.Frame) error {
 
 	case types.TypeVirtualSnakeBootstrapACK:
 		if deadend {
-			p.router.state.Act(&p.reader, func() {
+			p.router.state.Act(nil, func() {
 				if err := p.router.state._handleBootstrapACK(p, f); err != nil {
 					p.router.log.Printf("Failed to handle SNEK bootstrap ACK from %d: %s", p.port, err)
 				}
@@ -134,14 +134,14 @@ func (p *peer) _receive(f *types.Frame) error {
 		}
 
 	case types.TypeVirtualSnakeSetup:
-		p.router.state.Act(&p.reader, func() {
+		p.router.state.Act(nil, func() {
 			if err := p.router.state._handleSetup(p, f, nexthops); err != nil {
 				p.router.log.Printf("Failed to handle SNEK setup from %d: %s", p.port, err)
 			}
 		})
 
 	case types.TypeVirtualSnakeTeardown:
-		p.router.state.Act(&p.reader, func() {
+		p.router.state.Act(nil, func() {
 			if nexthops, err := p.router.state._handleTeardown(p, f); err == nil {
 				// Teardowns are a special case where we need to send to all
 				// of the returned candidate ports, not just the first one that
@@ -205,22 +205,27 @@ func (p *peer) _receive(f *types.Frame) error {
 }
 
 func (p *peer) _stop(err error) {
+	// The atomic switch here makes sure that the port won't be used
+	// instantly. Then we'll cancel the context and reduce the connection
+	// count.
 	if !p.started.CAS(true, false) {
 		return
 	}
 	p.cancel()
-	// TODO: what makes more sense here?
-	//p.router.state.Act(nil, func() {
-	phony.Block(p.router.state, func() {
+	index := hex.EncodeToString(p.public[:]) + p.zone
+	if v, ok := p.router.active.Load(index); ok && v.(*atomic.Uint64).Dec() == 0 {
+		p.router.active.Delete(index)
+	}
+	// Next we'll send a message to the state inbox asking it to clean
+	// up the port.
+	p.router.state.Act(nil, func() {
 		p.router.state._portDisconnected(p)
-	})
-	//phony.Block(p.router, func() {
-	p.router.Act(nil, func() {
-		for i, rp := range p.router._peers {
+
+		for i, rp := range p.router.state._peers {
 			if rp == p {
 				rp.proto.reset()
 				rp.traffic.reset()
-				p.router._peers[i] = nil
+				p.router.state._peers[i] = nil
 				if err != nil {
 					p.router.log.Println("Disconnected from peer", p.public.String(), "on port", i, "due to error:", err)
 				} else {
@@ -228,10 +233,6 @@ func (p *peer) _stop(err error) {
 				}
 				break
 			}
-		}
-		index := hex.EncodeToString(p.public[:]) + p.zone
-		if v, ok := p.router.active.Load(index); ok && v.(*atomic.Uint64).Dec() == 0 {
-			p.router.active.Delete(index)
 		}
 	})
 }
@@ -252,8 +253,7 @@ func (p *peer) _write() {
 		}
 	}
 	if frame == nil {
-		// usually happens if the queue has been reset, so
-		// the peer is probably dead
+		// usually happens if the queue has been reset
 		return
 	}
 	b := frameBufferPool.Get().(*[types.MaxFrameSize]byte)

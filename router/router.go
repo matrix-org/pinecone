@@ -21,7 +21,6 @@ const PortCount = math.MaxUint8
 const TrafficBuffer = math.MaxUint8
 
 type Router struct {
-	phony.Inbox
 	log       *log.Logger
 	id        string
 	debug     atomic.Bool
@@ -34,7 +33,6 @@ type Router struct {
 	pings     sync.Map // types.PublicKey -> chan struct{}
 	local     *peer
 	state     *state
-	_peers    []*peer
 }
 
 func NewRouter(log *log.Logger, sk ed25519.PrivateKey, id string, sim Simulator) *Router {
@@ -45,16 +43,16 @@ func NewRouter(log *log.Logger, sk ed25519.PrivateKey, id string, sim Simulator)
 		simulator: sim,
 		context:   ctx,
 		cancel:    cancel,
-		_peers:    make([]*peer, PortCount),
 	}
 	copy(r.private[:], sk)
 	r.public = r.private.Public()
 	r.state = &state{
 		r:      r,
 		_table: make(virtualSnakeTable),
+		_peers: make([]*peer, PortCount),
 	}
 	r.local = r.localPeer()
-	r._peers[0] = r.local
+	r.state._peers[0] = r.local
 	r.state.Act(nil, r.state._start)
 	r.log.Println("Router identity:", r.public.String())
 	go func() {
@@ -76,14 +74,6 @@ func (r *Router) ToggleDebug() {
 	} else {
 		r.log.Println("Disabled debug logging")
 	}
-}
-
-func (r *Router) peers() []*peer {
-	var peers []*peer
-	phony.Block(r, func() {
-		peers = r._peers
-	})
-	return peers
 }
 
 // IsConnected returns true if the node is connected within the
@@ -116,15 +106,8 @@ func (r *Router) Addr() net.Addr {
 
 func (r *Router) Connect(conn net.Conn, public types.PublicKey, zone string, peertype int) (types.SwitchPortID, error) {
 	var new *peer
-	phony.Block(r, func() {
-		for _, p := range r._peers {
-			if p != nil && p.public == public && p.zone == zone {
-				r.log.Println("Rejecting peer", public.String(), "that is already connected on port", p.port)
-				_ = conn.Close()
-				return
-			}
-		}
-		for i, p := range r._peers {
+	phony.Block(r.state, func() {
+		for i, p := range r.state._peers {
 			if i == 0 || p != nil {
 				// Port 0 is reserved for the local router.
 				// Already allocated ports should be ignored.
@@ -144,7 +127,7 @@ func (r *Router) Connect(conn net.Conn, public types.PublicKey, zone string, pee
 				traffic:  newLIFOQueue(TrafficBuffer),
 			}
 			new.started.Store(true)
-			r._peers[i] = new
+			r.state._peers[i] = new
 			r.log.Println("Connected to peer", new.public.String(), "on port", new.port)
 			v, _ := r.active.LoadOrStore(hex.EncodeToString(new.public[:])+zone, atomic.NewUint64(0))
 			v.(*atomic.Uint64).Inc()
@@ -210,7 +193,7 @@ func (r *Router) AuthenticatedConnect(conn net.Conn, zone string, peertype int) 
 }
 
 func (r *Router) SNEKPing(ctx context.Context, dst types.PublicKey) (time.Duration, error) {
-	r.local.reader.Act(nil, func() {
+	phony.Block(&r.local.reader, func() {
 		_ = r.local._receive(&types.Frame{
 			Type:           types.TypeSNEKPing,
 			DestinationKey: dst,
@@ -233,7 +216,7 @@ func (r *Router) SNEKPing(ctx context.Context, dst types.PublicKey) (time.Durati
 }
 
 func (r *Router) TreePing(ctx context.Context, dst types.SwitchPorts) (time.Duration, error) {
-	r.local.reader.Act(nil, func() {
+	phony.Block(&r.local.reader, func() {
 		_ = r.local._receive(&types.Frame{
 			Type:        types.TypeTreePing,
 			Destination: dst,

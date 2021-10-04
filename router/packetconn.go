@@ -5,6 +5,7 @@ import (
 	"net"
 	"time"
 
+	"github.com/Arceliar/phony"
 	"github.com/matrix-org/pinecone/types"
 )
 
@@ -101,7 +102,7 @@ func (r *Router) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 
 	switch ga := addr.(type) {
 	case GreedyAddr:
-		r.local.reader.Act(&r.local.reader, func() {
+		phony.Block(&r.local.reader, func() {
 			_ = r.local._receive(&types.Frame{
 				Version:     types.Version0,
 				Type:        types.TypeGreedy,
@@ -113,7 +114,7 @@ func (r *Router) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 		return len(p), nil
 
 	case types.PublicKey:
-		r.local.reader.Act(&r.local.reader, func() {
+		phony.Block(&r.local.reader, func() {
 			_ = r.local._receive(&types.Frame{
 				Version:        types.Version0,
 				Type:           types.TypeVirtualSnake,

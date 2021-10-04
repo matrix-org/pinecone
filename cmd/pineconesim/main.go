@@ -20,6 +20,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"math/rand"
 	"os"
 	"runtime"
 	"sort"
@@ -32,6 +33,7 @@ import (
 	"github.com/matrix-org/pinecone/cmd/pineconesim/simulator"
 	"github.com/matrix-org/pinecone/router"
 	"github.com/matrix-org/pinecone/util"
+	"go.uber.org/atomic"
 
 	"net/http"
 	_ "net/http/pprof"
@@ -99,55 +101,53 @@ func main() {
 		}
 	}
 
-	/*
-		rand.Seed(time.Now().UnixNano())
-		maxintv, maxswing := 5, int32(10)
-		var swing atomic.Int32
+	rand.Seed(time.Now().UnixNano())
+	maxintv, maxswing := 5, int32(10)
+	var swing atomic.Int32
 
-		// Chaos disconnector
-		go func() {
-			for {
-				if swing.Load() > -maxswing {
-				parentloop:
-					for a, w := range wires {
-						for b, s := range w {
-							if !s {
-								continue
-							}
-							if err := sim.DisconnectNodes(a, b); err == nil {
-								wires[a][b] = false
-								swing.Dec()
-								break parentloop
-							}
+	// Chaos disconnector
+	go func() {
+		for {
+			if swing.Load() > -maxswing {
+			parentloop:
+				for a, w := range wires {
+					for b, s := range w {
+						if !s {
+							continue
+						}
+						if err := sim.DisconnectNodes(a, b); err == nil {
+							wires[a][b] = false
+							swing.Dec()
+							break parentloop
 						}
 					}
 				}
-				time.Sleep(time.Second * time.Duration(rand.Intn(maxintv)))
 			}
-		}()
+			time.Sleep(time.Second * time.Duration(rand.Intn(maxintv)))
+		}
+	}()
 
-		// Chaos connector
-		go func() {
-			for {
-				if swing.Load() < maxswing {
-				parentloop:
-					for a, w := range wires {
-						for b, s := range w {
-							if s {
-								continue
-							}
-							if err := sim.ConnectNodes(a, b); err == nil {
-								wires[a][b] = true
-								swing.Inc()
-								break parentloop
-							}
+	// Chaos connector
+	go func() {
+		for {
+			if swing.Load() < maxswing {
+			parentloop:
+				for a, w := range wires {
+					for b, s := range w {
+						if s {
+							continue
+						}
+						if err := sim.ConnectNodes(a, b); err == nil {
+							wires[a][b] = true
+							swing.Inc()
+							break parentloop
 						}
 					}
 				}
-				time.Sleep(time.Second * time.Duration(rand.Intn(maxintv)))
 			}
-		}()
-	*/
+			time.Sleep(time.Second * time.Duration(rand.Intn(maxintv)))
+		}
+	}()
 
 	log.Println("Configuring HTTP listener")
 

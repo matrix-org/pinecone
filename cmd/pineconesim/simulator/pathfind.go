@@ -25,7 +25,7 @@ func (sim *Simulator) PingTree(from, to string) error {
 	tonode := sim.nodes[to]
 	success := false
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*2)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	defer cancel()
 
 	defer func() {
@@ -50,7 +50,7 @@ func (sim *Simulator) PingSNEK(from, to string) error {
 	tonode := sim.nodes[to]
 	success := false
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*2)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	defer cancel()
 
 	defer func() {

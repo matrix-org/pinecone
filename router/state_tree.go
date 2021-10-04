@@ -117,7 +117,7 @@ func (s *state) sendTreeAnnouncementToPeer(ann *rootAnnouncementWithTime, p *pee
 
 func (s *state) _sendTreeAnnouncements() {
 	ann := s._rootAnnouncement()
-	for _, p := range s.r.peers() {
+	for _, p := range s._peers {
 		if p == nil || !p.started.Load() {
 			continue
 		}
@@ -159,7 +159,7 @@ func (s *state) _nextHopsTree(from *peer, f *types.Frame) []*peer {
 	// Now work out which of our peers takes the message closer.
 	bestDist := ourDist
 	bestSeq := ourRoot.Sequence
-	for _, p := range s.r.peers() {
+	for _, p := range s._peers {
 		if p == nil || !p.started.Load() {
 			continue
 		}
@@ -291,6 +291,9 @@ func (s *state) _selectNewParent() bool {
 	var bestPeer *peer
 
 	for peer, ann := range s._announcements {
+		if !peer.started.Load() {
+			continue
+		}
 		if ann == nil || time.Since(ann.receiveTime) >= announcementTimeout {
 			continue
 		}

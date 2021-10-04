@@ -10,6 +10,7 @@ import (
 type state struct {
 	phony.Inbox
 	r              *Router
+	_peers         []*peer
 	_ascending     *virtualSnakeNeighbour
 	_descending    *virtualSnakeNeighbour
 	_parent        *peer
@@ -90,8 +91,8 @@ func (s *state) nextHopsFor(from *peer, frame *types.Frame) []*peer {
 			return []*peer{s.r.local}
 		}
 		var nexthop *peer
-		phony.Block(s.r, func() {
-			port := s.r._peers[frame.Destination[0]]
+		phony.Block(s, func() {
+			port := s._peers[frame.Destination[0]]
 			if frame.Destination[0] == from.port {
 				return
 			}

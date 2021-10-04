@@ -47,16 +47,14 @@ func (s *state) _maintainSnake() {
 	}
 
 	rootAnn := s._rootAnnouncement()
-	rootKey := rootAnn.RootPublicKey
-	canBootstrap := s._parent != nil && rootKey != s.r.public
+	canBootstrap := s._parent != nil && rootAnn.RootPublicKey != s.r.public
 	willBootstrap := false
 
 	if asc := s._ascending; asc != nil {
 		switch {
 		case time.Since(asc.LastSeen) >= virtualSnakeNeighExpiryPeriod:
-			fallthrough
-		case asc.RootPublicKey != rootKey || asc.RootSequence != rootAnn.Sequence:
 			s._sendTeardownForPath(asc.PublicKey, asc.PathID, nil, true)
+		case asc.RootPublicKey != rootAnn.RootPublicKey || asc.RootSequence != rootAnn.Sequence:
 			willBootstrap = canBootstrap
 		}
 	} else {
@@ -66,9 +64,9 @@ func (s *state) _maintainSnake() {
 	if desc := s._descending; desc != nil {
 		switch {
 		case time.Since(desc.LastSeen) >= virtualSnakeNeighExpiryPeriod:
-			fallthrough
-		case desc.RootPublicKey != rootKey || desc.RootSequence != rootAnn.Sequence:
 			s._sendTeardownForPath(desc.PublicKey, desc.PathID, nil, false)
+		case desc.RootPublicKey != rootAnn.RootPublicKey || desc.RootSequence != rootAnn.Sequence:
+			//s._sendTeardownForPath(desc.PublicKey, desc.PathID, nil, false)
 		}
 	}
 
@@ -86,9 +84,6 @@ func (s *state) _maintainSnake() {
 
 func (s *state) _bootstrapNow() {
 	ann := s._rootAnnouncement()
-	if asc := s._ascending; asc != nil && asc.RootPublicKey == ann.RootPublicKey && asc.RootSequence == ann.Sequence {
-		return
-	}
 	payload := make([]byte, 8+ed25519.PublicKeySize+ann.Sequence.Length())
 	bootstrap := types.VirtualSnakeBootstrap{
 		RootPublicKey: ann.RootPublicKey,
@@ -118,7 +113,8 @@ func (s *state) _nextHopsSNEK(from *peer, rx *types.Frame, bootstrap bool) []*pe
 	if !bootstrap && s.r.public.EqualTo(destKey) {
 		return []*peer{s.r.local}
 	}
-	rootKey := s._rootAnnouncement().RootPublicKey
+	rootAnn := s._rootAnnouncement()
+	rootKey := rootAnn.RootPublicKey
 	ancestors, parentPort := s._ancestors()
 	if len(ancestors) > 0 {
 		rootKey = ancestors[0]
@@ -159,11 +155,20 @@ func (s *state) _nextHopsSNEK(from *peer, rx *types.Frame, bootstrap bool) []*pe
 		newCheckedCandidate(ancestor, parentPort)
 	}
 
-	peers := s.r.peers()
+	// These conditions guard from selecting obviously bad peers
+	peerValid := func(p *peer) bool {
+		if p == nil || !p.started.Load() {
+			return false
+		}
+		if s._announcements[p] == nil {
+			return false
+		}
+		return true
+	}
 
 	// Check our direct peers ancestors
-	for _, p := range peers {
-		if p == nil || !p.started.Load() || s._announcements[p] == nil {
+	for _, p := range s._peers {
+		if !peerValid(p) {
 			continue
 		}
 		for _, hop := range s._announcements[p].Signatures {
@@ -172,8 +177,8 @@ func (s *state) _nextHopsSNEK(from *peer, rx *types.Frame, bootstrap bool) []*pe
 	}
 
 	// Check our direct peers
-	for _, p := range peers {
-		if p == nil || !p.started.Load() || s._announcements[p] == nil {
+	for _, p := range s._peers {
+		if !peerValid(p) {
 			continue
 		}
 		if peerKey := p.public; bestKey.EqualTo(peerKey) {
@@ -389,9 +394,6 @@ func (s *state) _handleSetup(from *peer, rx *types.Frame, nextHops []*peer) erro
 	if _, ok := s._table[virtualSnakeIndex{rx.SourceKey, setup.PathID}]; ok {
 		s._sendTeardownForPath(rx.SourceKey, setup.PathID, nil, false)  // first call fixes routing table
 		s._sendTeardownForPath(rx.SourceKey, setup.PathID, from, false) // second call sends back to origin
-		if s.r.simulator != nil {
-			panic("should never encounter a duplicate path")
-		}
 		return fmt.Errorf("setup is a duplicate")
 	}
 
@@ -559,7 +561,7 @@ func (s *state) _teardownPath(from *peer, pathKey types.PublicKey, pathID types.
 			// teardown path key.
 			nexthops[asc.Port] = struct{}{}
 			s._ascending = nil
-			defer s._maintainSnakeIn(0)
+			s._maintainSnakeIn(0)
 		}
 	}
 	if desc := s._descending; desc != nil && desc.PublicKey.EqualTo(pathKey) && desc.PathID == pathID {
@@ -570,38 +572,20 @@ func (s *state) _teardownPath(from *peer, pathKey types.PublicKey, pathID types.
 		if k.PublicKey == pathKey && k.PathID == pathID {
 			delete(s._table, k)
 			switch {
-			case from != nil:
-				/*
-					if from != v.Source && from != v.Destination {
-						fmt.Println("Arrived on", from)
-						fmt.Println("Source should be", v.Source)
-						fmt.Println("Destination should be", v.Destination)
-						panic("teardown arrived on unexpected port")
-					}
-				*/
-				if from == v.Source && v.Destination != s.r.local { // low -> high
+			case from != nil: // the teardown came from the network
+				if from == v.Source && v.Destination != s.r.local {
 					nexthops[v.Destination] = struct{}{}
 				}
-				if from == v.Destination && v.Source != s.r.local { // high -> low
+				if from == v.Destination && v.Source != s.r.local {
 					nexthops[v.Source] = struct{}{}
 				}
-				/*
-					if len(nexthops) == 0 {
-						panic("no next-hops for teardown received from network")
-					}
-				*/
-			case from == nil:
+			case from == nil: // the teardown originated locally
 				if v.Source != s.r.local {
 					nexthops[v.Source] = struct{}{}
 				}
 				if v.Destination != s.r.local {
 					nexthops[v.Destination] = struct{}{}
 				}
-				/*
-					if len(nexthops) == 0 {
-						panic("no next-hops for teardown generated locally")
-					}
-				*/
 			}
 		}
 	}

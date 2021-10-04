@@ -91,8 +91,8 @@ type PeerInfo struct {
 
 func (r *Router) Peers() []PeerInfo {
 	peers := make([]PeerInfo, 0, PortCount)
-	phony.Block(r, func() {
-		for _, p := range r._peers {
+	phony.Block(r.state, func() {
+		for _, p := range r.state._peers {
 			if p == nil || !p.started.Load() {
 				continue
 			}
