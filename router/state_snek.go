@@ -75,7 +75,6 @@ func (s *state) _maintainSnake() {
 }
 
 func (s *state) _bootstrapNow() {
-	s.r.log.Println("Bootstrapping now")
 	ann := s._rootAnnouncement()
 	payload := make([]byte, 8+ed25519.PublicKeySize+ann.Sequence.Length())
 	bootstrap := types.VirtualSnakeBootstrap{
@@ -327,7 +326,7 @@ func (s *state) _handleBootstrapACK(from *peer, rx *types.Frame) error {
 			// that *aren't* the new ascending node lying around.
 			s._sendTeardownForPath(asc.PublicKey, asc.PathID, nil, true)
 		}
-		entry := &virtualSnakeEntry{
+		s._ascending = &virtualSnakeEntry{
 			PublicKey:     rx.SourceKey,
 			Source:        from,
 			Destination:   s.r.local,
@@ -336,14 +335,6 @@ func (s *state) _handleBootstrapACK(from *peer, rx *types.Frame) error {
 			RootPublicKey: bootstrapACK.RootPublicKey,
 			RootSequence:  bootstrapACK.RootSequence,
 		}
-		/*
-			index := virtualSnakeIndex{
-				PublicKey: rx.SourceKey,
-				PathID:    bootstrapACK.PathID,
-			}
-			s._table[index] = entry
-		*/
-		s._ascending = entry
 		setup := types.VirtualSnakeSetup{ // nolint:gosimple
 			PathID:        bootstrapACK.PathID,
 			RootPublicKey: root.RootPublicKey,
