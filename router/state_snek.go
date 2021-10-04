@@ -571,18 +571,25 @@ func (s *state) _teardownPath(from *peer, pathKey types.PublicKey, pathID types.
 			delete(s._table, k)
 			switch {
 			case from != nil:
-				if from != v.Source && from != v.Destination {
-					panic("teardown arrived on unexpected port")
-				}
+				/*
+					if from != v.Source && from != v.Destination {
+						fmt.Println("Arrived on", from)
+						fmt.Println("Source should be", v.Source)
+						fmt.Println("Destination should be", v.Destination)
+						panic("teardown arrived on unexpected port")
+					}
+				*/
 				if from == v.Source && v.Destination != s.r.local { // low -> high
 					nexthops[v.Destination] = struct{}{}
 				}
 				if from == v.Destination && v.Source != s.r.local { // high -> low
 					nexthops[v.Source] = struct{}{}
 				}
-				if len(nexthops) == 0 {
-					panic("no next-hops for teardown received from network")
-				}
+				/*
+					if len(nexthops) == 0 {
+						panic("no next-hops for teardown received from network")
+					}
+				*/
 			case from == nil:
 				if v.Source != s.r.local {
 					nexthops[v.Source] = struct{}{}
@@ -590,9 +597,11 @@ func (s *state) _teardownPath(from *peer, pathKey types.PublicKey, pathID types.
 				if v.Destination != s.r.local {
 					nexthops[v.Destination] = struct{}{}
 				}
-				if len(nexthops) == 0 {
-					panic("no next-hops for teardown generated locally")
-				}
+				/*
+					if len(nexthops) == 0 {
+						panic("no next-hops for teardown generated locally")
+					}
+				*/
 			}
 		}
 	}

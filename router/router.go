@@ -117,13 +117,17 @@ func (r *Router) Addr() net.Addr {
 func (r *Router) Connect(conn net.Conn, public types.PublicKey, zone string, peertype int) (types.SwitchPortID, error) {
 	var new *peer
 	phony.Block(r, func() {
-		for i, p := range r._peers {
-			if i == 0 {
-				// Port 0 is reserved for the local router.
-				continue
+		for _, p := range r._peers {
+			if p != nil && p.public == public && p.zone == zone {
+				r.log.Println("Rejecting peer", public.String(), "that is already connected on port", p.port)
+				_ = conn.Close()
+				return
 			}
-			if p != nil {
-				// This port is already allocated.
+		}
+		for i, p := range r._peers {
+			if i == 0 || p != nil {
+				// Port 0 is reserved for the local router.
+				// Already allocated ports should be ignored.
 				continue
 			}
 			ctx, cancel := context.WithCancel(r.context)

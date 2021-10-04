@@ -208,10 +208,13 @@ func (p *peer) _stop(err error) {
 	if !p.started.CAS(true, false) {
 		return
 	}
-	phony.Block(p.router, func() {
+	//phony.Block(p.router, func() {
+	p.router.Act(nil, func() {
 		p.cancel()
 		for i, rp := range p.router._peers {
 			if rp == p {
+				rp.proto.reset()
+				rp.traffic.reset()
 				p.router._peers[i] = nil
 				if err != nil {
 					p.router.log.Println("Disconnected from peer", p.public.String(), "on port", i, "due to error:", err)
@@ -219,8 +222,8 @@ func (p *peer) _stop(err error) {
 					p.router.log.Println("Disconnected from peer", p.public.String(), "on port", i)
 				}
 				// TODO: what makes more sense here?
-				// p.router.state.Act(p.router, func() {
-				phony.Block(p.router.state, func() {
+				p.router.state.Act(nil, func() {
+					//phony.Block(p.router.state, func() {
 					p.router.state._portDisconnected(p)
 				})
 				break
