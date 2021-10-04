@@ -26,6 +26,7 @@ type virtualSnakeEntry struct {
 	Destination   *peer
 	LastSeen      time.Time
 	RootPublicKey types.PublicKey
+	RootSequence  types.Varu64
 }
 
 type virtualSnakeNeighbour struct {
@@ -45,15 +46,16 @@ func (s *state) _maintainSnake() {
 	default:
 	}
 
-	rootKey := s._rootAnnouncement().RootPublicKey
-	canBootstrap := s._parent != nil // && rootKey != s.r.public
+	rootAnn := s._rootAnnouncement()
+	rootKey := rootAnn.RootPublicKey
+	canBootstrap := s._parent != nil && rootKey != s.r.public
 	willBootstrap := false
 
 	if asc := s._ascending; asc != nil {
 		switch {
-		case time.Since(asc.LastSeen) > virtualSnakeNeighExpiryPeriod:
+		case time.Since(asc.LastSeen) >= virtualSnakeNeighExpiryPeriod:
 			fallthrough
-		case asc.RootPublicKey != rootKey:
+		case asc.RootPublicKey != rootKey || asc.RootSequence != rootAnn.Sequence:
 			s._sendTeardownForPath(asc.PublicKey, asc.PathID, nil, true)
 			willBootstrap = canBootstrap
 		}
@@ -63,9 +65,9 @@ func (s *state) _maintainSnake() {
 
 	if desc := s._descending; desc != nil {
 		switch {
-		case time.Since(desc.LastSeen) > virtualSnakeNeighExpiryPeriod:
+		case time.Since(desc.LastSeen) >= virtualSnakeNeighExpiryPeriod:
 			fallthrough
-		case !desc.RootPublicKey.EqualTo(rootKey):
+		case desc.RootPublicKey != rootKey || desc.RootSequence != rootAnn.Sequence:
 			s._sendTeardownForPath(desc.PublicKey, desc.PathID, nil, false)
 		}
 	}
@@ -194,7 +196,6 @@ func (s *state) _nextHopsSNEK(from *peer, rx *types.Frame, bootstrap bool) []*pe
 	}
 
 	// Return the candidate ports
-	//if bootstrap {
 	if bestPeer != nil {
 		return []*peer{bestPeer}
 	}
@@ -327,11 +328,6 @@ func (s *state) _handleBootstrapACK(from *peer, rx *types.Frame) error {
 			// we do want to make sure we don't have any old paths to other nodes
 			// that *aren't* the new ascending node lying around.
 			s._sendTeardownForPath(asc.PublicKey, asc.PathID, nil, true)
-			for k, v := range s._table {
-				if v.Source == nil && !k.PublicKey.EqualTo(rx.SourceKey) {
-					s._sendTeardownForPath(k.PublicKey, k.PathID, nil, false)
-				}
-			}
 		}
 		s._ascending = &virtualSnakeNeighbour{
 			PublicKey:     rx.SourceKey,
@@ -372,7 +368,7 @@ func (s *state) _handleBootstrapACK(from *peer, rx *types.Frame) error {
 	return nil
 }
 
-func (s *state) _handleSetup(from *peer, rx *types.Frame) error {
+func (s *state) _handleSetup(from *peer, rx *types.Frame, nextHops []*peer) error {
 	root := s._rootAnnouncement()
 
 	// Unmarshal the setup.
@@ -382,7 +378,6 @@ func (s *state) _handleSetup(from *peer, rx *types.Frame) error {
 	}
 
 	// Did the setup hit a dead end on the way to the ascending node?
-	nextHops := s._nextHopsTree(from, rx)
 	if (len(nextHops) == 0 || nextHops[0] == s.r.local) && !rx.DestinationKey.EqualTo(s.r.public) {
 		s._sendTeardownForPath(rx.SourceKey, setup.PathID, from, false)
 		return nil
@@ -394,9 +389,9 @@ func (s *state) _handleSetup(from *peer, rx *types.Frame) error {
 	if _, ok := s._table[virtualSnakeIndex{rx.SourceKey, setup.PathID}]; ok {
 		s._sendTeardownForPath(rx.SourceKey, setup.PathID, nil, false)  // first call fixes routing table
 		s._sendTeardownForPath(rx.SourceKey, setup.PathID, from, false) // second call sends back to origin
-		//if s.r.simulator != nil {
-		//	panic("should never encounter a duplicate path")
-		//}
+		if s.r.simulator != nil {
+			panic("should never encounter a duplicate path")
+		}
 		return fmt.Errorf("setup is a duplicate")
 	}
 
@@ -443,7 +438,7 @@ func (s *state) _handleSetup(from *peer, rx *types.Frame) error {
 		if update {
 			if desc != nil {
 				// Tear down the previous path, if there was one.
-				s._sendTeardownForPath(desc.PublicKey, desc.PathID, nil, false)
+				s._sendTeardownForPath(desc.PublicKey, desc.PathID, desc.Port, false)
 			}
 			s._descending = &virtualSnakeNeighbour{
 				PublicKey:     rx.SourceKey,
@@ -452,6 +447,7 @@ func (s *state) _handleSetup(from *peer, rx *types.Frame) error {
 				Coords:        rx.Source,
 				PathID:        setup.PathID,
 				RootPublicKey: setup.RootPublicKey,
+				RootSequence:  setup.RootSequence,
 			}
 			addToRoutingTable = true
 		}
@@ -473,12 +469,12 @@ func (s *state) _handleSetup(from *peer, rx *types.Frame) error {
 		entry := virtualSnakeEntry{
 			LastSeen:      time.Now(),
 			RootPublicKey: setup.RootPublicKey,
-		}
-		if from != nil {
-			entry.Source = from
+			RootSequence:  setup.RootSequence,
+			Source:        from,      // node with lower of the two keys
+			Destination:   s.r.local, // will be replaced next
 		}
 		if len(nextHops) > 0 {
-			entry.Destination = nextHops[0]
+			entry.Destination = nextHops[0] // node with higher of the two keys
 		}
 		s._table[index] = entry
 
@@ -497,7 +493,7 @@ func (s *state) _handleTeardown(from *peer, rx *types.Frame) ([]*peer, error) {
 	if _, err := teardown.UnmarshalBinary(rx.Payload); err != nil {
 		return nil, fmt.Errorf("teardown.UnmarshalBinary: %w", err)
 	}
-	return s._teardownPath(rx.DestinationKey, teardown.PathID), nil
+	return s._teardownPath(from, rx.DestinationKey, teardown.PathID), nil
 }
 
 func (s *state) _sendTeardownForPath(pathKey types.PublicKey, pathID types.VirtualSnakePathID, via *peer, ascending bool) {
@@ -506,6 +502,7 @@ func (s *state) _sendTeardownForPath(pathKey types.PublicKey, pathID types.Virtu
 	// other nodes on the path will know the path by this key. However we need
 	// to preserve the original ascending key so that _processsTeardown finds
 	// the right path.
+	nexthops := s._teardownPath(nil, pathKey, pathID)
 	frame := s._getTeardown(pathKey, pathID, ascending)
 
 	// If "via" is provided, it's because we are tearing down a path that we
@@ -518,7 +515,7 @@ func (s *state) _sendTeardownForPath(pathKey types.PublicKey, pathID types.Virtu
 
 	// Otherwise, we can only tear down paths that we know about, so if it is,
 	// we'll clean up those entries and forward the frame on.
-	for _, peer := range s._teardownPath(pathKey, pathID) {
+	for _, peer := range nexthops {
 		peer.proto.push(frame)
 	}
 }
@@ -532,7 +529,13 @@ func (s *state) _getTeardown(pathKey types.PublicKey, pathID types.VirtualSnakeP
 		return nil
 	}
 	if ascending {
-		pathKey = s.r.public
+		// We're sending a teardown to our ascending node, so the teardown
+		// needs to contain *our* key and not theirs, as we're the lower key.
+		return &types.Frame{
+			Type:           types.TypeVirtualSnakeTeardown,
+			DestinationKey: s.r.public,
+			Payload:        payload[:],
+		}
 	}
 	return &types.Frame{
 		Type:           types.TypeVirtualSnakeTeardown,
@@ -541,27 +544,55 @@ func (s *state) _getTeardown(pathKey types.PublicKey, pathID types.VirtualSnakeP
 	}
 }
 
-func (s *state) _teardownPath(pathKey types.PublicKey, pathID types.VirtualSnakePathID) []*peer {
+func (s *state) _teardownPath(from *peer, pathKey types.PublicKey, pathID types.VirtualSnakePathID) []*peer {
 	// Otherwise, we can only tear down paths that we know about, so let's see
 	// if it is.
 	nexthops := map[*peer]struct{}{}
-	if asc := s._ascending; asc != nil && s.r.public.EqualTo(pathKey) && asc.PathID == pathID {
-		s._ascending = nil
-		nexthops[asc.Port] = struct{}{}
-		s._maintainSnakeIn(0)
+	if asc := s._ascending; asc != nil && asc.PathID == pathID {
+		switch {
+		case from != nil && s.r.public.EqualTo(pathKey):
+			// A teardown coming from the network will contain our public key as
+			// the teardown path key.
+			fallthrough
+		case from == nil && asc.PublicKey.EqualTo(pathKey):
+			// A teardown originating locally will contain the remote key as the
+			// teardown path key.
+			nexthops[asc.Port] = struct{}{}
+			s._ascending = nil
+			defer s._maintainSnakeIn(0)
+		}
 	}
 	if desc := s._descending; desc != nil && desc.PublicKey.EqualTo(pathKey) && desc.PathID == pathID {
-		s._descending = nil
 		nexthops[desc.Port] = struct{}{}
+		s._descending = nil
 	}
 	for k, v := range s._table {
 		if k.PublicKey == pathKey && k.PathID == pathID {
 			delete(s._table, k)
-			if v.Source != nil {
-				nexthops[v.Source] = struct{}{}
-			}
-			if v.Destination != nil {
-				nexthops[v.Destination] = struct{}{}
+			switch {
+			case from != nil:
+				if from != v.Source && from != v.Destination {
+					panic("teardown arrived on unexpected port")
+				}
+				if from == v.Source && v.Destination != s.r.local { // low -> high
+					nexthops[v.Destination] = struct{}{}
+				}
+				if from == v.Destination && v.Source != s.r.local { // high -> low
+					nexthops[v.Source] = struct{}{}
+				}
+				if len(nexthops) == 0 {
+					panic("no next-hops for teardown received from network")
+				}
+			case from == nil:
+				if v.Source != s.r.local {
+					nexthops[v.Source] = struct{}{}
+				}
+				if v.Destination != s.r.local {
+					nexthops[v.Destination] = struct{}{}
+				}
+				if len(nexthops) == 0 {
+					panic("no next-hops for teardown generated locally")
+				}
 			}
 		}
 	}

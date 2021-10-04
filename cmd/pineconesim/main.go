@@ -152,6 +152,7 @@ func main() {
 	log.Println("Configuring HTTP listener")
 
 	go func() {
+		return
 		for {
 			time.Sleep(time.Second * 15)
 			log.Println("Starting pings...")
@@ -266,14 +267,15 @@ func configureHTTPRouting(sim *simulator.Simulator) {
 		for _, n := range nodeids {
 			node := nodes[n]
 			public := node.PublicKey()
-			asc, desc, table := node.DHTInfo()
+			asc, desc, table, stale := node.DHTInfo()
 			entry := Node{
-				Name:    n,
-				Port:    "—",
-				Coords:  fmt.Sprintf("%v", node.Coords()),
-				Key:     hex.EncodeToString(public[:2]),
-				IsRoot:  node.IsRoot(),
-				DHTSize: len(table),
+				Name:          n,
+				Port:          "—",
+				Coords:        fmt.Sprintf("%v", node.Coords()),
+				Key:           hex.EncodeToString(public[:2]),
+				IsRoot:        node.IsRoot(),
+				DHTSize:       len(table),
+				DHTStalePaths: stale,
 			}
 			if node.ListenAddr != nil {
 				entry.Port = fmt.Sprintf("%d", node.ListenAddr.Port)
@@ -295,7 +297,7 @@ func configureHTTPRouting(sim *simulator.Simulator) {
 		if nodeKey := r.URL.Query().Get("pk"); nodeKey != "" {
 			if node, ok := nodes[shortcuts[nodeKey]]; ok {
 				pk := node.Router.PublicKey()
-				asc, desc, dht := node.Router.DHTInfo()
+				asc, desc, dht, _ := node.Router.DHTInfo()
 				pks := hex.EncodeToString(pk[:2])
 				data.NodeInfo = &NodeInfo{
 					Name:      shortcuts[pks],
@@ -317,6 +319,7 @@ func configureHTTPRouting(sim *simulator.Simulator) {
 							PathID:          hex.EncodeToString(k.PathID[:]),
 							DestinationPort: v.Destination,
 							SourcePort:      v.Source,
+							Sequence:        int(v.RootSequence),
 						},
 					)
 				}
@@ -440,16 +443,17 @@ func configureHTTPRouting(sim *simulator.Simulator) {
 }
 
 type Node struct {
-	Name        string
-	Port        string
-	Coords      string
-	Key         string
-	Root        string
-	Predecessor string
-	Successor   string
-	IsRoot      bool
-	IsExternal  bool
-	DHTSize     int
+	Name          string
+	Port          string
+	Coords        string
+	Key           string
+	Root          string
+	Predecessor   string
+	Successor     string
+	IsRoot        bool
+	IsExternal    bool
+	DHTSize       int
+	DHTStalePaths int
 }
 
 type Link struct {
@@ -505,6 +509,7 @@ type DHTEntry struct {
 	DestinationPort interface{}
 	SourcePort      interface{}
 	PathID          string
+	Sequence        int
 }
 
 type PeerEntries []PeerEntry

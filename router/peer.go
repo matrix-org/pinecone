@@ -41,6 +41,16 @@ type peer struct {
 	traffic  *lifoQueue         // thread-safe
 }
 
+func (p *peer) String() string { // to make sim less ugly
+	if p == nil {
+		return "nil"
+	}
+	if p.port == 0 {
+		return "local"
+	}
+	return fmt.Sprintf("%d", p.port)
+}
+
 func (p *peer) send(f *types.Frame) bool {
 	if p == nil {
 		return false
@@ -52,11 +62,12 @@ func (p *peer) send(f *types.Frame) bool {
 	case types.TypeVirtualSnakeBootstrap, types.TypeVirtualSnakeBootstrapACK:
 		fallthrough
 	case types.TypeVirtualSnakeSetup, types.TypeVirtualSnakeTeardown:
-		// The local peer doesn't have a protocol queue so we should check
-		// for nils to prevent panics.
-		if p.proto != nil {
-			return p.proto.push(f)
+		if p.proto == nil {
+			// The local peer doesn't have a protocol queue so we should check
+			// for nils to prevent panics.
+			return true
 		}
+		return p.proto.push(f)
 
 	// Traffic messages
 	case types.TypeVirtualSnake, types.TypeGreedy, types.TypeSource:
@@ -73,13 +84,17 @@ var counterMutex sync.Mutex
 
 func (p *peer) _receive(f *types.Frame) error {
 	nexthops := p.router.state.nextHopsFor(p, f)
-	deadend := len(nexthops) == 0 || (len(nexthops) == 1 && nexthops[0] == p.router.local)
+	deadend := len(nexthops) == 0 || nexthops[0] == p.router.local
 	defer func() {
+		if len(nexthops) == 0 {
+			return
+		}
 		for _, peer := range nexthops {
 			if peer.send(f) {
 				return
 			}
 		}
+		p.router.log.Println("Dropping traffic frame", f.Type, "due to congestion - next-hops were", nexthops)
 	}()
 
 	counterMutex.Lock()
@@ -120,22 +135,22 @@ func (p *peer) _receive(f *types.Frame) error {
 
 	case types.TypeVirtualSnakeSetup:
 		p.router.state.Act(&p.reader, func() {
-			if err := p.router.state._handleSetup(p, f); err != nil {
+			if err := p.router.state._handleSetup(p, f, nexthops); err != nil {
 				p.router.log.Printf("Failed to handle SNEK setup from %d: %s", p.port, err)
 			}
 		})
 
 	case types.TypeVirtualSnakeTeardown:
 		p.router.state.Act(&p.reader, func() {
-			if nexthops, err := p.router.state._handleTeardown(p, f); err != nil {
-				p.router.log.Printf("Failed to handle SNEK teardown from %d: %s", p.port, err)
-			} else {
+			if nexthops, err := p.router.state._handleTeardown(p, f); err == nil {
 				// Teardowns are a special case where we need to send to all
 				// of the returned candidate ports, not just the first one that
 				// we can.
 				for _, peer := range nexthops {
 					peer.send(f)
 				}
+			} else {
+				p.router.log.Printf("Failed to handle SNEK teardown from %d: %s", p.port, err)
 			}
 		})
 

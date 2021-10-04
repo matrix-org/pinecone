@@ -71,7 +71,7 @@ func NewRouter(log *log.Logger, sk ed25519.PrivateKey, id string, sim Simulator)
 }
 
 func (r *Router) ToggleDebug() {
-	if r.debug.Toggle() {
+	if !r.debug.Toggle() {
 		r.log.Println("Enabled debug logging")
 	} else {
 		r.log.Println("Disabled debug logging")

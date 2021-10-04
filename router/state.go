@@ -66,6 +66,10 @@ func (s *state) _maintainSnakeIn(d time.Duration) {
 func (s *state) nextHopsFor(from *peer, frame *types.Frame) []*peer {
 	var nexthops []*peer
 	switch frame.Type {
+	case types.TypeVirtualSnakeTeardown:
+		// Teardowns have special logic so we do nothing with them
+		return nil
+
 	// SNEK routing
 	case types.TypeVirtualSnake, types.TypeVirtualSnakeBootstrap, types.TypeSNEKPing, types.TypeSNEKPong:
 		phony.Block(s, func() {
@@ -111,15 +115,15 @@ func (s *state) _portDisconnected(peer *peer) {
 	}
 
 	if asc := s._ascending; asc != nil && asc.Port == peer {
-		s._teardownPath(asc.PublicKey, asc.PathID)
+		s._teardownPath(peer, asc.PublicKey, asc.PathID)
 		defer s._bootstrapNow()
 	}
 	if desc := s._descending; desc != nil && desc.Port == peer {
-		s._teardownPath(desc.PublicKey, desc.PathID)
+		s._teardownPath(peer, desc.PublicKey, desc.PathID)
 	}
 	for k, v := range s._table {
 		if v.Destination == peer || v.Source == peer {
-			s._teardownPath(k.PublicKey, k.PathID)
+			s._teardownPath(peer, k.PublicKey, k.PathID)
 		}
 	}
 }
