@@ -335,12 +335,14 @@ func (s *state) _handleBootstrapACK(from *peer, rx *types.Frame) error {
 			RootPublicKey: bootstrapACK.RootPublicKey,
 			RootSequence:  bootstrapACK.RootSequence,
 		}
-		index := virtualSnakeIndex{
-			PublicKey: rx.SourceKey,
-			PathID:    bootstrapACK.PathID,
-		}
+		/*
+			index := virtualSnakeIndex{
+				PublicKey: rx.SourceKey,
+				PathID:    bootstrapACK.PathID,
+			}
+			s._table[index] = entry
+		*/
 		s._ascending = entry
-		s._table[index] = entry
 		setup := types.VirtualSnakeSetup{ // nolint:gosimple
 			PathID:        bootstrapACK.PathID,
 			RootPublicKey: root.RootPublicKey,
@@ -453,8 +455,8 @@ func (s *state) _handleSetup(from *peer, rx *types.Frame, nextHops []*peer) erro
 				PublicKey: rx.SourceKey,
 				PathID:    setup.PathID,
 			}
-			s._descending = entry
 			s._table[index] = entry
+			s._descending = entry
 			return nil
 		}
 	} else {
