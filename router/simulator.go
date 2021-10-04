@@ -46,14 +46,14 @@ func (r *Router) IsRoot() bool {
 	return r.RootPublicKey().EqualTo(r.public)
 }
 
-func (r *Router) DHTInfo() (asc, desc *virtualSnakeNeighbour, table map[virtualSnakeIndex]virtualSnakeEntry, stale int) {
+func (r *Router) DHTInfo() (asc, desc *virtualSnakeEntry, table map[virtualSnakeIndex]virtualSnakeEntry, stale int) {
 	table = map[virtualSnakeIndex]virtualSnakeEntry{}
 	phony.Block(r.state, func() {
 		ann := r.state._rootAnnouncement()
 		asc = r.state._ascending
 		desc = r.state._descending
 		for k, v := range r.state._table {
-			table[k] = v
+			table[k] = *v
 			switch {
 			case v.RootPublicKey != ann.RootPublicKey:
 				fallthrough

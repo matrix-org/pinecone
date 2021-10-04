@@ -11,8 +11,8 @@ type state struct {
 	phony.Inbox
 	r              *Router
 	_peers         []*peer
-	_ascending     *virtualSnakeNeighbour
-	_descending    *virtualSnakeNeighbour
+	_ascending     *virtualSnakeEntry
+	_descending    *virtualSnakeEntry
 	_parent        *peer
 	_announcements map[*peer]*rootAnnouncementWithTime
 	_table         virtualSnakeTable
@@ -115,10 +115,10 @@ func (s *state) _portDisconnected(peer *peer) {
 		s._selectNewParent()
 	}
 
-	if asc := s._ascending; asc != nil && asc.Port == peer {
+	if asc := s._ascending; asc != nil && asc.Source == peer {
 		s._teardownPath(nil, asc.PublicKey, asc.PathID)
 	}
-	if desc := s._descending; desc != nil && desc.Port == peer {
+	if desc := s._descending; desc != nil && desc.Source == peer {
 		s._teardownPath(nil, desc.PublicKey, desc.PathID)
 	}
 	for k, v := range s._table {

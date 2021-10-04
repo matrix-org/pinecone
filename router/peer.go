@@ -142,12 +142,12 @@ func (p *peer) _receive(f *types.Frame) error {
 
 	case types.TypeVirtualSnakeTeardown:
 		p.router.state.Act(nil, func() {
-			if nexthops, err := p.router.state._handleTeardown(p, f); err == nil {
+			if nexthop, err := p.router.state._handleTeardown(p, f); err == nil {
 				// Teardowns are a special case where we need to send to all
 				// of the returned candidate ports, not just the first one that
 				// we can.
-				for _, peer := range nexthops {
-					peer.send(f)
+				if nexthop != nil {
+					nexthop.send(f)
 				}
 			} else {
 				p.router.log.Printf("Failed to handle SNEK teardown from %d: %s", p.port, err)
