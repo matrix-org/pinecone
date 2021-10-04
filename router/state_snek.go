@@ -326,14 +326,21 @@ func (s *state) _handleBootstrapACK(from *peer, rx *types.Frame) error {
 			// that *aren't* the new ascending node lying around.
 			s._sendTeardownForPath(asc.PublicKey, asc.PathID, nil, true)
 		}
-		s._ascending = &virtualSnakeEntry{
+		entry := &virtualSnakeEntry{
 			PublicKey:     rx.SourceKey,
 			Source:        from,
+			Destination:   s.r.local,
 			LastSeen:      time.Now(),
 			PathID:        bootstrapACK.PathID,
 			RootPublicKey: bootstrapACK.RootPublicKey,
 			RootSequence:  bootstrapACK.RootSequence,
 		}
+		index := virtualSnakeIndex{
+			PublicKey: rx.SourceKey,
+			PathID:    bootstrapACK.PathID,
+		}
+		s._ascending = entry
+		s._table[index] = entry
 		setup := types.VirtualSnakeSetup{ // nolint:gosimple
 			PathID:        bootstrapACK.PathID,
 			RootPublicKey: root.RootPublicKey,
@@ -431,11 +438,12 @@ func (s *state) _handleSetup(from *peer, rx *types.Frame, nextHops []*peer) erro
 		if update {
 			if desc != nil {
 				// Tear down the previous path, if there was one.
-				s._sendTeardownForPath(desc.PublicKey, desc.PathID, desc.Source, false)
+				s._sendTeardownForPath(desc.PublicKey, desc.PathID, nil, false)
 			}
 			entry := &virtualSnakeEntry{
 				PublicKey:     rx.SourceKey,
 				Source:        from,
+				Destination:   s.r.local,
 				LastSeen:      time.Now(),
 				PathID:        setup.PathID,
 				RootPublicKey: setup.RootPublicKey,
@@ -561,6 +569,7 @@ func (s *state) _teardownPath(from *peer, pathKey types.PublicKey, pathID types.
 	}
 	if desc := s._descending; desc != nil && desc.PublicKey.EqualTo(pathKey) && desc.PathID == pathID {
 		s._descending = nil
+		delete(s._table, virtualSnakeIndex{desc.PublicKey, desc.PathID})
 		return desc.Source
 	}
 	for k, v := range s._table {
