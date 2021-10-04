@@ -160,7 +160,7 @@ func (s *state) _nextHopsTree(from *peer, f *types.Frame) []*peer {
 	bestDist := ourDist
 	bestSeq := ourRoot.Sequence
 	for _, p := range s.r.peers() {
-		if p == nil {
+		if p == nil || !p.started.Load() {
 			continue
 		}
 		ann := s._announcements[p]

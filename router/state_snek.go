@@ -163,7 +163,7 @@ func (s *state) _nextHopsSNEK(from *peer, rx *types.Frame, bootstrap bool) []*pe
 
 	// Check our direct peers ancestors
 	for _, p := range peers {
-		if p == nil || s._announcements[p] == nil {
+		if p == nil || !p.started.Load() || s._announcements[p] == nil {
 			continue
 		}
 		for _, hop := range s._announcements[p].Signatures {
@@ -173,7 +173,7 @@ func (s *state) _nextHopsSNEK(from *peer, rx *types.Frame, bootstrap bool) []*pe
 
 	// Check our direct peers
 	for _, p := range peers {
-		if p == nil || s._announcements[p] == nil {
+		if p == nil || !p.started.Load() || s._announcements[p] == nil {
 			continue
 		}
 		if peerKey := p.public; bestKey.EqualTo(peerKey) {

@@ -208,9 +208,14 @@ func (p *peer) _stop(err error) {
 	if !p.started.CAS(true, false) {
 		return
 	}
+	p.cancel()
+	// TODO: what makes more sense here?
+	//p.router.state.Act(nil, func() {
+	phony.Block(p.router.state, func() {
+		p.router.state._portDisconnected(p)
+	})
 	//phony.Block(p.router, func() {
 	p.router.Act(nil, func() {
-		p.cancel()
 		for i, rp := range p.router._peers {
 			if rp == p {
 				rp.proto.reset()
@@ -221,11 +226,6 @@ func (p *peer) _stop(err error) {
 				} else {
 					p.router.log.Println("Disconnected from peer", p.public.String(), "on port", i)
 				}
-				// TODO: what makes more sense here?
-				p.router.state.Act(nil, func() {
-					//phony.Block(p.router.state, func() {
-					p.router.state._portDisconnected(p)
-				})
 				break
 			}
 		}
@@ -250,6 +250,11 @@ func (p *peer) _write() {
 		frame = &types.Frame{
 			Type: types.TypeKeepalive,
 		}
+	}
+	if frame == nil {
+		// usually happens if the queue has been reset, so
+		// the peer is probably dead
+		return
 	}
 	b := frameBufferPool.Get().(*[types.MaxFrameSize]byte)
 	defer frameBufferPool.Put(b)
