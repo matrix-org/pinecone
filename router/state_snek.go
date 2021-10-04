@@ -75,6 +75,7 @@ func (s *state) _maintainSnake() {
 }
 
 func (s *state) _bootstrapNow() {
+	s.r.log.Println("Bootstrapping now")
 	ann := s._rootAnnouncement()
 	payload := make([]byte, 8+ed25519.PublicKeySize+ann.Sequence.Length())
 	bootstrap := types.VirtualSnakeBootstrap{
@@ -565,7 +566,6 @@ func (s *state) _teardownPath(from *peer, pathKey types.PublicKey, pathID types.
 			// teardown path key.
 			s._ascending = nil
 			delete(s._table, virtualSnakeIndex{asc.PublicKey, asc.PathID})
-			s._maintainSnakeIn(virtualSnakeMaintainInterval / 2)
 			return asc.Source
 		}
 	}
