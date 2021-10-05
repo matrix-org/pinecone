@@ -2,7 +2,6 @@ package router
 
 import (
 	"fmt"
-	"math"
 
 	"github.com/matrix-org/pinecone/types"
 )
@@ -10,12 +9,6 @@ import (
 func (s *state) _forward(p *peer, f *types.Frame) error {
 	nexthops := p.router.state._nextHopsFor(p, f)
 	deadend := len(nexthops) == 0 || nexthops[0] == p.router.local
-
-	// TODO: remove this when we figure out what's up with the routing loops
-	f.Version++
-	if f.Version == math.MaxUint8-1 {
-		panic("TTL expired")
-	}
 
 	switch f.Type {
 	// Protocol messages

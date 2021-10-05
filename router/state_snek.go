@@ -44,7 +44,7 @@ func (s *state) _maintainSnake() {
 	if asc := s._ascending; asc != nil {
 		switch {
 		case time.Since(asc.LastSeen) >= virtualSnakeNeighExpiryPeriod:
-			s._sendTeardownForPath(asc.PublicKey, asc.PathID, nil, true)
+			s._sendTeardownForPath(s.r.local, asc.PublicKey, asc.PathID, nil, true)
 		case asc.RootPublicKey != rootAnn.RootPublicKey || asc.RootSequence != rootAnn.Sequence:
 			willBootstrap = canBootstrap
 		}
@@ -55,7 +55,7 @@ func (s *state) _maintainSnake() {
 	if desc := s._descending; desc != nil {
 		switch {
 		case time.Since(desc.LastSeen) >= virtualSnakeNeighExpiryPeriod:
-			s._sendTeardownForPath(desc.PublicKey, desc.PathID, nil, false)
+			s._sendTeardownForPath(s.r.local, desc.PublicKey, desc.PathID, nil, false)
 		case desc.RootPublicKey != rootAnn.RootPublicKey || desc.RootSequence != rootAnn.Sequence:
 			//s._sendTeardownForPath(desc.PublicKey, desc.PathID, nil, false)
 		}
@@ -116,18 +116,15 @@ func (s *state) _nextHopsSNEK(from *peer, rx *types.Frame, bootstrap bool) []*pe
 	if !bootstrap {
 		bestPeer = s.r.local
 	}
-	s.r.log.Println("Finding next-hop for", destKey, "for type", rx.Type, "received on port", from.port)
-	s.r.log.Println("We are", s.r.public)
-	newCandidate := func(key types.PublicKey, p *peer, reason string) {
+	newCandidate := func(key types.PublicKey, p *peer) {
 		bestKey, bestPeer = key, p
-		s.r.log.Println(" ->", key, "via", p.public, "on port", p.port, "because", reason)
 	}
-	newCheckedCandidate := func(candidate types.PublicKey, p *peer, reason string) {
+	newCheckedCandidate := func(candidate types.PublicKey, p *peer) {
 		switch {
 		case !bootstrap && candidate.EqualTo(destKey) && !bestKey.EqualTo(destKey):
-			newCandidate(candidate, p, reason)
+			newCandidate(candidate, p)
 		case util.DHTOrdered(destKey, candidate, bestKey):
-			newCandidate(candidate, p, reason)
+			newCandidate(candidate, p)
 		}
 	}
 
@@ -137,20 +134,20 @@ func (s *state) _nextHopsSNEK(from *peer, rx *types.Frame, bootstrap bool) []*pe
 		case bootstrap && bestKey.EqualTo(destKey):
 			// Bootstraps always start working towards the root so that
 			// they go somewhere rather than getting stuck
-			newCandidate(rootKey, parentPort, "bootstraps start towards root")
+			newCandidate(rootKey, parentPort)
 		case destKey.EqualTo(rootKey):
 			// The destination is actually the root node itself
-			newCandidate(rootKey, parentPort, "the destination is the root itself")
+			newCandidate(rootKey, parentPort)
 		case util.DHTOrdered(bestKey, destKey, rootKey):
 			// The destination key is higher than our own key, so
 			// start using the path to the root as the first candidate
-			newCandidate(rootKey, parentPort, "the destination is higher than our own key")
+			newCandidate(rootKey, parentPort)
 		}
 
 		// Check our direct ancestors
 		// bestKey <= destKey < rootKey
 		for _, ancestor := range ancestors {
-			newCheckedCandidate(ancestor, parentPort, "found a closer key in direct ancestors")
+			newCheckedCandidate(ancestor, parentPort)
 		}
 	}
 
@@ -171,7 +168,7 @@ func (s *state) _nextHopsSNEK(from *peer, rx *types.Frame, bootstrap bool) []*pe
 			continue
 		}
 		for _, hop := range ann.Signatures {
-			newCheckedCandidate(hop.PublicKey, p, fmt.Sprintf("found a closer key in port %d's ancestors", p.port))
+			newCheckedCandidate(hop.PublicKey, p)
 		}
 	}
 
@@ -185,7 +182,7 @@ func (s *state) _nextHopsSNEK(from *peer, rx *types.Frame, bootstrap bool) []*pe
 			// or as an ancestor of one of our peers, but it turns out we
 			// are directly peered with that node, so use the more direct
 			// path instead
-			newCandidate(peerKey, p, fmt.Sprintf("found a shortcut via port %d to our best key", p.port))
+			newCandidate(peerKey, p)
 		}
 	}
 
@@ -195,7 +192,7 @@ func (s *state) _nextHopsSNEK(from *peer, rx *types.Frame, bootstrap bool) []*pe
 		case time.Since(entry.LastSeen) >= virtualSnakeNeighExpiryPeriod:
 			continue
 		default:
-			newCheckedCandidate(entry.PublicKey, entry.Source, "a closer DHT entry was found")
+			newCheckedCandidate(entry.PublicKey, entry.Source)
 		}
 	}
 
@@ -331,7 +328,7 @@ func (s *state) _handleBootstrapACK(from *peer, rx *types.Frame) error {
 			// Remote side is responsible for clearing up the replaced path, but
 			// we do want to make sure we don't have any old paths to other nodes
 			// that *aren't* the new ascending node lying around.
-			s._sendTeardownForPath(asc.PublicKey, asc.PathID, nil, true)
+			s._sendTeardownForPath(s.r.local, asc.PublicKey, asc.PathID, nil, true)
 		}
 		index := virtualSnakeIndex{
 			PublicKey: rx.SourceKey,
@@ -388,7 +385,7 @@ func (s *state) _handleSetup(from *peer, rx *types.Frame, nextHops []*peer) erro
 
 	// Did the setup hit a dead end on the way to the ascending node?
 	if (len(nextHops) == 0 || nextHops[0] == s.r.local) && !rx.DestinationKey.EqualTo(s.r.public) {
-		s._sendTeardownForPath(rx.SourceKey, setup.PathID, from, false)
+		s._sendTeardownForPath(s.r.local, rx.SourceKey, setup.PathID, from, false)
 		return nil
 	}
 
@@ -396,8 +393,8 @@ func (s *state) _handleSetup(from *peer, rx *types.Frame, nextHops []*peer) erro
 
 	// Is the setup a duplicate of one we already have in our table?
 	if _, ok := s._table[virtualSnakeIndex{rx.SourceKey, setup.PathID}]; ok {
-		s._sendTeardownForPath(rx.SourceKey, setup.PathID, nil, false)  // first call fixes routing table
-		s._sendTeardownForPath(rx.SourceKey, setup.PathID, from, false) // second call sends back to origin
+		s._sendTeardownForPath(s.r.local, rx.SourceKey, setup.PathID, nil, false)  // first call fixes routing table
+		s._sendTeardownForPath(s.r.local, rx.SourceKey, setup.PathID, from, false) // second call sends back to origin
 		return fmt.Errorf("setup is a duplicate")
 	}
 
@@ -444,7 +441,7 @@ func (s *state) _handleSetup(from *peer, rx *types.Frame, nextHops []*peer) erro
 		if update {
 			if desc != nil {
 				// Tear down the previous path, if there was one.
-				s._sendTeardownForPath(desc.PublicKey, desc.PathID, nil, false)
+				s._sendTeardownForPath(s.r.local, desc.PublicKey, desc.PathID, nil, false)
 			}
 			index := virtualSnakeIndex{
 				PublicKey: rx.SourceKey,
@@ -493,7 +490,7 @@ func (s *state) _handleSetup(from *peer, rx *types.Frame, nextHops []*peer) erro
 		return nil
 	}
 
-	s._sendTeardownForPath(rx.SourceKey, setup.PathID, from, false)
+	s._sendTeardownForPath(s.r.local, rx.SourceKey, setup.PathID, from, false)
 	return nil
 }
 
@@ -508,13 +505,13 @@ func (s *state) _handleTeardown(from *peer, rx *types.Frame) (*peer, error) {
 	return s._teardownPath(from, rx.DestinationKey, teardown.PathID), nil
 }
 
-func (s *state) _sendTeardownForPath(pathKey types.PublicKey, pathID types.VirtualSnakePathID, via *peer, ascending bool) {
+func (s *state) _sendTeardownForPath(from *peer, pathKey types.PublicKey, pathID types.VirtualSnakePathID, via *peer, ascending bool) {
 	// If we're cleaning our "ascending" node then _getTeardown will return a
 	// frame which contains our own path key as the source address, because
 	// other nodes on the path will know the path by this key. However we need
 	// to preserve the original ascending key so that _processsTeardown finds
 	// the right path.
-	nexthop := s._teardownPath(nil, pathKey, pathID)
+	nexthop := s._teardownPath(from, pathKey, pathID)
 	frame := s._getTeardown(pathKey, pathID, ascending)
 
 	switch {
@@ -589,12 +586,7 @@ func (s *state) _teardownPath(from *peer, pathKey types.PublicKey, pathID types.
 					return v.Source
 				}
 			case from == nil: // the teardown originated locally
-				if v.Source != s.r.local {
-					return v.Source
-				}
-				if v.Destination != s.r.local {
-					return v.Destination
-				}
+				panic("intermediate path teardown should have from specified")
 			}
 		}
 	}
