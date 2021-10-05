@@ -557,6 +557,7 @@ func (s *state) _teardownPath(from *peer, pathKey types.PublicKey, pathID types.
 			// teardown path key.
 			s._ascending = nil
 			delete(s._table, virtualSnakeIndex{asc.PublicKey, asc.PathID})
+			s._maintainSnakeIn(0)
 			return asc.Source
 		}
 	}

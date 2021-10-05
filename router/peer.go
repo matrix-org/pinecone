@@ -245,11 +245,19 @@ func (p *peer) _write() {
 		return
 	case frame = <-p.proto.pop():
 		p.proto.ack()
-	case <-p.traffic.wait():
-		frame, _ = p.traffic.pop()
-	case <-time.After(PeerKeepaliveInterval):
-		frame = &types.Frame{
-			Type: types.TypeKeepalive,
+	default:
+		select {
+		case <-p.context.Done():
+			p._stop(nil)
+			return
+		case frame = <-p.proto.pop():
+			p.proto.ack()
+		case <-p.traffic.wait():
+			frame, _ = p.traffic.pop()
+		case <-time.After(PeerKeepaliveInterval):
+			frame = &types.Frame{
+				Type: types.TypeKeepalive,
+			}
 		}
 	}
 	if frame == nil {

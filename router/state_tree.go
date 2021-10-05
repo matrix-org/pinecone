@@ -235,11 +235,18 @@ func (s *state) _handleTreeAnnouncement(p *peer, f *types.Frame) error {
 		sigs[pk] = struct{}{}
 	}
 
+	if ann := s._announcements[p]; ann != nil {
+		if newUpdate.RootPublicKey == ann.RootPublicKey && newUpdate.Sequence < ann.Sequence {
+			return fmt.Errorf("update replays old sequence number")
+		}
+	}
+
 	lastParentUpdate := s._rootAnnouncement()
 	lastRootKey := s.r.public
 	if lastParentUpdate != nil {
 		lastRootKey = lastParentUpdate.RootPublicKey
 	}
+	rootDelta := newUpdate.RootPublicKey.CompareTo(lastRootKey)
 
 	// Save the root announcement against the peer.
 	s._ordering++
@@ -254,17 +261,13 @@ func (s *state) _handleTreeAnnouncement(p *peer, f *types.Frame) error {
 			return fmt.Errorf("invalid update from parent whilst waiting to re-parent")
 		}
 
-		rootDelta := newUpdate.RootPublicKey.CompareTo(lastRootKey)
-		doWait := false
-		if rootDelta < 0 {
-			doWait = true
-		} else if rootDelta == 0 && newUpdate.Sequence <= lastParentUpdate.Sequence {
-			doWait = true
-		}
-		s._parent = nil
-		if doWait {
+		switch {
+		case rootDelta < 0:
+			fallthrough
+		case rootDelta == 0 && newUpdate.Sequence <= lastParentUpdate.Sequence:
 			s._waiting = true
 			s._becomeRoot()
+
 			time.AfterFunc(time.Second, func() {
 				s.Act(nil, func() {
 					s._waiting = false
@@ -273,6 +276,11 @@ func (s *state) _handleTreeAnnouncement(p *peer, f *types.Frame) error {
 					}
 				})
 			})
+
+		case rootDelta == 0 && newUpdate.Sequence > lastParentUpdate.Sequence:
+			fallthrough
+		case rootDelta > 0:
+			s._sendTreeAnnouncements()
 		}
 	}
 	if !s._waiting {
@@ -315,7 +323,14 @@ func (s *state) _selectNewParent() bool {
 			accept()
 		case ann.Sequence < bestSeq:
 			// ignore lower sequence numbers
+		case peer == s._parent:
+			// if our existing parent also has the best root key and
+			// sequence number then let's keep that parent — it helps
+			// to keep the tree stable
+			return false
 		case ann.receiveOrder < bestOrder:
+			// otherwise, pick the parent that sent us the latest root
+			// update first, for the lower latency path to the root
 			accept()
 		}
 	}
