@@ -110,11 +110,11 @@ func (s *state) _portDisconnected(peer *peer) {
 	}
 
 	if asc := s._ascending; asc != nil && asc.Source == peer {
-		s._teardownPath(peer, asc.PublicKey, asc.PathID)
+		s._teardownPath(nil, asc.PublicKey, asc.PathID)
 		defer s._bootstrapNow()
 	}
 	if desc := s._descending; desc != nil && desc.Source == peer {
-		s._teardownPath(peer, desc.PublicKey, desc.PathID)
+		s._teardownPath(nil, desc.PublicKey, desc.PathID)
 	}
 	for k, v := range s._table {
 		if v.Destination == peer || v.Source == peer {
