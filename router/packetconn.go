@@ -102,9 +102,8 @@ func (r *Router) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 
 	switch ga := addr.(type) {
 	case GreedyAddr:
-		phony.Block(&r.local.reader, func() {
-			_ = r.local._receive(&types.Frame{
-				Version:     types.Version0,
+		phony.Block(r.state, func() {
+			_ = r.state._forward(r.local, &types.Frame{
 				Type:        types.TypeGreedy,
 				Destination: ga.SwitchPorts,
 				Source:      r.state.coords(),
@@ -114,9 +113,8 @@ func (r *Router) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 		return len(p), nil
 
 	case types.PublicKey:
-		phony.Block(&r.local.reader, func() {
-			_ = r.local._receive(&types.Frame{
-				Version:        types.Version0,
+		phony.Block(r.state, func() {
+			_ = r.state._forward(r.local, &types.Frame{
 				Type:           types.TypeVirtualSnake,
 				DestinationKey: ga,
 				SourceKey:      r.public,

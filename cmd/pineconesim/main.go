@@ -152,7 +152,6 @@ func main() {
 	log.Println("Configuring HTTP listener")
 
 	go func() {
-		return
 		for {
 			time.Sleep(time.Second * 15)
 			log.Println("Starting pings...")

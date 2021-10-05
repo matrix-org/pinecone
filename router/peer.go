@@ -78,124 +78,6 @@ func (p *peer) send(f *types.Frame) bool {
 	return false
 }
 
-func (p *peer) _receive(f *types.Frame) error {
-	nexthops := p.router.state.nextHopsFor(p, f)
-	deadend := len(nexthops) == 0 || nexthops[0] == p.router.local
-	defer func() {
-		if len(nexthops) == 0 {
-			return
-		}
-		for _, peer := range nexthops {
-			if peer.send(f) {
-				return
-			}
-		}
-		p.router.log.Println("Dropping traffic frame", f.Type, "due to congestion - next-hops were", nexthops)
-	}()
-
-	switch f.Type {
-	// Protocol messages
-	case types.TypeSTP:
-		p.router.state.Act(nil, func() {
-			if err := p.router.state._handleTreeAnnouncement(p, f); err != nil {
-				p.router.log.Printf("Failed to handle tree announcement from %d: %s", p.port, err)
-			}
-		})
-
-	case types.TypeKeepalive:
-		// p.router.log.Println("Got keepalive")
-
-	case types.TypeVirtualSnakeBootstrap:
-		if deadend {
-			p.router.state.Act(nil, func() {
-				if err := p.router.state._handleBootstrap(p, f); err != nil {
-					p.router.log.Printf("Failed to handle SNEK bootstrap from %d: %s", p.port, err)
-				}
-			})
-			nexthops = nil
-		}
-
-	case types.TypeVirtualSnakeBootstrapACK:
-		if deadend {
-			p.router.state.Act(nil, func() {
-				if err := p.router.state._handleBootstrapACK(p, f); err != nil {
-					p.router.log.Printf("Failed to handle SNEK bootstrap ACK from %d: %s", p.port, err)
-				}
-			})
-			nexthops = nil
-		}
-
-	case types.TypeVirtualSnakeSetup:
-		p.router.state.Act(nil, func() {
-			if err := p.router.state._handleSetup(p, f, nexthops); err != nil {
-				p.router.log.Printf("Failed to handle SNEK setup from %d: %s", p.port, err)
-			}
-		})
-
-	case types.TypeVirtualSnakeTeardown:
-		p.router.state.Act(nil, func() {
-			if nexthop, err := p.router.state._handleTeardown(p, f); err == nil {
-				// Teardowns are a special case where we need to send to all
-				// of the returned candidate ports, not just the first one that
-				// we can.
-				if nexthop != nil {
-					nexthop.send(f)
-				}
-			} else {
-				p.router.log.Printf("Failed to handle SNEK teardown from %d: %s", p.port, err)
-			}
-		})
-
-	// Traffic messages
-	case types.TypeVirtualSnake, types.TypeGreedy, types.TypeSource:
-
-	case types.TypeSNEKPing:
-		if f.DestinationKey == p.router.public {
-			nexthops = nil
-			p.traffic.push(&types.Frame{
-				Type:           types.TypeSNEKPong,
-				DestinationKey: f.SourceKey,
-				SourceKey:      p.router.public,
-			})
-		}
-
-	case types.TypeSNEKPong:
-		if f.DestinationKey == p.router.public {
-			nexthops = nil
-			v, ok := p.router.pings.Load(f.SourceKey)
-			if !ok {
-				return nil
-			}
-			ch := v.(chan struct{})
-			close(ch)
-		}
-
-	case types.TypeTreePing:
-		if deadend {
-			nexthops = nil
-			p.traffic.push(&types.Frame{
-				Type:        types.TypeTreePong,
-				Destination: f.Source,
-				Source:      p.router.state.coords(),
-			})
-		}
-
-	case types.TypeTreePong:
-		if deadend {
-			nexthops = nil
-			v, ok := p.router.pings.Load(f.Source.String())
-			if !ok {
-				return nil
-			}
-			ch := v.(chan struct{})
-			close(ch)
-		}
-
-	}
-
-	return nil
-}
-
 func (p *peer) _stop(err error) {
 	// The atomic switch here makes sure that the port won't be used
 	// instantly. Then we'll cancel the context and reduce the connection
@@ -210,7 +92,7 @@ func (p *peer) _stop(err error) {
 	}
 	// Next we'll send a message to the state inbox asking it to clean
 	// up the port.
-	p.router.state.Act(nil, func() {
+	p.router.state.Act(&p.writer, func() {
 		p.router.state._portDisconnected(p)
 
 		for i, rp := range p.router.state._peers {
@@ -326,9 +208,10 @@ func (p *peer) _read() {
 		p._stop(fmt.Errorf("f.UnmarshalBinary: %w", err))
 		return
 	}
-	if err := p._receive(f); err != nil {
-		p._stop(fmt.Errorf("p._receive: %w", err))
-		return
-	}
+	p.router.state.Act(&p.reader, func() {
+		if err := p.router.state._forward(p, f); err != nil {
+			p.router.log.Println("Error handling packet:", err)
+		}
+	})
 	p.reader.Act(nil, p._read)
 }
