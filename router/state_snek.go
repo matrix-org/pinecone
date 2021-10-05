@@ -389,8 +389,6 @@ func (s *state) _handleSetup(from *peer, rx *types.Frame, nextHops []*peer) erro
 		return nil
 	}
 
-	var addToRoutingTable bool
-
 	// Is the setup a duplicate of one we already have in our table?
 	if _, ok := s._table[virtualSnakeIndex{rx.SourceKey, setup.PathID}]; ok {
 		s._sendTeardownForPath(s.r.local, rx.SourceKey, setup.PathID, nil, false)  // first call fixes routing table
@@ -438,32 +436,30 @@ func (s *state) _handleSetup(from *peer, rx *types.Frame, nextHops []*peer) erro
 			// there's a node out there that hasn't converged to a closer node
 			// yet, so we'll just ignore the bootstrap.
 		}
-		if update {
-			if desc != nil {
-				// Tear down the previous path, if there was one.
-				s._sendTeardownForPath(s.r.local, desc.PublicKey, desc.PathID, nil, false)
-			}
-			index := virtualSnakeIndex{
-				PublicKey: rx.SourceKey,
-				PathID:    setup.PathID,
-			}
-			entry := &virtualSnakeEntry{
-				virtualSnakeIndex: index,
-				Source:            from,
-				Destination:       s.r.local,
-				LastSeen:          time.Now(),
-				RootPublicKey:     setup.RootPublicKey,
-				RootSequence:      setup.RootSequence,
-			}
-			s._table[index] = entry
-			s._descending = entry
+		if !update {
+			s._sendTeardownForPath(s.r.local, rx.SourceKey, setup.PathID, from, false)
 			return nil
 		}
+		if desc != nil {
+			// Tear down the previous path, if there was one.
+			s._sendTeardownForPath(s.r.local, desc.PublicKey, desc.PathID, nil, false)
+		}
+		index := virtualSnakeIndex{
+			PublicKey: rx.SourceKey,
+			PathID:    setup.PathID,
+		}
+		entry := &virtualSnakeEntry{
+			virtualSnakeIndex: index,
+			Source:            from,
+			Destination:       s.r.local,
+			LastSeen:          time.Now(),
+			RootPublicKey:     setup.RootPublicKey,
+			RootSequence:      setup.RootSequence,
+		}
+		s._table[index] = entry
+		s._descending = entry
+		return nil
 	} else {
-		addToRoutingTable = true
-	}
-
-	if addToRoutingTable {
 		// Add a new routing table entry.
 		// TODO: The routing table needs to be bounded by size, so that we don't
 		// exhaust available system memory trying to maintain network paths. To
@@ -489,9 +485,6 @@ func (s *state) _handleSetup(from *peer, rx *types.Frame, nextHops []*peer) erro
 
 		return nil
 	}
-
-	s._sendTeardownForPath(s.r.local, rx.SourceKey, setup.PathID, from, false)
-	return nil
 }
 
 func (s *state) _handleTeardown(from *peer, rx *types.Frame) (*peer, error) {
@@ -579,16 +572,34 @@ func (s *state) _teardownPath(from *peer, pathKey types.PublicKey, pathID types.
 			delete(s._table, k)
 			switch {
 			case from != nil: // the teardown came from the network
-				if from == v.Source && v.Destination != s.r.local {
+				switch from {
+				case v.Source:
 					return v.Destination
-				}
-				if from == v.Destination && v.Source != s.r.local {
+				case v.Destination:
 					return v.Source
+				default:
+					if s.r.simulator != nil {
+						panic("the teardown came from the wrong port")
+					}
+					return nil
 				}
 			case from == nil: // the teardown originated locally
-				panic("intermediate path teardown should have from specified")
+				if s.r.simulator != nil {
+					panic("intermediate path teardown should have from specified")
+				}
 			}
 		}
 	}
+
+	if s.r.simulator != nil {
+		s.r.log.Println("Teardown for", pathKey, pathID)
+		s.r.log.Printf("Asc: %+v\n", s._ascending)
+		s.r.log.Printf("Desc: %+v\n", s._descending)
+		for _, e := range s._table {
+			s.r.log.Printf("Table: %+v\n", e)
+		}
+		panic("expected to teardown")
+	}
+
 	return nil
 }
