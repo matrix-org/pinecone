@@ -92,17 +92,15 @@ func (s *state) _bootstrapNow() {
 		Source:         s._coords(),
 		Payload:        payload[:],
 	}
-	for _, p := range s._nextHopsSNEK(s.r.local, send, true) {
-		if p.proto.push(send) {
-			return
-		}
+	if p := s._nextHopsSNEK(s.r.local, send, true); p != nil {
+		p.proto.push(send)
 	}
 }
 
-func (s *state) _nextHopsSNEK(from *peer, rx *types.Frame, bootstrap bool) []*peer {
+func (s *state) _nextHopsSNEK(from *peer, rx *types.Frame, bootstrap bool) *peer {
 	destKey := rx.DestinationKey
 	if !bootstrap && s.r.public.EqualTo(destKey) {
-		return []*peer{s.r.local}
+		return s.r.local
 	}
 	rootAnn := s._rootAnnouncement()
 	rootKey := rootAnn.RootPublicKey
@@ -198,9 +196,9 @@ func (s *state) _nextHopsSNEK(from *peer, rx *types.Frame, bootstrap bool) []*pe
 
 	// Return the candidate ports
 	if bestPeer != nil {
-		return []*peer{bestPeer}
+		return bestPeer
 	}
-	return []*peer{}
+	return nil
 }
 
 func (s *state) _handleBootstrap(from *peer, rx *types.Frame) error {
@@ -268,10 +266,8 @@ func (s *state) _handleBootstrap(from *peer, rx *types.Frame) error {
 			Type:           types.TypeVirtualSnakeBootstrapACK,
 			Payload:        buf[:],
 		}
-		for _, p := range s._nextHopsTree(s.r.local, send) {
-			if p.proto.push(send) {
-				return nil
-			}
+		if p := s._nextHopsTree(s.r.local, send); p != nil {
+			p.proto.push(send)
 		}
 		return nil
 	}
@@ -364,17 +360,15 @@ func (s *state) _handleBootstrapACK(from *peer, rx *types.Frame) error {
 			Type:           types.TypeVirtualSnakeSetup,
 			Payload:        append(buf[:], ts...),
 		}
-		for _, p := range s._nextHopsTree(s.r.local, send) {
-			if p.proto.push(send) {
-				return nil
-			}
+		if p := s._nextHopsTree(s.r.local, send); p != nil {
+			p.proto.push(send)
 		}
 		return nil
 	}
 	return nil
 }
 
-func (s *state) _handleSetup(from *peer, rx *types.Frame, nextHops []*peer) error {
+func (s *state) _handleSetup(from *peer, rx *types.Frame, nexthop *peer) error {
 	root := s._rootAnnouncement()
 
 	// Unmarshal the setup.
@@ -384,7 +378,7 @@ func (s *state) _handleSetup(from *peer, rx *types.Frame, nextHops []*peer) erro
 	}
 
 	// Did the setup hit a dead end on the way to the ascending node?
-	if (len(nextHops) == 0 || nextHops[0] == s.r.local) && !rx.DestinationKey.EqualTo(s.r.public) {
+	if (nexthop == nil || nexthop == s.r.local) && !rx.DestinationKey.EqualTo(s.r.public) {
 		s._sendTeardownForPath(s.r.local, rx.SourceKey, setup.PathID, from, false)
 		return nil
 	}
@@ -461,7 +455,7 @@ func (s *state) _handleSetup(from *peer, rx *types.Frame, nextHops []*peer) erro
 	} else {
 		// There has to be a next-hop for the path so if there isn't
 		// then tear it down instead of adding it.
-		if len(nextHops) == 0 || nextHops[0] == s.r.local {
+		if nexthop == nil || nexthop == s.r.local {
 			s._sendTeardownForPath(s.r.local, rx.SourceKey, setup.PathID, from, false)
 			return nil
 		}
@@ -476,8 +470,8 @@ func (s *state) _handleSetup(from *peer, rx *types.Frame, nextHops []*peer) erro
 			LastSeen:          time.Now(),
 			RootPublicKey:     setup.RootPublicKey,
 			RootSequence:      setup.RootSequence,
-			Source:            from,        // node with lower of the two keys
-			Destination:       nextHops[0], // node with higher of the two keys
+			Source:            from,    // node with lower of the two keys
+			Destination:       nexthop, // node with higher of the two keys
 		}
 		s._table[index] = entry
 	}

@@ -7,8 +7,8 @@ import (
 )
 
 func (s *state) _forward(p *peer, f *types.Frame) error {
-	nexthops := p.router.state._nextHopsFor(p, f)
-	deadend := len(nexthops) == 0 || nexthops[0] == p.router.local
+	nexthop := p.router.state._nextHopsFor(p, f)
+	deadend := nexthop == nil || nexthop == p.router.local
 
 	switch f.Type {
 	// Protocol messages
@@ -38,7 +38,7 @@ func (s *state) _forward(p *peer, f *types.Frame) error {
 		}
 
 	case types.TypeVirtualSnakeSetup:
-		if err := p.router.state._handleSetup(p, f, nexthops); err != nil {
+		if err := p.router.state._handleSetup(p, f, nexthop); err != nil {
 			return fmt.Errorf("p.router.state._handleSetup (port %d): %s", p.port, err)
 		}
 
@@ -81,7 +81,7 @@ func (s *state) _forward(p *peer, f *types.Frame) error {
 
 	case types.TypeTreePing:
 		if deadend {
-			nexthops = nil
+			nexthop = nil
 			p.traffic.push(&types.Frame{
 				Type:        types.TypeTreePong,
 				Destination: f.Source,
@@ -91,7 +91,7 @@ func (s *state) _forward(p *peer, f *types.Frame) error {
 
 	case types.TypeTreePong:
 		if deadend {
-			nexthops = nil
+			nexthop = nil
 			v, ok := p.router.pings.Load(f.Source.String())
 			if !ok {
 				return nil
@@ -101,11 +101,10 @@ func (s *state) _forward(p *peer, f *types.Frame) error {
 		}
 	}
 
-	for _, peer := range nexthops {
-		if peer.send(f) {
-			return nil
-		}
+	if p := nexthop; p != nil {
+		p.send(f)
+		return nil
 	}
 
-	return fmt.Errorf("no next-hops for packet of type %s", f.Type)
+	return fmt.Errorf("no next-hop found for packet of type %s", f.Type)
 }

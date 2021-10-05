@@ -125,23 +125,21 @@ func (s *state) _sendTreeAnnouncements() {
 	}
 }
 
-func (s *state) _nextHopsTree(from *peer, f *types.Frame) []*peer {
+func (s *state) _nextHopsTree(from *peer, f *types.Frame) *peer {
 	// We'll collect all possible candidates. We start at PortCount-1
 	// because that guarantees the last candidate port is always 0, so
 	// that if we don't know what else to do with a packet, we hand it
 	// up to the local router.
-	candidates := make([]*peer, PortCount)
-	canlength := PortCount
+	bestPeer := s.r.local
 	newCandidate := func(peer *peer) {
-		canlength--
-		candidates[canlength] = peer
+		bestPeer = peer
 	}
 
 	// If it's loopback then don't bother doing anything else.
 	ourCoords := s._coords()
 	ourRoot := s._rootAnnouncement()
 	if f.Destination.EqualTo(ourCoords) {
-		return []*peer{s.r.local}
+		return s.r.local
 	}
 
 	// Work out how close our own coordinates are to the destination
@@ -153,7 +151,7 @@ func (s *state) _nextHopsTree(from *peer, f *types.Frame) []*peer {
 		// It's impossible to get closer so there's a pretty good
 		// chance at this point that the traffic is destined for us.
 		// Pass it up to the router.
-		return []*peer{s.r.local}
+		return s.r.local
 	}
 
 	// Now work out which of our peers takes the message closer.
@@ -181,7 +179,7 @@ func (s *state) _nextHopsTree(from *peer, f *types.Frame) []*peer {
 		switch {
 		case peerDist == 0 || f.Destination.EqualTo(peerCoords):
 			// The peer is the actual destination.
-			return []*peer{p}
+			return p
 
 		case peerDist < bestDist:
 			// The peer is closer to the destination.
@@ -204,7 +202,7 @@ func (s *state) _nextHopsTree(from *peer, f *types.Frame) []*peer {
 	// If we've got an eligible next peer, and it doesn't create a
 	// routing loop by sending the frame back where it came from,
 	// then return it.
-	return candidates[canlength:]
+	return bestPeer
 }
 
 func (s *state) _handleTreeAnnouncement(p *peer, f *types.Frame) error {

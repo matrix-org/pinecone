@@ -64,8 +64,8 @@ func (s *state) _maintainSnakeIn(d time.Duration) {
 	s._snaketimer.Reset(d)
 }
 
-func (s *state) _nextHopsFor(from *peer, frame *types.Frame) []*peer {
-	var nexthops []*peer
+func (s *state) _nextHopsFor(from *peer, frame *types.Frame) *peer {
+	var nexthop *peer
 	switch frame.Type {
 	case types.TypeVirtualSnakeTeardown:
 		// Teardowns have special logic so we do nothing with them
@@ -73,33 +73,33 @@ func (s *state) _nextHopsFor(from *peer, frame *types.Frame) []*peer {
 
 	// SNEK routing
 	case types.TypeVirtualSnake, types.TypeVirtualSnakeBootstrap, types.TypeSNEKPing, types.TypeSNEKPong:
-		nexthops = s._nextHopsSNEK(from, frame, frame.Type == types.TypeVirtualSnakeBootstrap)
+		nexthop = s._nextHopsSNEK(from, frame, frame.Type == types.TypeVirtualSnakeBootstrap)
 
 	// Tree routing
 	case types.TypeVirtualSnakeBootstrapACK, types.TypeVirtualSnakeSetup:
 		fallthrough
 	case types.TypeGreedy, types.TypeTreePing, types.TypeTreePong:
-		nexthops = s._nextHopsTree(from, frame)
+		nexthop = s._nextHopsTree(from, frame)
 
 	// Source routing
 	case types.TypeSource:
 		if len(frame.Destination) == 0 {
-			return []*peer{s.r.local}
+			return s.r.local
 		}
 		var nexthop *peer
 		port := s._peers[frame.Destination[0]]
 		if frame.Destination[0] == from.port {
-			return []*peer{}
+			return nil
 		}
 		frame.Destination = frame.Destination[1:]
 		if from != nexthop && nexthop != nil && nexthop.started.Load() {
 			nexthop = port
 		}
 		if nexthop != nil {
-			return []*peer{nexthop}
+			return nexthop
 		}
 	}
-	return nexthops
+	return nexthop
 }
 
 func (s *state) _portDisconnected(peer *peer) {
