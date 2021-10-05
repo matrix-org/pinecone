@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"sync"
 	"time"
 
 	"github.com/Arceliar/phony"
@@ -79,9 +78,6 @@ func (p *peer) send(f *types.Frame) bool {
 	return false
 }
 
-var counter = map[types.FrameType]uint64{}
-var counterMutex sync.Mutex
-
 func (p *peer) _receive(f *types.Frame) error {
 	nexthops := p.router.state.nextHopsFor(p, f)
 	deadend := len(nexthops) == 0 || nexthops[0] == p.router.local
@@ -96,10 +92,6 @@ func (p *peer) _receive(f *types.Frame) error {
 		}
 		p.router.log.Println("Dropping traffic frame", f.Type, "due to congestion - next-hops were", nexthops)
 	}()
-
-	counterMutex.Lock()
-	counter[f.Type]++
-	counterMutex.Unlock()
 
 	switch f.Type {
 	// Protocol messages

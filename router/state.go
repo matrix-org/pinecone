@@ -117,7 +117,7 @@ func (s *state) _portDisconnected(peer *peer) {
 
 	if asc := s._ascending; asc != nil && asc.Source == peer {
 		s._teardownPath(nil, asc.PublicKey, asc.PathID)
-		defer s._maintainSnakeIn(0)
+		defer s._bootstrapNow()
 	}
 	if desc := s._descending; desc != nil && desc.Source == peer {
 		s._teardownPath(nil, desc.PublicKey, desc.PathID)

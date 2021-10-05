@@ -113,7 +113,10 @@ func (s *state) _nextHopsSNEK(from *peer, rx *types.Frame, bootstrap bool) []*pe
 		ancestors = ancestors[1:]
 	}
 	bestKey := s.r.public
-	bestPeer := s.r.local
+	var bestPeer *peer
+	if !bootstrap {
+		bestPeer = s.r.local
+	}
 	newCandidate := func(key types.PublicKey, p *peer) {
 		bestKey, bestPeer = key, p
 	}
@@ -159,17 +162,17 @@ func (s *state) _nextHopsSNEK(from *peer, rx *types.Frame, bootstrap bool) []*pe
 	}
 
 	// Check our direct peers ancestors
-	for _, p := range s._peers {
+	for p, ann := range s._announcements {
 		if !peerValid(p) {
 			continue
 		}
-		for _, hop := range s._announcements[p].Signatures {
+		for _, hop := range ann.Signatures {
 			newCheckedCandidate(hop.PublicKey, p)
 		}
 	}
 
 	// Check our direct peers
-	for _, p := range s._peers {
+	for p := range s._announcements {
 		if !peerValid(p) {
 			continue
 		}

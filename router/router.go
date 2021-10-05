@@ -55,16 +55,6 @@ func NewRouter(log *log.Logger, sk ed25519.PrivateKey, id string, sim Simulator)
 	r.state._peers[0] = r.local
 	r.state.Act(nil, r.state._start)
 	r.log.Println("Router identity:", r.public.String())
-	go func() {
-		for {
-			time.Sleep(time.Second * 1)
-			if r.debug.Load() {
-				counterMutex.Lock()
-				fmt.Println(counter)
-				counterMutex.Unlock()
-			}
-		}
-	}()
 	return r
 }
 

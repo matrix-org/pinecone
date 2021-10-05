@@ -102,7 +102,7 @@ func main() {
 	}
 
 	rand.Seed(time.Now().UnixNano())
-	maxintv, maxswing := 5, int32(10)
+	maxintv, maxswing := 10, int32(10)
 	var swing atomic.Int32
 
 	// Chaos disconnector
