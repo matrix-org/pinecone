@@ -458,14 +458,15 @@ func (s *state) _handleSetup(from *peer, rx *types.Frame, nextHops []*peer) erro
 		}
 		s._table[index] = entry
 		s._descending = entry
-		return nil
 	} else {
-		// Add a new routing table entry.
-		// TODO: The routing table needs to be bounded by size, so that we don't
-		// exhaust available system memory trying to maintain network paths. To
-		// bound the routing table safely, we may want to make sure that we have
-		// a reasonable spread of routes across keyspace so that we don't create
-		// any obvious routing holes.
+		// There has to be a next-hop for the path so if there isn't
+		// then tear it down instead of adding it.
+		if len(nextHops) == 0 || nextHops[0] == s.r.local {
+			s._sendTeardownForPath(s.r.local, rx.SourceKey, setup.PathID, from, false)
+			return nil
+		}
+		// Add a new routing table entry as we are intermediate to
+		// the path.
 		index := virtualSnakeIndex{
 			PublicKey: rx.SourceKey,
 			PathID:    setup.PathID,
@@ -475,16 +476,12 @@ func (s *state) _handleSetup(from *peer, rx *types.Frame, nextHops []*peer) erro
 			LastSeen:          time.Now(),
 			RootPublicKey:     setup.RootPublicKey,
 			RootSequence:      setup.RootSequence,
-			Source:            from,      // node with lower of the two keys
-			Destination:       s.r.local, // will be replaced next
-		}
-		if len(nextHops) > 0 {
-			entry.Destination = nextHops[0] // node with higher of the two keys
+			Source:            from,        // node with lower of the two keys
+			Destination:       nextHops[0], // node with higher of the two keys
 		}
 		s._table[index] = entry
-
-		return nil
 	}
+	return nil
 }
 
 func (s *state) _handleTeardown(from *peer, rx *types.Frame) (*peer, error) {
