@@ -453,12 +453,6 @@ func (s *state) _handleSetup(from *peer, rx *types.Frame, nexthop *peer) error {
 		s._table[index] = entry
 		s._descending = entry
 	} else {
-		// There has to be a next-hop for the path so if there isn't
-		// then tear it down instead of adding it.
-		if nexthop == nil || nexthop == s.r.local {
-			s._sendTeardownForPath(s.r.local, rx.SourceKey, setup.PathID, from, false)
-			return nil
-		}
 		// Add a new routing table entry as we are intermediate to
 		// the path.
 		index := virtualSnakeIndex{
@@ -509,6 +503,11 @@ func (s *state) _sendTeardownForPath(from *peer, pathKey types.PublicKey, pathID
 		// Otherwise, we can only tear down paths that we know about, so if it is,
 		// we'll clean up those entries and forward the frame on.
 		nexthop.proto.push(frame)
+
+	default:
+		if s.r.simulator != nil {
+			panic("trying to send teardown to nowhere")
+		}
 	}
 }
 
@@ -563,7 +562,7 @@ func (s *state) _teardownPath(from *peer, pathKey types.PublicKey, pathID types.
 			delete(s._table, k)
 			switch {
 			case from != nil: // the teardown came from the network
-				switch from {
+				switch from { // which port did the teardown come from?
 				case v.Source:
 					return v.Destination
 				case v.Destination:
@@ -589,7 +588,7 @@ func (s *state) _teardownPath(from *peer, pathKey types.PublicKey, pathID types.
 		for _, e := range s._table {
 			s.r.log.Printf("Table: %+v\n", e)
 		}
-		panic("expected to teardown")
+		//panic("expected to teardown")
 	}
 
 	return nil
