@@ -22,8 +22,7 @@ type virtualSnakeIndex struct {
 }
 
 type virtualSnakeEntry struct {
-	PublicKey     types.PublicKey
-	PathID        types.VirtualSnakePathID
+	virtualSnakeIndex
 	Source        *peer
 	Destination   *peer
 	LastSeen      time.Time
@@ -117,37 +116,42 @@ func (s *state) _nextHopsSNEK(from *peer, rx *types.Frame, bootstrap bool) []*pe
 	if !bootstrap {
 		bestPeer = s.r.local
 	}
-	newCandidate := func(key types.PublicKey, p *peer) {
+	s.r.log.Println("Finding next-hop for", destKey, "for type", rx.Type, "received on port", from.port)
+	s.r.log.Println("We are", s.r.public)
+	newCandidate := func(key types.PublicKey, p *peer, reason string) {
 		bestKey, bestPeer = key, p
+		s.r.log.Println(" ->", key, "via", p.public, "on port", p.port, "because", reason)
 	}
-	newCheckedCandidate := func(candidate types.PublicKey, p *peer) {
+	newCheckedCandidate := func(candidate types.PublicKey, p *peer, reason string) {
 		switch {
 		case !bootstrap && candidate.EqualTo(destKey) && !bestKey.EqualTo(destKey):
-			newCandidate(candidate, p)
+			newCandidate(candidate, p, reason)
 		case util.DHTOrdered(destKey, candidate, bestKey):
-			newCandidate(candidate, p)
+			newCandidate(candidate, p, reason)
 		}
 	}
 
-	// Check if we can use the path to the root as a starting point
-	switch {
-	case bootstrap && bestKey.EqualTo(destKey):
-		// Bootstraps always start working towards the root so that
-		// they go somewhere rather than getting stuck
-		newCandidate(rootKey, parentPort)
-	case destKey.EqualTo(rootKey):
-		// The destination is actually the root node itself
-		newCandidate(rootKey, parentPort)
-	case util.DHTOrdered(bestKey, destKey, rootKey):
-		// The destination key is higher than our own key, so
-		// start using the path to the root as the first candidate
-		newCandidate(rootKey, parentPort)
-	}
+	// Check if we can use the path to the root via our parent as a starting point
+	if parentPort != nil {
+		switch {
+		case bootstrap && bestKey.EqualTo(destKey):
+			// Bootstraps always start working towards the root so that
+			// they go somewhere rather than getting stuck
+			newCandidate(rootKey, parentPort, "bootstraps start towards root")
+		case destKey.EqualTo(rootKey):
+			// The destination is actually the root node itself
+			newCandidate(rootKey, parentPort, "the destination is the root itself")
+		case util.DHTOrdered(bestKey, destKey, rootKey):
+			// The destination key is higher than our own key, so
+			// start using the path to the root as the first candidate
+			newCandidate(rootKey, parentPort, "the destination is higher than our own key")
+		}
 
-	// Check our direct ancestors
-	// bestKey <= destKey < rootKey
-	for _, ancestor := range ancestors {
-		newCheckedCandidate(ancestor, parentPort)
+		// Check our direct ancestors
+		// bestKey <= destKey < rootKey
+		for _, ancestor := range ancestors {
+			newCheckedCandidate(ancestor, parentPort, "found a closer key in direct ancestors")
+		}
 	}
 
 	// These conditions guard from selecting obviously bad peers
@@ -167,7 +171,7 @@ func (s *state) _nextHopsSNEK(from *peer, rx *types.Frame, bootstrap bool) []*pe
 			continue
 		}
 		for _, hop := range ann.Signatures {
-			newCheckedCandidate(hop.PublicKey, p)
+			newCheckedCandidate(hop.PublicKey, p, fmt.Sprintf("found a closer key in port %d's ancestors", p.port))
 		}
 	}
 
@@ -181,17 +185,17 @@ func (s *state) _nextHopsSNEK(from *peer, rx *types.Frame, bootstrap bool) []*pe
 			// or as an ancestor of one of our peers, but it turns out we
 			// are directly peered with that node, so use the more direct
 			// path instead
-			newCandidate(peerKey, p)
+			newCandidate(peerKey, p, fmt.Sprintf("found a shortcut via port %d to our best key", p.port))
 		}
 	}
 
 	// Check our DHT entries
-	for dhtKey, entry := range s._table {
+	for _, entry := range s._table {
 		switch {
 		case time.Since(entry.LastSeen) >= virtualSnakeNeighExpiryPeriod:
 			continue
 		default:
-			newCheckedCandidate(dhtKey.PublicKey, entry.Source)
+			newCheckedCandidate(entry.PublicKey, entry.Source, "a closer DHT entry was found")
 		}
 	}
 
@@ -329,15 +333,20 @@ func (s *state) _handleBootstrapACK(from *peer, rx *types.Frame) error {
 			// that *aren't* the new ascending node lying around.
 			s._sendTeardownForPath(asc.PublicKey, asc.PathID, nil, true)
 		}
-		s._ascending = &virtualSnakeEntry{
-			PublicKey:     rx.SourceKey,
-			Source:        from,
-			Destination:   s.r.local,
-			LastSeen:      time.Now(),
-			PathID:        bootstrapACK.PathID,
-			RootPublicKey: bootstrapACK.RootPublicKey,
-			RootSequence:  bootstrapACK.RootSequence,
+		index := virtualSnakeIndex{
+			PublicKey: rx.SourceKey,
+			PathID:    bootstrapACK.PathID,
 		}
+		entry := &virtualSnakeEntry{
+			virtualSnakeIndex: index,
+			Source:            from,
+			Destination:       s.r.local,
+			LastSeen:          time.Now(),
+			RootPublicKey:     bootstrapACK.RootPublicKey,
+			RootSequence:      bootstrapACK.RootSequence,
+		}
+		s._table[index] = entry
+		s._ascending = entry
 		setup := types.VirtualSnakeSetup{ // nolint:gosimple
 			PathID:        bootstrapACK.PathID,
 			RootPublicKey: root.RootPublicKey,
@@ -437,18 +446,17 @@ func (s *state) _handleSetup(from *peer, rx *types.Frame, nextHops []*peer) erro
 				// Tear down the previous path, if there was one.
 				s._sendTeardownForPath(desc.PublicKey, desc.PathID, nil, false)
 			}
-			entry := &virtualSnakeEntry{
-				PublicKey:     rx.SourceKey,
-				Source:        from,
-				Destination:   s.r.local,
-				LastSeen:      time.Now(),
-				PathID:        setup.PathID,
-				RootPublicKey: setup.RootPublicKey,
-				RootSequence:  setup.RootSequence,
-			}
 			index := virtualSnakeIndex{
 				PublicKey: rx.SourceKey,
 				PathID:    setup.PathID,
+			}
+			entry := &virtualSnakeEntry{
+				virtualSnakeIndex: index,
+				Source:            from,
+				Destination:       s.r.local,
+				LastSeen:          time.Now(),
+				RootPublicKey:     setup.RootPublicKey,
+				RootSequence:      setup.RootSequence,
 			}
 			s._table[index] = entry
 			s._descending = entry
@@ -470,11 +478,12 @@ func (s *state) _handleSetup(from *peer, rx *types.Frame, nextHops []*peer) erro
 			PathID:    setup.PathID,
 		}
 		entry := &virtualSnakeEntry{
-			LastSeen:      time.Now(),
-			RootPublicKey: setup.RootPublicKey,
-			RootSequence:  setup.RootSequence,
-			Source:        from,      // node with lower of the two keys
-			Destination:   s.r.local, // will be replaced next
+			virtualSnakeIndex: index,
+			LastSeen:          time.Now(),
+			RootPublicKey:     setup.RootPublicKey,
+			RootSequence:      setup.RootSequence,
+			Source:            from,      // node with lower of the two keys
+			Destination:       s.r.local, // will be replaced next
 		}
 		if len(nextHops) > 0 {
 			entry.Destination = nextHops[0] // node with higher of the two keys
