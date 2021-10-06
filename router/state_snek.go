@@ -11,7 +11,6 @@ import (
 )
 
 const virtualSnakeMaintainInterval = time.Second
-
 const virtualSnakeNeighExpiryPeriod = time.Hour
 
 type virtualSnakeTable map[virtualSnakeIndex]*virtualSnakeEntry
@@ -49,6 +48,7 @@ func (s *state) _maintainSnake() {
 		switch {
 		case !asc.valid():
 			s._sendTeardownForExistingPath(s.r.local, asc.PublicKey, asc.PathID, true)
+			fallthrough
 		case asc.RootPublicKey != rootAnn.RootPublicKey || asc.RootSequence != rootAnn.Sequence:
 			willBootstrap = canBootstrap
 		}
@@ -56,13 +56,8 @@ func (s *state) _maintainSnake() {
 		willBootstrap = canBootstrap
 	}
 
-	if desc := s._descending; desc != nil {
-		switch {
-		case !desc.valid():
-			s._sendTeardownForExistingPath(s.r.local, desc.PublicKey, desc.PathID, false)
-		case desc.RootPublicKey != rootAnn.RootPublicKey || desc.RootSequence != rootAnn.Sequence:
-			//s._sendTeardownForPath(desc.PublicKey, desc.PathID, nil, false)
-		}
+	if desc := s._descending; desc != nil && !desc.valid() {
+		s._sendTeardownForExistingPath(s.r.local, desc.PublicKey, desc.PathID, false)
 	}
 
 	// Send bootstrap messages into the network. Ordinarily we
@@ -78,6 +73,9 @@ func (s *state) _maintainSnake() {
 }
 
 func (s *state) _bootstrapNow() {
+	if s._parent == nil {
+		return
+	}
 	ann := s._rootAnnouncement()
 	payload := make([]byte, 8+ed25519.PublicKeySize+ann.Sequence.Length())
 	bootstrap := types.VirtualSnakeBootstrap{
@@ -158,7 +156,7 @@ func (s *state) _nextHopsSNEK(from *peer, rx *types.Frame, bootstrap bool) *peer
 
 	// Check our direct peers
 	for p := range s._announcements {
-		if !p.started.Load() || p == from {
+		if !p.started.Load() {
 			continue
 		}
 		if peerKey := p.public; bestKey.EqualTo(peerKey) {
@@ -523,7 +521,6 @@ func (s *state) _teardownPath(from *peer, pathKey types.PublicKey, pathID types.
 		clean := func() {
 			s._ascending = nil
 			delete(s._table, virtualSnakeIndex{asc.PublicKey, asc.PathID})
-			s._bootstrapNow()
 		}
 		switch {
 		case from != s.r.local && s.r.public.EqualTo(pathKey): // from network

@@ -16,7 +16,7 @@ import (
 )
 
 const PeerKeepaliveInterval = time.Second * 3
-const PeerKeepaliveTimeout = PeerKeepaliveInterval * 3
+const PeerKeepaliveTimeout = time.Second * 5
 
 const (
 	PeerTypeMulticast int = iota
