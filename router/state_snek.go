@@ -123,7 +123,7 @@ func (s *state) _nextHopsSNEK(from *peer, rx *types.Frame, bootstrap bool) *peer
 	}
 
 	// Check if we can use the path to the root via our parent as a starting point
-	if parentPort != nil {
+	if parentPort != nil && parentPort.started.Load() {
 		switch {
 		case bootstrap && bestKey.EqualTo(destKey):
 			// Bootstraps always start working towards the root so that
@@ -168,7 +168,7 @@ func (s *state) _nextHopsSNEK(from *peer, rx *types.Frame, bootstrap bool) *peer
 
 	// Check our DHT entries
 	for _, entry := range s._table {
-		if entry.valid() {
+		if entry.valid() && entry.Source.started.Load() {
 			newCheckedCandidate(entry.PublicKey, entry.Source)
 		}
 	}
