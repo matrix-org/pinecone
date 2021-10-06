@@ -159,7 +159,7 @@ func (p *peer) _write() {
 		p.stop(fmt.Errorf("p.conn.SetWriteDeadline: %w", err))
 		return
 	}
-	p.writer.Act(&p.writer, p._write)
+	p.writer.Act(nil, p._write)
 }
 
 func (p *peer) _read() {
@@ -209,5 +209,5 @@ func (p *peer) _read() {
 			p.router.log.Println("Error handling packet:", err)
 		}
 	})
-	p.reader.Act(&p.reader, p._read)
+	p.reader.Act(nil, p._read)
 }

@@ -107,6 +107,7 @@ func main() {
 
 	// Chaos disconnector
 	go func() {
+		return
 		for {
 			if swing.Load() > -maxswing {
 			parentloop:
@@ -129,6 +130,7 @@ func main() {
 
 	// Chaos connector
 	go func() {
+		return
 		for {
 			if swing.Load() < maxswing {
 			parentloop:

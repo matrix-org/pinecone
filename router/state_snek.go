@@ -38,6 +38,7 @@ func (s *state) _maintainSnake() {
 	case <-s.r.context.Done():
 		return
 	default:
+		defer s._maintainSnakeIn(virtualSnakeMaintainInterval)
 	}
 
 	rootAnn := s._rootAnnouncement()
@@ -68,8 +69,6 @@ func (s *state) _maintainSnake() {
 	if willBootstrap {
 		s._bootstrapNow()
 	}
-
-	s._maintainSnakeIn(virtualSnakeMaintainInterval)
 }
 
 func (s *state) _bootstrapNow() {
@@ -105,7 +104,6 @@ func (s *state) _nextHopsSNEK(from *peer, rx *types.Frame, bootstrap bool) *peer
 		return s.r.local
 	}
 	rootAnn := s._rootAnnouncement()
-	rootKey := rootAnn.RootPublicKey
 	ancestors, parentPort := s._ancestors()
 	bestKey := s.r.public
 	var bestPeer *peer
@@ -130,11 +128,11 @@ func (s *state) _nextHopsSNEK(from *peer, rx *types.Frame, bootstrap bool) *peer
 		case bootstrap && bestKey.EqualTo(destKey):
 			// Bootstraps always start working towards the root so that
 			// they go somewhere rather than getting stuck
-			newCandidate(rootKey, parentPort)
-		case util.DHTOrdered(bestKey, destKey, rootKey):
+			fallthrough
+		case util.DHTOrdered(bestKey, destKey, rootAnn.RootPublicKey):
 			// The destination key is higher than our own key, so
 			// start using the path to the root as the first candidate
-			newCandidate(rootKey, parentPort)
+			newCandidate(rootAnn.RootPublicKey, parentPort)
 		}
 
 		// Check our direct ancestors
@@ -439,7 +437,7 @@ func (s *state) _handleSetup(from *peer, rx *types.Frame, nexthop *peer) error {
 	// can't do that then there's no point in keeping the path.
 	if nexthop == nil || nexthop == s.r.local || nexthop.proto == nil || !nexthop.proto.push(rx) {
 		s._sendTeardownForRejectedPath(rx.SourceKey, setup.PathID, from)
-		return fmt.Errorf("no next-hop")
+		return fmt.Errorf("unable to forward setup packet")
 	}
 	// Add a new routing table entry as we are intermediate to
 	// the path.
