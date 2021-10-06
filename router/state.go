@@ -67,15 +67,15 @@ func (s *state) _portDisconnected(peer *peer) {
 	delete(s._announcements, peer)
 
 	if asc := s._ascending; asc != nil && asc.Source == peer {
-		s._teardownPath(s.r.local, asc.PublicKey, asc.PathID)
+		s._teardownPath(peer, asc.PublicKey, asc.PathID)
 		defer s._bootstrapNow()
 	}
 	if desc := s._descending; desc != nil && desc.Source == peer {
-		s._teardownPath(s.r.local, desc.PublicKey, desc.PathID)
+		s._teardownPath(peer, desc.PublicKey, desc.PathID)
 	}
 	for k, v := range s._table {
 		if v.Destination == peer || v.Source == peer {
-			s._sendTeardownForPath(peer, k.PublicKey, k.PathID, nil, false)
+			s._sendTeardownForExistingPath(peer, k.PublicKey, k.PathID, false)
 		}
 	}
 
