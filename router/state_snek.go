@@ -92,7 +92,7 @@ func (s *state) _bootstrapNow() {
 		Source:         s._coords(),
 		Payload:        payload[:],
 	}
-	if p := s._nextHopsSNEK(s.r.local, send, true); p != nil {
+	if p := s._nextHopsSNEK(s.r.local, send, true); p != nil && p.proto != nil {
 		p.proto.push(send)
 	}
 }
@@ -266,7 +266,7 @@ func (s *state) _handleBootstrap(from *peer, rx *types.Frame) error {
 			Type:           types.TypeVirtualSnakeBootstrapACK,
 			Payload:        buf[:],
 		}
-		if p := s._nextHopsTree(s.r.local, send); p != nil {
+		if p := s._nextHopsTree(s.r.local, send); p != nil && p.proto != nil {
 			p.proto.push(send)
 		}
 		return nil
@@ -360,7 +360,7 @@ func (s *state) _handleBootstrapACK(from *peer, rx *types.Frame) error {
 			Type:           types.TypeVirtualSnakeSetup,
 			Payload:        append(buf[:], ts...),
 		}
-		if p := s._nextHopsTree(s.r.local, send); p != nil {
+		if p := s._nextHopsTree(s.r.local, send); p != nil && p.proto != nil {
 			p.proto.push(send)
 		}
 		return nil
