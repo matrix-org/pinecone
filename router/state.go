@@ -4,7 +4,6 @@ import (
 	"time"
 
 	"github.com/Arceliar/phony"
-	"github.com/matrix-org/pinecone/types"
 )
 
 type state struct {
@@ -64,50 +63,8 @@ func (s *state) _maintainSnakeIn(d time.Duration) {
 	s._snaketimer.Reset(d)
 }
 
-func (s *state) _nextHopsFor(from *peer, frame *types.Frame) *peer {
-	var nexthop *peer
-	switch frame.Type {
-	case types.TypeVirtualSnakeTeardown:
-		// Teardowns have special logic so we do nothing with them
-		return nil
-
-	// SNEK routing
-	case types.TypeVirtualSnake, types.TypeVirtualSnakeBootstrap, types.TypeSNEKPing, types.TypeSNEKPong:
-		nexthop = s._nextHopsSNEK(from, frame, frame.Type == types.TypeVirtualSnakeBootstrap)
-
-	// Tree routing
-	case types.TypeVirtualSnakeBootstrapACK, types.TypeVirtualSnakeSetup:
-		fallthrough
-	case types.TypeGreedy, types.TypeTreePing, types.TypeTreePong:
-		nexthop = s._nextHopsTree(from, frame)
-
-	// Source routing
-	case types.TypeSource:
-		if len(frame.Destination) == 0 {
-			return s.r.local
-		}
-		var nexthop *peer
-		port := s._peers[frame.Destination[0]]
-		if frame.Destination[0] == from.port {
-			return nil
-		}
-		frame.Destination = frame.Destination[1:]
-		if from != nexthop && nexthop != nil && nexthop.started.Load() {
-			nexthop = port
-		}
-		if nexthop != nil {
-			return nexthop
-		}
-	}
-	return nexthop
-}
-
 func (s *state) _portDisconnected(peer *peer) {
 	delete(s._announcements, peer)
-
-	if s._parent == peer {
-		s._selectNewParent()
-	}
 
 	if asc := s._ascending; asc != nil && asc.Source == peer {
 		s._teardownPath(s.r.local, asc.PublicKey, asc.PathID)
@@ -120,5 +77,9 @@ func (s *state) _portDisconnected(peer *peer) {
 		if v.Destination == peer || v.Source == peer {
 			s._sendTeardownForPath(peer, k.PublicKey, k.PathID, nil, false)
 		}
+	}
+
+	if s._parent == peer {
+		s._selectNewParent()
 	}
 }

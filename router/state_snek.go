@@ -158,7 +158,7 @@ func (s *state) _nextHopsSNEK(from *peer, rx *types.Frame, bootstrap bool) *peer
 
 	// Check our direct peers
 	for p := range s._announcements {
-		if !p.started.Load() {
+		if !p.started.Load() || p == from {
 			continue
 		}
 		if peerKey := p.public; bestKey.EqualTo(peerKey) {
@@ -438,19 +438,15 @@ func (s *state) _handleSetup(from *peer, rx *types.Frame, nexthop *peer) error {
 		s._descending = entry
 		return nil
 	}
-
-	nexthop = s.r.state._nextHopsTree(s.r.local, rx)
-	if nexthop == nil || nexthop == s.r.local || nexthop.proto == nil {
+	// Try to forward the setup onto the next node first. If we
+	// can't do that then there's no point in keeping the path.
+	if nexthop == nil || nexthop == s.r.local || nexthop.proto == nil || !nexthop.proto.push(rx) {
 		s._sendTeardownForPath(s.r.local, rx.SourceKey, setup.PathID, from, false)
 		return fmt.Errorf("no next-hop")
 	}
-	if !nexthop.proto.push(rx) {
-		s._sendTeardownForPath(s.r.local, rx.SourceKey, setup.PathID, from, false)
-		return fmt.Errorf("failed to send setup")
-	}
 	// Add a new routing table entry as we are intermediate to
 	// the path.
-	entry := &virtualSnakeEntry{
+	s._table[index] = &virtualSnakeEntry{
 		virtualSnakeIndex: index,
 		LastSeen:          time.Now(),
 		RootPublicKey:     setup.RootPublicKey,
@@ -458,7 +454,6 @@ func (s *state) _handleSetup(from *peer, rx *types.Frame, nexthop *peer) error {
 		Source:            from,    // node with lower of the two keys
 		Destination:       nexthop, // node with higher of the two keys
 	}
-	s._table[index] = entry
 	return nil
 }
 

@@ -6,6 +6,42 @@ import (
 	"github.com/matrix-org/pinecone/types"
 )
 
+func (s *state) _nextHopsFor(from *peer, frame *types.Frame) *peer {
+	var nexthop *peer
+	switch frame.Type {
+	case types.TypeVirtualSnakeTeardown:
+		// Teardowns have their own logic so we do nothing with them
+		return nil
+
+	// SNEK routing
+	case types.TypeVirtualSnake, types.TypeVirtualSnakeBootstrap, types.TypeSNEKPing, types.TypeSNEKPong:
+		nexthop = s._nextHopsSNEK(from, frame, frame.Type == types.TypeVirtualSnakeBootstrap)
+
+	// Tree routing
+	case types.TypeGreedy, types.TypeVirtualSnakeBootstrapACK, types.TypeVirtualSnakeSetup, types.TypeTreePing, types.TypeTreePong:
+		nexthop = s._nextHopsTree(from, frame)
+
+	// Source routing
+	case types.TypeSource:
+		if len(frame.Destination) == 0 {
+			return s.r.local
+		}
+		var nexthop *peer
+		port := s._peers[frame.Destination[0]]
+		if frame.Destination[0] == from.port {
+			return nil
+		}
+		frame.Destination = frame.Destination[1:]
+		if from != nexthop && nexthop != nil && nexthop.started.Load() {
+			nexthop = port
+		}
+		if nexthop != nil {
+			return nexthop
+		}
+	}
+	return nexthop
+}
+
 func (s *state) _forward(p *peer, f *types.Frame) error {
 	nexthop := s._nextHopsFor(p, f)
 	deadend := nexthop == nil || nexthop == p.router.local
