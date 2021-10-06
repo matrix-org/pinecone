@@ -470,10 +470,6 @@ func (s *state) _sendTeardownForRejectedPath(pathKey types.PublicKey, pathID typ
 	frame := s._getTeardown(pathKey, pathID, false)
 	if via != nil {
 		via.proto.push(frame)
-		return
-	}
-	if s.r.simulator != nil {
-		panic("trying to send teardown of rejected path to nowhere")
 	}
 }
 
@@ -481,10 +477,6 @@ func (s *state) _sendTeardownForExistingPath(from *peer, pathKey types.PublicKey
 	frame := s._getTeardown(pathKey, pathID, ascending)
 	if nexthop := s._teardownPath(from, pathKey, pathID); nexthop != nil && nexthop.proto != nil {
 		nexthop.proto.push(frame)
-		return
-	}
-	if s.r.simulator != nil {
-		panic("trying to send teardown of existing path to nowhere")
 	}
 }
 
