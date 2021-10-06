@@ -523,6 +523,7 @@ func (s *state) _teardownPath(from *peer, pathKey types.PublicKey, pathID types.
 		clean := func() {
 			s._ascending = nil
 			delete(s._table, virtualSnakeIndex{asc.PublicKey, asc.PathID})
+			s._bootstrapNow()
 		}
 		switch {
 		case from != s.r.local && s.r.public.EqualTo(pathKey): // from network
@@ -556,15 +557,9 @@ func (s *state) _teardownPath(from *peer, pathKey types.PublicKey, pathID types.
 			case from == v.Destination:
 				return v.Source
 			default:
-				if s.r.simulator != nil {
-					panic("the teardown came from the wrong port")
-				}
 				return nil
 			}
 		}
-	}
-	if s.r.simulator != nil {
-		//panic("should have handled teardown but didn't")
 	}
 	return nil
 }
