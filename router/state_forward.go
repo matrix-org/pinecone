@@ -2,6 +2,7 @@ package router
 
 import (
 	"fmt"
+	"math"
 
 	"github.com/matrix-org/pinecone/types"
 )
@@ -9,6 +10,12 @@ import (
 func (s *state) _forward(p *peer, f *types.Frame) error {
 	nexthop := p.router.state._nextHopsFor(p, f)
 	deadend := nexthop == nil || nexthop == p.router.local
+
+	// TODO: remove this eventually
+	f.Version++
+	if f.Version == math.MaxUint8-1 {
+		return fmt.Errorf("TTL expired for frame of type %s", f.Type)
+	}
 
 	switch f.Type {
 	// Protocol messages
@@ -38,8 +45,10 @@ func (s *state) _forward(p *peer, f *types.Frame) error {
 		}
 
 	case types.TypeVirtualSnakeSetup:
-		if err := p.router.state._handleSetup(p, f, nexthop); err != nil {
+		if forward, err := p.router.state._handleSetup(p, f, nexthop); err != nil {
 			return fmt.Errorf("p.router.state._handleSetup (port %d): %s", p.port, err)
+		} else if !forward {
+			return nil
 		}
 
 	case types.TypeVirtualSnakeTeardown:
@@ -81,23 +90,23 @@ func (s *state) _forward(p *peer, f *types.Frame) error {
 
 	case types.TypeTreePing:
 		if deadend {
-			nexthop = nil
 			p.traffic.push(&types.Frame{
 				Type:        types.TypeTreePong,
 				Destination: f.Source,
 				Source:      p.router.state.coords(),
 			})
+			return nil
 		}
 
 	case types.TypeTreePong:
 		if deadend {
-			nexthop = nil
 			v, ok := p.router.pings.Load(f.Source.String())
 			if !ok {
 				return nil
 			}
 			ch := v.(chan struct{})
 			close(ch)
+			return nil
 		}
 	}
 

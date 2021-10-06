@@ -41,7 +41,7 @@ func (q *fifoQueue) queuesize() int { // nolint:unused
 func (q *fifoQueue) push(frame *types.Frame) bool {
 	q.mutex.Lock()
 	defer q.mutex.Unlock()
-	if len(q.entries) == 0 {
+	if len(q.entries) == 0 && cap(q.entries) > 100 {
 		q._initialise()
 	}
 	ch := q.entries[len(q.entries)-1]
@@ -66,7 +66,7 @@ func (q *fifoQueue) reset() {
 func (q *fifoQueue) pop() <-chan *types.Frame {
 	q.mutex.Lock()
 	defer q.mutex.Unlock()
-	if len(q.entries) == 0 {
+	if len(q.entries) == 0 && cap(q.entries) > 100 {
 		q._initialise()
 	}
 	entry := q.entries[0]

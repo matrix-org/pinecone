@@ -118,14 +118,14 @@ func (p *peer) _write() {
 		p._stop(nil)
 		return
 	case frame = <-p.proto.pop():
-		p.proto.ack()
+		defer p.proto.ack()
 	default:
 		select {
 		case <-p.context.Done():
 			p._stop(nil)
 			return
 		case frame = <-p.proto.pop():
-			p.proto.ack()
+			defer p.proto.ack()
 		case <-p.traffic.wait():
 			frame, _ = p.traffic.pop()
 		case <-time.After(PeerKeepaliveInterval):

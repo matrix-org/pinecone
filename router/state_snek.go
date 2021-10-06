@@ -264,7 +264,7 @@ func (s *state) _handleBootstrap(from *peer, rx *types.Frame) error {
 			Source:         s._coords(),
 			SourceKey:      s.r.public,
 			Type:           types.TypeVirtualSnakeBootstrapACK,
-			Payload:        buf[:],
+			Payload:        buf,
 		}
 		if p := s._nextHopsTree(s.r.local, send); p != nil && p.proto != nil {
 			p.proto.push(send)
@@ -280,6 +280,10 @@ func (s *state) _handleBootstrapACK(from *peer, rx *types.Frame) error {
 	_, err := bootstrapACK.UnmarshalBinary(rx.Payload)
 	if err != nil {
 		return fmt.Errorf("bootstrapACK.UnmarshalBinary: %w", err)
+	}
+	index := virtualSnakeIndex{
+		PublicKey: rx.SourceKey,
+		PathID:    bootstrapACK.PathID,
 	}
 	root := s._rootAnnouncement()
 	update := false
@@ -319,80 +323,82 @@ func (s *state) _handleBootstrapACK(from *peer, rx *types.Frame) error {
 		// there's a node out there that hasn't converged to a closer node
 		// yet, so we'll just ignore the acknowledgement.
 	}
-	if update {
-		if asc != nil {
-			// Remote side is responsible for clearing up the replaced path, but
-			// we do want to make sure we don't have any old paths to other nodes
-			// that *aren't* the new ascending node lying around.
-			s._sendTeardownForPath(s.r.local, asc.PublicKey, asc.PathID, nil, true)
-		}
-		index := virtualSnakeIndex{
-			PublicKey: rx.SourceKey,
-			PathID:    bootstrapACK.PathID,
-		}
-		entry := &virtualSnakeEntry{
-			virtualSnakeIndex: index,
-			Source:            from,
-			Destination:       s.r.local,
-			LastSeen:          time.Now(),
-			RootPublicKey:     bootstrapACK.RootPublicKey,
-			RootSequence:      bootstrapACK.RootSequence,
-		}
-		s._table[index] = entry
-		s._ascending = entry
-		setup := types.VirtualSnakeSetup{ // nolint:gosimple
-			PathID:        bootstrapACK.PathID,
-			RootPublicKey: root.RootPublicKey,
-			RootSequence:  root.Sequence,
-		}
-		buf := make([]byte, 8+ed25519.PublicKeySize+root.Sequence.Length())
-		if _, err := setup.MarshalBinary(buf[:]); err != nil {
-			return fmt.Errorf("setup.MarshalBinary: %w", err)
-		}
-		ts, err := util.SignedTimestamp(s.r.private)
-		if err != nil {
-			return fmt.Errorf("util.SignedTimestamp: %w", err)
-		}
-		send := &types.Frame{
-			Destination:    rx.Source,
-			DestinationKey: rx.SourceKey, // the other end of the path
-			SourceKey:      s.r.public,   // our source key
-			Type:           types.TypeVirtualSnakeSetup,
-			Payload:        append(buf[:], ts...),
-		}
-		if p := s._nextHopsTree(s.r.local, send); p != nil && p.proto != nil {
-			p.proto.push(send)
-		}
+	if !update {
 		return nil
 	}
+	if asc != nil {
+		// Remote side is responsible for clearing up the replaced path, but
+		// we do want to make sure we don't have any old paths to other nodes
+		// that *aren't* the new ascending node lying around.
+		s._sendTeardownForPath(s.r.local, asc.PublicKey, asc.PathID, nil, true)
+		if s._ascending != nil {
+			panic("should have cleaned up ascending node")
+		}
+		if _, ok := s._table[virtualSnakeIndex{asc.PublicKey, asc.PathID}]; ok {
+			panic("should have cleaned up ascending entry in routing table")
+		}
+	}
+	setup := types.VirtualSnakeSetup{ // nolint:gosimple
+		PathID:        bootstrapACK.PathID,
+		RootPublicKey: root.RootPublicKey,
+		RootSequence:  root.Sequence,
+	}
+	buf := make([]byte, 8+ed25519.PublicKeySize+root.Sequence.Length())
+	if _, err := setup.MarshalBinary(buf[:]); err != nil {
+		return fmt.Errorf("setup.MarshalBinary: %w", err)
+	}
+	send := &types.Frame{
+		Destination:    rx.Source,
+		DestinationKey: rx.SourceKey, // the other end of the path
+		SourceKey:      s.r.public,   // our source key
+		Type:           types.TypeVirtualSnakeSetup,
+		Payload:        buf,
+	}
+	nexthop := s.r.state._nextHopsTree(s.r.local, send)
+	if nexthop == nil || nexthop.proto == nil {
+		return fmt.Errorf("no next-hop")
+	}
+	if !nexthop.proto.push(send) {
+		return fmt.Errorf("failed to send setup")
+	}
+	entry := &virtualSnakeEntry{
+		virtualSnakeIndex: index,
+		Source:            nexthop,
+		Destination:       s.r.local,
+		LastSeen:          time.Now(),
+		RootPublicKey:     bootstrapACK.RootPublicKey,
+		RootSequence:      bootstrapACK.RootSequence,
+	}
+	s._table[index] = entry
+	s._ascending = entry
 	return nil
 }
 
-func (s *state) _handleSetup(from *peer, rx *types.Frame, nexthop *peer) error {
+func (s *state) _handleSetup(from *peer, rx *types.Frame, nexthop *peer) (bool, error) {
 	root := s._rootAnnouncement()
 
 	// Unmarshal the setup.
 	var setup types.VirtualSnakeSetup
 	if _, err := setup.UnmarshalBinary(rx.Payload); err != nil {
-		return fmt.Errorf("setup.UnmarshalBinary: %w", err)
+		return false, fmt.Errorf("setup.UnmarshalBinary: %w", err)
 	}
-
-	// Did the setup hit a dead end on the way to the ascending node?
-	if (nexthop == nil || nexthop == s.r.local) && !rx.DestinationKey.EqualTo(s.r.public) {
-		s._sendTeardownForPath(s.r.local, rx.SourceKey, setup.PathID, from, false)
-		return nil
+	index := virtualSnakeIndex{
+		PublicKey: rx.SourceKey,
+		PathID:    setup.PathID,
 	}
 
 	// Is the setup a duplicate of one we already have in our table?
-	if _, ok := s._table[virtualSnakeIndex{rx.SourceKey, setup.PathID}]; ok {
-		s._sendTeardownForPath(s.r.local, rx.SourceKey, setup.PathID, nil, false)  // first call fixes routing table
-		s._sendTeardownForPath(s.r.local, rx.SourceKey, setup.PathID, from, false) // second call sends back to origin
-		return fmt.Errorf("setup is a duplicate")
-	}
+	/*
+		if _, ok := s._table[virtualSnakeIndex{rx.SourceKey, setup.PathID}]; ok {
+			s._sendTeardownForPath(s.r.local, rx.SourceKey, setup.PathID, nil, false)  // first call fixes routing table
+			s._sendTeardownForPath(s.r.local, rx.SourceKey, setup.PathID, from, false) // second call sends back to origin
+			return fmt.Errorf("setup is a duplicate")
+		}
+	*/
 
 	// If we're at the destination of the setup then update our predecessor
 	// with information from the bootstrap.
-	if rx.DestinationKey.EqualTo(s.r.public) {
+	if nexthop == s.r.local && rx.DestinationKey.EqualTo(s.r.public) {
 		update := false
 		desc := s._descending
 		switch {
@@ -432,15 +438,17 @@ func (s *state) _handleSetup(from *peer, rx *types.Frame, nexthop *peer) error {
 		}
 		if !update {
 			s._sendTeardownForPath(s.r.local, rx.SourceKey, setup.PathID, from, false)
-			return nil
+			return false, nil
 		}
 		if desc != nil {
 			// Tear down the previous path, if there was one.
 			s._sendTeardownForPath(s.r.local, desc.PublicKey, desc.PathID, nil, false)
-		}
-		index := virtualSnakeIndex{
-			PublicKey: rx.SourceKey,
-			PathID:    setup.PathID,
+			if s._descending != nil {
+				panic("should have cleaned up descending node")
+			}
+			if _, ok := s._table[virtualSnakeIndex{desc.PublicKey, desc.PathID}]; ok {
+				panic("should have cleaned up descending entry in routing table")
+			}
 		}
 		entry := &virtualSnakeEntry{
 			virtualSnakeIndex: index,
@@ -452,7 +460,10 @@ func (s *state) _handleSetup(from *peer, rx *types.Frame, nexthop *peer) error {
 		}
 		s._table[index] = entry
 		s._descending = entry
-	} else {
+		return false, nil
+	}
+
+	if nexthop != nil && nexthop != s.r.local {
 		// Add a new routing table entry as we are intermediate to
 		// the path.
 		index := virtualSnakeIndex{
@@ -468,8 +479,11 @@ func (s *state) _handleSetup(from *peer, rx *types.Frame, nexthop *peer) error {
 			Destination:       nexthop, // node with higher of the two keys
 		}
 		s._table[index] = entry
+		return true, nil
 	}
-	return nil
+
+	s._sendTeardownForPath(s.r.local, rx.SourceKey, setup.PathID, from, false)
+	return false, fmt.Errorf("unable to find next-hop for intermediate path setup")
 }
 
 func (s *state) _handleTeardown(from *peer, rx *types.Frame) (*peer, error) {
@@ -484,30 +498,17 @@ func (s *state) _handleTeardown(from *peer, rx *types.Frame) (*peer, error) {
 }
 
 func (s *state) _sendTeardownForPath(from *peer, pathKey types.PublicKey, pathID types.VirtualSnakePathID, via *peer, ascending bool) {
-	// If we're cleaning our "ascending" node then _getTeardown will return a
-	// frame which contains our own path key as the source address, because
-	// other nodes on the path will know the path by this key. However we need
-	// to preserve the original ascending key so that _processsTeardown finds
-	// the right path.
-	nexthop := s._teardownPath(from, pathKey, pathID)
 	frame := s._getTeardown(pathKey, pathID, ascending)
-
-	switch {
-	case via != nil:
-		// If "via" is provided, it's because we are tearing down a path that we
-		// haven't actually set up or accepted and we need to know where to send
-		// the teardown.
+	if via != nil {
 		via.proto.push(frame)
-
-	case nexthop != nil:
-		// Otherwise, we can only tear down paths that we know about, so if it is,
-		// we'll clean up those entries and forward the frame on.
+		return
+	}
+	if nexthop := s._teardownPath(from, pathKey, pathID); nexthop != nil && nexthop.proto != nil {
 		nexthop.proto.push(frame)
-
-	default:
-		if s.r.simulator != nil {
-			panic("trying to send teardown to nowhere")
-		}
+		return
+	}
+	if s.r.simulator != nil {
+		panic("trying to send teardown to nowhere")
 	}
 }
 
@@ -540,15 +541,16 @@ func (s *state) _teardownPath(from *peer, pathKey types.PublicKey, pathID types.
 	// if it is.
 	if asc := s._ascending; asc != nil && asc.PathID == pathID {
 		switch {
-		case from != nil && s.r.public.EqualTo(pathKey):
+		case from != s.r.local && s.r.public.EqualTo(pathKey):
 			// A teardown coming from the network will contain our public key as
 			// the teardown path key.
 			fallthrough
-		case from == nil && asc.PublicKey.EqualTo(pathKey):
+		case from == s.r.local && asc.PublicKey.EqualTo(pathKey):
 			// A teardown originating locally will contain the remote key as the
 			// teardown path key.
 			s._ascending = nil
 			delete(s._table, virtualSnakeIndex{asc.PublicKey, asc.PathID})
+			defer s._bootstrapNow()
 			return asc.Source
 		}
 	}
@@ -561,34 +563,16 @@ func (s *state) _teardownPath(from *peer, pathKey types.PublicKey, pathID types.
 		if k.PublicKey == pathKey && k.PathID == pathID {
 			delete(s._table, k)
 			switch {
-			case from != nil: // the teardown came from the network
-				switch from { // which port did the teardown come from?
-				case v.Source:
-					return v.Destination
-				case v.Destination:
-					return v.Source
-				default:
-					if s.r.simulator != nil {
-						panic("the teardown came from the wrong port")
-					}
-					return nil
-				}
+			case from == v.Source:
+				return v.Destination
+			case from == v.Destination:
+				return v.Source
 			case from == nil: // the teardown originated locally
-				if s.r.simulator != nil {
-					panic("intermediate path teardown should have from specified")
-				}
+				panic("intermediate path teardown should have specified 'from' parameter")
+			default:
+				panic("the teardown came from the wrong port")
 			}
 		}
-	}
-
-	if s.r.simulator != nil {
-		s.r.log.Println("Teardown for", pathKey, pathID)
-		s.r.log.Printf("Asc: %+v\n", s._ascending)
-		s.r.log.Printf("Desc: %+v\n", s._descending)
-		for _, e := range s._table {
-			s.r.log.Printf("Table: %+v\n", e)
-		}
-		//panic("expected to teardown")
 	}
 
 	return nil
