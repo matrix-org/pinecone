@@ -30,6 +30,10 @@ type virtualSnakeEntry struct {
 	RootSequence  types.Varu64
 }
 
+func (e *virtualSnakeEntry) valid() bool {
+	return time.Since(e.LastSeen) < virtualSnakeNeighExpiryPeriod
+}
+
 func (s *state) _maintainSnake() {
 	select {
 	case <-s.r.context.Done():
@@ -43,7 +47,7 @@ func (s *state) _maintainSnake() {
 
 	if asc := s._ascending; asc != nil {
 		switch {
-		case time.Since(asc.LastSeen) >= virtualSnakeNeighExpiryPeriod:
+		case !asc.valid():
 			s._sendTeardownForPath(s.r.local, asc.PublicKey, asc.PathID, nil, true)
 		case asc.RootPublicKey != rootAnn.RootPublicKey || asc.RootSequence != rootAnn.Sequence:
 			willBootstrap = canBootstrap
@@ -54,7 +58,7 @@ func (s *state) _maintainSnake() {
 
 	if desc := s._descending; desc != nil {
 		switch {
-		case time.Since(desc.LastSeen) >= virtualSnakeNeighExpiryPeriod:
+		case !desc.valid():
 			s._sendTeardownForPath(s.r.local, desc.PublicKey, desc.PathID, nil, false)
 		case desc.RootPublicKey != rootAnn.RootPublicKey || desc.RootSequence != rootAnn.Sequence:
 			//s._sendTeardownForPath(desc.PublicKey, desc.PathID, nil, false)
@@ -105,10 +109,6 @@ func (s *state) _nextHopsSNEK(from *peer, rx *types.Frame, bootstrap bool) *peer
 	rootAnn := s._rootAnnouncement()
 	rootKey := rootAnn.RootPublicKey
 	ancestors, parentPort := s._ancestors()
-	if len(ancestors) > 0 {
-		rootKey = ancestors[0]
-		ancestors = ancestors[1:]
-	}
 	bestKey := s.r.public
 	var bestPeer *peer
 	if !bootstrap {
@@ -133,9 +133,6 @@ func (s *state) _nextHopsSNEK(from *peer, rx *types.Frame, bootstrap bool) *peer
 			// Bootstraps always start working towards the root so that
 			// they go somewhere rather than getting stuck
 			newCandidate(rootKey, parentPort)
-		case destKey.EqualTo(rootKey):
-			// The destination is actually the root node itself
-			newCandidate(rootKey, parentPort)
 		case util.DHTOrdered(bestKey, destKey, rootKey):
 			// The destination key is higher than our own key, so
 			// start using the path to the root as the first candidate
@@ -149,20 +146,9 @@ func (s *state) _nextHopsSNEK(from *peer, rx *types.Frame, bootstrap bool) *peer
 		}
 	}
 
-	// These conditions guard from selecting obviously bad peers
-	peerValid := func(p *peer) bool {
-		if p == nil || !p.started.Load() {
-			return false
-		}
-		if s._announcements[p] == nil {
-			return false
-		}
-		return true
-	}
-
 	// Check our direct peers ancestors
 	for p, ann := range s._announcements {
-		if !peerValid(p) {
+		if !p.started.Load() {
 			continue
 		}
 		for _, hop := range ann.Signatures {
@@ -172,7 +158,7 @@ func (s *state) _nextHopsSNEK(from *peer, rx *types.Frame, bootstrap bool) *peer
 
 	// Check our direct peers
 	for p := range s._announcements {
-		if !peerValid(p) {
+		if !p.started.Load() {
 			continue
 		}
 		if peerKey := p.public; bestKey.EqualTo(peerKey) {
@@ -186,19 +172,12 @@ func (s *state) _nextHopsSNEK(from *peer, rx *types.Frame, bootstrap bool) *peer
 
 	// Check our DHT entries
 	for _, entry := range s._table {
-		switch {
-		case time.Since(entry.LastSeen) >= virtualSnakeNeighExpiryPeriod:
-			continue
-		default:
+		if entry.valid() {
 			newCheckedCandidate(entry.PublicKey, entry.Source)
 		}
 	}
 
-	// Return the candidate ports
-	if bestPeer != nil {
-		return bestPeer
-	}
-	return nil
+	return bestPeer
 }
 
 func (s *state) _handleBootstrap(from *peer, rx *types.Frame) error {
@@ -235,7 +214,7 @@ func (s *state) _handleBootstrap(from *peer, rx *types.Frame) error {
 		// We've received another bootstrap from our direct descending node.
 		// Send back an acknowledgement as this is OK.
 		acknowledge = true
-	case desc != nil && time.Since(desc.LastSeen) >= virtualSnakeNeighExpiryPeriod:
+	case desc != nil && !desc.valid():
 		// We already have a direct descending node, but we haven't seen it
 		// recently, so it's quite possible that it has disappeared. We'll
 		// therefore handle this bootstrap instead. If the original node comes
@@ -301,7 +280,7 @@ func (s *state) _handleBootstrapACK(from *peer, rx *types.Frame) error {
 		// Just refresh the record and then send a new path setup message to
 		// that node.
 		update = true
-	case asc != nil && time.Since(asc.LastSeen) >= virtualSnakeNeighExpiryPeriod:
+	case asc != nil && !asc.valid():
 		// We already have a direct ascending node, but we haven't seen it
 		// recently, so it's quite possible that it has disappeared. We'll
 		// therefore handle this bootstrap ACK instead. If the original node comes
@@ -387,13 +366,11 @@ func (s *state) _handleSetup(from *peer, rx *types.Frame, nexthop *peer) (bool, 
 		PathID:    setup.PathID,
 	}
 
-	/*
-		if _, ok := s._table[virtualSnakeIndex{rx.SourceKey, setup.PathID}]; ok {
-			s._sendTeardownForPath(s.r.local, rx.SourceKey, setup.PathID, nil, false)  // first call fixes routing table
-			s._sendTeardownForPath(s.r.local, rx.SourceKey, setup.PathID, from, false) // second call sends back to origin
-			return fmt.Errorf("setup is a duplicate")
-		}
-	*/
+	if _, ok := s._table[virtualSnakeIndex{rx.SourceKey, setup.PathID}]; ok {
+		s._sendTeardownForPath(s.r.local, rx.SourceKey, setup.PathID, nil, false)  // first call fixes routing table
+		s._sendTeardownForPath(s.r.local, rx.SourceKey, setup.PathID, from, false) // second call sends back to origin
+		return false, fmt.Errorf("setup is a duplicate")
+	}
 
 	// If we're at the destination of the setup then update our predecessor
 	// with information from the bootstrap.
@@ -575,9 +552,7 @@ func (s *state) _teardownPath(from *peer, pathKey types.PublicKey, pathID types.
 			case from == v.Destination:
 				return v.Source
 			case from == nil || from == s.r.local:
-				// originated locally but neither port matched so this is
-				// probably tearing down the asc/desc due to a port disconnect,
-				// but there's nowhere to forward to in that case
+				return nil
 			default:
 				if s.r.simulator != nil {
 					panic("the teardown came from the wrong port")
@@ -585,6 +560,8 @@ func (s *state) _teardownPath(from *peer, pathKey types.PublicKey, pathID types.
 			}
 		}
 	}
-
+	if s.r.simulator != nil {
+		panic("should have handled teardown but didn't")
+	}
 	return nil
 }
