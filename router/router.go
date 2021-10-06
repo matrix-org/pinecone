@@ -183,6 +183,9 @@ func (r *Router) AuthenticatedConnect(conn net.Conn, zone string, peertype int) 
 }
 
 func (r *Router) SNEKPing(ctx context.Context, dst types.PublicKey) (time.Duration, error) {
+	if dst == r.public {
+		return 0, nil
+	}
 	phony.Block(r.state, func() {
 		_ = r.state._forward(r.local, &types.Frame{
 			Type:           types.TypeSNEKPing,
@@ -206,6 +209,9 @@ func (r *Router) SNEKPing(ctx context.Context, dst types.PublicKey) (time.Durati
 }
 
 func (r *Router) TreePing(ctx context.Context, dst types.SwitchPorts) (time.Duration, error) {
+	if dst.EqualTo(r.state.coords()) {
+		return 0, nil
+	}
 	phony.Block(r.state, func() {
 		_ = r.state._forward(r.local, &types.Frame{
 			Type:        types.TypeTreePing,
