@@ -52,8 +52,15 @@ func (r *Router) DHTInfo() (asc, desc *virtualSnakeEntry, table map[virtualSnake
 		ann := r.state._rootAnnouncement()
 		asc = r.state._ascending
 		desc = r.state._descending
+		dupes := map[types.PublicKey]int{}
+		for k := range r.state._table {
+			dupes[k.PublicKey]++
+		}
 		for k, v := range r.state._table {
 			table[k] = *v
+			if c, ok := dupes[k.PublicKey]; ok && c > 1 {
+				stale += 1
+			}
 			switch {
 			case v.RootPublicKey != ann.RootPublicKey:
 				fallthrough
