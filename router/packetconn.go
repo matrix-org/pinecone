@@ -65,7 +65,7 @@ func (r *Router) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
 	var frame *types.Frame
 	select {
 	case <-r.local.context.Done():
-		r.local._stop(nil)
+		r.local.stop(nil)
 		return
 	case <-r.local.traffic.wait():
 		frame, _ = r.local.traffic.pop()

@@ -172,12 +172,10 @@ func main() {
 			for i := 0; i < numworkers; i++ {
 				go func() {
 					for pair := range tasks {
-						/*
-							log.Println("Tree ping from", pair.from, "to", pair.to)
-							if err := sim.PingTree(pair.from, pair.to); err != nil {
-								log.Println("Tree ping from", pair.from, "to", pair.to, "failed:", err)
-							}
-						*/
+						log.Println("Tree ping from", pair.from, "to", pair.to)
+						if err := sim.PingTree(pair.from, pair.to); err != nil {
+							log.Println("Tree ping from", pair.from, "to", pair.to, "failed:", err)
+						}
 						log.Println("SNEK ping from", pair.from, "to", pair.to)
 						if err := sim.PingSNEK(pair.from, pair.to); err != nil {
 							log.Println("SNEK ping from", pair.from, "to", pair.to, "failed:", err)

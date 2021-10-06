@@ -51,9 +51,6 @@ func (p *peer) String() string { // to make sim less ugly
 }
 
 func (p *peer) send(f *types.Frame) bool {
-	if p == nil {
-		return false
-	}
 	switch f.Type {
 	// Protocol messages
 	case types.TypeSTP, types.TypeKeepalive:
@@ -78,10 +75,9 @@ func (p *peer) send(f *types.Frame) bool {
 	return false
 }
 
-func (p *peer) _stop(err error) {
-	// The atomic switch here makes sure that the port won't be used
-	// instantly. Then we'll cancel the context and reduce the connection
-	// count.
+func (p *peer) stop(err error) {
+	// The atomic switch here immediately makes sure that the port won't be
+	// used. Then we'll cancel the context and reduce the connection count.
 	if !p.started.CAS(true, false) {
 		return
 	}
@@ -92,7 +88,7 @@ func (p *peer) _stop(err error) {
 	}
 	// Next we'll send a message to the state inbox asking it to clean
 	// up the port.
-	p.router.state.Act(&p.writer, func() {
+	p.router.state.Act(nil, func() {
 		p.router.state._portDisconnected(p)
 
 		for i, rp := range p.router.state._peers {
@@ -115,17 +111,17 @@ func (p *peer) _write() {
 	var frame *types.Frame
 	select {
 	case <-p.context.Done():
-		p._stop(nil)
+		p.stop(nil)
 		return
 	case frame = <-p.proto.pop():
-		defer p.proto.ack()
+		p.proto.ack()
 	default:
 		select {
 		case <-p.context.Done():
-			p._stop(nil)
+			p.stop(nil)
 			return
 		case frame = <-p.proto.pop():
-			defer p.proto.ack()
+			p.proto.ack()
 		case <-p.traffic.wait():
 			frame, _ = p.traffic.pop()
 		case <-time.After(PeerKeepaliveInterval):
@@ -143,69 +139,69 @@ func (p *peer) _write() {
 	buf := *b
 	n, err := frame.MarshalBinary(buf[:])
 	if err != nil {
-		p._stop(fmt.Errorf("frame.MarshalBinary: %w", err))
+		p.stop(fmt.Errorf("frame.MarshalBinary: %w", err))
 		return
 	}
 	if err := p.conn.SetWriteDeadline(time.Now().Add(PeerKeepaliveInterval)); err != nil {
-		p._stop(fmt.Errorf("p.conn.SetWriteDeadline: %w", err))
+		p.stop(fmt.Errorf("p.conn.SetWriteDeadline: %w", err))
 		return
 	}
 	wn, err := p.conn.Write(buf[:n])
 	if err != nil {
-		p._stop(fmt.Errorf("p.conn.Write: %w", err))
+		p.stop(fmt.Errorf("p.conn.Write: %w", err))
 		return
 	}
 	if wn != n {
-		p._stop(fmt.Errorf("p.conn.Write length %d != %d", wn, n))
+		p.stop(fmt.Errorf("p.conn.Write length %d != %d", wn, n))
 		return
 	}
 	if err := p.conn.SetWriteDeadline(time.Time{}); err != nil {
-		p._stop(fmt.Errorf("p.conn.SetWriteDeadline: %w", err))
+		p.stop(fmt.Errorf("p.conn.SetWriteDeadline: %w", err))
 		return
 	}
-	p.writer.Act(nil, p._write)
+	p.writer.Act(&p.writer, p._write)
 }
 
 func (p *peer) _read() {
 	select {
 	case <-p.context.Done():
-		p._stop(nil)
+		p.stop(nil)
 		return
 	default:
 	}
 	b := frameBufferPool.Get().(*[types.MaxFrameSize]byte)
 	defer frameBufferPool.Put(b)
 	if err := p.conn.SetReadDeadline(time.Now().Add(PeerKeepaliveTimeout)); err != nil {
-		p._stop(fmt.Errorf("p.conn.SetReadDeadline: %w", err))
+		p.stop(fmt.Errorf("p.conn.SetReadDeadline: %w", err))
 		return
 	}
 	if _, err := io.ReadFull(p.conn, b[:8]); err != nil {
-		p._stop(fmt.Errorf("io.ReadFull: %w", err))
+		p.stop(fmt.Errorf("io.ReadFull: %w", err))
 		return
 	}
 	if !bytes.Equal(b[:4], types.FrameMagicBytes) {
-		p._stop(fmt.Errorf("missing magic bytes"))
+		p.stop(fmt.Errorf("missing magic bytes"))
 		return
 	}
 	expecting := int(binary.BigEndian.Uint16(b[6:8]))
 	n, err := io.ReadFull(p.conn, b[8:expecting])
 	if err != nil {
-		p._stop(fmt.Errorf("io.ReadFull: %w", err))
+		p.stop(fmt.Errorf("io.ReadFull: %w", err))
 		return
 	}
 	if err := p.conn.SetReadDeadline(time.Time{}); err != nil {
-		p._stop(fmt.Errorf("conn.SetReadDeadline: %w", err))
+		p.stop(fmt.Errorf("conn.SetReadDeadline: %w", err))
 		return
 	}
 	if n < expecting-8 {
-		p._stop(fmt.Errorf("expecting %d bytes but got %d bytes", expecting, n))
+		p.stop(fmt.Errorf("expecting %d bytes but got %d bytes", expecting, n))
 		return
 	}
 	f := &types.Frame{
 		Payload: make([]byte, 0, types.MaxPayloadSize),
 	}
 	if _, err := f.UnmarshalBinary(b[:n+8]); err != nil {
-		p._stop(fmt.Errorf("f.UnmarshalBinary: %w", err))
+		p.stop(fmt.Errorf("f.UnmarshalBinary: %w", err))
 		return
 	}
 	p.router.state.Act(&p.reader, func() {
@@ -213,5 +209,5 @@ func (p *peer) _read() {
 			p.router.log.Println("Error handling packet:", err)
 		}
 	})
-	p.reader.Act(nil, p._read)
+	p.reader.Act(&p.reader, p._read)
 }

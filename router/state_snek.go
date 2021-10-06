@@ -387,7 +387,6 @@ func (s *state) _handleSetup(from *peer, rx *types.Frame, nexthop *peer) (bool, 
 		PathID:    setup.PathID,
 	}
 
-	// Is the setup a duplicate of one we already have in our table?
 	/*
 		if _, ok := s._table[virtualSnakeIndex{rx.SourceKey, setup.PathID}]; ok {
 			s._sendTeardownForPath(s.r.local, rx.SourceKey, setup.PathID, nil, false)  // first call fixes routing table
@@ -540,24 +539,32 @@ func (s *state) _teardownPath(from *peer, pathKey types.PublicKey, pathID types.
 	// Otherwise, we can only tear down paths that we know about, so let's see
 	// if it is.
 	if asc := s._ascending; asc != nil && asc.PathID == pathID {
-		switch {
-		case from != s.r.local && s.r.public.EqualTo(pathKey):
-			// A teardown coming from the network will contain our public key as
-			// the teardown path key.
-			fallthrough
-		case from == s.r.local && asc.PublicKey.EqualTo(pathKey):
-			// A teardown originating locally will contain the remote key as the
-			// teardown path key.
+		clean := func() {
 			s._ascending = nil
 			delete(s._table, virtualSnakeIndex{asc.PublicKey, asc.PathID})
-			defer s._bootstrapNow()
+		}
+		switch {
+		case from != s.r.local && s.r.public.EqualTo(pathKey): // from network
+			clean()
+			return nil
+		case from == s.r.local && asc.PublicKey.EqualTo(pathKey): // originated locally
+			clean()
 			return asc.Source
 		}
 	}
 	if desc := s._descending; desc != nil && desc.PublicKey.EqualTo(pathKey) && desc.PathID == pathID {
-		s._descending = nil
-		delete(s._table, virtualSnakeIndex{desc.PublicKey, desc.PathID})
-		return desc.Source
+		clean := func() {
+			s._descending = nil
+			delete(s._table, virtualSnakeIndex{desc.PublicKey, desc.PathID})
+		}
+		switch {
+		case from != s.r.local: // from network
+			clean()
+			return nil
+		case from == s.r.local: // originated locally
+			clean()
+			return desc.Source
+		}
 	}
 	for k, v := range s._table {
 		if k.PublicKey == pathKey && k.PathID == pathID {
@@ -567,10 +574,14 @@ func (s *state) _teardownPath(from *peer, pathKey types.PublicKey, pathID types.
 				return v.Destination
 			case from == v.Destination:
 				return v.Source
-			case from == nil: // the teardown originated locally
-				panic("intermediate path teardown should have specified 'from' parameter")
+			case from == nil || from == s.r.local:
+				// originated locally but neither port matched so this is
+				// probably tearing down the asc/desc due to a port disconnect,
+				// but there's nowhere to forward to in that case
 			default:
-				panic("the teardown came from the wrong port")
+				if s.r.simulator != nil {
+					panic("the teardown came from the wrong port")
+				}
 			}
 		}
 	}

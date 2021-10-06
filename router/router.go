@@ -210,7 +210,7 @@ func (r *Router) TreePing(ctx context.Context, dst types.SwitchPorts) (time.Dura
 		_ = r.state._forward(r.local, &types.Frame{
 			Type:        types.TypeTreePing,
 			Destination: dst,
-			Source:      r.state.coords(),
+			Source:      r.state._coords(),
 		})
 	})
 	start := time.Now()

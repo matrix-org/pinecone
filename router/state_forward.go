@@ -2,20 +2,14 @@ package router
 
 import (
 	"fmt"
-	"math"
 
 	"github.com/matrix-org/pinecone/types"
 )
 
 func (s *state) _forward(p *peer, f *types.Frame) error {
+	var response *types.Frame
 	nexthop := p.router.state._nextHopsFor(p, f)
 	deadend := nexthop == nil || nexthop == p.router.local
-
-	// TODO: remove this eventually
-	f.Version++
-	if f.Version == math.MaxUint8-1 {
-		return fmt.Errorf("TTL expired for frame of type %s", f.Type)
-	}
 
 	switch f.Type {
 	// Protocol messages
@@ -52,29 +46,24 @@ func (s *state) _forward(p *peer, f *types.Frame) error {
 		}
 
 	case types.TypeVirtualSnakeTeardown:
-		if nexthop, err := p.router.state._handleTeardown(p, f); err == nil {
-			// Teardowns are a special case where we need to send to all
-			// of the returned candidate ports, not just the first one that
-			// we can.
-			if nexthop != nil {
-				nexthop.send(f)
-			}
-		} else {
+		var err error
+		if nexthop, err = p.router.state._handleTeardown(p, f); err != nil {
 			return fmt.Errorf("p.router.state._handleTeardown (port %d): %s", p.port, err)
 		}
-		return nil
+		if nexthop == nil {
+			return nil
+		}
 
 	// Traffic messages
 	case types.TypeVirtualSnake, types.TypeGreedy, types.TypeSource:
 
 	case types.TypeSNEKPing:
 		if f.DestinationKey == p.router.public {
-			p.traffic.push(&types.Frame{
+			response = &types.Frame{
 				Type:           types.TypeSNEKPong,
 				DestinationKey: f.SourceKey,
 				SourceKey:      p.router.public,
-			})
-			return nil
+			}
 		}
 
 	case types.TypeSNEKPong:
@@ -90,12 +79,11 @@ func (s *state) _forward(p *peer, f *types.Frame) error {
 
 	case types.TypeTreePing:
 		if deadend {
-			p.traffic.push(&types.Frame{
+			response = &types.Frame{
 				Type:        types.TypeTreePong,
 				Destination: f.Source,
-				Source:      p.router.state.coords(),
-			})
-			return nil
+				Source:      p.router.state._coords(),
+			}
 		}
 
 	case types.TypeTreePong:
@@ -110,8 +98,19 @@ func (s *state) _forward(p *peer, f *types.Frame) error {
 		}
 	}
 
+	if response != nil {
+		if nexthop = p.router.state._nextHopsFor(s.r.local, response); nexthop != s.r.local {
+			if !nexthop.traffic.push(response) {
+				return fmt.Errorf("dropping response packet of type %s", f.Type)
+			}
+		}
+		return nil
+	}
+
 	if p := nexthop; p != nil {
-		p.send(f)
+		if !p.send(f) {
+			return fmt.Errorf("dropping forwarded packet of type %s", f.Type)
+		}
 		return nil
 	}
 
