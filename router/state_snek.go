@@ -334,7 +334,7 @@ func (s *state) _handleBootstrapACK(from *peer, rx *types.Frame) error {
 		Payload:        buf,
 	}
 	nexthop := s.r.state._nextHopsTree(s.r.local, send)
-	if nexthop == nil || nexthop.proto == nil {
+	if nexthop == nil || nexthop == s.r.local || nexthop.proto == nil {
 		return fmt.Errorf("no next-hop")
 	}
 	if !nexthop.proto.push(send) {
@@ -353,13 +353,13 @@ func (s *state) _handleBootstrapACK(from *peer, rx *types.Frame) error {
 	return nil
 }
 
-func (s *state) _handleSetup(from *peer, rx *types.Frame, nexthop *peer) (bool, error) {
+func (s *state) _handleSetup(from *peer, rx *types.Frame, nexthop *peer) error {
 	root := s._rootAnnouncement()
 
 	// Unmarshal the setup.
 	var setup types.VirtualSnakeSetup
 	if _, err := setup.UnmarshalBinary(rx.Payload); err != nil {
-		return false, fmt.Errorf("setup.UnmarshalBinary: %w", err)
+		return fmt.Errorf("setup.UnmarshalBinary: %w", err)
 	}
 	index := virtualSnakeIndex{
 		PublicKey: rx.SourceKey,
@@ -369,7 +369,7 @@ func (s *state) _handleSetup(from *peer, rx *types.Frame, nexthop *peer) (bool, 
 	if _, ok := s._table[virtualSnakeIndex{rx.SourceKey, setup.PathID}]; ok {
 		s._sendTeardownForPath(s.r.local, rx.SourceKey, setup.PathID, nil, false)  // first call fixes routing table
 		s._sendTeardownForPath(s.r.local, rx.SourceKey, setup.PathID, from, false) // second call sends back to origin
-		return false, fmt.Errorf("setup is a duplicate")
+		return fmt.Errorf("setup is a duplicate")
 	}
 
 	// If we're at the destination of the setup then update our predecessor
@@ -414,7 +414,7 @@ func (s *state) _handleSetup(from *peer, rx *types.Frame, nexthop *peer) (bool, 
 		}
 		if !update {
 			s._sendTeardownForPath(s.r.local, rx.SourceKey, setup.PathID, from, false)
-			return false, nil
+			return nil
 		}
 		if desc != nil {
 			// Tear down the previous path, if there was one.
@@ -436,30 +436,30 @@ func (s *state) _handleSetup(from *peer, rx *types.Frame, nexthop *peer) (bool, 
 		}
 		s._table[index] = entry
 		s._descending = entry
-		return false, nil
+		return nil
 	}
 
-	if nexthop != nil && nexthop != s.r.local {
-		// Add a new routing table entry as we are intermediate to
-		// the path.
-		index := virtualSnakeIndex{
-			PublicKey: rx.SourceKey,
-			PathID:    setup.PathID,
-		}
-		entry := &virtualSnakeEntry{
-			virtualSnakeIndex: index,
-			LastSeen:          time.Now(),
-			RootPublicKey:     setup.RootPublicKey,
-			RootSequence:      setup.RootSequence,
-			Source:            from,    // node with lower of the two keys
-			Destination:       nexthop, // node with higher of the two keys
-		}
-		s._table[index] = entry
-		return true, nil
+	nexthop = s.r.state._nextHopsTree(s.r.local, rx)
+	if nexthop == nil || nexthop == s.r.local || nexthop.proto == nil {
+		s._sendTeardownForPath(s.r.local, rx.SourceKey, setup.PathID, from, false)
+		return fmt.Errorf("no next-hop")
 	}
-
-	s._sendTeardownForPath(s.r.local, rx.SourceKey, setup.PathID, from, false)
-	return false, fmt.Errorf("unable to find next-hop for intermediate path setup")
+	if !nexthop.proto.push(rx) {
+		s._sendTeardownForPath(s.r.local, rx.SourceKey, setup.PathID, from, false)
+		return fmt.Errorf("failed to send setup")
+	}
+	// Add a new routing table entry as we are intermediate to
+	// the path.
+	entry := &virtualSnakeEntry{
+		virtualSnakeIndex: index,
+		LastSeen:          time.Now(),
+		RootPublicKey:     setup.RootPublicKey,
+		RootSequence:      setup.RootSequence,
+		Source:            from,    // node with lower of the two keys
+		Destination:       nexthop, // node with higher of the two keys
+	}
+	s._table[index] = entry
+	return nil
 }
 
 func (s *state) _handleTeardown(from *peer, rx *types.Frame) (*peer, error) {

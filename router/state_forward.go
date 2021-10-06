@@ -38,11 +38,10 @@ func (s *state) _forward(p *peer, f *types.Frame) error {
 		}
 
 	case types.TypeVirtualSnakeSetup:
-		if forward, err := s._handleSetup(p, f, nexthop); err != nil {
+		if err := s._handleSetup(p, f, nexthop); err != nil {
 			return fmt.Errorf("s._handleSetup (port %d): %s", p.port, err)
-		} else if !forward {
-			return nil
 		}
+		return nil
 
 	case types.TypeVirtualSnakeTeardown:
 		var err error
