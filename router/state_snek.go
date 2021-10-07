@@ -453,7 +453,7 @@ func (s *state) _handleSetup(from *peer, rx *types.Frame, nexthop *peer) error {
 	return nil
 }
 
-func (s *state) _handleTeardown(from *peer, rx *types.Frame) (*peer, error) {
+func (s *state) _handleTeardown(from *peer, rx *types.Frame) ([]*peer, error) {
 	if len(rx.Payload) < 8 {
 		return nil, fmt.Errorf("payload too short")
 	}
@@ -468,16 +468,17 @@ func (s *state) _sendTeardownForRejectedPath(pathKey types.PublicKey, pathID typ
 	if _, ok := s._table[virtualSnakeIndex{pathKey, pathID}]; ok {
 		panic("rejected path should not be in routing table")
 	}
-	frame := s._getTeardown(pathKey, pathID, false)
 	if via != nil {
-		via.proto.push(frame)
+		via.proto.push(s._getTeardown(pathKey, pathID, false))
 	}
 }
 
 func (s *state) _sendTeardownForExistingPath(from *peer, pathKey types.PublicKey, pathID types.VirtualSnakePathID, ascending bool) {
 	frame := s._getTeardown(pathKey, pathID, ascending)
-	if nexthop := s._teardownPath(from, pathKey, pathID); nexthop != nil && nexthop.proto != nil {
-		nexthop.proto.push(frame)
+	for _, nexthop := range s._teardownPath(from, pathKey, pathID) {
+		if nexthop != nil && nexthop.proto != nil {
+			nexthop.proto.push(frame)
+		}
 	}
 }
 
@@ -505,7 +506,7 @@ func (s *state) _getTeardown(pathKey types.PublicKey, pathID types.VirtualSnakeP
 	}
 }
 
-func (s *state) _teardownPath(from *peer, pathKey types.PublicKey, pathID types.VirtualSnakePathID) *peer {
+func (s *state) _teardownPath(from *peer, pathKey types.PublicKey, pathID types.VirtualSnakePathID) []*peer {
 	if asc := s._ascending; asc != nil && asc.PathID == pathID {
 		switch {
 		case from == s.r.local && asc.PublicKey.EqualTo(pathKey): // originated locally
@@ -513,28 +514,31 @@ func (s *state) _teardownPath(from *peer, pathKey types.PublicKey, pathID types.
 			fallthrough
 		case from == asc.Source && s.r.public.EqualTo(pathKey): // from network
 			s._ascending = nil
-			return asc.Source
+			return []*peer{asc.Source}
 		}
 	}
 	if desc := s._descending; desc != nil && desc.PublicKey.EqualTo(pathKey) && desc.PathID == pathID {
 		switch {
-		case from == desc.Source:
+		case from == desc.Source: // from network
 			fallthrough
-		case from == s.r.local:
+		case from == s.r.local: // originated locally
 			s._descending = nil
 			delete(s._table, virtualSnakeIndex{desc.PublicKey, desc.PathID})
-			return desc.Source
+			return []*peer{desc.Source}
 		}
 	}
 	for k, v := range s._table {
 		if k.PublicKey == pathKey && k.PathID == pathID {
 			switch {
-			case from == v.Source:
+			case from == s.r.local: // happens when we're tearing down an existing duplicate path
 				delete(s._table, k)
-				return v.Destination
-			case from == v.Destination:
+				return []*peer{v.Destination, v.Source}
+			case from == v.Source: // from network, return the opposite direction
 				delete(s._table, k)
-				return v.Source
+				return []*peer{v.Destination}
+			case from == v.Destination: // from network, return the opposite direction
+				delete(s._table, k)
+				return []*peer{v.Source}
 			}
 		}
 	}

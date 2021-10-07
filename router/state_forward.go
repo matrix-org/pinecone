@@ -48,12 +48,9 @@ func (s *state) _forward(p *peer, f *types.Frame) error {
 	deadend := nexthop == nil || nexthop == p.router.local
 
 	// TODO: remove this when we figure out why loops happen.
-	switch f.Type {
-	case types.TypeVirtualSnake, types.TypeSNEKPing, types.TypeSNEKPong:
-		f.Extra[0]++
-		if f.Extra[0] == math.MaxUint8-1 {
-			return fmt.Errorf("TTL expired on packet of type %s", f.Type)
-		}
+	f.Extra[0]++
+	if f.Extra[0] == math.MaxUint8-1 {
+		return fmt.Errorf("TTL expired on packet of type %s", f.Type)
 	}
 
 	switch f.Type {
@@ -90,13 +87,16 @@ func (s *state) _forward(p *peer, f *types.Frame) error {
 		return nil
 
 	case types.TypeVirtualSnakeTeardown:
-		var err error
-		if nexthop, err = s._handleTeardown(p, f); err != nil {
+		if nexthops, err := s._handleTeardown(p, f); err != nil {
 			return fmt.Errorf("s._handleTeardown (port %d): %s", p.port, err)
+		} else {
+			for _, nexthop := range nexthops {
+				if nexthop != nil && nexthop.proto != nil {
+					nexthop.proto.push(f)
+				}
+			}
 		}
-		if nexthop == nil {
-			return nil
-		}
+		return nil
 
 	// Traffic messages
 	case types.TypeVirtualSnake, types.TypeGreedy, types.TypeSource:
