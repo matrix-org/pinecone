@@ -168,9 +168,10 @@ func (s *state) _nextHopsSNEK(from *peer, rx *types.Frame, bootstrap bool) *peer
 
 	// Check our DHT entries
 	for _, entry := range s._table {
-		if entry.valid() && entry.Source.started.Load() {
-			newCheckedCandidate(entry.PublicKey, entry.Source)
+		if !entry.Source.started.Load() || !entry.valid() {
+			continue
 		}
+		newCheckedCandidate(entry.PublicKey, entry.Source)
 	}
 
 	return bestPeer

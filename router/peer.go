@@ -175,7 +175,7 @@ func (p *peer) _read() {
 		p.stop(fmt.Errorf("p.conn.SetReadDeadline: %w", err))
 		return
 	}
-	if _, err := io.ReadFull(p.conn, b[:8]); err != nil {
+	if _, err := io.ReadFull(p.conn, b[:types.FrameHeaderLength]); err != nil {
 		p.stop(fmt.Errorf("io.ReadFull: %w", err))
 		return
 	}
@@ -183,8 +183,8 @@ func (p *peer) _read() {
 		p.stop(fmt.Errorf("missing magic bytes"))
 		return
 	}
-	expecting := int(binary.BigEndian.Uint16(b[6:8]))
-	n, err := io.ReadFull(p.conn, b[8:expecting])
+	expecting := int(binary.BigEndian.Uint16(b[types.FrameHeaderLength-2 : types.FrameHeaderLength]))
+	n, err := io.ReadFull(p.conn, b[types.FrameHeaderLength:expecting])
 	if err != nil {
 		p.stop(fmt.Errorf("io.ReadFull: %w", err))
 		return
@@ -193,14 +193,14 @@ func (p *peer) _read() {
 		p.stop(fmt.Errorf("conn.SetReadDeadline: %w", err))
 		return
 	}
-	if n < expecting-8 {
+	if n < expecting-types.FrameHeaderLength {
 		p.stop(fmt.Errorf("expecting %d bytes but got %d bytes", expecting, n))
 		return
 	}
 	f := &types.Frame{
 		Payload: make([]byte, 0, types.MaxPayloadSize),
 	}
-	if _, err := f.UnmarshalBinary(b[:n+8]); err != nil {
+	if _, err := f.UnmarshalBinary(b[:n+types.FrameHeaderLength]); err != nil {
 		p.stop(fmt.Errorf("f.UnmarshalBinary: %w", err))
 		return
 	}

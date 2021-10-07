@@ -28,7 +28,7 @@ const MaxPayloadSize = 65535
 
 // MaxFrameSize is the maximum size that a single frame can be, including
 // all headers.
-const MaxFrameSize = 65535*3 + 14
+const MaxFrameSize = 65535*3 + 16
 
 type FrameVersion uint8
 type FrameType uint8
@@ -55,9 +55,13 @@ const (
 
 var FrameMagicBytes = []byte{0x70, 0x69, 0x6e, 0x65}
 
+// 4 magic bytes, 1 byte version, 1 byte type, 2 bytes extra, 2 bytes frame length
+const FrameHeaderLength = 10
+
 type Frame struct {
 	Version        FrameVersion
 	Type           FrameType
+	Extra          [2]byte
 	Destination    SwitchPorts
 	DestinationKey PublicKey
 	Source         SwitchPorts
@@ -67,6 +71,9 @@ type Frame struct {
 
 func (f *Frame) Reset() {
 	f.Version, f.Type = 0, 0
+	for i := range f.Extra {
+		f.Extra[i] = 0
+	}
 	f.Destination = SwitchPorts{}
 	f.DestinationKey = PublicKey{}
 	f.Source = SwitchPorts{}
@@ -77,7 +84,8 @@ func (f *Frame) Reset() {
 func (f *Frame) MarshalBinary(buffer []byte) (int, error) {
 	copy(buffer[:4], FrameMagicBytes)
 	buffer[4], buffer[5] = byte(f.Version), byte(f.Type)
-	offset := 8
+	copy(buffer[6:], f.Extra[:])
+	offset := FrameHeaderLength
 	switch f.Type {
 	case TypeVirtualSnakeBootstrap: // destination = key, source = coords
 		payloadLen := len(f.Payload)
@@ -175,24 +183,26 @@ func (f *Frame) MarshalBinary(buffer []byte) (int, error) {
 		}
 	}
 
-	binary.BigEndian.PutUint16(buffer[6:8], uint16(offset))
+	binary.BigEndian.PutUint16(buffer[FrameHeaderLength-2:FrameHeaderLength], uint16(offset))
 	return offset, nil
 }
 
 func (f *Frame) UnmarshalBinary(data []byte) (int, error) {
 	f.Reset()
-	if len(data) < 8 {
+	if len(data) < FrameHeaderLength {
 		return 0, fmt.Errorf("frame is not long enough to include metadata")
 	}
 	if !bytes.Equal(data[:4], FrameMagicBytes) {
 		return 0, fmt.Errorf("frame doesn't contain magic bytes")
 	}
 	f.Version, f.Type = FrameVersion(data[4]), FrameType(data[5])
-	framelen := int(binary.BigEndian.Uint16(data[6:8]))
+	f.Extra[0], f.Extra[1] = data[6], data[7]
+	copy(f.Extra[:], data[6:])
+	framelen := int(binary.BigEndian.Uint16(data[FrameHeaderLength-2 : FrameHeaderLength]))
 	if len(data) != framelen {
 		return 0, fmt.Errorf("frame length incorrect")
 	}
-	offset := 8
+	offset := FrameHeaderLength
 	switch f.Type {
 	case TypeVirtualSnakeBootstrap: // destination = key, source = coords
 		payloadLen := int(binary.BigEndian.Uint16(data[offset+0 : offset+2]))
