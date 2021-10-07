@@ -22,7 +22,9 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"runtime/pprof"
 	"syscall"
+	"time"
 
 	"net/http"
 	_ "net/http/pprof"
@@ -138,33 +140,25 @@ func main() {
 	for {
 		switch <-sigs {
 		case syscall.SIGUSR1:
-			pineconeRouter.ToggleDebug()
-			/*
-				fn := fmt.Sprintf("/tmp/profile.%d", os.Getpid())
-				logger.Println("Requested profile:", fn)
-				fp, err := os.Create(fn)
-				if err != nil {
-					logger.Println("Failed to create profile:", err)
-					return
-				}
-				defer fp.Close()
-				if err := pprof.StartCPUProfile(fp); err != nil {
-					logger.Println("Failed to start profiling:", err)
-					return
-				}
-				time.AfterFunc(time.Second*10, func() {
-					pprof.StopCPUProfile()
-					logger.Println("Profile written:", fn)
-				})
-			*/
+			fn := fmt.Sprintf("/tmp/profile.%d", os.Getpid())
+			logger.Println("Requested profile:", fn)
+			fp, err := os.Create(fn)
+			if err != nil {
+				logger.Println("Failed to create profile:", err)
+				return
+			}
+			defer fp.Close()
+			if err := pprof.StartCPUProfile(fp); err != nil {
+				logger.Println("Failed to start profiling:", err)
+				return
+			}
+			time.AfterFunc(time.Second*10, func() {
+				pprof.StopCPUProfile()
+				logger.Println("Profile written:", fn)
+			})
 
 		case syscall.SIGUSR2:
-			logger.Println("Public key:", pineconeRouter.PublicKey())
-			logger.Println("Root key:", pineconeRouter.RootPublicKey())
-			logger.Println("Peers:")
-			for _, p := range pineconeRouter.Peers() {
-				logger.Println("*", p.Port, p.PublicKey)
-			}
+			pineconeRouter.ToggleDebug()
 		}
 	}
 }
