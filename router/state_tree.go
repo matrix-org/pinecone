@@ -130,7 +130,7 @@ func (s *state) _nextHopsTree(from *peer, f *types.Frame) *peer {
 	// because that guarantees the last candidate port is always 0, so
 	// that if we don't know what else to do with a packet, we hand it
 	// up to the local router.
-	bestPeer := s.r.local
+	var bestPeer *peer
 	newCandidate := func(peer *peer) {
 		bestPeer = peer
 	}
@@ -156,19 +156,17 @@ func (s *state) _nextHopsTree(from *peer, f *types.Frame) *peer {
 
 	// Now work out which of our peers takes the message closer.
 	bestDist := ourDist
-	bestSeq := ourRoot.Sequence
-	for _, p := range s._peers {
-		if p == nil || !p.started.Load() {
+	for p, ann := range s._announcements {
+		switch {
+		case !p.started.Load():
 			continue
-		}
-		ann := s._announcements[p]
-
-		// Don't deliberately create routing loops by forwarding
-		// to a node that doesn't share our root - the coordinate
-		// system will be different - or to the node that sent us
-		// the packet. Also don't bother looking at nodes for which
-		// we have no announcement yet.
-		if ann == nil || p == from || ann.RootPublicKey != ourRoot.RootPublicKey {
+		case ann == nil:
+			continue
+		case p == from:
+			continue
+		case ourRoot.RootPublicKey != ann.RootPublicKey:
+			continue
+		case ourRoot.Sequence != ann.Sequence:
 			continue
 		}
 
@@ -185,17 +183,6 @@ func (s *state) _nextHopsTree(from *peer, f *types.Frame) *peer {
 			// The peer is closer to the destination.
 			bestDist = peerDist
 			newCandidate(p)
-
-		case peerDist > bestDist:
-			// The peer is further away than our best candidate so far.
-
-		case ann.Sequence > bestSeq:
-			// It's the same distance but a higher sequence number, so
-			// probably has a faster path to the root.
-			bestSeq = ann.Sequence
-			newCandidate(p)
-
-		default:
 		}
 	}
 

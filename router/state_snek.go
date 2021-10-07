@@ -361,10 +361,10 @@ func (s *state) _handleSetup(from *peer, rx *types.Frame, nexthop *peer) error {
 
 	if _, ok := s._table[virtualSnakeIndex{rx.SourceKey, setup.PathID}]; ok {
 		s._sendTeardownForExistingPath(s.r.local, rx.SourceKey, setup.PathID, false) // first call fixes routing table
-		s._sendTeardownForRejectedPath(rx.SourceKey, setup.PathID, from)             // second call sends back to origin
 		if _, ok := s._table[virtualSnakeIndex{rx.SourceKey, setup.PathID}]; ok {
 			panic("should have cleaned up duplicate path in routing table")
 		}
+		s._sendTeardownForRejectedPath(rx.SourceKey, setup.PathID, from) // second call sends back to origin
 		return fmt.Errorf("setup is a duplicate")
 	}
 
@@ -438,7 +438,7 @@ func (s *state) _handleSetup(from *peer, rx *types.Frame, nexthop *peer) error {
 	// can't do that then there's no point in keeping the path.
 	if nexthop == nil || nexthop == s.r.local || nexthop.proto == nil || !nexthop.proto.push(rx) {
 		s._sendTeardownForRejectedPath(rx.SourceKey, setup.PathID, from)
-		return fmt.Errorf("unable to forward setup packet")
+		return fmt.Errorf("unable to forward setup packet (next-hop %s)", nexthop)
 	}
 	// Add a new routing table entry as we are intermediate to
 	// the path.
@@ -506,46 +506,35 @@ func (s *state) _getTeardown(pathKey types.PublicKey, pathID types.VirtualSnakeP
 }
 
 func (s *state) _teardownPath(from *peer, pathKey types.PublicKey, pathID types.VirtualSnakePathID) *peer {
-	// Otherwise, we can only tear down paths that we know about, so let's see
-	// if it is.
 	if asc := s._ascending; asc != nil && asc.PathID == pathID {
-		clean := func() {
-			s._ascending = nil
-			delete(s._table, virtualSnakeIndex{asc.PublicKey, asc.PathID})
-		}
 		switch {
-		case from != s.r.local && s.r.public.EqualTo(pathKey): // from network
-			clean()
-			return nil
 		case from == s.r.local && asc.PublicKey.EqualTo(pathKey): // originated locally
-			clean()
+			defer s._bootstrapNow()
+			fallthrough
+		case from == asc.Source && s.r.public.EqualTo(pathKey): // from network
+			s._ascending = nil
 			return asc.Source
 		}
 	}
 	if desc := s._descending; desc != nil && desc.PublicKey.EqualTo(pathKey) && desc.PathID == pathID {
-		clean := func() {
+		switch {
+		case from == desc.Source:
+			fallthrough
+		case from == s.r.local:
 			s._descending = nil
 			delete(s._table, virtualSnakeIndex{desc.PublicKey, desc.PathID})
-		}
-		switch {
-		case from != s.r.local: // from network
-			clean()
-			return nil
-		case from == s.r.local: // originated locally
-			clean()
 			return desc.Source
 		}
 	}
 	for k, v := range s._table {
 		if k.PublicKey == pathKey && k.PathID == pathID {
-			delete(s._table, k)
 			switch {
 			case from == v.Source:
+				delete(s._table, k)
 				return v.Destination
 			case from == v.Destination:
+				delete(s._table, k)
 				return v.Source
-			default:
-				return nil
 			}
 		}
 	}

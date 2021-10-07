@@ -47,9 +47,13 @@ func (s *state) _forward(p *peer, f *types.Frame) error {
 	nexthop := s._nextHopsFor(p, f)
 	deadend := nexthop == nil || nexthop == p.router.local
 
-	f.Extra[0]++
-	if f.Extra[0] == math.MaxUint8-1 {
-		return fmt.Errorf("TTL expired on packet of type %s", f.Type)
+	// TODO: remove this when we figure out why loops happen.
+	switch f.Type {
+	case types.TypeVirtualSnake, types.TypeSNEKPing, types.TypeSNEKPong:
+		f.Extra[0]++
+		if f.Extra[0] == math.MaxUint8-1 {
+			return fmt.Errorf("TTL expired on packet of type %s", f.Type)
+		}
 	}
 
 	switch f.Type {

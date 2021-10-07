@@ -64,19 +64,39 @@ func (s *state) _maintainSnakeIn(d time.Duration) {
 }
 
 func (s *state) _portDisconnected(peer *peer) {
+	peercount := 0
+	for _, p := range s._peers {
+		if p != nil && p.started.Load() {
+			peercount++
+		}
+	}
+	if peercount == 0 {
+		s._parent = nil
+		s._ascending = nil
+		s._descending = nil
+		for k := range s._announcements {
+			delete(s._announcements, k)
+		}
+		for k := range s._table {
+			delete(s._table, k)
+		}
+		return
+	}
+
 	bootstrap := false
 	delete(s._announcements, peer)
+
+	if asc := s._ascending; asc != nil && asc.Source == peer {
+		s._teardownPath(s.r.local, asc.PublicKey, asc.PathID)
+		bootstrap = true
+	}
+	if desc := s._descending; desc != nil && desc.Source == peer {
+		s._teardownPath(s.r.local, desc.PublicKey, desc.PathID)
+	}
 	for k, v := range s._table {
 		if v.Destination == peer || v.Source == peer {
 			s._sendTeardownForExistingPath(peer, k.PublicKey, k.PathID, false)
 		}
-	}
-	if asc := s._ascending; asc != nil && asc.Source == peer {
-		s._teardownPath(peer, asc.PublicKey, asc.PathID)
-		bootstrap = true
-	}
-	if desc := s._descending; desc != nil && desc.Source == peer {
-		s._teardownPath(peer, desc.PublicKey, desc.PathID)
 	}
 	if s._parent == peer {
 		bootstrap = bootstrap || s._selectNewParent()
