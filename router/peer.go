@@ -108,9 +108,12 @@ func (p *peer) stop(err error) {
 }
 
 func (p *peer) _write() {
+	if !p.started.Load() {
+		return
+	}
 	var frame *types.Frame
 	keepalive := func() <-chan time.Time {
-		if p.router.keepalives {
+		if !p.router.keepalives {
 			return make(chan time.Time)
 		}
 		return time.After(PeerKeepaliveInterval)
@@ -138,7 +141,11 @@ func (p *peer) _write() {
 	}
 	if frame == nil {
 		// usually happens if the queue has been reset
-		p.writer.Act(nil, p._write)
+		p.stop(fmt.Errorf("queue reset"))
+		return
+	}
+	if !p.started.Load() {
+		// check that the peering wasn't killed while we waited
 		return
 	}
 	b := frameBufferPool.Get().(*[types.MaxFrameSize]byte)
@@ -174,11 +181,8 @@ func (p *peer) _write() {
 }
 
 func (p *peer) _read() {
-	select {
-	case <-p.context.Done():
-		p.stop(nil)
+	if !p.started.Load() {
 		return
-	default:
 	}
 	b := frameBufferPool.Get().(*[types.MaxFrameSize]byte)
 	defer frameBufferPool.Put(b)
@@ -207,6 +211,10 @@ func (p *peer) _read() {
 			p.stop(fmt.Errorf("conn.SetReadDeadline: %w", err))
 			return
 		}
+	}
+	if !p.started.Load() {
+		// check that the peering wasn't killed while we waited
+		return
 	}
 	if n < expecting-types.FrameHeaderLength {
 		p.stop(fmt.Errorf("expecting %d bytes but got %d bytes", expecting, n))
