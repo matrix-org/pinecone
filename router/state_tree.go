@@ -296,8 +296,13 @@ func (s *state) _handleTreeAnnouncement(p *peer, f *types.Frame) error {
 }
 
 func (s *state) _selectNewParent() bool {
-	bestKey := s.r.public
-	bestSeq := types.Varu64(0)
+	root := s._rootAnnouncement()
+	bestKey := root.RootPublicKey
+	bestSeq := root.Sequence
+	if bestKey.CompareTo(s.r.public) < 0 {
+		bestKey = s.r.public
+		bestSeq = 0
+	}
 	bestOrder := uint64(math.MaxUint64)
 	var bestPeer *peer
 
