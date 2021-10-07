@@ -150,33 +150,34 @@ func (m *Multicast) accept(listener net.Listener) {
 			return
 		}
 
-		tcpconn, ok := conn.(*net.TCPConn)
-		if !ok {
-			m.log.Println("Not TCPConn")
-			return
-		}
+		go func(conn net.Conn) {
+			tcpconn, ok := conn.(*net.TCPConn)
+			if !ok {
+				m.log.Println("Not TCPConn")
+				return
+			}
 
-		tcpaddr, ok := conn.RemoteAddr().(*net.TCPAddr)
-		if !ok {
-			m.log.Println("Not TCPAddr")
-			return
-		}
+			tcpaddr, ok := conn.RemoteAddr().(*net.TCPAddr)
+			if !ok {
+				m.log.Println("Not TCPAddr")
+				return
+			}
 
-		if !m.started.Load() {
-			_ = conn.Close()
-			return
-		}
+			if !m.started.Load() {
+				_ = conn.Close()
+				return
+			}
 
-		if err := tcpconn.SetNoDelay(true); err != nil {
-			m.log.Println("tcpconn.SetNoDelay: %w", err)
-			return
-		}
+			if err := tcpconn.SetNoDelay(true); err != nil {
+				m.log.Println("tcpconn.SetNoDelay: %w", err)
+				return
+			}
 
-		if _, err := m.r.AuthenticatedConnect(tcpconn, tcpaddr.Zone, router.PeerTypeMulticast); err != nil {
-			//m.log.Println("m.s.AuthenticatedConnect:", err)
-			_ = conn.Close()
-			continue
-		}
+			if _, err := m.r.AuthenticatedConnect(tcpconn, tcpaddr.Zone, router.PeerTypeMulticast); err != nil {
+				//m.log.Println("m.s.AuthenticatedConnect:", err)
+				_ = conn.Close()
+			}
+		}(conn)
 	}
 }
 
