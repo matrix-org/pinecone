@@ -348,29 +348,30 @@ func (s *state) _handleBootstrapACK(from *peer, rx *types.Frame) error {
 
 func (s *state) _handleSetup(from *peer, rx *types.Frame, nexthop *peer) error {
 	root := s._rootAnnouncement()
-
 	// Unmarshal the setup.
 	var setup types.VirtualSnakeSetup
 	if _, err := setup.UnmarshalBinary(rx.Payload); err != nil {
 		return fmt.Errorf("setup.UnmarshalBinary: %w", err)
 	}
+	if setup.RootPublicKey != root.RootPublicKey || setup.RootSequence != root.Sequence {
+		s._sendTeardownForRejectedPath(rx.SourceKey, setup.PathID, from)
+		return fmt.Errorf("setup root/sequence mismatch")
+	}
 	index := virtualSnakeIndex{
 		PublicKey: rx.SourceKey,
 		PathID:    setup.PathID,
 	}
-
-	if _, ok := s._table[virtualSnakeIndex{rx.SourceKey, setup.PathID}]; ok {
+	if _, ok := s._table[index]; ok {
 		s._sendTeardownForExistingPath(s.r.local, rx.SourceKey, setup.PathID, false) // first call fixes routing table
-		if _, ok := s._table[virtualSnakeIndex{rx.SourceKey, setup.PathID}]; ok {
+		if _, ok := s._table[index]; ok {
 			panic("should have cleaned up duplicate path in routing table")
 		}
 		s._sendTeardownForRejectedPath(rx.SourceKey, setup.PathID, from) // second call sends back to origin
 		return fmt.Errorf("setup is a duplicate")
 	}
-
 	// If we're at the destination of the setup then update our predecessor
 	// with information from the bootstrap.
-	if nexthop == s.r.local && rx.DestinationKey.EqualTo(s.r.public) {
+	if rx.DestinationKey.EqualTo(s.r.public) {
 		update := false
 		desc := s._descending
 		switch {
