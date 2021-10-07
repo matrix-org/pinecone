@@ -47,6 +47,7 @@ func main() {
 	filename := flag.String("filename", "cmd/pineconesim/graphs/sim.txt", "the file that describes the simulated topology")
 	sockets := flag.Bool("sockets", false, "use real TCP sockets to connect simulated nodes")
 	chaos := flag.Int("chaos", 0, "randomly connect and disconnect a certain number of links")
+	ping := flag.Bool("ping", false, "test end-to-end reachability between all nodes")
 	flag.Parse()
 
 	file, err := os.Open(*filename)
@@ -154,42 +155,44 @@ func main() {
 
 	log.Println("Configuring HTTP listener")
 
-	go func() {
-		for {
-			time.Sleep(time.Second * 15)
-			log.Println("Starting pings...")
+	if ping != nil && *ping {
+		go func() {
+			for {
+				time.Sleep(time.Second * 15)
+				log.Println("Starting pings...")
 
-			tasks := make(chan pair, 2*(len(nodes)*len(nodes)))
-			for from := range nodes {
-				for to := range nodes {
-					tasks <- pair{from, to}
-				}
-			}
-			close(tasks)
-
-			numworkers := runtime.NumCPU() * 16
-			var wg sync.WaitGroup
-			wg.Add(numworkers)
-			for i := 0; i < numworkers; i++ {
-				go func() {
-					for pair := range tasks {
-						log.Println("Tree ping from", pair.from, "to", pair.to)
-						if err := sim.PingTree(pair.from, pair.to); err != nil {
-							log.Println("Tree ping from", pair.from, "to", pair.to, "failed:", err)
-						}
-						log.Println("SNEK ping from", pair.from, "to", pair.to)
-						if err := sim.PingSNEK(pair.from, pair.to); err != nil {
-							log.Println("SNEK ping from", pair.from, "to", pair.to, "failed:", err)
-						}
+				tasks := make(chan pair, 2*(len(nodes)*len(nodes)))
+				for from := range nodes {
+					for to := range nodes {
+						tasks <- pair{from, to}
 					}
-					wg.Done()
-				}()
-			}
+				}
+				close(tasks)
 
-			wg.Wait()
-			log.Println("All pings finished, repeating shortly...")
-		}
-	}()
+				numworkers := runtime.NumCPU() * 16
+				var wg sync.WaitGroup
+				wg.Add(numworkers)
+				for i := 0; i < numworkers; i++ {
+					go func() {
+						for pair := range tasks {
+							log.Println("Tree ping from", pair.from, "to", pair.to)
+							if err := sim.PingTree(pair.from, pair.to); err != nil {
+								log.Println("Tree ping from", pair.from, "to", pair.to, "failed:", err)
+							}
+							log.Println("SNEK ping from", pair.from, "to", pair.to)
+							if err := sim.PingSNEK(pair.from, pair.to); err != nil {
+								log.Println("SNEK ping from", pair.from, "to", pair.to, "failed:", err)
+							}
+						}
+						wg.Done()
+					}()
+				}
+
+				wg.Wait()
+				log.Println("All pings finished, repeating shortly...")
+			}
+		}()
+	}
 
 	select {}
 }

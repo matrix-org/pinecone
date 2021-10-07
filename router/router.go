@@ -21,28 +21,30 @@ const PortCount = math.MaxUint8
 const TrafficBuffer = math.MaxUint8
 
 type Router struct {
-	log       *log.Logger
-	id        string
-	debug     atomic.Bool
-	simulator Simulator
-	context   context.Context
-	cancel    context.CancelFunc
-	public    types.PublicKey
-	private   types.PrivateKey
-	active    sync.Map
-	pings     sync.Map // types.PublicKey -> chan struct{}
-	local     *peer
-	state     *state
+	log        *log.Logger
+	id         string
+	debug      atomic.Bool
+	simulator  Simulator
+	context    context.Context
+	cancel     context.CancelFunc
+	public     types.PublicKey
+	private    types.PrivateKey
+	keepalives bool
+	active     sync.Map
+	pings      sync.Map // types.PublicKey -> chan struct{}
+	local      *peer
+	state      *state
 }
 
 func NewRouter(log *log.Logger, sk ed25519.PrivateKey, id string, sim Simulator) *Router {
 	ctx, cancel := context.WithCancel(context.Background())
 	r := &Router{
-		log:       log,
-		id:        id,
-		simulator: sim,
-		context:   ctx,
-		cancel:    cancel,
+		log:        log,
+		id:         id,
+		simulator:  sim,
+		context:    ctx,
+		cancel:     cancel,
+		keepalives: sim == nil,
 	}
 	copy(r.private[:], sk)
 	r.public = r.private.Public()

@@ -109,6 +109,12 @@ func (p *peer) stop(err error) {
 
 func (p *peer) _write() {
 	var frame *types.Frame
+	keepalive := func() <-chan time.Time {
+		if p.router.keepalives {
+			return make(chan time.Time)
+		}
+		return time.After(PeerKeepaliveInterval)
+	}
 	select {
 	case <-p.context.Done():
 		p.stop(nil)
@@ -124,7 +130,7 @@ func (p *peer) _write() {
 			p.proto.ack()
 		case <-p.traffic.wait():
 			frame, _ = p.traffic.pop()
-		case <-time.After(PeerKeepaliveInterval):
+		case <-keepalive():
 			frame = &types.Frame{
 				Type: types.TypeKeepalive,
 			}
@@ -132,6 +138,7 @@ func (p *peer) _write() {
 	}
 	if frame == nil {
 		// usually happens if the queue has been reset
+		p.writer.Act(nil, p._write)
 		return
 	}
 	b := frameBufferPool.Get().(*[types.MaxFrameSize]byte)
@@ -142,9 +149,11 @@ func (p *peer) _write() {
 		p.stop(fmt.Errorf("frame.MarshalBinary: %w", err))
 		return
 	}
-	if err := p.conn.SetWriteDeadline(time.Now().Add(PeerKeepaliveInterval)); err != nil {
-		p.stop(fmt.Errorf("p.conn.SetWriteDeadline: %w", err))
-		return
+	if p.router.keepalives {
+		if err := p.conn.SetWriteDeadline(time.Now().Add(PeerKeepaliveInterval)); err != nil {
+			p.stop(fmt.Errorf("p.conn.SetWriteDeadline: %w", err))
+			return
+		}
 	}
 	wn, err := p.conn.Write(buf[:n])
 	if err != nil {
@@ -155,9 +164,11 @@ func (p *peer) _write() {
 		p.stop(fmt.Errorf("p.conn.Write length %d != %d", wn, n))
 		return
 	}
-	if err := p.conn.SetWriteDeadline(time.Time{}); err != nil {
-		p.stop(fmt.Errorf("p.conn.SetWriteDeadline: %w", err))
-		return
+	if p.router.keepalives {
+		if err := p.conn.SetWriteDeadline(time.Time{}); err != nil {
+			p.stop(fmt.Errorf("p.conn.SetWriteDeadline: %w", err))
+			return
+		}
 	}
 	p.writer.Act(nil, p._write)
 }
@@ -171,9 +182,11 @@ func (p *peer) _read() {
 	}
 	b := frameBufferPool.Get().(*[types.MaxFrameSize]byte)
 	defer frameBufferPool.Put(b)
-	if err := p.conn.SetReadDeadline(time.Now().Add(PeerKeepaliveTimeout)); err != nil {
-		p.stop(fmt.Errorf("p.conn.SetReadDeadline: %w", err))
-		return
+	if p.router.keepalives {
+		if err := p.conn.SetReadDeadline(time.Now().Add(PeerKeepaliveTimeout)); err != nil {
+			p.stop(fmt.Errorf("p.conn.SetReadDeadline: %w", err))
+			return
+		}
 	}
 	if _, err := io.ReadFull(p.conn, b[:types.FrameHeaderLength]); err != nil {
 		p.stop(fmt.Errorf("io.ReadFull: %w", err))
@@ -189,9 +202,11 @@ func (p *peer) _read() {
 		p.stop(fmt.Errorf("io.ReadFull: %w", err))
 		return
 	}
-	if err := p.conn.SetReadDeadline(time.Time{}); err != nil {
-		p.stop(fmt.Errorf("conn.SetReadDeadline: %w", err))
-		return
+	if p.router.keepalives {
+		if err := p.conn.SetReadDeadline(time.Time{}); err != nil {
+			p.stop(fmt.Errorf("conn.SetReadDeadline: %w", err))
+			return
+		}
 	}
 	if n < expecting-types.FrameHeaderLength {
 		p.stop(fmt.Errorf("expecting %d bytes but got %d bytes", expecting, n))
