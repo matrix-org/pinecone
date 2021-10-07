@@ -168,9 +168,8 @@ func (m *Multicast) accept(listener net.Listener) {
 				return
 			}
 
-			if err := tcpconn.SetNoDelay(true); err != nil {
-				m.log.Println("tcpconn.SetNoDelay: %w", err)
-				return
+			if err := m.tcpGeneralOptions(tcpconn); err != nil {
+				m.log.Println("m.tcpSocketOptions: %w", err)
 			}
 
 			if _, err := m.r.AuthenticatedConnect(tcpconn, tcpaddr.Zone, router.PeerTypeMulticast); err != nil {
@@ -329,9 +328,8 @@ func (m *Multicast) listen(intf *multicastInterface, conn net.PacketConn, srcadd
 			}
 
 			tcpconn := conn.(*net.TCPConn)
-			if err := tcpconn.SetNoDelay(true); err != nil {
-				m.log.Println("tcpconn.SetNoDelay: %w", err)
-				return
+			if err := m.tcpGeneralOptions(tcpconn); err != nil {
+				m.log.Println("m.tcpSocketOptions: %w", err)
 			}
 
 			if _, err := m.r.AuthenticatedConnect(tcpconn, udpaddr.Zone, router.PeerTypeMulticast); err != nil {
@@ -340,4 +338,17 @@ func (m *Multicast) listen(intf *multicastInterface, conn net.PacketConn, srcadd
 			}
 		}()
 	}
+}
+
+func (m *Multicast) tcpGeneralOptions(tcpconn *net.TCPConn) error {
+	if err := tcpconn.SetNoDelay(true); err != nil {
+		return fmt.Errorf("tcpconn.SetNoDelay: %w", err)
+	}
+	if err := tcpconn.SetKeepAlivePeriod(time.Second * 3); err != nil {
+		return fmt.Errorf("tcpconn.SetKeepAlivePeriod: %w", err)
+	}
+	if err := tcpconn.SetKeepAlive(true); err != nil {
+		return fmt.Errorf("tcpconn.SetKeepAlive: %w", err)
+	}
+	return nil
 }
