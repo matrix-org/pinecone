@@ -46,6 +46,7 @@ func main() {
 
 	filename := flag.String("filename", "cmd/pineconesim/graphs/sim.txt", "the file that describes the simulated topology")
 	sockets := flag.Bool("sockets", false, "use real TCP sockets to connect simulated nodes")
+	chaos := flag.Int("chaos", 0, "randomly connect and disconnect a certain number of links")
 	flag.Parse()
 
 	file, err := os.Open(*filename)
@@ -101,53 +102,55 @@ func main() {
 		}
 	}
 
-	rand.Seed(time.Now().UnixNano())
-	maxintv, maxswing := 10, int32(10)
-	var swing atomic.Int32
+	if chaos != nil && *chaos > 0 {
+		rand.Seed(time.Now().UnixNano())
+		maxintv, maxswing := 20, int32(*chaos)
+		var swing atomic.Int32
 
-	// Chaos disconnector
-	go func() {
-		for {
-			if swing.Load() > -maxswing {
-			parentloop:
-				for a, w := range wires {
-					for b, s := range w {
-						if !s {
-							continue
-						}
-						if err := sim.DisconnectNodes(a, b); err == nil {
-							wires[a][b] = false
-							swing.Dec()
-							break parentloop
+		// Chaos disconnector
+		go func() {
+			for {
+				if swing.Load() > -maxswing {
+				parentloop:
+					for a, w := range wires {
+						for b, s := range w {
+							if !s {
+								continue
+							}
+							if err := sim.DisconnectNodes(a, b); err == nil {
+								wires[a][b] = false
+								swing.Dec()
+								break parentloop
+							}
 						}
 					}
 				}
+				time.Sleep(time.Second * time.Duration(rand.Intn(maxintv)))
 			}
-			time.Sleep(time.Second * time.Duration(rand.Intn(maxintv)))
-		}
-	}()
+		}()
 
-	// Chaos connector
-	go func() {
-		for {
-			if swing.Load() < maxswing {
-			parentloop:
-				for a, w := range wires {
-					for b, s := range w {
-						if s {
-							continue
-						}
-						if err := sim.ConnectNodes(a, b); err == nil {
-							wires[a][b] = true
-							swing.Inc()
-							break parentloop
+		// Chaos connector
+		go func() {
+			for {
+				if swing.Load() < maxswing {
+				parentloop:
+					for a, w := range wires {
+						for b, s := range w {
+							if s {
+								continue
+							}
+							if err := sim.ConnectNodes(a, b); err == nil {
+								wires[a][b] = true
+								swing.Inc()
+								break parentloop
+							}
 						}
 					}
 				}
+				time.Sleep(time.Second * time.Duration(rand.Intn(maxintv)))
 			}
-			time.Sleep(time.Second * time.Duration(rand.Intn(maxintv)))
-		}
-	}()
+		}()
+	}
 
 	log.Println("Configuring HTTP listener")
 
