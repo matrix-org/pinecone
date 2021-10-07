@@ -26,6 +26,7 @@ import (
 type Simulator struct {
 	log                      *log.Logger
 	sockets                  bool
+	ping                     bool
 	nodes                    map[string]*Node
 	nodesMutex               sync.RWMutex
 	graph                    *dijkstra.Graph
@@ -41,10 +42,11 @@ type Simulator struct {
 	startTime                time.Time
 }
 
-func NewSimulator(log *log.Logger, sockets bool) *Simulator {
+func NewSimulator(log *log.Logger, sockets, ping bool) *Simulator {
 	sim := &Simulator{
 		log:                 log,
 		sockets:             sockets,
+		ping:                ping,
 		nodes:               make(map[string]*Node),
 		wires:               make(map[string]map[string]net.Conn),
 		dists:               make(map[string]map[string]*Distance),
@@ -53,6 +55,10 @@ func NewSimulator(log *log.Logger, sockets bool) *Simulator {
 		startTime:           time.Now(),
 	}
 	return sim
+}
+
+func (sim *Simulator) PingingEnabled() bool {
+	return sim.ping
 }
 
 func (sim *Simulator) Nodes() map[string]*Node {

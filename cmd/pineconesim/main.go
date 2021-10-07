@@ -79,7 +79,7 @@ func main() {
 	}
 
 	log := log.New(os.Stdout, "\u001b[36m***\u001b[0m ", 0)
-	sim := simulator.NewSimulator(log, *sockets)
+	sim := simulator.NewSimulator(log, *sockets, *ping)
 	configureHTTPRouting(sim)
 	sim.CalculateShortestPaths(nodes, wires)
 
@@ -253,12 +253,12 @@ func configureHTTPRouting(sim *simulator.Simulator) {
 		}
 
 		data := PageData{
-			AvgStretch:          "TBD",
-			TreePathConvergence: "TBD",
-			SNEKPathConvergence: "TBD",
+			AvgStretch:          "Not tested",
+			TreePathConvergence: "Not tested",
+			SNEKPathConvergence: "Not tested",
 			Uptime:              sim.Uptime().Round(time.Second),
 		}
-		if totalCount > 0 {
+		if sim.PingingEnabled() && totalCount > 0 {
 			data.TreePathConvergence = fmt.Sprintf("%d%%", (dhtConvergence*100)/totalCount)
 			data.SNEKPathConvergence = fmt.Sprintf("%d%%", (pathConvergence*100)/totalCount)
 		}
