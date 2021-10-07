@@ -207,7 +207,7 @@ func (s *state) _handleBootstrap(from *peer, rx *types.Frame) error {
 		// in that case.
 	case !bootstrap.RootPublicKey.EqualTo(root.RootPublicKey) || bootstrap.RootSequence != root.Sequence:
 		// The root or sequence don't match so we won't act on the bootstrap.
-	case desc != nil && desc.PublicKey.EqualTo(rx.DestinationKey):
+	case desc != nil && desc.PublicKey.EqualTo(rx.SourceKey):
 		// We've received another bootstrap from our direct descending node.
 		// Send back an acknowledgement as this is OK.
 		acknowledge = true
@@ -272,7 +272,7 @@ func (s *state) _handleBootstrapACK(from *peer, rx *types.Frame) error {
 		// in that case.
 	case !bootstrapACK.RootPublicKey.EqualTo(root.RootPublicKey) || bootstrapACK.RootSequence != root.Sequence:
 		// The root or sequence don't match so we won't act on the bootstrap.
-	case asc != nil && asc.PublicKey.EqualTo(rx.SourceKey) && asc.PathID != bootstrapACK.PathID:
+	case asc != nil && asc.PublicKey.EqualTo(rx.SourceKey):
 		// We've received another bootstrap ACK from our direct ascending node.
 		// Just refresh the record and then send a new path setup message to
 		// that node.
@@ -387,7 +387,7 @@ func (s *state) _handleSetup(from *peer, rx *types.Frame, nexthop *peer) error {
 			// We've received another bootstrap from our direct descending node.
 			// Just refresh the record and then send back an acknowledgement.
 			update = true
-		case desc != nil && time.Since(desc.LastSeen) >= virtualSnakeNeighExpiryPeriod:
+		case desc != nil && !desc.valid():
 			// We already have a direct descending node, but we haven't seen it
 			// recently, so it's quite possible that it has disappeared. We'll
 			// therefore handle this bootstrap instead. If the original node comes
