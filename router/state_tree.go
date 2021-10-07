@@ -266,6 +266,11 @@ func (s *state) _handleTreeAnnouncement(p *peer, f *types.Frame) error {
 		case rootDelta > 0:
 			s._sendTreeAnnouncements()
 		}
+	} else {
+		if rootDelta < 0 && !s._waiting {
+			s.sendTreeAnnouncementToPeer(lastParentUpdate, p)
+			return nil
+		}
 	}
 	if !s._waiting {
 		if s._selectNewParent() {
@@ -307,11 +312,6 @@ func (s *state) _selectNewParent() bool {
 			accept()
 		case ann.Sequence < bestSeq:
 			// ignore lower sequence numbers
-		case peer == s._parent:
-			// if our existing parent also has the best root key and
-			// sequence number then let's keep that parent — it helps
-			// to keep the tree stable
-			return false
 		case ann.receiveOrder < bestOrder:
 			// otherwise, pick the parent that sent us the latest root
 			// update first, for the lower latency path to the root
