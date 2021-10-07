@@ -14,16 +14,5 @@
 
 package router
 
-const (
-	// reserved = 1
-	capabilityVirtualSnake        = 2
-	capabilityHardState           = 4
-	capabilityPathIDs             = 8
-	capabilityRootInUpdates       = 16
-	capabilityNewHeaders          = 32
-	capabilitySlowRootInterval    = 64
-	capabilityRefactoredTeardowns = 128
-)
-
-const ourVersion uint8 = 0
-const ourCapabilities uint8 = capabilityVirtualSnake | capabilityHardState | capabilityPathIDs | capabilityRootInUpdates | capabilityNewHeaders | capabilitySlowRootInterval | capabilityRefactoredTeardowns
+const ourVersion uint8 = 1
+const ourCapabilities uint8 = 0
