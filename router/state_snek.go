@@ -510,7 +510,7 @@ func (s *state) _teardownPath(from *peer, pathKey types.PublicKey, pathID types.
 	if asc := s._ascending; asc != nil && asc.PathID == pathID {
 		switch {
 		case from == s.r.local && asc.PublicKey.EqualTo(pathKey): // originated locally
-			defer s._bootstrapNow()
+			defer s._maintainSnake()
 			fallthrough
 		case from == asc.Source && s.r.public.EqualTo(pathKey): // from network
 			s._ascending = nil

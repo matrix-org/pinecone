@@ -105,8 +105,7 @@ func (s *state) _becomeRoot() {
 		return
 	}
 	s._parent = nil
-	s._sendTreeAnnouncements()
-	s._maintainTreeIn(announcementInterval)
+	s._maintainTree()
 }
 
 func (s *state) sendTreeAnnouncementToPeer(ann *rootAnnouncementWithTime, p *peer) {

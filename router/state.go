@@ -36,11 +36,9 @@ func (s *state) _start() {
 	s._snaketimer = time.AfterFunc(time.Second, func() {
 		s.Act(nil, s._maintainSnake)
 	})
-	s._treetimer.Stop()
-	s._snaketimer.Stop()
 
-	s._maintainTreeIn(announcementInterval)
-	s._maintainSnakeIn(virtualSnakeMaintainInterval)
+	s._maintainTreeIn(0)
+	s._maintainSnakeIn(0)
 }
 
 func (s *state) _maintainTreeIn(d time.Duration) {
