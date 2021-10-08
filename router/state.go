@@ -78,7 +78,7 @@ func (s *state) _maintainSnakeIn(d time.Duration) {
 func (s *state) _portDisconnected(peer *peer) {
 	peercount := 0
 	for _, p := range s._peers {
-		if p != nil && p.started.Load() {
+		if p != nil && p.port != 0 && p.started.Load() {
 			peercount++
 		}
 	}
