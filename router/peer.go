@@ -154,9 +154,8 @@ func (p *peer) _write() {
 		// check that the peering wasn't killed while we waited
 		return
 	}
-	b := frameBufferPool.Get().(*[types.MaxFrameSize]byte)
-	defer frameBufferPool.Put(b)
-	buf := *b
+	buf := frameBufferPool.Get().(*[types.MaxFrameSize]byte)
+	defer frameBufferPool.Put(buf)
 	n, err := frame.MarshalBinary(buf[:])
 	if err != nil {
 		p.stop(fmt.Errorf("frame.MarshalBinary: %w", err))
