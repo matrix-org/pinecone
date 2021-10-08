@@ -206,6 +206,38 @@ func (r *Router) AuthenticatedConnect(conn net.Conn, zone string, peertype int) 
 	return port, err
 }
 
+// Disconnect will disconnect whatever is connected to the
+// given port number on the Pinecone node. The peering will
+// no longer be used and the underlying connection will be
+// closed.
+func (r *Router) Disconnect(i types.SwitchPortID, err error) {
+	if i == 0 {
+		return
+	}
+	phony.Block(r.state, func() {
+		if p := r.state._peers[i]; p != nil && p.started.Load() {
+			p.stop(err)
+		}
+	})
+}
+
+// PeerCount returns the number of nodes that are directly
+// connected to this Pinecone node.
+func (r *Router) PeerCount(peertype int) (count int) {
+	phony.Block(r.state, func() {
+		seen := map[types.PublicKey]struct{}{}
+		for _, p := range r.state._peers {
+			if p.peertype == peertype || peertype < 0 {
+				if _, ok := seen[p.public]; !ok {
+					count++
+				}
+				seen[p.public] = struct{}{}
+			}
+		}
+	})
+	return
+}
+
 func (r *Router) SNEKPing(ctx context.Context, dst types.PublicKey) (time.Duration, error) {
 	if dst == r.public {
 		return 0, nil
