@@ -27,7 +27,6 @@ var frameBufferPool = &sync.Pool{
 	},
 }
 
-/*
 var framePool = &sync.Pool{
 	New: func() interface{} {
 		f := &types.Frame{
@@ -36,4 +35,9 @@ var framePool = &sync.Pool{
 		return f
 	},
 }
-*/
+
+func getFrame() *types.Frame {
+	f := framePool.Get().(*types.Frame)
+	f.Reset()
+	return f
+}

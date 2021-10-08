@@ -117,11 +117,12 @@ func (s *state) _forward(p *peer, f *types.Frame) error {
 
 	case types.TypeSNEKPing:
 		if f.DestinationKey == s.r.public {
-			f = &types.Frame{
-				Type:           types.TypeSNEKPong,
-				DestinationKey: f.SourceKey,
-				SourceKey:      s.r.public,
-			}
+			of := f
+			defer framePool.Put(of)
+			f = getFrame()
+			f.Type = types.TypeSNEKPong
+			f.DestinationKey = of.SourceKey
+			f.SourceKey = s.r.public
 			nexthop = s._nextHopsFor(s.r.local, f)
 		}
 
@@ -139,11 +140,12 @@ func (s *state) _forward(p *peer, f *types.Frame) error {
 
 	case types.TypeTreePing:
 		if deadend {
-			f = &types.Frame{
-				Type:        types.TypeTreePong,
-				Destination: f.Source,
-				Source:      s._coords(),
-			}
+			of := f
+			defer framePool.Put(of)
+			f = getFrame()
+			f.Type = types.TypeTreePong
+			f.Destination = append(f.Destination[:0], of.Source...)
+			f.Source = append(f.Source[:0], s._coords()...)
 			nexthop = s._nextHopsFor(s.r.local, f)
 		}
 

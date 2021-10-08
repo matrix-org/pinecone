@@ -74,11 +74,9 @@ func (a *rootAnnouncementWithTime) forPeer(p *peer) *types.Frame {
 		p.router.log.Println("Failed to sign switch announcement:", err)
 		return nil
 	}
-	frame := &types.Frame{
-		Type:    types.TypeSTP,
-		Payload: make([]byte, types.MaxPayloadSize),
-	}
-	n, err := announcement.MarshalBinary(frame.Payload[:])
+	frame := getFrame()
+	frame.Type = types.TypeSTP
+	n, err := announcement.MarshalBinary(frame.Payload[:cap(frame.Payload)])
 	if err != nil {
 		p.router.log.Println("Failed to marshal switch announcement:", err)
 		return nil

@@ -141,15 +141,15 @@ func (p *peer) _write() {
 	case <-p.traffic.wait():
 		frame, _ = p.traffic.pop()
 	case <-keepalive():
-		frame = &types.Frame{
-			Type: types.TypeKeepalive,
-		}
+		frame = getFrame()
+		frame.Type = types.TypeKeepalive
 	}
 	if frame == nil {
 		// usually happens if the queue has been reset
 		p.stop(fmt.Errorf("queue reset"))
 		return
 	}
+	defer framePool.Put(frame)
 	if !p.started.Load() {
 		// check that the peering wasn't killed while we waited
 		return
@@ -226,9 +226,7 @@ func (p *peer) _read() {
 		p.stop(fmt.Errorf("expecting %d bytes but got %d bytes", expecting, n))
 		return
 	}
-	f := &types.Frame{
-		Payload: make([]byte, 0, types.MaxPayloadSize),
-	}
+	f := getFrame()
 	if _, err := f.UnmarshalBinary(b[:n+types.FrameHeaderLength]); err != nil {
 		p.stop(fmt.Errorf("f.UnmarshalBinary: %w", err))
 		return

@@ -98,6 +98,7 @@ func (f *Frame) MarshalBinary(buffer []byte) (int, error) {
 		offset += copy(buffer[offset:], src)
 		offset += copy(buffer[offset:], f.DestinationKey[:ed25519.PublicKeySize])
 		if f.Payload != nil {
+			f.Payload = f.Payload[:payloadLen]
 			offset += copy(buffer[offset:], f.Payload[:payloadLen])
 		}
 
@@ -120,6 +121,7 @@ func (f *Frame) MarshalBinary(buffer []byte) (int, error) {
 		offset += copy(buffer[offset:], f.DestinationKey[:ed25519.PublicKeySize])
 		offset += copy(buffer[offset:], f.SourceKey[:ed25519.PublicKeySize])
 		if f.Payload != nil {
+			f.Payload = f.Payload[:payloadLen]
 			offset += copy(buffer[offset:], f.Payload[:payloadLen])
 		}
 
@@ -135,6 +137,7 @@ func (f *Frame) MarshalBinary(buffer []byte) (int, error) {
 		offset += copy(buffer[offset:], f.SourceKey[:ed25519.PublicKeySize])
 		offset += copy(buffer[offset:], f.DestinationKey[:ed25519.PublicKeySize])
 		if f.Payload != nil {
+			f.Payload = f.Payload[:payloadLen]
 			offset += copy(buffer[offset:], f.Payload[:payloadLen])
 		}
 
@@ -144,6 +147,7 @@ func (f *Frame) MarshalBinary(buffer []byte) (int, error) {
 		offset += 2
 		offset += copy(buffer[offset:], f.DestinationKey[:ed25519.PublicKeySize])
 		if f.Payload != nil {
+			f.Payload = f.Payload[:payloadLen]
 			offset += copy(buffer[offset:], f.Payload[:payloadLen])
 		}
 
@@ -154,6 +158,7 @@ func (f *Frame) MarshalBinary(buffer []byte) (int, error) {
 		offset += copy(buffer[offset:], f.DestinationKey[:ed25519.PublicKeySize])
 		offset += copy(buffer[offset:], f.SourceKey[:ed25519.PublicKeySize])
 		if f.Payload != nil {
+			f.Payload = f.Payload[:payloadLen]
 			offset += copy(buffer[offset:], f.Payload[:payloadLen])
 		}
 
@@ -179,6 +184,7 @@ func (f *Frame) MarshalBinary(buffer []byte) (int, error) {
 		offset += copy(buffer[offset:], dst)
 		offset += copy(buffer[offset:], src)
 		if f.Payload != nil {
+			f.Payload = f.Payload[:payloadLen]
 			offset += copy(buffer[offset:], f.Payload[:payloadLen])
 		}
 	}
@@ -206,18 +212,24 @@ func (f *Frame) UnmarshalBinary(data []byte) (int, error) {
 	switch f.Type {
 	case TypeVirtualSnakeBootstrap: // destination = key, source = coords
 		payloadLen := int(binary.BigEndian.Uint16(data[offset+0 : offset+2]))
+		if payloadLen > cap(f.Payload) {
+			return 0, fmt.Errorf("payload length exceeds frame capacity")
+		}
 		srcLen := int(binary.BigEndian.Uint16(data[offset+2 : offset+4]))
 		if _, err := f.Source.UnmarshalBinary(data[offset+2:]); err != nil {
 			return 0, fmt.Errorf("f.Source.UnmarshalBinary: %w", err)
 		}
 		offset += 4 + srcLen
 		offset += copy(f.DestinationKey[:], data[offset:])
-		f.Payload = make([]byte, payloadLen)
+		f.Payload = f.Payload[:payloadLen]
 		offset += copy(f.Payload, data[offset:])
 		return offset, nil
 
 	case TypeVirtualSnakeBootstrapACK:
 		payloadLen := int(binary.BigEndian.Uint16(data[offset+0 : offset+2]))
+		if payloadLen > cap(f.Payload) {
+			return 0, fmt.Errorf("payload length exceeds frame capacity")
+		}
 		dstLen := int(binary.BigEndian.Uint16(data[offset+2 : offset+4]))
 		srcLen := int(binary.BigEndian.Uint16(data[offset+4 : offset+6]))
 		offset += 6
@@ -231,12 +243,15 @@ func (f *Frame) UnmarshalBinary(data []byte) (int, error) {
 		offset += srcLen
 		offset += copy(f.DestinationKey[:], data[offset:])
 		offset += copy(f.SourceKey[:], data[offset:])
-		f.Payload = make([]byte, payloadLen)
+		f.Payload = f.Payload[:payloadLen]
 		offset += copy(f.Payload, data[offset:])
 		return offset, nil
 
 	case TypeVirtualSnakeSetup: // destination = coords & key, source = key
 		payloadLen := int(binary.BigEndian.Uint16(data[offset+0 : offset+2]))
+		if payloadLen > cap(f.Payload) {
+			return 0, fmt.Errorf("payload length exceeds frame capacity")
+		}
 		dstLen := int(binary.BigEndian.Uint16(data[offset+2 : offset+4]))
 		if _, err := f.Destination.UnmarshalBinary(data[offset+2:]); err != nil {
 			return 0, fmt.Errorf("f.Destination.UnmarshalBinary: %w", err)
@@ -244,24 +259,30 @@ func (f *Frame) UnmarshalBinary(data []byte) (int, error) {
 		offset += 4 + dstLen
 		offset += copy(f.SourceKey[:], data[offset:])
 		offset += copy(f.DestinationKey[:], data[offset:])
-		f.Payload = make([]byte, payloadLen)
+		f.Payload = f.Payload[:payloadLen]
 		offset += copy(f.Payload, data[offset:])
 		return offset, nil
 
 	case TypeVirtualSnakeTeardown: // destination = key
 		payloadLen := int(binary.BigEndian.Uint16(data[offset+0 : offset+2]))
+		if payloadLen > cap(f.Payload) {
+			return 0, fmt.Errorf("payload length exceeds frame capacity")
+		}
 		offset += 2
 		offset += copy(f.DestinationKey[:], data[offset:])
-		f.Payload = make([]byte, payloadLen)
+		f.Payload = f.Payload[:payloadLen]
 		offset += copy(f.Payload, data[offset:])
 		return offset, nil
 
 	case TypeVirtualSnake, TypeSNEKPing, TypeSNEKPong: // destination = key, source = key
 		payloadLen := int(binary.BigEndian.Uint16(data[offset+0 : offset+2]))
+		if payloadLen > cap(f.Payload) {
+			return 0, fmt.Errorf("payload length exceeds frame capacity")
+		}
 		offset += 2
 		offset += copy(f.DestinationKey[:], data[offset:])
 		offset += copy(f.SourceKey[:], data[offset:])
-		f.Payload = make([]byte, payloadLen)
+		f.Payload = f.Payload[:payloadLen]
 		offset += copy(f.Payload, data[offset:])
 		return offset + payloadLen, nil
 
@@ -272,6 +293,9 @@ func (f *Frame) UnmarshalBinary(data []byte) (int, error) {
 		dstLen := int(binary.BigEndian.Uint16(data[offset+0 : offset+2]))
 		srcLen := int(binary.BigEndian.Uint16(data[offset+2 : offset+4]))
 		payloadLen := int(binary.BigEndian.Uint16(data[offset+4 : offset+6]))
+		if payloadLen > cap(f.Payload) {
+			return 0, fmt.Errorf("payload length exceeds frame capacity")
+		}
 		offset += 6
 		if size := offset + dstLen + srcLen + payloadLen; len(data) != int(size) {
 			return 0, fmt.Errorf("frame expecting %d total bytes, got %d bytes", size, len(data))
@@ -284,7 +308,7 @@ func (f *Frame) UnmarshalBinary(data []byte) (int, error) {
 			return 0, fmt.Errorf("f.Source.UnmarshalBinary: %w", err)
 		}
 		offset += srcLen
-		f.Payload = make([]byte, payloadLen)
+		f.Payload = f.Payload[:payloadLen]
 		offset += copy(f.Payload, data[offset:])
 		return offset + payloadLen, nil
 	}

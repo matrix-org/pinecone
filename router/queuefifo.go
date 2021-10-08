@@ -67,7 +67,8 @@ func (q *fifoQueue) reset() {
 	defer q.mutex.Unlock()
 	for _, ch := range q.entries {
 		select {
-		case <-ch:
+		case frame := <-ch:
+			framePool.Put(frame)
 		default:
 		}
 	}

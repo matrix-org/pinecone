@@ -90,7 +90,9 @@ func (s *state) _bootstrapNow() {
 		return
 	}
 	ann := s._rootAnnouncement()
-	payload := make([]byte, 8+ed25519.PublicKeySize+ann.Sequence.Length())
+	b := frameBufferPool.Get().(*[types.MaxFrameSize]byte)
+	payload := b[:8+ed25519.PublicKeySize+ann.Sequence.Length()]
+	defer frameBufferPool.Put(b)
 	bootstrap := types.VirtualSnakeBootstrap{
 		RootPublicKey: ann.RootPublicKey,
 		RootSequence:  ann.Sequence,
@@ -101,12 +103,11 @@ func (s *state) _bootstrapNow() {
 	if _, err := bootstrap.MarshalBinary(payload[:]); err != nil {
 		return
 	}
-	send := &types.Frame{
-		Type:           types.TypeVirtualSnakeBootstrap,
-		DestinationKey: s.r.public,
-		Source:         s._coords(),
-		Payload:        payload[:],
-	}
+	send := getFrame()
+	send.Type = types.TypeVirtualSnakeBootstrap
+	send.DestinationKey = s.r.public
+	send.Source = s._coords()
+	send.Payload = append(send.Payload[:0], payload...)
 	if p := s._nextHopsSNEK(s.r.local, send, true); p != nil && p.proto != nil {
 		p.proto.push(send)
 	}
@@ -207,7 +208,9 @@ func (s *state) _handleBootstrap(from *peer, rx *types.Frame) error {
 		RootPublicKey: root.RootPublicKey,
 		RootSequence:  root.Sequence,
 	}
-	buf := make([]byte, 8+ed25519.PublicKeySize+root.Sequence.Length())
+	b := frameBufferPool.Get().(*[types.MaxFrameSize]byte)
+	buf := b[:8+ed25519.PublicKeySize+root.Sequence.Length()]
+	defer frameBufferPool.Put(b)
 	if _, err := bootstrapACK.MarshalBinary(buf[:]); err != nil {
 		return fmt.Errorf("bootstrapACK.MarshalBinary: %w", err)
 	}
@@ -248,14 +251,13 @@ func (s *state) _handleBootstrap(from *peer, rx *types.Frame) error {
 		// yet, so we'll just ignore the bootstrap.
 	}
 	if acknowledge {
-		send := &types.Frame{
-			Destination:    rx.Source,
-			DestinationKey: rx.DestinationKey,
-			Source:         s._coords(),
-			SourceKey:      s.r.public,
-			Type:           types.TypeVirtualSnakeBootstrapACK,
-			Payload:        buf,
-		}
+		send := getFrame()
+		send.Type = types.TypeVirtualSnakeBootstrapACK
+		send.Destination = rx.Source
+		send.DestinationKey = rx.DestinationKey
+		send.Source = s._coords()
+		send.SourceKey = s.r.public
+		send.Payload = append(send.Payload[:0], buf...)
 		if p := s._nextHopsTree(s.r.local, send); p != nil && p.proto != nil {
 			p.proto.push(send)
 		}
@@ -330,17 +332,18 @@ func (s *state) _handleBootstrapACK(from *peer, rx *types.Frame) error {
 		RootPublicKey: root.RootPublicKey,
 		RootSequence:  root.Sequence,
 	}
-	buf := make([]byte, 8+ed25519.PublicKeySize+root.Sequence.Length())
+	b := frameBufferPool.Get().(*[types.MaxFrameSize]byte)
+	buf := b[:8+ed25519.PublicKeySize+root.Sequence.Length()]
+	defer frameBufferPool.Put(b)
 	if _, err := setup.MarshalBinary(buf[:]); err != nil {
 		return fmt.Errorf("setup.MarshalBinary: %w", err)
 	}
-	send := &types.Frame{
-		Destination:    rx.Source,
-		DestinationKey: rx.SourceKey, // the other end of the path
-		SourceKey:      s.r.public,   // our source key
-		Type:           types.TypeVirtualSnakeSetup,
-		Payload:        buf,
-	}
+	send := getFrame()
+	send.Type = types.TypeVirtualSnakeSetup
+	send.Destination = rx.Source
+	send.DestinationKey = rx.SourceKey
+	send.SourceKey = s.r.public
+	send.Payload = append(send.Payload[:0], buf...)
 	nexthop := s.r.state._nextHopsTree(s.r.local, send)
 	if nexthop == nil || nexthop == s.r.local || nexthop.proto == nil {
 		return fmt.Errorf("no next-hop")
@@ -505,20 +508,17 @@ func (s *state) _getTeardown(pathKey types.PublicKey, pathID types.VirtualSnakeP
 	if _, err := teardown.MarshalBinary(payload[:]); err != nil {
 		return nil
 	}
+	frame := getFrame()
+	frame.Type = types.TypeVirtualSnakeTeardown
 	if ascending {
 		// We're sending a teardown to our ascending node, so the teardown
 		// needs to contain *our* key and not theirs, as we're the lower key.
-		return &types.Frame{
-			Type:           types.TypeVirtualSnakeTeardown,
-			DestinationKey: s.r.public,
-			Payload:        payload[:],
-		}
+		frame.DestinationKey = s.r.public
+	} else {
+		frame.DestinationKey = pathKey
 	}
-	return &types.Frame{
-		Type:           types.TypeVirtualSnakeTeardown,
-		DestinationKey: pathKey,
-		Payload:        payload[:],
-	}
+	frame.Payload = append(frame.Payload[:0], payload[:]...)
+	return frame
 }
 
 func (s *state) _teardownPath(from *peer, pathKey types.PublicKey, pathID types.VirtualSnakePathID) []*peer {

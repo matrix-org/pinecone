@@ -205,11 +205,11 @@ func (r *Router) SNEKPing(ctx context.Context, dst types.PublicKey) (time.Durati
 		return 0, nil
 	}
 	phony.Block(r.state, func() {
-		_ = r.state._forward(r.local, &types.Frame{
-			Type:           types.TypeSNEKPing,
-			DestinationKey: dst,
-			SourceKey:      r.public,
-		})
+		frame := getFrame()
+		frame.Type = types.TypeSNEKPing
+		frame.DestinationKey = dst
+		frame.SourceKey = r.public
+		_ = r.state._forward(r.local, frame)
 	})
 	start := time.Now()
 	v, existing := r.pings.LoadOrStore(dst, make(chan struct{}))
@@ -231,11 +231,11 @@ func (r *Router) TreePing(ctx context.Context, dst types.SwitchPorts) (time.Dura
 		return 0, nil
 	}
 	phony.Block(r.state, func() {
-		_ = r.state._forward(r.local, &types.Frame{
-			Type:        types.TypeTreePing,
-			Destination: dst,
-			Source:      r.state._coords(),
-		})
+		frame := getFrame()
+		frame.Type = types.TypeTreePing
+		frame.Destination = dst
+		frame.Source = r.state._coords()
+		_ = r.state._forward(r.local, frame)
 	})
 	start := time.Now()
 	v, existing := r.pings.LoadOrStore(dst.String(), make(chan struct{}))
