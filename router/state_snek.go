@@ -119,7 +119,6 @@ func (s *state) _nextHopsSNEK(from *peer, rx *types.Frame, bootstrap bool) *peer
 		return s.r.local
 	}
 	rootAnn := s._rootAnnouncement()
-	ancestors, parentPort := s._ancestors()
 	bestKey := s.r.public
 	var bestPeer *peer
 	if !bootstrap {
@@ -138,7 +137,7 @@ func (s *state) _nextHopsSNEK(from *peer, rx *types.Frame, bootstrap bool) *peer
 	}
 
 	// Check if we can use the path to the root via our parent as a starting point
-	if parentPort != nil && parentPort.started.Load() {
+	if s._parent != nil && s._parent.started.Load() {
 		switch {
 		case bootstrap && bestKey.EqualTo(destKey):
 			// Bootstraps always start working towards the root so that
@@ -147,13 +146,15 @@ func (s *state) _nextHopsSNEK(from *peer, rx *types.Frame, bootstrap bool) *peer
 		case util.DHTOrdered(bestKey, destKey, rootAnn.RootPublicKey):
 			// The destination key is higher than our own key, so
 			// start using the path to the root as the first candidate
-			newCandidate(rootAnn.RootPublicKey, parentPort)
+			newCandidate(rootAnn.RootPublicKey, s._parent)
 		}
 
 		// Check our direct ancestors
 		// bestKey <= destKey < rootKey
-		for _, ancestor := range ancestors {
-			newCheckedCandidate(ancestor, parentPort)
+		if ann := s._announcements[s._parent]; ann != nil {
+			for _, ancestor := range ann.Signatures {
+				newCheckedCandidate(ancestor.PublicKey, s._parent)
+			}
 		}
 	}
 

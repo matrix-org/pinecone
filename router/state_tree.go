@@ -351,18 +351,3 @@ func (s *state) _selectNewParent() bool {
 	s._becomeRoot()
 	return false
 }
-
-func (s *state) _ancestors() ([]types.PublicKey, *peer) {
-	root, parent := s._rootAnnouncement(), s._parent
-	if parent == nil {
-		return nil, nil
-	}
-	ancestors := make([]types.PublicKey, 0, 1+len(root.Signatures))
-	if len(root.Signatures) == 0 {
-		return ancestors, parent
-	}
-	for _, sig := range root.Signatures {
-		ancestors = append(ancestors, sig.PublicKey)
-	}
-	return ancestors, parent
-}
