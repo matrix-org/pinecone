@@ -129,6 +129,8 @@ func (s *state) _nextHopsSNEK(from *peer, rx *types.Frame, bootstrap bool) *peer
 	}
 	newCheckedCandidate := func(candidate types.PublicKey, p *peer) {
 		switch {
+		case bootstrap && candidate.EqualTo(s.r.public):
+			// do nothing
 		case !bootstrap && candidate.EqualTo(destKey) && !bestKey.EqualTo(destKey):
 			newCandidate(candidate, p)
 		case util.DHTOrdered(destKey, candidate, bestKey):
@@ -218,34 +220,30 @@ func (s *state) _handleBootstrap(from *peer, rx *types.Frame) error {
 	acknowledge := false
 	desc := s._descending
 	switch {
-	case rx.SourceKey.EqualTo(s.r.public):
-		// We received a bootstrap from ourselves. This shouldn't happen,
-		// so either another node has forwarded it to us incorrectly, or
-		// a routing loop has occurred somewhere. Don't act on the bootstrap
-		// in that case.
-	case !bootstrap.RootPublicKey.EqualTo(root.RootPublicKey) || bootstrap.RootSequence != root.Sequence:
-		// The root or sequence don't match so we won't act on the bootstrap.
-	case desc != nil && desc.PublicKey.EqualTo(rx.SourceKey):
-		// We've received another bootstrap from our direct descending node.
-		// Send back an acknowledgement as this is OK.
-		acknowledge = true
-	case desc != nil && !desc.valid():
-		// We already have a direct descending node, but we haven't seen it
-		// recently, so it's quite possible that it has disappeared. We'll
-		// therefore handle this bootstrap instead. If the original node comes
-		// back later and is closer to us then we'll end up using it again.
-		acknowledge = true
-	case desc == nil && util.LessThan(rx.DestinationKey, s.r.public):
-		// We don't know about a descending node and at the moment we don't know
-		// any better candidates, so we'll accept a bootstrap from a node with a
-		// key lower than ours (so that it matches descending order).
-		acknowledge = true
-	case desc != nil && util.DHTOrdered(desc.PublicKey, rx.DestinationKey, s.r.public):
-		// We know about a descending node already but it turns out that this
-		// new node that we've received a bootstrap from is actually closer to
-		// us than the previous node. We'll update our record to use the new
-		// node instead and then send back a bootstrap ACK.
-		acknowledge = true
+	case !bootstrap.RootPublicKey.EqualTo(root.RootPublicKey):
+		// Root doesn't match so we won't be able to forward using tree space.
+	case bootstrap.RootSequence != root.Sequence:
+		// Sequence number doesn't match so something is out of date.
+	case !util.LessThan(rx.DestinationKey, s.r.public):
+		// The bootstrapping key should be less than ours but it isn't.
+	case desc != nil && desc.valid():
+		// We already have a descending entry and it hasn't expired.
+		switch {
+		case desc.PublicKey.EqualTo(rx.DestinationKey):
+			// We've received another bootstrap from our direct descending node.
+			// Send back an acknowledgement as this is OK.
+			acknowledge = true
+		case util.DHTOrdered(desc.PublicKey, rx.DestinationKey, s.r.public):
+			// The bootstrapping node is closer to us than our previous descending
+			// node was.
+			acknowledge = true
+		}
+	case desc == nil || !desc.valid():
+		// We don't have a descending entry, or we did but it expired.
+		if util.LessThan(rx.DestinationKey, s.r.public) {
+			// The bootstrapping key is less than ours so we'll acknowledge it.
+			acknowledge = true
+		}
 	default:
 		// The bootstrap conditions weren't met. This might just be because
 		// there's a node out there that hasn't converged to a closer node
@@ -287,30 +285,33 @@ func (s *state) _handleBootstrapACK(from *peer, rx *types.Frame) error {
 		// so either another node has forwarded it to us incorrectly, or
 		// a routing loop has occurred somewhere. Don't act on the bootstrap
 		// in that case.
-	case !bootstrapACK.RootPublicKey.EqualTo(root.RootPublicKey) || bootstrapACK.RootSequence != root.Sequence:
-		// The root or sequence don't match so we won't act on the bootstrap.
-	case asc != nil && asc.PublicKey.EqualTo(rx.SourceKey):
-		// We've received another bootstrap ACK from our direct ascending node.
-		// Just refresh the record and then send a new path setup message to
-		// that node.
-		update = true
-	case asc != nil && !asc.valid():
-		// We already have a direct ascending node, but we haven't seen it
-		// recently, so it's quite possible that it has disappeared. We'll
-		// therefore handle this bootstrap ACK instead. If the original node comes
-		// back later and is closer to us then we'll end up using it again.
-		update = true
-	case asc == nil && util.LessThan(s.r.public, rx.SourceKey):
-		// We don't know about an ascending node and at the moment we don't know
-		// any better candidates, so we'll accept a bootstrap ACK from a node with a
-		// key higher than ours (so that it matches descending order).
-		update = true
-	case asc != nil && util.DHTOrdered(s.r.public, rx.SourceKey, asc.PublicKey):
-		// We know about an ascending node already but it turns out that this
-		// new node that we've received a bootstrap from is actually closer to
-		// us than the previous node. We'll update our record to use the new
-		// node instead and then send a new path setup message to it.
-		update = true
+	case !bootstrapACK.RootPublicKey.EqualTo(root.RootPublicKey):
+		// Root doesn't match so we won't be able to forward using tree space.
+	case bootstrapACK.RootSequence != root.Sequence:
+		// Sequence number doesn't match so something is out of date.
+	case asc != nil && asc.valid():
+		// We already have an ascending entry and it hasn't expired.
+		switch {
+		case asc.PublicKey.EqualTo(rx.SourceKey):
+			// We've received another bootstrap ACK from our direct ascending node.
+			// Just refresh the record and then send a new path setup message to
+			// that node.
+			update = true
+		case util.DHTOrdered(s.r.public, rx.SourceKey, asc.PublicKey):
+			// We know about an ascending node already but it turns out that this
+			// new node that we've received a bootstrap from is actually closer to
+			// us than the previous node. We'll update our record to use the new
+			// node instead and then send a new path setup message to it.
+			update = true
+		}
+	case asc == nil || !asc.valid():
+		// We don't have an ascending entry, or we did but it expired.
+		if util.LessThan(s.r.public, rx.SourceKey) {
+			// We don't know about an ascending node and at the moment we don't know
+			// any better candidates, so we'll accept a bootstrap ACK from a node with a
+			// key higher than ours (so that it matches descending order).
+			update = true
+		}
 	default:
 		// The bootstrap ACK conditions weren't met. This might just be because
 		// there's a node out there that hasn't converged to a closer node
@@ -393,35 +394,30 @@ func (s *state) _handleSetup(from *peer, rx *types.Frame, nexthop *peer) error {
 		update := false
 		desc := s._descending
 		switch {
-		case rx.SourceKey.EqualTo(s.r.public):
-			// We received a bootstrap from ourselves. This shouldn't happen,
-			// so either another node has forwarded it to us incorrectly, or
-			// a routing loop has occurred somewhere. Don't act on the bootstrap
-			// in that case.
-		case !setup.RootPublicKey.EqualTo(root.RootPublicKey) || setup.RootSequence != root.Sequence:
-			// The root or sequence don't match so we won't act on the setup
-			// and send a teardown back to the sender.
-		case desc != nil && desc.PublicKey.EqualTo(rx.SourceKey):
-			// We've received another bootstrap from our direct descending node.
-			// Just refresh the record and then send back an acknowledgement.
-			update = true
-		case desc != nil && !desc.valid():
-			// We already have a direct descending node, but we haven't seen it
-			// recently, so it's quite possible that it has disappeared. We'll
-			// therefore handle this bootstrap instead. If the original node comes
-			// back later and is closer to us then we'll end up using it again.
-			update = true
-		case desc == nil && util.LessThan(rx.SourceKey, s.r.public):
-			// We don't know about a descending node and at the moment we don't know
-			// any better candidates, so we'll accept a bootstrap from a node with a
-			// key lower than ours (so that it matches descending order).
-			update = true
-		case desc != nil && util.DHTOrdered(desc.PublicKey, rx.SourceKey, s.r.public):
-			// We know about a descending node already but it turns out that this
-			// new node that we've received a bootstrap from is actually closer to
-			// us than the previous node. We'll update our record to use the new
-			// node instead and then send back a bootstrap ACK.
-			update = true
+		case !setup.RootPublicKey.EqualTo(root.RootPublicKey):
+			// Root doesn't match so we won't be able to forward using tree space.
+		case setup.RootSequence != root.Sequence:
+			// Sequence number doesn't match so something is out of date.
+		case !util.LessThan(rx.SourceKey, s.r.public):
+			// The bootstrapping key should be less than ours but it isn't.
+		case desc != nil && desc.valid():
+			// We already have a descending entry and it hasn't expired.
+			switch {
+			case desc.PublicKey.EqualTo(rx.SourceKey):
+				// We've received another bootstrap from our direct descending node.
+				// Send back an acknowledgement as this is OK.
+				update = true
+			case util.DHTOrdered(desc.PublicKey, rx.SourceKey, s.r.public):
+				// The bootstrapping node is closer to us than our previous descending
+				// node was.
+				update = true
+			}
+		case desc == nil || !desc.valid():
+			// We don't have a descending entry, or we did but it expired.
+			if util.LessThan(rx.SourceKey, s.r.public) {
+				// The bootstrapping key is less than ours so we'll acknowledge it.
+				update = true
+			}
 		default:
 			// The bootstrap conditions weren't met. This might just be because
 			// there's a node out there that hasn't converged to a closer node
