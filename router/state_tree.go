@@ -278,13 +278,9 @@ func (s *state) _handleTreeAnnouncement(p *peer, f *types.Frame) error {
 		case rootDelta > 0:
 			s._sendTreeAnnouncements()
 		}
-	} else {
-		if rootDelta < 0 && !s._waiting {
-			s.sendTreeAnnouncementToPeer(lastParentUpdate, p)
-			return nil
-		}
-	}
-	if !s._waiting {
+	} else if rootDelta < 0 && !s._waiting {
+		s.sendTreeAnnouncementToPeer(lastParentUpdate, p)
+	} else if !s._waiting {
 		if s._selectNewParent() {
 			s._bootstrapNow()
 		}
