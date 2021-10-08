@@ -17,6 +17,7 @@ package router
 import (
 	"context"
 	"crypto/ed25519"
+	"encoding/binary"
 	"encoding/hex"
 	"fmt"
 	"io"
@@ -156,10 +157,15 @@ func (r *Router) Connect(conn net.Conn, public types.PublicKey, zone string, pee
 func (r *Router) AuthenticatedConnect(conn net.Conn, zone string, peertype int) (types.SwitchPortID, error) {
 	handshake := []byte{
 		ourVersion,
-		ourCapabilities,
 		0, // unused
 		0, // unused
+		0, // unused
+		0, // capabilities
+		0, // capabilities
+		0, // capabilities
+		0, // capabilities
 	}
+	binary.BigEndian.PutUint32(handshake[4:8], ourCapabilities)
 	handshake = append(handshake, r.public[:ed25519.PublicKeySize]...)
 	handshake = append(handshake, ed25519.Sign(r.private[:], handshake)...)
 	if err := conn.SetDeadline(time.Now().Add(PeerKeepaliveInterval)); err != nil {
@@ -180,13 +186,13 @@ func (r *Router) AuthenticatedConnect(conn net.Conn, zone string, peertype int) 
 		conn.Close()
 		return 0, fmt.Errorf("mismatched node version")
 	}
-	if theirCapabilities := handshake[1]; theirCapabilities&ourCapabilities != ourCapabilities {
+	if theirCapabilities := binary.BigEndian.Uint32(handshake[4:8]); theirCapabilities&ourCapabilities != ourCapabilities {
 		conn.Close()
 		return 0, fmt.Errorf("mismatched node capabilities")
 	}
 	var public types.PublicKey
 	var signature types.Signature
-	offset := 4
+	offset := 8
 	offset += copy(public[:], handshake[offset:offset+ed25519.PublicKeySize])
 	copy(signature[:], handshake[offset:offset+ed25519.SignatureSize])
 	if !ed25519.Verify(public[:], handshake[:offset], signature[:]) {

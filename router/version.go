@@ -15,4 +15,4 @@
 package router
 
 const ourVersion uint8 = 1
-const ourCapabilities uint8 = 0
+const ourCapabilities uint32 = 0
