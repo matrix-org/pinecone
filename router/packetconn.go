@@ -19,6 +19,7 @@ import (
 	"net"
 	"time"
 
+	"github.com/Arceliar/phony"
 	"github.com/matrix-org/pinecone/types"
 )
 
@@ -50,6 +51,22 @@ func (a GreedyAddr) String() string {
 	return fmt.Sprintf("coords %v", a.SwitchPorts)
 }
 
+func (r *Router) localPeer() *peer {
+	peer := &peer{
+		router:   r,
+		port:     0,
+		context:  r.context,
+		cancel:   r.cancel,
+		conn:     nil,
+		zone:     "local",
+		peertype: 0,
+		public:   r.public,
+		traffic:  newLIFOQueue(TrafficBuffer),
+	}
+	peer.started.Store(true)
+	return peer
+}
+
 // ReadFrom reads the next packet that was delivered to this
 // node over the Pinecone network. Only traffic packets will
 // be returned here - no protocol messages will be included.
@@ -60,16 +77,17 @@ func (a GreedyAddr) String() string {
 // was delivered using source routing, then the net.Addr will
 // contain the source-routed path back to the sender.
 func (r *Router) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
-	frame := <-r.recv
+	var frame *types.Frame
+	select {
+	case <-r.local.context.Done():
+		r.local.stop(nil)
+		return
+	case <-r.local.traffic.wait():
+		frame, _ = r.local.traffic.pop()
+	}
 	switch frame.Type {
 	case types.TypeGreedy:
 		addr = GreedyAddr{frame.Source}
-
-	case types.TypeSource:
-		addr = SourceAddr{frame.Source} // TODO: should get the remainder of the path
-
-	case types.TypeVirtualSnakeBootstrap:
-		addr = frame.SourceKey
 
 	case types.TypeVirtualSnake:
 		addr = frame.SourceKey
@@ -99,45 +117,26 @@ func (r *Router) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 
 	switch ga := addr.(type) {
 	case GreedyAddr:
-		select {
-		case <-timer.C:
-			return 0, fmt.Errorf("router appears to be deadlocked")
-		case r.send <- types.Frame{
-			Version:     types.Version0,
-			Type:        types.TypeGreedy,
-			Destination: ga.SwitchPorts,
-			Source:      r.Coords(),
-			Payload:     append([]byte{}, p...),
-		}:
-			return len(p), nil
-		}
-
-	case SourceAddr:
-		select {
-		case <-timer.C:
-			return 0, fmt.Errorf("router appears to be deadlocked")
-		case r.send <- types.Frame{
-			Version:     types.Version0,
-			Type:        types.TypeSource,
-			Destination: ga.SwitchPorts,
-			Payload:     append([]byte{}, p...),
-		}:
-			return len(p), nil
-		}
+		phony.Block(r.state, func() {
+			frame := getFrame()
+			frame.Type = types.TypeGreedy
+			frame.Destination = append(frame.Destination[:0], ga.SwitchPorts...)
+			frame.Source = append(frame.Source[:0], r.state.coords()...)
+			frame.Payload = append(frame.Payload[:0], p...)
+			_ = r.state._forward(r.local, frame)
+		})
+		return len(p), nil
 
 	case types.PublicKey:
-		select {
-		case <-timer.C:
-			return 0, fmt.Errorf("router appears to be deadlocked")
-		case r.send <- types.Frame{
-			Version:        types.Version0,
-			Type:           types.TypeVirtualSnake,
-			DestinationKey: ga,
-			SourceKey:      r.PublicKey(),
-			Payload:        append([]byte{}, p...),
-		}:
-			return len(p), nil
-		}
+		phony.Block(r.state, func() {
+			frame := getFrame()
+			frame.Type = types.TypeVirtualSnake
+			frame.DestinationKey = ga
+			frame.SourceKey = r.public
+			frame.Payload = append(frame.Payload[:0], p...)
+			_ = r.state._forward(r.local, frame)
+		})
+		return len(p), nil
 
 	default:
 		err = fmt.Errorf("unknown address type")

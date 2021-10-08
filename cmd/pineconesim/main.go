@@ -20,6 +20,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"math/rand"
 	"os"
 	"runtime"
 	"sort"
@@ -32,6 +33,7 @@ import (
 	"github.com/matrix-org/pinecone/cmd/pineconesim/simulator"
 	"github.com/matrix-org/pinecone/router"
 	"github.com/matrix-org/pinecone/util"
+	"go.uber.org/atomic"
 
 	"net/http"
 	_ "net/http/pprof"
@@ -44,6 +46,8 @@ func main() {
 
 	filename := flag.String("filename", "cmd/pineconesim/graphs/sim.txt", "the file that describes the simulated topology")
 	sockets := flag.Bool("sockets", false, "use real TCP sockets to connect simulated nodes")
+	chaos := flag.Int("chaos", 0, "randomly connect and disconnect a certain number of links")
+	ping := flag.Bool("ping", false, "test end-to-end reachability between all nodes")
 	flag.Parse()
 
 	file, err := os.Open(*filename)
@@ -75,7 +79,7 @@ func main() {
 	}
 
 	log := log.New(os.Stdout, "\u001b[36m***\u001b[0m ", 0)
-	sim := simulator.NewSimulator(log, *sockets)
+	sim := simulator.NewSimulator(log, *sockets, *ping)
 	configureHTTPRouting(sim)
 	sim.CalculateShortestPaths(nodes, wires)
 
@@ -99,9 +103,9 @@ func main() {
 		}
 	}
 
-	/*
+	if chaos != nil && *chaos > 0 {
 		rand.Seed(time.Now().UnixNano())
-		maxintv, maxswing := 5, int32(10)
+		maxintv, maxswing := 20, int32(*chaos)
 		var swing atomic.Int32
 
 		// Chaos disconnector
@@ -147,46 +151,48 @@ func main() {
 				time.Sleep(time.Second * time.Duration(rand.Intn(maxintv)))
 			}
 		}()
-	*/
+	}
 
 	log.Println("Configuring HTTP listener")
 
-	go func() {
-		for {
-			time.Sleep(time.Second * 15)
-			log.Println("Starting pathfinds...")
+	if ping != nil && *ping {
+		go func() {
+			for {
+				time.Sleep(time.Second * 15)
+				log.Println("Starting pings...")
 
-			tasks := make(chan pair, 2*(len(nodes)*len(nodes)))
-			for from := range nodes {
-				for to := range nodes {
-					tasks <- pair{from, to}
-				}
-			}
-			close(tasks)
-
-			numworkers := runtime.NumCPU() * 16
-			var wg sync.WaitGroup
-			wg.Add(numworkers)
-			for i := 0; i < numworkers; i++ {
-				go func() {
-					for pair := range tasks {
-						log.Println("Tree pathfind from", pair.from, "to", pair.to)
-						if err := sim.PathfindTree(pair.from, pair.to); err != nil {
-							log.Println("Tree pathfind from", pair.from, "to", pair.to, "failed:", err)
-						}
-						log.Println("SNEK pathfind from", pair.from, "to", pair.to)
-						if err := sim.PathfindSNEK(pair.from, pair.to); err != nil {
-							log.Println("SNEK pathfind from", pair.from, "to", pair.to, "failed:", err)
-						}
+				tasks := make(chan pair, 2*(len(nodes)*len(nodes)))
+				for from := range nodes {
+					for to := range nodes {
+						tasks <- pair{from, to}
 					}
-					wg.Done()
-				}()
-			}
+				}
+				close(tasks)
 
-			wg.Wait()
-			log.Println("All pathfinds finished, repeating shortly...")
-		}
-	}()
+				numworkers := runtime.NumCPU() * 16
+				var wg sync.WaitGroup
+				wg.Add(numworkers)
+				for i := 0; i < numworkers; i++ {
+					go func() {
+						for pair := range tasks {
+							log.Println("Tree ping from", pair.from, "to", pair.to)
+							if err := sim.PingTree(pair.from, pair.to); err != nil {
+								log.Println("Tree ping from", pair.from, "to", pair.to, "failed:", err)
+							}
+							log.Println("SNEK ping from", pair.from, "to", pair.to)
+							if err := sim.PingSNEK(pair.from, pair.to); err != nil {
+								log.Println("SNEK ping from", pair.from, "to", pair.to, "failed:", err)
+							}
+						}
+						wg.Done()
+					}()
+				}
+
+				wg.Wait()
+				log.Println("All pings finished, repeating shortly...")
+			}
+		}()
+	}
 
 	select {}
 }
@@ -247,12 +253,12 @@ func configureHTTPRouting(sim *simulator.Simulator) {
 		}
 
 		data := PageData{
-			AvgStretch:          "TBD",
-			TreePathConvergence: "TBD",
-			SNEKPathConvergence: "TBD",
+			AvgStretch:          "Not tested",
+			TreePathConvergence: "Not tested",
+			SNEKPathConvergence: "Not tested",
 			Uptime:              sim.Uptime().Round(time.Second),
 		}
-		if totalCount > 0 {
+		if sim.PingingEnabled() && totalCount > 0 {
 			data.TreePathConvergence = fmt.Sprintf("%d%%", (dhtConvergence*100)/totalCount)
 			data.SNEKPathConvergence = fmt.Sprintf("%d%%", (pathConvergence*100)/totalCount)
 		}
@@ -266,14 +272,15 @@ func configureHTTPRouting(sim *simulator.Simulator) {
 		for _, n := range nodeids {
 			node := nodes[n]
 			public := node.PublicKey()
-			asc, desc, table := node.DHTInfo()
+			asc, desc, table, stale := node.DHTInfo()
 			entry := Node{
-				Name:    n,
-				Port:    "—",
-				Coords:  fmt.Sprintf("%v", node.Coords()),
-				Key:     hex.EncodeToString(public[:2]),
-				IsRoot:  node.IsRoot(),
-				DHTSize: len(table),
+				Name:          n,
+				Port:          "—",
+				Coords:        fmt.Sprintf("%v", node.Coords()),
+				Key:           hex.EncodeToString(public[:2]),
+				IsRoot:        node.IsRoot(),
+				DHTSize:       len(table),
+				DHTStalePaths: stale,
 			}
 			if node.ListenAddr != nil {
 				entry.Port = fmt.Sprintf("%d", node.ListenAddr.Port)
@@ -295,7 +302,7 @@ func configureHTTPRouting(sim *simulator.Simulator) {
 		if nodeKey := r.URL.Query().Get("pk"); nodeKey != "" {
 			if node, ok := nodes[shortcuts[nodeKey]]; ok {
 				pk := node.Router.PublicKey()
-				asc, desc, dht := node.Router.DHTInfo()
+				asc, desc, dht, _ := node.Router.DHTInfo()
 				pks := hex.EncodeToString(pk[:2])
 				data.NodeInfo = &NodeInfo{
 					Name:      shortcuts[pks],
@@ -315,8 +322,9 @@ func configureHTTPRouting(sim *simulator.Simulator) {
 						DHTEntry{
 							PublicKey:       hex.EncodeToString(k.PublicKey[:2]),
 							PathID:          hex.EncodeToString(k.PathID[:]),
-							DestinationPort: int(v.DestinationPort),
-							SourcePort:      int(v.SourcePort),
+							DestinationPort: v.Destination,
+							SourcePort:      v.Source,
+							Sequence:        int(v.RootSequence),
 						},
 					)
 				}
@@ -440,16 +448,17 @@ func configureHTTPRouting(sim *simulator.Simulator) {
 }
 
 type Node struct {
-	Name        string
-	Port        string
-	Coords      string
-	Key         string
-	Root        string
-	Predecessor string
-	Successor   string
-	IsRoot      bool
-	IsExternal  bool
-	DHTSize     int
+	Name          string
+	Port          string
+	Coords        string
+	Key           string
+	Root          string
+	Predecessor   string
+	Successor     string
+	IsRoot        bool
+	IsExternal    bool
+	DHTSize       int
+	DHTStalePaths int
 }
 
 type Link struct {
@@ -502,9 +511,10 @@ func (e DHTEntries) Less(i, j int) bool {
 
 type DHTEntry struct {
 	PublicKey       string
-	DestinationPort int
-	SourcePort      int
+	DestinationPort interface{}
+	SourcePort      interface{}
 	PathID          string
+	Sequence        int
 }
 
 type PeerEntries []PeerEntry

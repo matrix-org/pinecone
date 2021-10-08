@@ -35,7 +35,7 @@ import (
 )
 
 func main() {
-	pk, sk, err := ed25519.GenerateKey(nil)
+	_, sk, err := ed25519.GenerateKey(nil)
 	if err != nil {
 		panic(err)
 	}
@@ -68,8 +68,8 @@ func main() {
 		}()
 	}
 
-	pineconeRouter := router.NewRouter(logger, "router", sk, pk, nil)
-	pineconeRouter.AllowImpreciseTraffic(true)
+	pineconeRouter := router.NewRouter(logger, sk, "", nil)
+	//pineconeRouter.AllowImpreciseTraffic(true)
 	pineconeMulticast := multicast.NewMulticast(logger, pineconeRouter)
 	pineconeMulticast.Start()
 	pineconeTUN, err := tun.NewTUN(pineconeRouter)
@@ -136,7 +136,7 @@ func main() {
 	}()
 
 	sigs := make(chan os.Signal, 1)
-	signal.Notify(sigs, syscall.SIGUSR1)
+	signal.Notify(sigs, syscall.SIGUSR1, syscall.SIGUSR2)
 	for {
 		switch <-sigs {
 		case syscall.SIGUSR1:
@@ -156,6 +156,9 @@ func main() {
 				pprof.StopCPUProfile()
 				logger.Println("Profile written:", fn)
 			})
+
+		case syscall.SIGUSR2:
+			pineconeRouter.ToggleDebug()
 		}
 	}
 }

@@ -48,7 +48,7 @@ func (sim *Simulator) CreateNode(t string) error {
 			return fmt.Errorf("net.Listen: %w", err)
 		}
 	}
-	pk, sk, err := ed25519.GenerateKey(nil)
+	_, sk, err := ed25519.GenerateKey(nil)
 	if err != nil {
 		return fmt.Errorf("ed25519.GenerateKey: %w", err)
 	}
@@ -56,7 +56,7 @@ func (sim *Simulator) CreateNode(t string) error {
 	color := 31 + (crc % 6)
 	log := log.New(sim.log.Writer(), fmt.Sprintf("\033[%dmNode %s:\033[0m ", color, t), 0)
 	n := &Node{
-		Router:     router.NewRouter(log, t, sk, pk, sim),
+		Router:     router.NewRouter(log, sk, t, sim),
 		l:          l,
 		ListenAddr: tcpaddr,
 	}

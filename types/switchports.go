@@ -71,12 +71,13 @@ func (p *SwitchPorts) UnmarshalBinary(b []byte) (int, error) {
 			break
 		}
 		var id Varu64
-		if err := id.UnmarshalBinary(b); err != nil {
+		l, err := id.UnmarshalBinary(b)
+		if err != nil {
 			return 0, fmt.Errorf("id.UnmarshalBinary: %w", err)
 		}
 		ports = append(ports, SwitchPortID(id))
-		b = b[id.Length():]
-		read += id.Length()
+		b = b[l:]
+		read += l
 	}
 	*p = ports
 	return read, nil

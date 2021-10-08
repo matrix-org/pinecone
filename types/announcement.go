@@ -49,10 +49,11 @@ func (a *SwitchAnnouncement) UnmarshalBinary(data []byte) (int, error) {
 		return 0, fmt.Errorf("expecting at least %d bytes, got %d bytes", expected, size)
 	}
 	remaining := data[copy(a.RootPublicKey[:ed25519.PublicKeySize], data):]
-	if err := a.Sequence.UnmarshalBinary(remaining); err != nil {
+	if l, err := a.Sequence.UnmarshalBinary(remaining); err != nil {
 		return 0, fmt.Errorf("a.Sequence.UnmarshalBinary: %w", err)
+	} else {
+		remaining = remaining[l:]
 	}
-	remaining = remaining[a.Sequence.Length():]
 	for i := Varu64(0); len(remaining) >= ed25519.PublicKeySize+ed25519.SignatureSize+1; i++ {
 		var signature SignatureWithHop
 		n, err := signature.UnmarshalBinary(remaining[:])

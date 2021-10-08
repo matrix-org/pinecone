@@ -15,6 +15,7 @@ func (p VirtualSnakePathID) MarshalJSON() ([]byte, error) {
 type VirtualSnakeBootstrap struct {
 	PathID        VirtualSnakePathID
 	RootPublicKey PublicKey
+	RootSequence  Varu64
 }
 
 func (v *VirtualSnakeBootstrap) MarshalBinary(buf []byte) (int, error) {
@@ -24,6 +25,11 @@ func (v *VirtualSnakeBootstrap) MarshalBinary(buf []byte) (int, error) {
 	offset := 0
 	offset += copy(buf[offset:], v.PathID[:])
 	offset += copy(buf[offset:], v.RootPublicKey[:])
+	b, err := v.RootSequence.MarshalBinary()
+	if err != nil {
+		return 0, fmt.Errorf("v.RootSequence.MarshalBinary: %w", err)
+	}
+	offset += copy(buf[offset:], b[:])
 	return offset, nil
 }
 
@@ -34,85 +40,104 @@ func (v *VirtualSnakeBootstrap) UnmarshalBinary(buf []byte) (int, error) {
 	offset := 0
 	offset += copy(v.PathID[:], buf[offset:])
 	offset += copy(v.RootPublicKey[:], buf[offset:])
+	l, err := v.RootSequence.UnmarshalBinary(buf[offset:])
+	if err != nil {
+		return 0, fmt.Errorf("v.RootSequence.UnmarshalBinary: %w", err)
+	}
+	offset += l
 	return offset, nil
 }
 
 type VirtualSnakeBootstrapACK struct {
 	PathID        VirtualSnakePathID
 	RootPublicKey PublicKey
+	RootSequence  Varu64
 }
 
 func (v *VirtualSnakeBootstrapACK) MarshalBinary(buf []byte) (int, error) {
-	if len(buf) < 8+ed25519.PublicKeySize {
+	if len(buf) < 8+ed25519.PublicKeySize+v.RootSequence.Length() {
 		return 0, fmt.Errorf("buffer too small")
 	}
 	offset := 0
 	offset += copy(buf[offset:], v.PathID[:])
 	offset += copy(buf[offset:], v.RootPublicKey[:])
+	b, err := v.RootSequence.MarshalBinary()
+	if err != nil {
+		return 0, fmt.Errorf("v.RootSequence.MarshalBinary: %w", err)
+	}
+	offset += copy(buf[offset:], b[:])
 	return offset, nil
 }
 
 func (v *VirtualSnakeBootstrapACK) UnmarshalBinary(buf []byte) (int, error) {
-	if len(buf) < 8+ed25519.PublicKeySize {
+	if len(buf) < 8+ed25519.PublicKeySize+1 {
 		return 0, fmt.Errorf("buffer too small")
 	}
 	offset := 0
 	offset += copy(v.PathID[:], buf[offset:])
 	offset += copy(v.RootPublicKey[:], buf[offset:])
+	l, err := v.RootSequence.UnmarshalBinary(buf[offset:])
+	if err != nil {
+		return 0, fmt.Errorf("v.RootSequence.UnmarshalBinary: %w", err)
+	}
+	offset += l
 	return offset, nil
 }
 
 type VirtualSnakeSetup struct {
 	PathID        VirtualSnakePathID
 	RootPublicKey PublicKey
+	RootSequence  Varu64
 }
 
 func (v *VirtualSnakeSetup) MarshalBinary(buf []byte) (int, error) {
-	if len(buf) < 8+ed25519.PublicKeySize {
+	if len(buf) < 8+ed25519.PublicKeySize+v.RootSequence.Length() {
 		return 0, fmt.Errorf("buffer too small")
 	}
 	offset := 0
 	offset += copy(buf[offset:], v.PathID[:])
 	offset += copy(buf[offset:], v.RootPublicKey[:])
+	b, err := v.RootSequence.MarshalBinary()
+	if err != nil {
+		return 0, fmt.Errorf("v.RootSequence.MarshalBinary: %w", err)
+	}
+	offset += copy(buf[offset:], b[:])
 	return offset, nil
 }
 
 func (v *VirtualSnakeSetup) UnmarshalBinary(buf []byte) (int, error) {
-	if len(buf) < 8+ed25519.PublicKeySize {
+	if len(buf) < 8+ed25519.PublicKeySize+1 {
 		return 0, fmt.Errorf("buffer too small")
 	}
 	offset := 0
 	offset += copy(v.PathID[:], buf[offset:])
 	offset += copy(v.RootPublicKey[:], buf[offset:])
+	l, err := v.RootSequence.UnmarshalBinary(buf[offset:])
+	if err != nil {
+		return 0, fmt.Errorf("v.RootSequence.UnmarshalBinary: %w", err)
+	}
+	offset += l
 	return offset, nil
 }
 
 type VirtualSnakeTeardown struct {
-	PathID    VirtualSnakePathID
-	Ascending bool
+	PathID VirtualSnakePathID
 }
 
 func (v *VirtualSnakeTeardown) MarshalBinary(buf []byte) (int, error) {
-	if len(buf) < 9 {
+	if len(buf) < 8 {
 		return 0, fmt.Errorf("buffer too small")
 	}
 	offset := 0
 	offset += copy(buf[offset:], v.PathID[:])
-	if v.Ascending {
-		offset += copy(buf[offset:], []byte{1})
-	} else {
-		offset += copy(buf[offset:], []byte{0})
-	}
 	return offset, nil
 }
 
 func (v *VirtualSnakeTeardown) UnmarshalBinary(buf []byte) (int, error) {
-	if len(buf) < 9 {
+	if len(buf) < 8 {
 		return 0, fmt.Errorf("buffer too small")
 	}
 	offset := 0
 	offset += copy(v.PathID[:], buf[offset:])
-	v.Ascending = buf[offset] == 1
-	offset += 1
 	return offset, nil
 }

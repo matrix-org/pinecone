@@ -22,15 +22,15 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"sync"
 	"time"
 
+	"github.com/Arceliar/phony"
 	"github.com/matrix-org/pinecone/types"
 	"go.uber.org/atomic"
 )
 
 const PeerKeepaliveInterval = time.Second * 3
-const PeerKeepaliveTimeout = PeerKeepaliveInterval * 3
+const PeerKeepaliveTimeout = time.Second * 5
 
 const (
 	PeerTypeMulticast int = iota
@@ -38,446 +38,202 @@ const (
 	PeerTypeRemote
 )
 
-type Peer struct {
-	r            *Router                   //
-	port         types.SwitchPortID        //
-	allocated    atomic.Bool               //
-	started      atomic.Bool               // worker goroutines started?
-	wg           *sync.WaitGroup           // wait group for worker goroutines
-	mutex        sync.RWMutex              // protects everything below this line
-	zone         string                    //
-	peertype     int                       //
-	context      context.Context           //
-	cancel       context.CancelFunc        //
-	conn         net.Conn                  // underlying connection to peer
-	public       types.PublicKey           //
-	trafficOut   *lifoQueue                // queue traffic message to peer
-	protoOut     *fifoQueue                // queue protocol message to peer
-	coords       types.SwitchPorts         //
-	announcement *rootAnnouncementWithTime // last received announcement from peer
-	statistics   peerStatistics            //
+type peer struct {
+	reader   phony.Inbox
+	writer   phony.Inbox
+	router   *Router            // populated by router
+	port     types.SwitchPortID // populated by router
+	context  context.Context    // populated by router
+	cancel   context.CancelFunc // populated by router
+	conn     net.Conn           // populated by router
+	zone     string             // populated by router
+	peertype int                // populated by router
+	public   types.PublicKey    // populated by router
+	started  atomic.Bool        // prevents more than one shutdown
+	proto    *fifoQueue         // thread-safe
+	traffic  *lifoQueue         // thread-safe
 }
 
-func (p *Peer) start() {
-	if !p.started.CAS(false, true) {
+func (p *peer) String() string { // to make sim less ugly
+	if p == nil {
+		return "nil"
+	}
+	if p.port == 0 {
+		return "local"
+	}
+	return fmt.Sprintf("%d", p.port)
+}
+
+func (p *peer) send(f *types.Frame) bool {
+	switch f.Type {
+	// Protocol messages
+	case types.TypeSTP, types.TypeKeepalive:
+		fallthrough
+	case types.TypeVirtualSnakeBootstrap, types.TypeVirtualSnakeBootstrapACK:
+		fallthrough
+	case types.TypeVirtualSnakeSetup, types.TypeVirtualSnakeTeardown:
+		if p.proto == nil {
+			// The local peer doesn't have a protocol queue so we should check
+			// for nils to prevent panics.
+			return true
+		}
+		return p.proto.push(f)
+
+	// Traffic messages
+	case types.TypeVirtualSnake, types.TypeGreedy, types.TypeSource:
+		fallthrough
+	case types.TypeSNEKPing, types.TypeSNEKPong, types.TypeTreePing, types.TypeTreePong:
+		return p.traffic.push(f)
+	}
+
+	return false
+}
+
+func (p *peer) stop(err error) {
+	// The atomic switch here immediately makes sure that the port won't be
+	// used. Then we'll cancel the context and reduce the connection count.
+	if !p.started.CAS(true, false) {
 		return
 	}
-
-	// Store the fact that we're connected to this public key in
-	// this zone, so that the multicast code can ignore nodes we
-	// are already connected to.
+	p.cancel()
 	index := hex.EncodeToString(p.public[:]) + p.zone
-	p.r.active.Store(index, p.port)
-
-	// When the peer dies, we need to clean up.
-	var lasterr error
-	var lasterrMutex sync.Mutex
-	defer func() {
-		p.r.callbacks.onDisconnected(p.port, p.public, p.peertype, lasterr)
-		p.reset()
-		p.r.active.Delete(index)
-	}()
-
-	// Push a root update to our new peer. This will notify them
-	// of our coordinates and that we are alive.
-	p.protoOut.push(p.r.tree.Root().ForPeer(p))
-
-	// Start the reader and writer goroutines for this peer.
-	p.wg.Add(2)
-	go func() {
-		if err := p.reader(p.context); err != nil && err != context.Canceled {
-			lasterrMutex.Lock()
-			lasterr = fmt.Errorf("reader error: %w", err)
-			lasterrMutex.Unlock()
-		}
-	}()
-	go func() {
-		if err := p.writer(p.context); err != nil && err != context.Canceled {
-			lasterrMutex.Lock()
-			lasterr = fmt.Errorf("writer error: %w", err)
-			lasterrMutex.Unlock()
-		}
-	}()
-
-	// Report the new connection.
-	if p.port != 0 {
-		p.r.dht.insertNode(p)
+	if v, ok := p.router.active.Load(index); ok && v.(*atomic.Uint64).Dec() == 0 {
+		p.router.active.Delete(index)
 	}
-	if p.r.simulator != nil {
-		p.r.simulator.ReportNewLink(p.conn, p.r.public, p.public)
-	}
-	p.r.callbacks.onConnected(p.port, p.public, p.peertype)
+	// Next we'll send a message to the state inbox asking it to clean
+	// up the port.
+	p.router.state.Act(nil, func() {
+		p.router.state._portDisconnected(p)
 
-	p.r.log.Printf("Connected port %d to %s (zone %q)\n", p.port, p.conn.RemoteAddr(), p.zone)
-
-	// Wait for the cancellation, and then for the goroutines to stop.
-	<-p.context.Done()
-	p.started.Store(false)
-
-	// Notify the tree and DHT about the peer cancellation. We need
-	// to do this quickly so that they have more time to recover, even
-	// if the goroutines take a while to stop.
-	p.r.snake.portWasDisconnected(p.port)
-	p.r.tree.portWasDisconnected(p.port)
-
-	// Now wait for the goroutines to stop.
-	p.wg.Wait()
-
-	// Report the disconnection.
-	if p.port != 0 {
-		p.r.dht.deleteNode(p.public)
-	}
-	if p.r.simulator != nil {
-		p.r.simulator.ReportDeadLink(p.r.public, p.public)
-	}
-
-	// Make sure the connection is closed.
-	_ = p.conn.Close()
-
-	// ... and finally, yell about it.
-	lasterrMutex.Lock()
-	if lasterr != nil {
-		p.r.log.Printf("Disconnected port %d: %s\n", p.port, lasterr)
-	} else {
-		p.r.log.Printf("Disconnected port %d\n", p.port)
-	}
-	lasterrMutex.Unlock()
-}
-
-func (p *Peer) reset() {
-	p.mutex.Lock()
-	defer p.mutex.Unlock()
-	p.allocated.Store(false)
-	p.started.Store(false)
-	p.zone = ""
-	p.peertype = 0
-	p.context, p.cancel = nil, nil
-	p.conn = nil
-	p.public = types.PublicKey{}
-	p.trafficOut.reset()
-	p.protoOut.reset()
-	p.statistics.reset()
-	p.coords = nil
-	p.announcement = nil
-}
-
-type peerStatistics struct {
-	txProtoSuccessful   atomic.Uint64
-	txProtoDropped      atomic.Uint64
-	txTrafficSuccessful atomic.Uint64
-	txTrafficDropped    atomic.Uint64
-	rxProto             atomic.Uint64
-	rxTraffic           atomic.Uint64
-}
-
-func (s *peerStatistics) reset() {
-	s.txProtoSuccessful.Store(0)
-	s.txProtoDropped.Store(0)
-	s.txTrafficSuccessful.Store(0)
-	s.txTrafficDropped.Store(0)
-	s.rxProto.Store(0)
-	s.rxTraffic.Store(0)
-}
-
-func (p *Peer) IsParent() bool {
-	return p.r.tree.Parent() == p.port
-}
-
-func (p *Peer) Alive() bool {
-	p.mutex.RLock()
-	defer p.mutex.RUnlock()
-	return p.announcement != nil && time.Since(p.announcement.receiveTime) < announcementTimeout
-}
-
-func (p *Peer) PublicKey() types.PublicKey {
-	p.mutex.RLock()
-	defer p.mutex.RUnlock()
-	return p.public
-}
-
-func (p *Peer) Coordinates() types.SwitchPorts {
-	p.mutex.RLock()
-	defer p.mutex.RUnlock()
-	return p.coords
-}
-
-func (p *Peer) SeenCommonRootRecently() bool {
-	if !p.Alive() {
-		return false
-	}
-	last := p.lastAnnouncement()
-	if last == nil {
-		return false
-	}
-	lpk := last.RootPublicKey
-	rpk := p.r.RootPublicKey()
-	return lpk == rpk
-}
-
-func (p *Peer) updateAnnouncement(new *types.SwitchAnnouncement) error {
-	p.mutex.Lock()
-	defer p.mutex.Unlock()
-	if p.announcement != nil {
-		if new.RootPublicKey == p.announcement.RootPublicKey && new.Sequence < p.announcement.Sequence {
-			p.announcement = nil
-			p.coords = nil
-			return fmt.Errorf("root announcement replays sequence number")
-		}
-	}
-	p.r.tree.ordering++
-	p.announcement = &rootAnnouncementWithTime{
-		SwitchAnnouncement: *new,
-		receiveTime:        time.Now(),
-		receiveOrder:       p.r.tree.ordering,
-	}
-	p.coords = new.PeerCoords()
-	return nil
-}
-
-func (p *Peer) lastAnnouncement() *rootAnnouncementWithTime {
-	p.mutex.RLock()
-	defer p.mutex.RUnlock()
-	switch {
-	case !p.allocated.Load():
-		return nil
-	case !p.started.Load():
-		return nil
-	case p.announcement != nil && time.Since(p.announcement.receiveTime) >= announcementTimeout:
-		return nil
-	}
-	return p.announcement
-}
-
-func (p *Peer) stop() {
-	if p.started.CAS(true, false) {
-		p.mutex.Lock()
-		p.cancel()
-		p.mutex.Unlock()
-	}
-}
-
-func (p *Peer) generateKeepalive() *types.Frame {
-	frame := types.GetFrame()
-	frame.Version = types.Version0
-	frame.Type = types.TypeKeepalive
-	return frame
-}
-
-func (p *Peer) reader(ctx context.Context) error {
-	defer p.wg.Done()
-	defer p.cancel()
-
-	buf := make([]byte, MaxFrameSize)
-	for {
-		select {
-		case <-ctx.Done():
-			// The switch peer is shutting down.
-			return context.Canceled
-
-		default:
-			if p.port != 0 {
-				if err := p.conn.SetReadDeadline(time.Now().Add(PeerKeepaliveTimeout)); err != nil {
-					return fmt.Errorf("conn.SetReadDeadline: %w", err)
+		for i, rp := range p.router.state._peers {
+			if rp == p {
+				rp.proto.reset()
+				rp.traffic.reset()
+				p.router.state._peers[i] = nil
+				if err != nil {
+					p.router.log.Println("Disconnected from peer", p.public.String(), "on port", i, "due to error:", err)
+				} else {
+					p.router.log.Println("Disconnected from peer", p.public.String(), "on port", i)
 				}
+				break
 			}
-			if _, err := io.ReadFull(p.conn, buf[:8]); err != nil {
-				return fmt.Errorf("p.conn.Peek: %w", err)
-			}
-			if err := p.conn.SetReadDeadline(time.Time{}); err != nil {
-				return fmt.Errorf("conn.SetReadDeadline: %w", err)
-			}
-			if !bytes.Equal(buf[:4], types.FrameMagicBytes) {
-				return fmt.Errorf("missing magic bytes")
-			}
-			expecting := int(binary.BigEndian.Uint16(buf[6:8]))
-			n, err := io.ReadFull(p.conn, buf[8:expecting])
-			if err != nil {
-				return fmt.Errorf("io.ReadFull: %w", err)
-			}
-			if n < expecting-8 {
-				p.r.log.Println("Expecting", expecting, "bytes but got", n, "bytes")
-				continue
-			}
-			frame := types.GetFrame()
-			if _, err := frame.UnmarshalBinary(buf[:n+8]); err != nil {
-				frame.Done()
-				return fmt.Errorf("frame.UnmarshalBinary: %w", err)
-			}
-			switch {
-			case frame.Version != types.Version0:
-				fallthrough
-			case frame.Type == types.TypeKeepalive:
-				frame.Done()
-				continue
-			}
-			func(frame *types.Frame) {
-				defer frame.Done()
-				//	p.r.log.Println("Frame type", frame.Type.String(), frame.DestinationKey)
-				for _, port := range p.getNextHops(frame, p.port) {
-					dest := p.r.ports[port]
-					if !dest.started.Load() || (dest.port != 0 && !dest.Alive()) {
-						// Ignore ports that are not good candidates.
-						continue
-					}
-					switch frame.Type {
-					case types.TypePathfind, types.TypeVirtualSnakePathfind:
-						signedframe, err := p.r.signPathfind(frame, p, dest)
-						if err != nil {
-							p.r.log.Println("WARNING: Failed to sign pathfind:", err)
-							continue
-						}
-						if signedframe == nil {
-							continue
-						}
-						if dest.trafficOut.push(signedframe) {
-							return
-						} else {
-							signedframe.Done()
-							continue
-						}
+		}
+	})
+}
 
-					case types.TypeDHTRequest, types.TypeDHTResponse, types.TypeVirtualSnakeBootstrap, types.TypeVirtualSnakeBootstrapACK, types.TypeVirtualSnakeSetup, types.TypeVirtualSnakeTeardown:
-						if dest.protoOut.push(frame.Borrow()) {
-							return
-						} else {
-							frame.Done()
-							continue
-						}
-
-					case types.TypeGreedy, types.TypeSource, types.TypeVirtualSnake:
-						if dest.trafficOut.push(frame.Borrow()) {
-							return
-						} else {
-							frame.Done()
-							continue
-						}
-					}
-				}
-			}(frame)
+func (p *peer) _write() {
+	if !p.started.Load() {
+		return
+	}
+	var frame *types.Frame
+	keepalive := func() <-chan time.Time {
+		if !p.router.keepalives {
+			return make(chan time.Time)
+		}
+		return time.After(PeerKeepaliveInterval)
+	}
+	select {
+	case <-p.context.Done():
+		p.stop(nil)
+		return
+	case frame = <-p.proto.pop():
+		p.proto.ack()
+	case <-p.traffic.wait():
+		frame, _ = p.traffic.pop()
+	case <-keepalive():
+		frame = getFrame()
+		frame.Type = types.TypeKeepalive
+	}
+	if frame == nil {
+		// usually happens if the queue has been reset
+		p.stop(fmt.Errorf("queue reset"))
+		return
+	}
+	defer framePool.Put(frame)
+	if !p.started.Load() {
+		// check that the peering wasn't killed while we waited
+		return
+	}
+	buf := frameBufferPool.Get().(*[types.MaxFrameSize]byte)
+	defer frameBufferPool.Put(buf)
+	n, err := frame.MarshalBinary(buf[:])
+	if err != nil {
+		p.stop(fmt.Errorf("frame.MarshalBinary: %w", err))
+		return
+	}
+	if p.router.keepalives {
+		if err := p.conn.SetWriteDeadline(time.Now().Add(PeerKeepaliveInterval)); err != nil {
+			p.stop(fmt.Errorf("p.conn.SetWriteDeadline: %w", err))
+			return
 		}
 	}
-}
-
-var bufPool = sync.Pool{
-	New: func() interface{} {
-		return make([]byte, MaxFrameSize)
-	},
-}
-
-func (p *Peer) writer(ctx context.Context) error {
-	defer p.wg.Done()
-	defer p.cancel()
-
-	tick := time.NewTicker(PeerKeepaliveInterval)
-	defer tick.Stop()
-
-	send := func(frame *types.Frame) error {
-		if frame == nil {
-			return nil
-		}
-		buf := bufPool.Get().([]byte)
-		defer bufPool.Put(buf) // nolint:staticcheck
-		fn, err := frame.MarshalBinary(buf)
-		frame.Done()
-		if err != nil {
-			return nil
-		}
-		if !bytes.Equal(buf[:4], types.FrameMagicBytes) {
-			return nil
-		}
-		if err := p.conn.SetWriteDeadline(time.Now().Add(PeerKeepaliveTimeout)); err != nil {
-			return fmt.Errorf("p.conn.SetWriteDeadline: %w", err)
-		}
-		if _, err = p.conn.Write(buf[:fn]); err != nil {
-			return fmt.Errorf("p.conn.Write: %w", err)
-		}
+	wn, err := p.conn.Write(buf[:n])
+	if err != nil {
+		p.stop(fmt.Errorf("p.conn.Write: %w", err))
+		return
+	}
+	if wn != n {
+		p.stop(fmt.Errorf("p.conn.Write length %d != %d", wn, n))
+		return
+	}
+	if p.router.keepalives {
 		if err := p.conn.SetWriteDeadline(time.Time{}); err != nil {
-			return fmt.Errorf("p.conn.SetWriteDeadline: %w", err)
-		}
-		return nil
-	}
-
-	for {
-		select {
-		case <-ctx.Done():
-			return context.Canceled
-		case frame := <-p.protoOut.pop():
-			if err := send(frame); err != nil {
-				return fmt.Errorf("send: %w", err)
-			}
-			p.protoOut.ack()
-			p.statistics.txProtoSuccessful.Inc()
-			continue
-		default:
-		}
-		select {
-		case <-ctx.Done():
-			return context.Canceled
-		case frame := <-p.protoOut.pop():
-			if err := send(frame); err != nil {
-				return fmt.Errorf("send: %w", err)
-			}
-			p.protoOut.ack()
-			p.statistics.txProtoSuccessful.Inc()
-			continue
-		case <-p.trafficOut.wait():
-			if frame, ok := p.trafficOut.pop(); ok && send(frame) == nil {
-				p.statistics.txTrafficSuccessful.Inc()
-			} else {
-				p.statistics.txTrafficDropped.Inc()
-			}
-			continue
-		default:
-		}
-		select {
-		case <-ctx.Done():
-			return context.Canceled
-		case frame := <-p.protoOut.pop():
-			if err := send(frame); err != nil {
-				return fmt.Errorf("send: %w", err)
-			}
-			p.protoOut.ack()
-			p.statistics.txProtoSuccessful.Inc()
-			continue
-		case <-p.trafficOut.wait():
-			if frame, ok := p.trafficOut.pop(); ok && send(frame) == nil {
-				p.statistics.txTrafficSuccessful.Inc()
-			} else {
-				p.statistics.txTrafficDropped.Inc()
-			}
-			continue
-		case <-tick.C:
-			if err := send(p.generateKeepalive()); err != nil {
-				return fmt.Errorf("send: %w", err)
-			}
-			p.statistics.txProtoSuccessful.Inc()
-			continue
+			p.stop(fmt.Errorf("p.conn.SetWriteDeadline: %w", err))
+			return
 		}
 	}
+	p.writer.Act(nil, p._write)
 }
 
-type peers []*Peer
-
-func (p peers) Len() int {
-	return len(p)
-}
-
-func (p peers) Swap(i, j int) {
-	p[i], p[j] = p[j], p[i]
-}
-
-// The mutexes should be held on the ports before sorting. It
-// is more efficient to hold them already for each port rather
-// than taking and releasing the mutexes for each sort operation.
-func (p peers) Less(i, j int) bool {
-	if p[i].peertype < p[j].peertype {
-		return true
+func (p *peer) _read() {
+	if !p.started.Load() {
+		return
 	}
-	return p[i].port < p[j].port
-}
-
-var peersPool = &sync.Pool{
-	New: func() interface{} {
-		return make(peers, 0, PortCount)
-	},
+	b := frameBufferPool.Get().(*[types.MaxFrameSize]byte)
+	defer frameBufferPool.Put(b)
+	if p.router.keepalives {
+		if err := p.conn.SetReadDeadline(time.Now().Add(PeerKeepaliveTimeout)); err != nil {
+			p.stop(fmt.Errorf("p.conn.SetReadDeadline: %w", err))
+			return
+		}
+	}
+	if _, err := io.ReadFull(p.conn, b[:types.FrameHeaderLength]); err != nil {
+		p.stop(fmt.Errorf("io.ReadFull: %w", err))
+		return
+	}
+	if !bytes.Equal(b[:4], types.FrameMagicBytes) {
+		p.stop(fmt.Errorf("missing magic bytes"))
+		return
+	}
+	expecting := int(binary.BigEndian.Uint16(b[types.FrameHeaderLength-2 : types.FrameHeaderLength]))
+	n, err := io.ReadFull(p.conn, b[types.FrameHeaderLength:expecting])
+	if err != nil {
+		p.stop(fmt.Errorf("io.ReadFull: %w", err))
+		return
+	}
+	if p.router.keepalives {
+		if err := p.conn.SetReadDeadline(time.Time{}); err != nil {
+			p.stop(fmt.Errorf("conn.SetReadDeadline: %w", err))
+			return
+		}
+	}
+	if !p.started.Load() {
+		// check that the peering wasn't killed while we waited
+		return
+	}
+	if n < expecting-types.FrameHeaderLength {
+		p.stop(fmt.Errorf("expecting %d bytes but got %d bytes", expecting, n))
+		return
+	}
+	f := getFrame()
+	if _, err := f.UnmarshalBinary(b[:n+types.FrameHeaderLength]); err != nil {
+		p.stop(fmt.Errorf("f.UnmarshalBinary: %w", err))
+		return
+	}
+	p.router.state.Act(&p.reader, func() {
+		if err := p.router.state._forward(p, f); err != nil {
+			p.router.log.Println("Error handling packet:", err)
+		}
+	})
+	p.reader.Act(nil, p._read)
 }

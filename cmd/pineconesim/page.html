@@ -94,20 +94,20 @@
                 <h4>Statistics</h4>
                 <table>
                     <tr>
-                        <td>Total number of paths:</td>
-                        <td>{{.PathCount}}</td>
+                        <td style="text-align: right;">Total number of paths:</td>
+                        <td style="text-align: left;">{{.PathCount}}</td>
                     </tr>
                     <!--<tr>
                         <td>Average stretch of paths:</td>
                         <td>{{.AvgStretch}}</td>
                     </tr>-->
                     <tr>
-                        <td>Tree path convergence:</td>
-                        <td>{{.TreePathConvergence}}</td>
+                        <td style="text-align: right;">Tree path convergence:</td>
+                        <td style="text-align: left;">{{.TreePathConvergence}}</td>
                     </tr>
                     <tr>
-                        <td>SNEK path convergence:</td>
-                        <td>{{.SNEKPathConvergence}}</td>
+                        <td style="text-align: right;">SNEK path convergence:</td>
+                        <td style="text-align: left;">{{.SNEKPathConvergence}}</td>
                     </tr>
                 </table>
 
@@ -122,6 +122,7 @@
                         <th>Key</th>
                         <th>↑</th>
                         <th>#</th>
+                        <th>!</th>
                     </tr>
                     {{range .Nodes}}
                     {{if not .IsExternal}}<tr>
@@ -133,6 +134,7 @@
                         <td><a href="?view=snek&pk={{.Key}}"><code>{{.Key}}</code></a></td>
                         <td><a href="?view=snek&pk={{.Successor}}"><code>{{.Successor}}</code></a></td>
                         <td><code>{{.DHTSize}}</code></td>
+                        <td><code>{{.DHTStalePaths}}</code></td>
                     {{end}}</tr>{{end}}
                 </table>
 
@@ -222,6 +224,7 @@
                         <th>Path ID</th>
                         <th>Src</th>
                         <th>Dst</th>
+                        <th>Seq</th>
                     </tr>
                 {{range .NodeInfo.Entries}}
                     <tr>
@@ -229,6 +232,7 @@
                         <td><code>{{.PathID}}</code></td>
                         <td><code>{{.SourcePort}}</code></td>
                         <td><code>{{.DestinationPort}}</code></td>
+                        <td><code>{{.Sequence}}</code></td>
                     </tr>
                 {{end}}
                 </table>

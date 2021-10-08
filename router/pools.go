@@ -12,39 +12,32 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package types
+package router
 
-type Varu64 uint64
+import (
+	"sync"
 
-func (n Varu64) MarshalBinary() ([]byte, error) {
-	var b [10]byte
-	i := len(b) - 1
-	b[i] = byte(n & 0x7f)
-	for n >>= 7; n != 0; n >>= 7 {
-		i--
-		b[i] = byte(n | 0x80)
-	}
-	return b[i:], nil
+	"github.com/matrix-org/pinecone/types"
+)
+
+var frameBufferPool = &sync.Pool{
+	New: func() interface{} {
+		b := [types.MaxFrameSize]byte{}
+		return &b
+	},
 }
 
-func (n *Varu64) UnmarshalBinary(buf []byte) (int, error) {
-	l := 0
-	*n = Varu64(0)
-	for _, b := range buf {
-		*n <<= 7
-		*n |= Varu64(b & 0x7f)
-		l++
-		if b&0x80 == 0 {
-			break
+var framePool = &sync.Pool{
+	New: func() interface{} {
+		f := &types.Frame{
+			Payload: make([]byte, 0, types.MaxPayloadSize),
 		}
-	}
-	return l, nil
+		return f
+	},
 }
 
-func (n Varu64) Length() int {
-	l := 1
-	for e := n >> 7; e > 0; e >>= 7 {
-		l++
-	}
-	return l
+func getFrame() *types.Frame {
+	f := framePool.Get().(*types.Frame)
+	f.Reset()
+	return f
 }

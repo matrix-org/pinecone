@@ -31,10 +31,11 @@ func (a *SignatureWithHop) UnmarshalBinary(data []byte) (int, error) {
 	if size := len(data); size < SignatureWithHopMinSize {
 		return 0, fmt.Errorf("SignatureWithHop expects at least %d bytes, got %d bytes", SignatureWithHopMinSize, size)
 	}
-	if err := a.Hop.UnmarshalBinary(data); err != nil {
+	l, err := a.Hop.UnmarshalBinary(data)
+	if err != nil {
 		return 0, fmt.Errorf("a.Hop.UnmarshalBinary: %w", err)
 	}
-	offset := a.Hop.Length()
+	offset := l
 	remaining := data[offset:]
 	remaining = remaining[copy(a.PublicKey[:], remaining):]
 	remaining = remaining[copy(a.Signature[:], remaining):]

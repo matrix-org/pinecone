@@ -42,6 +42,7 @@ type Multicast struct {
 	id         string
 	started    atomic.Bool
 	interfaces sync.Map // -> *multicastInterface
+	dialling   sync.Map
 	listener   net.Listener
 	dialer     net.Dialer
 	tcpLC      net.ListenConfig
@@ -64,15 +65,14 @@ func NewMulticast(
 		id:  hex.EncodeToString(public[:]),
 	}
 	m.tcpLC = net.ListenConfig{
-		Control:   m.tcpOptions,
-		KeepAlive: time.Second * 3,
+		Control: m.tcpOptions,
 	}
 	m.udpLC = net.ListenConfig{
 		Control: m.udpOptions,
 	}
 	m.dialer = net.Dialer{
 		Control: m.tcpOptions,
-		//	Timeout: time.Second * 5,
+		Timeout: time.Second * 5,
 	}
 	return m
 }
@@ -150,21 +150,33 @@ func (m *Multicast) accept(listener net.Listener) {
 			return
 		}
 
-		tcpaddr, ok := conn.RemoteAddr().(*net.TCPAddr)
-		if !ok {
-			m.log.Println("Not TCPAddr")
-			return
-		}
+		go func(conn net.Conn) {
+			tcpconn, ok := conn.(*net.TCPConn)
+			if !ok {
+				m.log.Println("Not TCPConn")
+				return
+			}
 
-		if !m.started.Load() {
-			return
-		}
+			tcpaddr, ok := conn.RemoteAddr().(*net.TCPAddr)
+			if !ok {
+				m.log.Println("Not TCPAddr")
+				return
+			}
 
-		if _, err := m.r.AuthenticatedConnect(conn, tcpaddr.Zone, router.PeerTypeMulticast); err != nil {
-			//m.log.Println("m.s.AuthenticatedConnect:", err)
-			_ = conn.Close()
-			continue
-		}
+			if !m.started.Load() {
+				_ = conn.Close()
+				return
+			}
+
+			if err := m.tcpGeneralOptions(tcpconn); err != nil {
+				m.log.Println("m.tcpSocketOptions: %w", err)
+			}
+
+			if _, err := m.r.AuthenticatedConnect(tcpconn, tcpaddr.Zone, router.PeerTypeMulticast); err != nil {
+				//m.log.Println("m.s.AuthenticatedConnect:", err)
+				_ = conn.Close()
+			}
+		}(conn)
 	}
 }
 
@@ -221,7 +233,7 @@ func (m *Multicast) advertise(intf *multicastInterface, conn net.PacketConn, add
 	tcpaddr, _ := m.listener.Addr().(*net.TCPAddr)
 	portBytes := make([]byte, 2)
 	binary.BigEndian.PutUint16(portBytes, uint16(tcpaddr.Port))
-	ticker := time.NewTicker(time.Second * 1)
+	ticker := time.NewTicker(time.Second * 2)
 	first := make(chan struct{}, 1)
 	first <- struct{}{}
 	ourPublicKey := m.r.PublicKey()
@@ -249,7 +261,7 @@ func (m *Multicast) listen(intf *multicastInterface, conn net.PacketConn, srcadd
 	defer m.interfaces.Delete(intf.Name)
 	//defer m.log.Println("Stop listening on", intf.Name)
 	dialer := m.dialer
-	//dialer.LocalAddr = srcaddr
+	dialer.LocalAddr = srcaddr
 	dialer.Control = m.tcpOptions
 	buf := make([]byte, 512)
 	ourPublicKey := m.r.PublicKey()
@@ -296,21 +308,47 @@ func (m *Multicast) listen(intf *multicastInterface, conn net.PacketConn, srcadd
 			return
 		}
 
-		peer, err := dialer.Dial("tcp6", tcpaddr.String())
-		if err != nil {
-			//m.log.Println("dialer.Dial:", err)
+		straddr := tcpaddr.String()
+		if _, ok := m.dialling.LoadOrStore(straddr, true); ok {
 			continue
 		}
 
-		if !m.started.Load() {
-			peer.Close()
-			return
-		}
+		go func() {
+			defer m.dialling.Delete(straddr)
 
-		if _, err := m.r.AuthenticatedConnect(peer, udpaddr.Zone, router.PeerTypeMulticast); err != nil {
-			m.log.Println("m.s.AuthenticatedConnect:", err)
-			_ = peer.Close()
-			continue
-		}
+			conn, err := dialer.Dial("tcp6", straddr)
+			if err != nil {
+				//m.log.Println("dialer.Dial:", err)
+				return
+			}
+
+			if !m.started.Load() {
+				conn.Close()
+				return
+			}
+
+			tcpconn := conn.(*net.TCPConn)
+			if err := m.tcpGeneralOptions(tcpconn); err != nil {
+				m.log.Println("m.tcpSocketOptions: %w", err)
+			}
+
+			if _, err := m.r.AuthenticatedConnect(tcpconn, udpaddr.Zone, router.PeerTypeMulticast); err != nil {
+				m.log.Println("m.s.AuthenticatedConnect:", err)
+				_ = conn.Close()
+			}
+		}()
 	}
+}
+
+func (m *Multicast) tcpGeneralOptions(tcpconn *net.TCPConn) error {
+	if err := tcpconn.SetNoDelay(true); err != nil {
+		return fmt.Errorf("tcpconn.SetNoDelay: %w", err)
+	}
+	if err := tcpconn.SetKeepAlivePeriod(time.Second * 3); err != nil {
+		return fmt.Errorf("tcpconn.SetKeepAlivePeriod: %w", err)
+	}
+	if err := tcpconn.SetKeepAlive(true); err != nil {
+		return fmt.Errorf("tcpconn.SetKeepAlive: %w", err)
+	}
+	return nil
 }

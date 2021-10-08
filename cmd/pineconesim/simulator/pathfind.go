@@ -18,11 +18,9 @@ import (
 	"context"
 	"fmt"
 	"time"
-
-	"github.com/matrix-org/pinecone/router"
 )
 
-func (sim *Simulator) PathfindTree(from, to string) error {
+func (sim *Simulator) PingTree(from, to string) error {
 	fromnode := sim.nodes[from]
 	tonode := sim.nodes[to]
 	success := false
@@ -39,16 +37,15 @@ func (sim *Simulator) PathfindTree(from, to string) error {
 		sim.treePathConvergenceMutex.Unlock()
 	}()
 
-	if _, err := fromnode.Pathfind(ctx, router.GreedyAddr{SwitchPorts: tonode.Coords()}); err != nil {
-		return fmt.Errorf("fromnode.r.Pathfind: %w", err)
-	} else {
-		success = true
+	if _, err := fromnode.TreePing(ctx, tonode.Coords()); err != nil {
+		return fmt.Errorf("fromnode.TreePing: %w", err)
 	}
 
+	success = true
 	return nil
 }
 
-func (sim *Simulator) PathfindSNEK(from, to string) error {
+func (sim *Simulator) PingSNEK(from, to string) error {
 	fromnode := sim.nodes[from]
 	tonode := sim.nodes[to]
 	success := false
@@ -65,11 +62,10 @@ func (sim *Simulator) PathfindSNEK(from, to string) error {
 		sim.snekPathConvergenceMutex.Unlock()
 	}()
 
-	if _, err := fromnode.Pathfind(ctx, tonode.PublicKey()); err != nil {
-		return fmt.Errorf("fromnode.r.Pathfind: %w", err)
-	} else {
-		success = true
+	if _, err := fromnode.SNEKPing(ctx, tonode.PublicKey()); err != nil {
+		return fmt.Errorf("fromnode.SNEKPing: %w", err)
 	}
 
+	success = true
 	return nil
 }

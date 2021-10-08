@@ -31,9 +31,10 @@ func TestMarshalUnmarshalFrame(t *testing.T) {
 	}
 	expected := []byte{
 		0x70, 0x69, 0x6e, 0x65, // magic bytes
-		0,     // version 0
-		2,     // type greedy
-		0, 35, // frame length
+		0,    // version 0
+		2,    // type greedy
+		0, 0, // extra
+		0, 37, // frame length
 		0, 8, // destination len
 		0, 6, // source len
 		0, 7, // payload len
@@ -92,7 +93,8 @@ func TestMarshalUnmarshalSNEKBootstrapFrame(t *testing.T) {
 		0x70, 0x69, 0x6e, 0x65, // magic bytes
 		0,                               // version 0
 		byte(TypeVirtualSnakeBootstrap), // type greedy
-		0, 54,                           // frame length
+		0, 0,                            // extra
+		0, 56, // frame length
 		0, 5, // payload length
 		0, 5, // source length
 		1, 2, 3, 4, 5, // source coordinates
@@ -148,7 +150,8 @@ func TestMarshalUnmarshalSNEKBootstrapACKFrame(t *testing.T) {
 		0x70, 0x69, 0x6e, 0x65, // magic bytes
 		0,                                  // version 0
 		byte(TypeVirtualSnakeBootstrapACK), // type greedy
-		0, 97,                              // frame length
+		0, 0,                               // extra
+		0, 99, // frame length
 		0, 5, // payload length
 		0, 7, // destination length
 		0, 7, // source length
@@ -206,7 +209,8 @@ func TestMarshalUnmarshalSNEKSetupFrame(t *testing.T) {
 		0x70, 0x69, 0x6e, 0x65, // magic bytes
 		0,                           // version 0
 		byte(TypeVirtualSnakeSetup), // type greedy
-		0, 91,                       // frame length
+		0, 0,                        // extra
+		0, 93, // frame length
 		0, 10, // payload length
 		0, 5, 5, 4, 3, 2, 1, // destination coordinates
 	}
@@ -257,7 +261,8 @@ func TestMarshalUnmarshalSNEKTeardownFrame(t *testing.T) {
 		0x70, 0x69, 0x6e, 0x65, // magic bytes
 		0,                              // version 0
 		byte(TypeVirtualSnakeTeardown), // type greedy
-		0, 42,                          // frame length
+		0, 0,                           // extra
+		0, 44, // frame length
 		0, 0, // payload length
 	}
 	expected = append(expected, pk1...)
@@ -308,7 +313,8 @@ func TestMarshalUnmarshalSNEKFrame(t *testing.T) {
 		0x70, 0x69, 0x6e, 0x65, // magic bytes
 		0,                      // version 0
 		byte(TypeVirtualSnake), // type greedy
-		0, 80,                  // frame length
+		0, 0,                   // extra
+		0, 82, // frame length
 		0, 6, // payload length
 	}
 	expected = append(expected, pk2...)

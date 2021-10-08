@@ -25,6 +25,14 @@ type PublicKey [ed25519.PublicKeySize]byte
 type PrivateKey [ed25519.PrivateKeySize]byte
 type Signature [ed25519.SignatureSize]byte
 
+func (a PrivateKey) Public() PublicKey {
+	var public PublicKey
+	ed := make(ed25519.PrivateKey, ed25519.PrivateKeySize)
+	copy(ed, a[:])
+	copy(public[:], ed.Public().(ed25519.PublicKey))
+	return public
+}
+
 var FullMask = PublicKey{
 	0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
 	0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,

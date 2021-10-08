@@ -1,3 +1,17 @@
+// Copyright 2021 The Matrix.org Foundation C.I.C.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package router
 
 import (
@@ -26,13 +40,13 @@ func (q *fifoQueue) _initialise() {
 	}
 }
 
-func (q *fifoQueue) queuecount() int {
+func (q *fifoQueue) queuecount() int { // nolint:unused
 	q.mutex.Lock()
 	defer q.mutex.Unlock()
 	return len(q.entries) - 1
 }
 
-func (q *fifoQueue) queuesize() int {
+func (q *fifoQueue) queuesize() int { // nolint:unused
 	q.mutex.Lock()
 	defer q.mutex.Unlock()
 	return cap(q.entries)
@@ -41,9 +55,6 @@ func (q *fifoQueue) queuesize() int {
 func (q *fifoQueue) push(frame *types.Frame) bool {
 	q.mutex.Lock()
 	defer q.mutex.Unlock()
-	if len(q.entries) == 0 {
-		q._initialise()
-	}
 	ch := q.entries[len(q.entries)-1]
 	ch <- frame
 	close(ch)
@@ -58,7 +69,7 @@ func (q *fifoQueue) reset() {
 		select {
 		case frame := <-ch:
 			if frame != nil {
-				frame.Done()
+				framePool.Put(frame)
 			}
 		default:
 		}
@@ -69,15 +80,14 @@ func (q *fifoQueue) reset() {
 func (q *fifoQueue) pop() <-chan *types.Frame {
 	q.mutex.Lock()
 	defer q.mutex.Unlock()
-	if len(q.entries) == 0 {
-		q._initialise()
-	}
-	entry := q.entries[0]
-	return entry
+	return q.entries[0]
 }
 
 func (q *fifoQueue) ack() {
 	q.mutex.Lock()
 	defer q.mutex.Unlock()
 	q.entries = q.entries[1:]
+	if len(q.entries) == 0 {
+		q._initialise()
+	}
 }

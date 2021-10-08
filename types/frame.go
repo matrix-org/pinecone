@@ -20,68 +20,33 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math"
-	"runtime"
-	"sync"
-
-	"go.uber.org/atomic"
 )
 
-var framePool = &sync.Pool{
-	New: func() interface{} {
-		f := &Frame{}
-		runtime.SetFinalizer(f, func(f *Frame) {
-			if refs := f.refs.Load(); refs != 0 {
-				panic(fmt.Sprintf("frame was garbage collected with %d remaining references, this is a bug", refs))
-			}
-		})
-		return f
-	},
-}
+// MaxPayloadSize is the maximum size that a single frame can contain
+// as a payload, not including headers.
+const MaxPayloadSize = 65535
 
-func GetFrame() *Frame {
-	frame := framePool.Get().(*Frame)
-	if !frame.refs.CAS(0, 1) {
-		panic("invalid frame reuse after Done call")
-	}
-	return frame
-}
-
-func (f *Frame) Borrow() *Frame {
-	f.refs.Inc()
-	return f
-}
-
-func (f *Frame) Done() bool {
-	refs := f.refs.Dec()
-	if refs < 0 {
-		panic("invalid Done call")
-	}
-	if refs == 0 {
-		f.Reset()
-		framePool.Put(f)
-		return true
-	}
-	return false
-}
+// MaxFrameSize is the maximum size that a single frame can be, including
+// all headers.
+const MaxFrameSize = 65535*3 + 16
 
 type FrameVersion uint8
 type FrameType uint8
 
 const (
-	TypeSTP                      FrameType = iota // protocol frame, bypasses queues
-	TypeSource                                    // traffic frame, forwarded using source routing
-	TypeGreedy                                    // traffic frame, forwarded using greedy routing
-	TypePathfind                                  // protocol frame, sign the update before forwarding it greedily
-	TypeSwitchUpdate                              // sent from the switch to the router to update about peers
-	TypeDHTRequest                                // protocol frame, forwarded using greedy routing
-	TypeDHTResponse                               // protocol frame, forwarded using greedy routing
-	TypeVirtualSnakeBootstrap                     // protocol frame, forwarded using SNEK predecessor ordering
-	TypeVirtualSnakeBootstrapACK                  // protocol frame, forwarded using greedy routing
-	TypeVirtualSnakeSetup                         // protocol frame, forwarded using greedy routing
-	TypeVirtualSnake                              // traffic frame, forwarded using SNEK successor ordering
-	TypeVirtualSnakePathfind                      // protocol frame, forwarded using SNEK successor ordering
-	TypeVirtualSnakeTeardown                      // protocol frame
-	TypeKeepalive                                 // protocol frame, bypasses queues
+	TypeSTP                      FrameType = iota       // protocol frame, bypasses queues
+	TypeSource                                          // traffic frame, forwarded using source routing
+	TypeGreedy                                          // traffic frame, forwarded using tree routing
+	TypeVirtualSnakeBootstrap                           // protocol frame, forwarded using SNEK
+	TypeVirtualSnakeBootstrapACK                        // protocol frame, forwarded using tree routing
+	TypeVirtualSnakeSetup                               // protocol frame, forwarded using tree routing
+	TypeVirtualSnake                                    // traffic frame, forwarded using SNEK
+	TypeVirtualSnakeTeardown                            // protocol frame, forwarded using special rules
+	TypeKeepalive                                       // protocol frame, direct to peers only
+	TypeSNEKPing                 FrameType = iota + 200 // traffic frame, forwarded using SNEK
+	TypeSNEKPong                                        // traffic frame, forwarded using SNEK
+	TypeTreePing                                        // traffic frame, forwarded using tree
+	TypeTreePong                                        // traffic frame, forwarded using tree
 )
 
 const (
@@ -90,10 +55,13 @@ const (
 
 var FrameMagicBytes = []byte{0x70, 0x69, 0x6e, 0x65}
 
+// 4 magic bytes, 1 byte version, 1 byte type, 2 bytes extra, 2 bytes frame length
+const FrameHeaderLength = 10
+
 type Frame struct {
-	refs           atomic.Int32
 	Version        FrameVersion
 	Type           FrameType
+	Extra          [2]byte
 	Destination    SwitchPorts
 	DestinationKey PublicKey
 	Source         SwitchPorts
@@ -103,6 +71,9 @@ type Frame struct {
 
 func (f *Frame) Reset() {
 	f.Version, f.Type = 0, 0
+	for i := range f.Extra {
+		f.Extra[i] = 0
+	}
 	f.Destination = SwitchPorts{}
 	f.DestinationKey = PublicKey{}
 	f.Source = SwitchPorts{}
@@ -110,17 +81,11 @@ func (f *Frame) Reset() {
 	f.Payload = f.Payload[:0]
 }
 
-func (f *Frame) Copy() *Frame {
-	copy := *f
-	copy.refs.Store(1)
-	copy.Payload = append([]byte{}, f.Payload...)
-	return &copy
-}
-
 func (f *Frame) MarshalBinary(buffer []byte) (int, error) {
 	copy(buffer[:4], FrameMagicBytes)
 	buffer[4], buffer[5] = byte(f.Version), byte(f.Type)
-	offset := 8
+	copy(buffer[6:], f.Extra[:])
+	offset := FrameHeaderLength
 	switch f.Type {
 	case TypeVirtualSnakeBootstrap: // destination = key, source = coords
 		payloadLen := len(f.Payload)
@@ -133,6 +98,7 @@ func (f *Frame) MarshalBinary(buffer []byte) (int, error) {
 		offset += copy(buffer[offset:], src)
 		offset += copy(buffer[offset:], f.DestinationKey[:ed25519.PublicKeySize])
 		if f.Payload != nil {
+			f.Payload = f.Payload[:payloadLen]
 			offset += copy(buffer[offset:], f.Payload[:payloadLen])
 		}
 
@@ -155,6 +121,7 @@ func (f *Frame) MarshalBinary(buffer []byte) (int, error) {
 		offset += copy(buffer[offset:], f.DestinationKey[:ed25519.PublicKeySize])
 		offset += copy(buffer[offset:], f.SourceKey[:ed25519.PublicKeySize])
 		if f.Payload != nil {
+			f.Payload = f.Payload[:payloadLen]
 			offset += copy(buffer[offset:], f.Payload[:payloadLen])
 		}
 
@@ -170,6 +137,7 @@ func (f *Frame) MarshalBinary(buffer []byte) (int, error) {
 		offset += copy(buffer[offset:], f.SourceKey[:ed25519.PublicKeySize])
 		offset += copy(buffer[offset:], f.DestinationKey[:ed25519.PublicKeySize])
 		if f.Payload != nil {
+			f.Payload = f.Payload[:payloadLen]
 			offset += copy(buffer[offset:], f.Payload[:payloadLen])
 		}
 
@@ -179,16 +147,18 @@ func (f *Frame) MarshalBinary(buffer []byte) (int, error) {
 		offset += 2
 		offset += copy(buffer[offset:], f.DestinationKey[:ed25519.PublicKeySize])
 		if f.Payload != nil {
+			f.Payload = f.Payload[:payloadLen]
 			offset += copy(buffer[offset:], f.Payload[:payloadLen])
 		}
 
-	case TypeVirtualSnake, TypeVirtualSnakePathfind: // destination = key, source = key
+	case TypeVirtualSnake, TypeSNEKPing, TypeSNEKPong: // destination = key, source = key
 		payloadLen := len(f.Payload)
 		binary.BigEndian.PutUint16(buffer[offset+0:offset+2], uint16(payloadLen))
 		offset += 2
 		offset += copy(buffer[offset:], f.DestinationKey[:ed25519.PublicKeySize])
 		offset += copy(buffer[offset:], f.SourceKey[:ed25519.PublicKeySize])
 		if f.Payload != nil {
+			f.Payload = f.Payload[:payloadLen]
 			offset += copy(buffer[offset:], f.Payload[:payloadLen])
 		}
 
@@ -214,43 +184,52 @@ func (f *Frame) MarshalBinary(buffer []byte) (int, error) {
 		offset += copy(buffer[offset:], dst)
 		offset += copy(buffer[offset:], src)
 		if f.Payload != nil {
+			f.Payload = f.Payload[:payloadLen]
 			offset += copy(buffer[offset:], f.Payload[:payloadLen])
 		}
 	}
 
-	binary.BigEndian.PutUint16(buffer[6:8], uint16(offset))
+	binary.BigEndian.PutUint16(buffer[FrameHeaderLength-2:FrameHeaderLength], uint16(offset))
 	return offset, nil
 }
 
 func (f *Frame) UnmarshalBinary(data []byte) (int, error) {
 	f.Reset()
-	if len(data) < 8 {
+	if len(data) < FrameHeaderLength {
 		return 0, fmt.Errorf("frame is not long enough to include metadata")
 	}
 	if !bytes.Equal(data[:4], FrameMagicBytes) {
 		return 0, fmt.Errorf("frame doesn't contain magic bytes")
 	}
 	f.Version, f.Type = FrameVersion(data[4]), FrameType(data[5])
-	framelen := int(binary.BigEndian.Uint16(data[6:8]))
+	f.Extra[0], f.Extra[1] = data[6], data[7]
+	copy(f.Extra[:], data[6:])
+	framelen := int(binary.BigEndian.Uint16(data[FrameHeaderLength-2 : FrameHeaderLength]))
 	if len(data) != framelen {
 		return 0, fmt.Errorf("frame length incorrect")
 	}
-	offset := 8
+	offset := FrameHeaderLength
 	switch f.Type {
 	case TypeVirtualSnakeBootstrap: // destination = key, source = coords
 		payloadLen := int(binary.BigEndian.Uint16(data[offset+0 : offset+2]))
+		if payloadLen > cap(f.Payload) {
+			return 0, fmt.Errorf("payload length exceeds frame capacity")
+		}
 		srcLen := int(binary.BigEndian.Uint16(data[offset+2 : offset+4]))
 		if _, err := f.Source.UnmarshalBinary(data[offset+2:]); err != nil {
 			return 0, fmt.Errorf("f.Source.UnmarshalBinary: %w", err)
 		}
 		offset += 4 + srcLen
 		offset += copy(f.DestinationKey[:], data[offset:])
-		f.Payload = make([]byte, payloadLen)
+		f.Payload = f.Payload[:payloadLen]
 		offset += copy(f.Payload, data[offset:])
 		return offset, nil
 
 	case TypeVirtualSnakeBootstrapACK:
 		payloadLen := int(binary.BigEndian.Uint16(data[offset+0 : offset+2]))
+		if payloadLen > cap(f.Payload) {
+			return 0, fmt.Errorf("payload length exceeds frame capacity")
+		}
 		dstLen := int(binary.BigEndian.Uint16(data[offset+2 : offset+4]))
 		srcLen := int(binary.BigEndian.Uint16(data[offset+4 : offset+6]))
 		offset += 6
@@ -264,12 +243,15 @@ func (f *Frame) UnmarshalBinary(data []byte) (int, error) {
 		offset += srcLen
 		offset += copy(f.DestinationKey[:], data[offset:])
 		offset += copy(f.SourceKey[:], data[offset:])
-		f.Payload = make([]byte, payloadLen)
+		f.Payload = f.Payload[:payloadLen]
 		offset += copy(f.Payload, data[offset:])
 		return offset, nil
 
 	case TypeVirtualSnakeSetup: // destination = coords & key, source = key
 		payloadLen := int(binary.BigEndian.Uint16(data[offset+0 : offset+2]))
+		if payloadLen > cap(f.Payload) {
+			return 0, fmt.Errorf("payload length exceeds frame capacity")
+		}
 		dstLen := int(binary.BigEndian.Uint16(data[offset+2 : offset+4]))
 		if _, err := f.Destination.UnmarshalBinary(data[offset+2:]); err != nil {
 			return 0, fmt.Errorf("f.Destination.UnmarshalBinary: %w", err)
@@ -277,24 +259,30 @@ func (f *Frame) UnmarshalBinary(data []byte) (int, error) {
 		offset += 4 + dstLen
 		offset += copy(f.SourceKey[:], data[offset:])
 		offset += copy(f.DestinationKey[:], data[offset:])
-		f.Payload = make([]byte, payloadLen)
+		f.Payload = f.Payload[:payloadLen]
 		offset += copy(f.Payload, data[offset:])
 		return offset, nil
 
 	case TypeVirtualSnakeTeardown: // destination = key
 		payloadLen := int(binary.BigEndian.Uint16(data[offset+0 : offset+2]))
+		if payloadLen > cap(f.Payload) {
+			return 0, fmt.Errorf("payload length exceeds frame capacity")
+		}
 		offset += 2
 		offset += copy(f.DestinationKey[:], data[offset:])
-		f.Payload = make([]byte, payloadLen)
+		f.Payload = f.Payload[:payloadLen]
 		offset += copy(f.Payload, data[offset:])
 		return offset, nil
 
-	case TypeVirtualSnake, TypeVirtualSnakePathfind: // destination = key, source = key
+	case TypeVirtualSnake, TypeSNEKPing, TypeSNEKPong: // destination = key, source = key
 		payloadLen := int(binary.BigEndian.Uint16(data[offset+0 : offset+2]))
+		if payloadLen > cap(f.Payload) {
+			return 0, fmt.Errorf("payload length exceeds frame capacity")
+		}
 		offset += 2
 		offset += copy(f.DestinationKey[:], data[offset:])
 		offset += copy(f.SourceKey[:], data[offset:])
-		f.Payload = make([]byte, payloadLen)
+		f.Payload = f.Payload[:payloadLen]
 		offset += copy(f.Payload, data[offset:])
 		return offset + payloadLen, nil
 
@@ -305,6 +293,9 @@ func (f *Frame) UnmarshalBinary(data []byte) (int, error) {
 		dstLen := int(binary.BigEndian.Uint16(data[offset+0 : offset+2]))
 		srcLen := int(binary.BigEndian.Uint16(data[offset+2 : offset+4]))
 		payloadLen := int(binary.BigEndian.Uint16(data[offset+4 : offset+6]))
+		if payloadLen > cap(f.Payload) {
+			return 0, fmt.Errorf("payload length exceeds frame capacity")
+		}
 		offset += 6
 		if size := offset + dstLen + srcLen + payloadLen; len(data) != int(size) {
 			return 0, fmt.Errorf("frame expecting %d total bytes, got %d bytes", size, len(data))
@@ -317,7 +308,7 @@ func (f *Frame) UnmarshalBinary(data []byte) (int, error) {
 			return 0, fmt.Errorf("f.Source.UnmarshalBinary: %w", err)
 		}
 		offset += srcLen
-		f.Payload = make([]byte, payloadLen)
+		f.Payload = f.Payload[:payloadLen]
 		offset += copy(f.Payload, data[offset:])
 		return offset + payloadLen, nil
 	}
@@ -341,35 +332,33 @@ func (f *Frame) UpdateSourceRoutedPath(from SwitchPortID) {
 func (t FrameType) String() string {
 	switch t {
 	case TypeSTP:
-		return "TypeSTP"
+		return "STP"
 	case TypeSource:
-		return "TypeSource"
+		return "Source"
 	case TypeGreedy:
-		return "TypeGreedy"
-	case TypePathfind:
-		return "TypePathfind"
-	case TypeSwitchUpdate:
-		return "TypeSwitchUpdate"
-	case TypeDHTRequest:
-		return "TypeDHTRequest"
-	case TypeDHTResponse:
-		return "TypeDHTResponse"
+		return "Greedy"
 	case TypeVirtualSnakeBootstrap:
-		return "TypeVirtualSnakeBootstrap"
+		return "VirtualSnakeBootstrap"
 	case TypeVirtualSnakeBootstrapACK:
-		return "TypeVirtualSnakeBootstrapACK"
+		return "VirtualSnakeBootstrapACK"
 	case TypeVirtualSnakeSetup:
-		return "TypeVirtualSnakeSetup"
+		return "VirtualSnakeSetup"
 	case TypeVirtualSnake:
-		return "TypeVirtualSnake"
-	case TypeVirtualSnakePathfind:
-		return "TypeVirtualSnakePathfind"
+		return "VirtualSnake"
 	case TypeVirtualSnakeTeardown:
-		return "TypeVirtualSnakeTeardown"
+		return "VirtualSnakeTeardown"
 	case TypeKeepalive:
-		return "TypeKeepalive"
+		return "Keepalive"
+	case TypeSNEKPing:
+		return "SNEKPing"
+	case TypeSNEKPong:
+		return "SNEKPong"
+	case TypeTreePing:
+		return "TreePing"
+	case TypeTreePong:
+		return "TreePong"
 	default:
-		return "TypeUnknown"
+		return "Unknown"
 	}
 }
 
