@@ -260,7 +260,7 @@ func (s *state) _handleTreeAnnouncement(p *peer, f *types.Frame) error {
 		switch {
 		case rootDelta < 0:
 			fallthrough
-		case rootDelta == 0 && newUpdate.Sequence <= lastParentUpdate.Sequence:
+		case rootDelta == 0 && newUpdate.Sequence == lastParentUpdate.Sequence:
 			s._waiting = true
 			s._becomeRoot()
 
@@ -272,12 +272,14 @@ func (s *state) _handleTreeAnnouncement(p *peer, f *types.Frame) error {
 					}
 				})
 			})
-
 		case rootDelta == 0 && newUpdate.Sequence > lastParentUpdate.Sequence:
 			fallthrough
 		case rootDelta > 0:
 			s._sendTreeAnnouncements()
 		}
+	} else if rootDelta > 0 && !s._waiting {
+		s._parent = p
+		s._sendTreeAnnouncements()
 	} else if rootDelta < 0 && !s._waiting {
 		s.sendTreeAnnouncementToPeer(lastParentUpdate, p)
 	} else if !s._waiting {
