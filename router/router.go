@@ -227,7 +227,7 @@ func (r *Router) PeerCount(peertype int) (count int) {
 	phony.Block(r.state, func() {
 		seen := map[types.PublicKey]struct{}{}
 		for _, p := range r.state._peers {
-			if p == nil {
+			if p == nil || !p.started.Load() {
 				continue
 			}
 			if p.peertype == peertype || peertype < 0 {
