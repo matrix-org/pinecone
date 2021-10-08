@@ -325,7 +325,7 @@ func (s *state) _handleBootstrapACK(from *peer, rx *types.Frame) error {
 		// we do want to make sure we don't have any old paths to other nodes
 		// that *aren't* the new ascending node lying around.
 		s._sendTeardownForExistingPath(s.r.local, asc.PublicKey, asc.PathID, true)
-		if s._ascending != nil {
+		if s.r.debug.Load() && s._ascending != nil {
 			panic("should have cleaned up ascending node")
 		}
 	}
@@ -382,7 +382,7 @@ func (s *state) _handleSetup(from *peer, rx *types.Frame, nexthop *peer) error {
 	}
 	if _, ok := s._table[index]; ok {
 		s._sendTeardownForExistingPath(s.r.local, rx.SourceKey, setup.PathID, false) // first call fixes routing table
-		if _, ok := s._table[index]; ok {
+		if _, ok := s._table[index]; ok && s.r.debug.Load() {
 			panic("should have cleaned up duplicate path in routing table")
 		}
 		s._sendTeardownForRejectedPath(rx.SourceKey, setup.PathID, from) // second call sends back to origin
@@ -430,11 +430,13 @@ func (s *state) _handleSetup(from *peer, rx *types.Frame, nexthop *peer) error {
 		if desc != nil {
 			// Tear down the previous path, if there was one.
 			s._sendTeardownForExistingPath(s.r.local, desc.PublicKey, desc.PathID, false)
-			if s._descending != nil {
-				panic("should have cleaned up descending node")
-			}
-			if _, ok := s._table[virtualSnakeIndex{desc.PublicKey, desc.PathID}]; ok {
-				panic("should have cleaned up descending entry in routing table")
+			if s.r.debug.Load() {
+				if s._descending != nil {
+					panic("should have cleaned up descending node")
+				}
+				if _, ok := s._table[virtualSnakeIndex{desc.PublicKey, desc.PathID}]; ok {
+					panic("should have cleaned up descending entry in routing table")
+				}
 			}
 		}
 		entry := &virtualSnakeEntry{
@@ -480,7 +482,7 @@ func (s *state) _handleTeardown(from *peer, rx *types.Frame) ([]*peer, error) {
 }
 
 func (s *state) _sendTeardownForRejectedPath(pathKey types.PublicKey, pathID types.VirtualSnakePathID, via *peer) {
-	if _, ok := s._table[virtualSnakeIndex{pathKey, pathID}]; ok {
+	if _, ok := s._table[virtualSnakeIndex{pathKey, pathID}]; s.r.debug.Load() && ok {
 		panic("rejected path should not be in routing table")
 	}
 	if via != nil {
