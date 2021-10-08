@@ -68,7 +68,9 @@ func (q *fifoQueue) reset() {
 	for _, ch := range q.entries {
 		select {
 		case frame := <-ch:
-			framePool.Put(frame)
+			if frame != nil {
+				framePool.Put(frame)
+			}
 		default:
 		}
 	}
