@@ -53,7 +53,7 @@ func TestMarshalUnmarshalFrame(t *testing.T) {
 	if !bytes.Equal(buf[:n], expected) {
 		t.Fatalf("wrong marshalled output, got %v, expected %v", buf[:n], expected)
 	}
-	var output Frame
+	var output = Frame{Payload: []byte{65535: 0}}
 	if _, err := output.UnmarshalBinary(buf[:n]); err != nil {
 		t.Fatal(err)
 	}
@@ -116,7 +116,7 @@ func TestMarshalUnmarshalSNEKBootstrapFrame(t *testing.T) {
 	t.Log("Got: ", buf[:n])
 	t.Log("Want:", expected)
 
-	var output Frame
+	var output = Frame{Payload: []byte{65535: 0}}
 	if _, err := output.UnmarshalBinary(buf[:n]); err != nil {
 		t.Fatal(err)
 	}
@@ -176,7 +176,7 @@ func TestMarshalUnmarshalSNEKBootstrapACKFrame(t *testing.T) {
 	t.Log("Got: ", buf[:n])
 	t.Log("Want:", expected)
 
-	var output Frame
+	var output = Frame{Payload: []byte{65535: 0}}
 	if _, err := output.UnmarshalBinary(buf[:n]); err != nil {
 		t.Fatal(err)
 	}
@@ -232,7 +232,7 @@ func TestMarshalUnmarshalSNEKSetupFrame(t *testing.T) {
 	t.Log("Got: ", buf[:n])
 	t.Log("Want:", expected)
 
-	var output Frame
+	var output = Frame{Payload: []byte{65535: 0}}
 	if _, err := output.UnmarshalBinary(buf[:n]); err != nil {
 		t.Fatal(err)
 	}
@@ -281,7 +281,7 @@ func TestMarshalUnmarshalSNEKTeardownFrame(t *testing.T) {
 	t.Log("Got: ", buf[:n])
 	t.Log("Want:", expected)
 
-	var output Frame
+	var output = Frame{Payload: []byte{65535: 0}}
 	if _, err := output.UnmarshalBinary(buf[:n]); err != nil {
 		t.Fatal(err)
 	}
@@ -334,7 +334,7 @@ func TestMarshalUnmarshalSNEKFrame(t *testing.T) {
 		t.Fatalf("wrong marshalled output")
 	}
 
-	var output Frame
+	var output = Frame{Payload: []byte{65535: 0}}
 	if _, err := output.UnmarshalBinary(buf[:n]); err != nil {
 		t.Fatal(err)
 	}
