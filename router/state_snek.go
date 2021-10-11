@@ -352,7 +352,7 @@ func (s *state) _handleBootstrapACK(from *peer, rx *types.Frame) error {
 	send.SourceKey = s.r.public
 	send.Payload = append(send.Payload[:0], buf...)
 	nexthop := s.r.state._nextHopsTree(s.r.local, send)
-	if nexthop == nil || nexthop == s.r.local || nexthop.proto == nil {
+	if nexthop == nil || nexthop.local() || nexthop.proto == nil {
 		return fmt.Errorf("no next-hop")
 	}
 	if !nexthop.proto.push(send) {
@@ -458,7 +458,7 @@ func (s *state) _handleSetup(from *peer, rx *types.Frame, nexthop *peer) error {
 	}
 	// Try to forward the setup onto the next node first. If we
 	// can't do that then there's no point in keeping the path.
-	if nexthop == nil || nexthop == s.r.local || nexthop.proto == nil || !nexthop.proto.push(rx) {
+	if nexthop == nil || nexthop.local() || nexthop.proto == nil || !nexthop.proto.push(rx) {
 		s._sendTeardownForRejectedPath(rx.SourceKey, setup.PathID, from)
 		return fmt.Errorf("unable to forward setup packet (next-hop %s)", nexthop)
 	}
@@ -528,7 +528,7 @@ func (s *state) _getTeardown(pathKey types.PublicKey, pathID types.VirtualSnakeP
 func (s *state) _teardownPath(from *peer, pathKey types.PublicKey, pathID types.VirtualSnakePathID) []*peer {
 	if asc := s._ascending; asc != nil && asc.PathID == pathID {
 		switch {
-		case from == s.r.local && asc.PublicKey.EqualTo(pathKey): // originated locally
+		case from.local() && asc.PublicKey.EqualTo(pathKey): // originated locally
 			fallthrough
 		case from == asc.Source && s.r.public.EqualTo(pathKey): // from network
 			s._ascending = nil
@@ -539,7 +539,7 @@ func (s *state) _teardownPath(from *peer, pathKey types.PublicKey, pathID types.
 		switch {
 		case from == desc.Source: // from network
 			fallthrough
-		case from == s.r.local: // originated locally
+		case from.local(): // originated locally
 			s._descending = nil
 			delete(s._table, virtualSnakeIndex{desc.PublicKey, desc.PathID})
 			return []*peer{desc.Source}
@@ -548,7 +548,7 @@ func (s *state) _teardownPath(from *peer, pathKey types.PublicKey, pathID types.
 	for k, v := range s._table {
 		if k.PublicKey == pathKey && k.PathID == pathID {
 			switch {
-			case from == s.r.local: // happens when we're tearing down an existing duplicate path
+			case from.local(): // happens when we're tearing down an existing duplicate path
 				delete(s._table, k)
 				return []*peer{v.Destination, v.Source}
 			case from == v.Source: // from network, return the opposite direction

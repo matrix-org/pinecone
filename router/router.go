@@ -133,16 +133,14 @@ func (r *Router) Connect(conn net.Conn, public types.PublicKey, zone string, pee
 				proto:    newFIFOQueue(),
 				traffic:  newLIFOQueue(TrafficBuffer),
 			}
-			new.started.Store(true)
 			r.state._peers[i] = new
 			r.log.Println("Connected to peer", new.public.String(), "on port", new.port)
 			v, _ := r.active.LoadOrStore(hex.EncodeToString(new.public[:])+zone, atomic.NewUint64(0))
 			v.(*atomic.Uint64).Inc()
-			r.state.Act(&new.writer, func() {
-				if !r.state._waiting {
-					r.state.sendTreeAnnouncementToPeer(r.state._rootAnnouncement(), new)
-				}
-			})
+			if ann := r.state._rootAnnouncement().forPeer(new); ann != nil {
+				new.proto.push(ann)
+			}
+			new.started.Store(true)
 			new.reader.Act(nil, new._read)
 			new.writer.Act(nil, new._write)
 			return

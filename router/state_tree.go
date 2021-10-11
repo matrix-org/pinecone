@@ -15,7 +15,6 @@
 package router
 
 import (
-	"encoding/hex"
 	"fmt"
 	"math"
 	"time"
@@ -218,29 +217,9 @@ func (s *state) _handleTreeAnnouncement(p *peer, f *types.Frame) error {
 	if _, err := newUpdate.UnmarshalBinary(f.Payload); err != nil {
 		return fmt.Errorf("update unmarshal failed: %w", err)
 	}
-
-	if len(newUpdate.Signatures) == 0 {
-		// The update must have signatures.
-		return fmt.Errorf("update has no signatures")
+	if err := newUpdate.SanityCheck(p.public); err != nil {
+		return fmt.Errorf("update sanity checks failed: %w", err)
 	}
-	sigs := make(map[string]struct{})
-	for index, sig := range newUpdate.Signatures {
-		if index == 0 && sig.PublicKey != newUpdate.RootPublicKey {
-			return fmt.Errorf("update first signature doesn't match root key")
-		}
-		if sig.Hop == 0 {
-			return fmt.Errorf("update contains invalid 0 hop")
-		}
-		if index == len(newUpdate.Signatures)-1 && p.public != sig.PublicKey {
-			return fmt.Errorf("update last signature is not from direct peer")
-		}
-		pk := hex.EncodeToString(sig.PublicKey[:])
-		if _, ok := sigs[pk]; ok {
-			return fmt.Errorf("update contains routing loop")
-		}
-		sigs[pk] = struct{}{}
-	}
-
 	if ann := s._announcements[p]; ann != nil {
 		if newUpdate.RootPublicKey == ann.RootPublicKey && newUpdate.Sequence < ann.Sequence {
 			return fmt.Errorf("update replays old sequence number")
@@ -262,18 +241,20 @@ func (s *state) _handleTreeAnnouncement(p *peer, f *types.Frame) error {
 		receiveOrder:       s._ordering,
 	}
 
-	if p == s._parent {
-		if s._waiting {
-			return fmt.Errorf("invalid update from parent whilst waiting to re-parent")
-		}
-
+	if p == s._parent { // update came from our parent
 		switch {
+		case s._waiting:
+			// if we're reparenting then this should be impossible, as it implies
+			// that the update came from ourselves for some reason
+		case rootDelta > 0:
+			fallthrough
+		case rootDelta == 0 && newUpdate.Sequence > lastParentUpdate.Sequence:
+			s._sendTreeAnnouncements()
 		case rootDelta < 0:
 			fallthrough
-		case rootDelta == 0 && newUpdate.Sequence == lastParentUpdate.Sequence:
+		case rootDelta == 0 || newUpdate.Sequence == lastParentUpdate.Sequence:
 			s._waiting = true
 			s._becomeRoot()
-
 			time.AfterFunc(time.Second, func() {
 				s.Act(nil, func() {
 					s._waiting = false
@@ -282,19 +263,18 @@ func (s *state) _handleTreeAnnouncement(p *peer, f *types.Frame) error {
 					}
 				})
 			})
-		case rootDelta == 0 && newUpdate.Sequence > lastParentUpdate.Sequence:
-			fallthrough
-		case rootDelta > 0:
-			s._sendTreeAnnouncements()
 		}
-	} else if rootDelta > 0 && !s._waiting {
-		s._parent = p
-		s._sendTreeAnnouncements()
-	} else if rootDelta < 0 && !s._waiting {
-		s.sendTreeAnnouncementToPeer(lastParentUpdate, p)
-	} else if !s._waiting {
-		if s._selectNewParent() {
-			s._bootstrapNow()
+	} else if !s._waiting { // update came from another peer and we're not waiting to re-parent
+		switch {
+		case rootDelta > 0:
+			s._parent = p
+			s._sendTreeAnnouncements()
+		case rootDelta < 0:
+			s.sendTreeAnnouncementToPeer(lastParentUpdate, p)
+		default:
+			if s._selectNewParent() {
+				s._bootstrapNow()
+			}
 		}
 	}
 

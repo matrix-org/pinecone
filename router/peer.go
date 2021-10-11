@@ -64,6 +64,10 @@ func (p *peer) String() string { // to make sim less ugly
 	return fmt.Sprintf("%d", p.port)
 }
 
+func (p *peer) local() bool {
+	return p == p.router.local
+}
+
 func (p *peer) send(f *types.Frame) bool {
 	switch f.Type {
 	// Protocol messages

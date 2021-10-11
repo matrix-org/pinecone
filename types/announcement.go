@@ -16,6 +16,7 @@ package types
 
 import (
 	"crypto/ed25519"
+	"encoding/hex"
 	"fmt"
 	"os"
 )
@@ -87,6 +88,30 @@ func (a *SwitchAnnouncement) MarshalBinary(buffer []byte) (int, error) {
 		offset += n
 	}
 	return offset, nil
+}
+
+func (a *SwitchAnnouncement) SanityCheck(from PublicKey) error {
+	if len(a.Signatures) == 0 {
+		return fmt.Errorf("update has no signatures")
+	}
+	sigs := make(map[string]struct{})
+	for index, sig := range a.Signatures {
+		if index == 0 && sig.PublicKey != a.RootPublicKey {
+			return fmt.Errorf("update first signature doesn't match root key")
+		}
+		if sig.Hop == 0 {
+			return fmt.Errorf("update contains invalid 0 hop")
+		}
+		if index == len(a.Signatures)-1 && from != sig.PublicKey {
+			return fmt.Errorf("update last signature is not from direct peer")
+		}
+		pk := hex.EncodeToString(sig.PublicKey[:])
+		if _, ok := sigs[pk]; ok {
+			return fmt.Errorf("update contains routing loop")
+		}
+		sigs[pk] = struct{}{}
+	}
+	return nil
 }
 
 func (a *SwitchAnnouncement) Coords() SwitchPorts {
