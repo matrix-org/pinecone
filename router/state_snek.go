@@ -90,6 +90,11 @@ func (s *state) _bootstrapNow() {
 		return
 	}
 	ann := s._rootAnnouncement()
+	if asc := s._ascending; asc != nil && asc.Source.started.Load() {
+		if asc.RootPublicKey.EqualTo(ann.RootPublicKey) && asc.RootSequence == ann.Sequence {
+			return
+		}
+	}
 	b := frameBufferPool.Get().(*[types.MaxFrameSize]byte)
 	payload := b[:8+ed25519.PublicKeySize+ann.Sequence.Length()]
 	defer frameBufferPool.Put(b)

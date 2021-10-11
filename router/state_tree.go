@@ -167,6 +167,7 @@ func (s *state) _nextHopsTree(from *peer, f *types.Frame) *peer {
 
 	// Now work out which of our peers takes the message closer.
 	bestDist := ourDist
+	bestOrdering := uint64(math.MaxUint64)
 	for p, ann := range s._announcements {
 		switch {
 		case !p.started.Load():
@@ -192,7 +193,16 @@ func (s *state) _nextHopsTree(from *peer, f *types.Frame) *peer {
 
 		case peerDist < bestDist:
 			// The peer is closer to the destination.
-			bestDist = peerDist
+			bestDist, bestOrdering = peerDist, ann.receiveOrder
+			newCandidate(p)
+
+		case peerDist > bestDist:
+			// The peer is further away from the destination.
+
+		case bestPeer != nil && ann.receiveOrder < bestOrdering:
+			// The peer has a lower latency path to the root as a
+			// last-resort tiebreak.
+			bestDist, bestOrdering = peerDist, ann.receiveOrder
 			newCandidate(p)
 		}
 	}
