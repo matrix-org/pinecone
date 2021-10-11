@@ -60,7 +60,7 @@ func (a *rootAnnouncementWithTime) forPeer(p *peer) *types.Frame {
 	announcement := a.SwitchAnnouncement
 	announcement.Signatures = append([]types.SignatureWithHop{}, a.Signatures...)
 	for _, sig := range announcement.Signatures {
-		if p.router.public.EqualTo(sig.PublicKey) {
+		if p.router.public == sig.PublicKey {
 			// For some reason the announcement that we want to send already
 			// includes our signature. This shouldn't really happen but if we
 			// did send it, other nodes would end up ignoring the announcement

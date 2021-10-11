@@ -57,7 +57,7 @@ func (r *Router) ParentPublicKey() types.PublicKey {
 }
 
 func (r *Router) IsRoot() bool {
-	return r.RootPublicKey().EqualTo(r.public)
+	return r.RootPublicKey() == r.public
 }
 
 func (r *Router) DHTInfo() (asc, desc *virtualSnakeEntry, table map[virtualSnakeIndex]virtualSnakeEntry, stale int) {

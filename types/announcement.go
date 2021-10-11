@@ -142,7 +142,7 @@ func (a *SwitchAnnouncement) AncestorParent() PublicKey {
 func (a *SwitchAnnouncement) IsLoopOrChildOf(pk PublicKey) bool {
 	m := map[PublicKey]struct{}{}
 	for _, sig := range a.Signatures {
-		if sig.PublicKey.EqualTo(pk) {
+		if sig.PublicKey == pk {
 			return true
 		}
 		if _, ok := m[sig.PublicKey]; ok {

@@ -91,7 +91,7 @@ func (s *state) _bootstrapNow() {
 	}
 	ann := s._rootAnnouncement()
 	if asc := s._ascending; asc != nil && asc.Source.started.Load() {
-		if asc.RootPublicKey.EqualTo(ann.RootPublicKey) && asc.RootSequence == ann.Sequence {
+		if asc.RootPublicKey == ann.RootPublicKey && asc.RootSequence == ann.Sequence {
 			return
 		}
 	}
@@ -120,7 +120,7 @@ func (s *state) _bootstrapNow() {
 
 func (s *state) _nextHopsSNEK(from *peer, rx *types.Frame, bootstrap bool) *peer {
 	destKey := rx.DestinationKey
-	if !bootstrap && s.r.public.EqualTo(destKey) {
+	if !bootstrap && s.r.public == destKey {
 		return s.r.local
 	}
 	rootAnn := s._rootAnnouncement()
@@ -134,9 +134,9 @@ func (s *state) _nextHopsSNEK(from *peer, rx *types.Frame, bootstrap bool) *peer
 	}
 	newCheckedCandidate := func(candidate types.PublicKey, p *peer) {
 		switch {
-		case bootstrap && candidate.EqualTo(s.r.public):
+		case bootstrap && candidate == s.r.public:
 			// do nothing
-		case !bootstrap && candidate.EqualTo(destKey) && !bestKey.EqualTo(destKey):
+		case !bootstrap && candidate == destKey && bestKey != destKey:
 			newCandidate(candidate, p)
 		case util.DHTOrdered(destKey, candidate, bestKey):
 			newCandidate(candidate, p)
@@ -146,7 +146,7 @@ func (s *state) _nextHopsSNEK(from *peer, rx *types.Frame, bootstrap bool) *peer
 	// Check if we can use the path to the root via our parent as a starting point
 	if s._parent != nil && s._parent.started.Load() {
 		switch {
-		case bootstrap && bestKey.EqualTo(destKey):
+		case bootstrap && bestKey == destKey:
 			// Bootstraps always start working towards the root so that
 			// they go somewhere rather than getting stuck
 			fallthrough
@@ -180,7 +180,7 @@ func (s *state) _nextHopsSNEK(from *peer, rx *types.Frame, bootstrap bool) *peer
 		if !p.started.Load() {
 			continue
 		}
-		if peerKey := p.public; bestKey.EqualTo(peerKey) {
+		if peerKey := p.public; bestKey == peerKey {
 			// We've seen this key already, either as one of our ancestors
 			// or as an ancestor of one of our peers, but it turns out we
 			// are directly peered with that node, so use the more direct
@@ -201,7 +201,7 @@ func (s *state) _nextHopsSNEK(from *peer, rx *types.Frame, bootstrap bool) *peer
 }
 
 func (s *state) _handleBootstrap(from *peer, rx *types.Frame) error {
-	if rx.DestinationKey.EqualTo(s.r.public) {
+	if rx.DestinationKey == s.r.public {
 		return nil
 	}
 	// Unmarshal the bootstrap.
@@ -225,7 +225,7 @@ func (s *state) _handleBootstrap(from *peer, rx *types.Frame) error {
 	acknowledge := false
 	desc := s._descending
 	switch {
-	case !bootstrap.RootPublicKey.EqualTo(root.RootPublicKey):
+	case bootstrap.RootPublicKey != root.RootPublicKey:
 		// Root doesn't match so we won't be able to forward using tree space.
 	case bootstrap.RootSequence != root.Sequence:
 		// Sequence number doesn't match so something is out of date.
@@ -234,7 +234,7 @@ func (s *state) _handleBootstrap(from *peer, rx *types.Frame) error {
 	case desc != nil && desc.valid():
 		// We already have a descending entry and it hasn't expired.
 		switch {
-		case desc.PublicKey.EqualTo(rx.DestinationKey):
+		case desc.PublicKey == rx.DestinationKey && bootstrap.PathID != desc.PathID:
 			// We've received another bootstrap from our direct descending node.
 			// Send back an acknowledgement as this is OK.
 			acknowledge = true
@@ -285,19 +285,19 @@ func (s *state) _handleBootstrapACK(from *peer, rx *types.Frame) error {
 	update := false
 	asc := s._ascending
 	switch {
-	case rx.SourceKey.EqualTo(s.r.public):
+	case rx.SourceKey == s.r.public:
 		// We received a bootstrap ACK from ourselves. This shouldn't happen,
 		// so either another node has forwarded it to us incorrectly, or
 		// a routing loop has occurred somewhere. Don't act on the bootstrap
 		// in that case.
-	case !bootstrapACK.RootPublicKey.EqualTo(root.RootPublicKey):
+	case bootstrapACK.RootPublicKey != root.RootPublicKey:
 		// Root doesn't match so we won't be able to forward using tree space.
 	case bootstrapACK.RootSequence != root.Sequence:
 		// Sequence number doesn't match so something is out of date.
 	case asc != nil && asc.valid():
 		// We already have an ascending entry and it hasn't expired.
 		switch {
-		case asc.PublicKey.EqualTo(rx.SourceKey):
+		case asc.PublicKey == rx.SourceKey && bootstrapACK.PathID != asc.PathID:
 			// We've received another bootstrap ACK from our direct ascending node.
 			// Just refresh the record and then send a new path setup message to
 			// that node.
@@ -395,11 +395,11 @@ func (s *state) _handleSetup(from *peer, rx *types.Frame, nexthop *peer) error {
 	}
 	// If we're at the destination of the setup then update our predecessor
 	// with information from the bootstrap.
-	if rx.DestinationKey.EqualTo(s.r.public) {
+	if rx.DestinationKey == s.r.public {
 		update := false
 		desc := s._descending
 		switch {
-		case !setup.RootPublicKey.EqualTo(root.RootPublicKey):
+		case setup.RootPublicKey != root.RootPublicKey:
 			// Root doesn't match so we won't be able to forward using tree space.
 		case setup.RootSequence != root.Sequence:
 			// Sequence number doesn't match so something is out of date.
@@ -408,7 +408,7 @@ func (s *state) _handleSetup(from *peer, rx *types.Frame, nexthop *peer) error {
 		case desc != nil && desc.valid():
 			// We already have a descending entry and it hasn't expired.
 			switch {
-			case desc.PublicKey.EqualTo(rx.SourceKey):
+			case desc.PublicKey == rx.SourceKey && setup.PathID != desc.PathID:
 				// We've received another bootstrap from our direct descending node.
 				// Send back an acknowledgement as this is OK.
 				update = true
@@ -528,14 +528,14 @@ func (s *state) _getTeardown(pathKey types.PublicKey, pathID types.VirtualSnakeP
 func (s *state) _teardownPath(from *peer, pathKey types.PublicKey, pathID types.VirtualSnakePathID) []*peer {
 	if asc := s._ascending; asc != nil && asc.PathID == pathID {
 		switch {
-		case from.local() && asc.PublicKey.EqualTo(pathKey): // originated locally
+		case from.local() && asc.PublicKey == pathKey: // originated locally
 			fallthrough
-		case from == asc.Source && s.r.public.EqualTo(pathKey): // from network
+		case from == asc.Source && s.r.public == pathKey: // from network
 			s._ascending = nil
 			return []*peer{asc.Source}
 		}
 	}
-	if desc := s._descending; desc != nil && desc.PublicKey.EqualTo(pathKey) && desc.PathID == pathID {
+	if desc := s._descending; desc != nil && desc.PublicKey == pathKey && desc.PathID == pathID {
 		switch {
 		case from == desc.Source: // from network
 			fallthrough

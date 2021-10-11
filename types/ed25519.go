@@ -40,10 +40,6 @@ var FullMask = PublicKey{
 	0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
 }
 
-func (a PublicKey) EqualTo(b PublicKey) bool {
-	return bytes.Equal(a[:], b[:])
-}
-
 func (a PublicKey) EqualMaskTo(b, m PublicKey) bool {
 	for i := range a {
 		if (a[i] & m[i]) != (b[i] & m[i]) {

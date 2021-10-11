@@ -47,7 +47,7 @@ func (sim *Simulator) LookupPublicKey(target types.PublicKey) (string, error) {
 	sim.nodesMutex.RLock()
 	defer sim.nodesMutex.RUnlock()
 	for id, n := range sim.nodes {
-		if n.PublicKey().EqualTo(target) {
+		if n.PublicKey() == target {
 			return id, nil
 		}
 	}

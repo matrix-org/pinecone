@@ -353,14 +353,14 @@ func configureHTTPRouting(sim *simulator.Simulator) {
 				for id2, n2 := range nodes {
 					p, _ := n.Descending()
 					s, _ := n.Ascending()
-					if p != nil && p.EqualTo(n2.PublicKey()) {
+					if p != nil && *p == n2.PublicKey() {
 						data.Links = append(data.Links, Link{
 							From:    id,
 							To:      id2,
 							Enabled: true,
 						})
 					}
-					if s != nil && s.EqualTo(n2.PublicKey()) {
+					if s != nil && *s == n2.PublicKey() {
 						data.Links = append(data.Links, Link{
 							From:    id,
 							To:      id2,

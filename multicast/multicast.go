@@ -285,7 +285,7 @@ func (m *Multicast) listen(intf *multicastInterface, conn net.PacketConn, srcadd
 		}
 
 		copy(neighborKey[:], publicKey)
-		if neighborKey.EqualTo(ourPublicKey) {
+		if neighborKey == ourPublicKey {
 			continue
 		}
 
