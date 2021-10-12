@@ -25,12 +25,12 @@ import (
 
 // announcementInterval is the frequency at which this
 // node will send root announcements to other peers.
-const announcementInterval = time.Minute * 15
+const announcementInterval = time.Minute * 30
 
 // announcementTimeout is the amount of time that must
 // pass without receiving a root announcement before we
 // will assume that the peer is dead.
-const announcementTimeout = announcementInterval * 2
+const announcementTimeout = time.Minute * 45
 
 func (s *state) _maintainTree() {
 	select {

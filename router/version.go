@@ -14,5 +14,9 @@
 
 package router
 
+const (
+	capabilityLengthenedRootInterval = iota + 1
+)
+
 const ourVersion uint8 = 1
-const ourCapabilities uint32 = 0
+const ourCapabilities uint32 = capabilityLengthenedRootInterval
