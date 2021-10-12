@@ -60,12 +60,22 @@ func (r *Router) IsRoot() bool {
 	return r.RootPublicKey() == r.public
 }
 
-func (r *Router) DHTInfo() (asc, desc *virtualSnakeEntry, table map[virtualSnakeIndex]virtualSnakeEntry, stale int) {
+func (r *Router) DHTInfo() (asc, desc *DHTNeighbour, table map[virtualSnakeIndex]virtualSnakeEntry, stale int) {
 	table = map[virtualSnakeIndex]virtualSnakeEntry{}
 	phony.Block(r.state, func() {
 		ann := r.state._rootAnnouncement()
-		asc = r.state._ascending
-		desc = r.state._descending
+		if a := r.state._ascending; a != nil {
+			asc = &DHTNeighbour{
+				PublicKey: a.Origin,
+				PathID:    a.PathID,
+			}
+		}
+		if d := r.state._descending; d != nil {
+			desc = &DHTNeighbour{
+				PublicKey: d.PublicKey,
+				PathID:    d.PathID,
+			}
+		}
 		dupes := map[types.PublicKey]int{}
 		for k := range r.state._table {
 			dupes[k.PublicKey]++
@@ -86,20 +96,19 @@ func (r *Router) DHTInfo() (asc, desc *virtualSnakeEntry, table map[virtualSnake
 	return
 }
 
-func (r *Router) Descending() (*types.PublicKey, *types.VirtualSnakePathID) {
+func (r *Router) Descending() *DHTNeighbour {
 	_, desc, _, _ := r.DHTInfo()
-	if desc == nil {
-		return nil, nil
-	}
-	return &desc.PublicKey, &desc.PathID
+	return desc
 }
 
-func (r *Router) Ascending() (*types.PublicKey, *types.VirtualSnakePathID) {
+func (r *Router) Ascending() *DHTNeighbour {
 	asc, _, _, _ := r.DHTInfo()
-	if asc == nil {
-		return nil, nil
-	}
-	return &asc.PublicKey, &asc.PathID
+	return asc
+}
+
+type DHTNeighbour struct {
+	PublicKey types.PublicKey
+	PathID    types.VirtualSnakePathID
 }
 
 type PeerInfo struct {

@@ -258,6 +258,8 @@ func (s *state) _handleTreeAnnouncement(p *peer, f *types.Frame) error {
 		}
 	} else if !s._waiting { // update came from another peer and we're not waiting to re-parent
 		switch {
+		case newUpdate.IsLoopOrChildOf(s.r.public):
+			// loopy, so do nothing
 		case rootDelta > 0:
 			s._parent = p
 			s._sendTreeAnnouncements()
