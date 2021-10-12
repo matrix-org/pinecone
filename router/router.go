@@ -72,6 +72,7 @@ func NewRouter(log *log.Logger, sk ed25519.PrivateKey, id string, sim Simulator)
 	r.state._peers[0] = r.local
 	r.state.Act(nil, r.state._start)
 	r.log.Println("Router identity:", r.public.String())
+	r.debug.Store(sim != nil)
 	return r
 }
 
@@ -137,9 +138,7 @@ func (r *Router) Connect(conn net.Conn, public types.PublicKey, zone string, pee
 			r.log.Println("Connected to peer", new.public.String(), "on port", new.port)
 			v, _ := r.active.LoadOrStore(hex.EncodeToString(new.public[:])+zone, atomic.NewUint64(0))
 			v.(*atomic.Uint64).Inc()
-			if ann := r.state._rootAnnouncement().forPeer(new); ann != nil {
-				new.proto.push(ann)
-			}
+			new.proto.push(r.state._rootAnnouncement().forPeer(new))
 			new.started.Store(true)
 			new.reader.Act(nil, new._read)
 			new.writer.Act(nil, new._write)
@@ -237,56 +236,4 @@ func (r *Router) PeerCount(peertype int) (count int) {
 		}
 	})
 	return
-}
-
-func (r *Router) SNEKPing(ctx context.Context, dst types.PublicKey) (time.Duration, error) {
-	if dst == r.public {
-		return 0, nil
-	}
-	phony.Block(r.state, func() {
-		frame := getFrame()
-		frame.Type = types.TypeSNEKPing
-		frame.DestinationKey = dst
-		frame.SourceKey = r.public
-		_ = r.state._forward(r.local, frame)
-	})
-	start := time.Now()
-	v, existing := r.pings.LoadOrStore(dst, make(chan struct{}))
-	if existing {
-		return 0, fmt.Errorf("a ping to this node is already in progress")
-	}
-	defer r.pings.Delete(dst)
-	ch := v.(chan struct{})
-	select {
-	case <-ctx.Done():
-		return 0, fmt.Errorf("ping timed out")
-	case <-ch:
-		return time.Since(start), nil
-	}
-}
-
-func (r *Router) TreePing(ctx context.Context, dst types.SwitchPorts) (time.Duration, error) {
-	if dst.EqualTo(r.state.coords()) {
-		return 0, nil
-	}
-	phony.Block(r.state, func() {
-		frame := getFrame()
-		frame.Type = types.TypeTreePing
-		frame.Destination = dst
-		frame.Source = r.state._coords()
-		_ = r.state._forward(r.local, frame)
-	})
-	start := time.Now()
-	v, existing := r.pings.LoadOrStore(dst.String(), make(chan struct{}))
-	if existing {
-		return 0, fmt.Errorf("a ping to this node is already in progress")
-	}
-	defer r.pings.Delete(dst.String())
-	ch := v.(chan struct{})
-	select {
-	case <-ctx.Done():
-		return 0, fmt.Errorf("ping timed out")
-	case <-ch:
-		return time.Since(start), nil
-	}
 }

@@ -25,11 +25,11 @@ func (v *VirtualSnakeBootstrap) MarshalBinary(buf []byte) (int, error) {
 	offset := 0
 	offset += copy(buf[offset:], v.PathID[:])
 	offset += copy(buf[offset:], v.RootPublicKey[:])
-	b, err := v.RootSequence.MarshalBinary()
+	n, err := v.RootSequence.MarshalBinary(buf[offset:])
 	if err != nil {
 		return 0, fmt.Errorf("v.RootSequence.MarshalBinary: %w", err)
 	}
-	offset += copy(buf[offset:], b[:])
+	offset += n
 	return offset, nil
 }
 
@@ -61,11 +61,11 @@ func (v *VirtualSnakeBootstrapACK) MarshalBinary(buf []byte) (int, error) {
 	offset := 0
 	offset += copy(buf[offset:], v.PathID[:])
 	offset += copy(buf[offset:], v.RootPublicKey[:])
-	b, err := v.RootSequence.MarshalBinary()
+	n, err := v.RootSequence.MarshalBinary(buf[offset:])
 	if err != nil {
 		return 0, fmt.Errorf("v.RootSequence.MarshalBinary: %w", err)
 	}
-	offset += copy(buf[offset:], b[:])
+	offset += n
 	return offset, nil
 }
 
@@ -97,11 +97,11 @@ func (v *VirtualSnakeSetup) MarshalBinary(buf []byte) (int, error) {
 	offset := 0
 	offset += copy(buf[offset:], v.PathID[:])
 	offset += copy(buf[offset:], v.RootPublicKey[:])
-	b, err := v.RootSequence.MarshalBinary()
+	n, err := v.RootSequence.MarshalBinary(buf[offset:])
 	if err != nil {
 		return 0, fmt.Errorf("v.RootSequence.MarshalBinary: %w", err)
 	}
-	offset += copy(buf[offset:], b[:])
+	offset += n
 	return offset, nil
 }
 

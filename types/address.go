@@ -12,11 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package router
+package types
 
-const (
-	capabilityLengthenedRootInterval = iota + 1
-)
+import "fmt"
 
-const ourVersion uint8 = 1
-const ourCapabilities uint32 = capabilityLengthenedRootInterval
+// TreeCoordinates implements net.Addr, containing a tree-routed
+// set of destination coordinates to another node.
+type TreeCoordinates SwitchPorts
+
+func (a TreeCoordinates) Network() string {
+	return "tree"
+}
+
+func (a TreeCoordinates) String() string {
+	return fmt.Sprintf("%v", a[:])
+}

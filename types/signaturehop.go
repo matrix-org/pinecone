@@ -43,15 +43,13 @@ func (a *SignatureWithHop) UnmarshalBinary(data []byte) (int, error) {
 }
 
 func (a *SignatureWithHop) MarshalBinary(data []byte) (int, error) {
-	hop, err := a.Hop.MarshalBinary()
+	offset, err := a.Hop.MarshalBinary(data[:])
 	if err != nil {
 		return 0, fmt.Errorf("a.Hop.MarshalBinary: %w", err)
 	}
 	if len(data) < SignatureWithHopMinSize {
 		return 0, fmt.Errorf("buffer is not big enough (must be %d bytes)", SignatureWithHopMinSize)
 	}
-	offset := 0
-	offset += copy(data[offset:], hop)
 	offset += copy(data[offset:offset+ed25519.PublicKeySize], a.PublicKey[:])
 	offset += copy(data[offset:offset+ed25519.SignatureSize], a.Signature[:])
 	return offset, nil

@@ -15,41 +15,12 @@
 package router
 
 import (
-	"fmt"
 	"net"
 	"time"
 
 	"github.com/Arceliar/phony"
 	"github.com/matrix-org/pinecone/types"
 )
-
-// SourceAddr implements net.Addr, containing a source-routed
-// path to another node.
-type SourceAddr struct {
-	types.SwitchPorts
-}
-
-func (a SourceAddr) Network() string {
-	return "ps"
-}
-
-func (a SourceAddr) String() string {
-	return fmt.Sprintf("path %v", a.SwitchPorts)
-}
-
-// GreedyAddr implements net.Addr, containing a greedy-routed
-// set of destination coordinates to another node.
-type GreedyAddr struct {
-	types.SwitchPorts
-}
-
-func (a GreedyAddr) Network() string {
-	return "pg"
-}
-
-func (a GreedyAddr) String() string {
-	return fmt.Sprintf("coords %v", a.SwitchPorts)
-}
 
 func (r *Router) localPeer() *peer {
 	peer := &peer{
@@ -63,7 +34,6 @@ func (r *Router) localPeer() *peer {
 		public:   r.public,
 		traffic:  newLIFOQueue(TrafficBuffer),
 	}
-	peer.started.Store(true)
 	return peer
 }
 
@@ -86,14 +56,13 @@ func (r *Router) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
 		frame, _ = r.local.traffic.pop()
 	}
 	switch frame.Type {
-	case types.TypeGreedy:
-		addr = GreedyAddr{frame.Source}
+	case types.TypeTreeRouted:
+		addr = types.TreeCoordinates(frame.Source)
 
-	case types.TypeVirtualSnake:
+	case types.TypeVirtualSnakeRouted:
 		addr = frame.SourceKey
 
 	default:
-		r.log.Println("Not expecting non-source/non-greedy frame")
 		return
 	}
 
@@ -116,11 +85,11 @@ func (r *Router) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 	}()
 
 	switch ga := addr.(type) {
-	case GreedyAddr:
+	case types.TreeCoordinates:
 		phony.Block(r.state, func() {
 			frame := getFrame()
-			frame.Type = types.TypeGreedy
-			frame.Destination = append(frame.Destination[:0], ga.SwitchPorts...)
+			frame.Type = types.TypeTreeRouted
+			frame.Destination = append(frame.Destination[:0], ga...)
 			frame.Source = append(frame.Source[:0], r.state.coords()...)
 			frame.Payload = append(frame.Payload[:0], p...)
 			_ = r.state._forward(r.local, frame)
@@ -130,7 +99,7 @@ func (r *Router) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 	case types.PublicKey:
 		phony.Block(r.state, func() {
 			frame := getFrame()
-			frame.Type = types.TypeVirtualSnake
+			frame.Type = types.TypeVirtualSnakeRouted
 			frame.DestinationKey = ga
 			frame.SourceKey = r.public
 			frame.Payload = append(frame.Payload[:0], p...)
@@ -139,7 +108,10 @@ func (r *Router) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 		return len(p), nil
 
 	default:
-		err = fmt.Errorf("unknown address type")
+		err = &net.AddrError{
+			Err:  "unexpected address type",
+			Addr: addr.String(),
+		}
 		return
 	}
 }

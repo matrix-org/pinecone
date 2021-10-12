@@ -15,7 +15,10 @@
 package router
 
 import (
+	"context"
+	"fmt"
 	"net"
+	"time"
 
 	"github.com/Arceliar/phony"
 	"github.com/matrix-org/pinecone/types"
@@ -60,12 +63,22 @@ func (r *Router) IsRoot() bool {
 	return r.RootPublicKey() == r.public
 }
 
-func (r *Router) DHTInfo() (asc, desc *virtualSnakeEntry, table map[virtualSnakeIndex]virtualSnakeEntry, stale int) {
+func (r *Router) DHTInfo() (asc, desc *DHTNeighbour, table map[virtualSnakeIndex]virtualSnakeEntry, stale int) {
 	table = map[virtualSnakeIndex]virtualSnakeEntry{}
 	phony.Block(r.state, func() {
 		ann := r.state._rootAnnouncement()
-		asc = r.state._ascending
-		desc = r.state._descending
+		if a := r.state._ascending; a != nil {
+			asc = &DHTNeighbour{
+				PublicKey: a.Origin,
+				PathID:    a.PathID,
+			}
+		}
+		if d := r.state._descending; d != nil {
+			desc = &DHTNeighbour{
+				PublicKey: d.PublicKey,
+				PathID:    d.PathID,
+			}
+		}
 		dupes := map[types.PublicKey]int{}
 		for k := range r.state._table {
 			dupes[k.PublicKey]++
@@ -77,8 +90,6 @@ func (r *Router) DHTInfo() (asc, desc *virtualSnakeEntry, table map[virtualSnake
 			}
 			switch {
 			case v.RootPublicKey != ann.RootPublicKey:
-				fallthrough
-			case v.RootSequence != ann.Sequence:
 				stale++
 			}
 		}
@@ -86,20 +97,19 @@ func (r *Router) DHTInfo() (asc, desc *virtualSnakeEntry, table map[virtualSnake
 	return
 }
 
-func (r *Router) Descending() (*types.PublicKey, *types.VirtualSnakePathID) {
+func (r *Router) Descending() *DHTNeighbour {
 	_, desc, _, _ := r.DHTInfo()
-	if desc == nil {
-		return nil, nil
-	}
-	return &desc.PublicKey, &desc.PathID
+	return desc
 }
 
-func (r *Router) Ascending() (*types.PublicKey, *types.VirtualSnakePathID) {
+func (r *Router) Ascending() *DHTNeighbour {
 	asc, _, _, _ := r.DHTInfo()
-	if asc == nil {
-		return nil, nil
-	}
-	return &asc.PublicKey, &asc.PathID
+	return asc
+}
+
+type DHTNeighbour struct {
+	PublicKey types.PublicKey
+	PathID    types.VirtualSnakePathID
 }
 
 type PeerInfo struct {
@@ -133,4 +143,56 @@ func (r *Router) Peers() []PeerInfo {
 		}
 	})
 	return peers
+}
+
+func (r *Router) SNEKPing(ctx context.Context, dst types.PublicKey) (time.Duration, error) {
+	if dst == r.public {
+		return 0, nil
+	}
+	phony.Block(r.state, func() {
+		frame := getFrame()
+		frame.Type = types.TypeSNEKPing
+		frame.DestinationKey = dst
+		frame.SourceKey = r.public
+		_ = r.state._forward(r.local, frame)
+	})
+	start := time.Now()
+	v, existing := r.pings.LoadOrStore(dst, make(chan struct{}))
+	if existing {
+		return 0, fmt.Errorf("a ping to this node is already in progress")
+	}
+	defer r.pings.Delete(dst)
+	ch := v.(chan struct{})
+	select {
+	case <-ctx.Done():
+		return 0, fmt.Errorf("ping timed out")
+	case <-ch:
+		return time.Since(start), nil
+	}
+}
+
+func (r *Router) TreePing(ctx context.Context, dst types.SwitchPorts) (time.Duration, error) {
+	if dst.EqualTo(r.state.coords()) {
+		return 0, nil
+	}
+	phony.Block(r.state, func() {
+		frame := getFrame()
+		frame.Type = types.TypeTreePing
+		frame.Destination = dst
+		frame.Source = r.state._coords()
+		_ = r.state._forward(r.local, frame)
+	})
+	start := time.Now()
+	v, existing := r.pings.LoadOrStore(dst.String(), make(chan struct{}))
+	if existing {
+		return 0, fmt.Errorf("a ping to this node is already in progress")
+	}
+	defer r.pings.Delete(dst.String())
+	ch := v.(chan struct{})
+	select {
+	case <-ctx.Done():
+		return 0, fmt.Errorf("ping timed out")
+	case <-ch:
+		return time.Since(start), nil
+	}
 }

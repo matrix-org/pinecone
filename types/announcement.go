@@ -73,13 +73,13 @@ func (a *SwitchAnnouncement) UnmarshalBinary(data []byte) (int, error) {
 }
 
 func (a *SwitchAnnouncement) MarshalBinary(buffer []byte) (int, error) {
-	seq, err := a.Sequence.MarshalBinary()
+	offset := 0
+	offset += copy(buffer[offset:], a.RootPublicKey[:]) // a.RootPublicKey
+	dn, err := a.Sequence.MarshalBinary(buffer[offset:])
 	if err != nil {
 		return 0, fmt.Errorf("a.Sequence.MarshalBinary: %w", err)
 	}
-	offset := 0
-	offset += copy(buffer[offset:], a.RootPublicKey[:]) // a.RootPublicKey
-	offset += copy(buffer[offset:], seq)                // a.Sequence
+	offset += dn
 	for _, sig := range a.Signatures {
 		n, err := sig.MarshalBinary(buffer[offset:])
 		if err != nil {

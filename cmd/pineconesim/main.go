@@ -351,16 +351,16 @@ func configureHTTPRouting(sim *simulator.Simulator) {
 		case "snek":
 			for id, n := range nodes {
 				for id2, n2 := range nodes {
-					p, _ := n.Descending()
-					s, _ := n.Ascending()
-					if p != nil && *p == n2.PublicKey() {
+					p := n.Descending()
+					s := n.Ascending()
+					if p != nil && p.PublicKey == n2.PublicKey() {
 						data.Links = append(data.Links, Link{
 							From:    id,
 							To:      id2,
 							Enabled: true,
 						})
 					}
-					if s != nil && *s == n2.PublicKey() {
+					if s != nil && s.PublicKey == n2.PublicKey() {
 						data.Links = append(data.Links, Link{
 							From:    id,
 							To:      id2,

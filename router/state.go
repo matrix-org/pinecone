@@ -100,7 +100,7 @@ func (s *state) _portDisconnected(peer *peer) {
 
 	for k, v := range s._table {
 		if v.Destination == peer || v.Source == peer {
-			s._sendTeardownForExistingPath(peer, k.PublicKey, k.PathID, false)
+			s._sendTeardownForExistingPath(peer, k.PublicKey, k.PathID)
 		}
 	}
 	if asc := s._ascending; asc != nil && asc.Source == peer {

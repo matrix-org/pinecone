@@ -24,16 +24,16 @@ import (
 func TestMarshalUnmarshalFrame(t *testing.T) {
 	input := Frame{
 		Version:     Version0,
-		Type:        TypeGreedy,
+		Type:        TypeTreeRouted,
 		Destination: SwitchPorts{1, 2, 3, 4, 5000},
 		Source:      SwitchPorts{4, 3, 2, 1},
 		Payload:     []byte("ABCDEFG"),
 	}
 	expected := []byte{
 		0x70, 0x69, 0x6e, 0x65, // magic bytes
-		0,    // version 0
-		2,    // type greedy
-		0, 0, // extra
+		0,                    // version 0
+		byte(TypeTreeRouted), // type greedy
+		0, 0,                 // extra
 		0, 37, // frame length
 		0, 8, // destination len
 		0, 6, // source len
@@ -53,7 +53,9 @@ func TestMarshalUnmarshalFrame(t *testing.T) {
 	if !bytes.Equal(buf[:n], expected) {
 		t.Fatalf("wrong marshalled output, got %v, expected %v", buf[:n], expected)
 	}
-	var output Frame
+	output := Frame{
+		Payload: make([]byte, 0, MaxPayloadSize),
+	}
 	if _, err := output.UnmarshalBinary(buf[:n]); err != nil {
 		t.Fatal(err)
 	}
@@ -116,7 +118,9 @@ func TestMarshalUnmarshalSNEKBootstrapFrame(t *testing.T) {
 	t.Log("Got: ", buf[:n])
 	t.Log("Want:", expected)
 
-	var output Frame
+	output := Frame{
+		Payload: make([]byte, 0, MaxPayloadSize),
+	}
 	if _, err := output.UnmarshalBinary(buf[:n]); err != nil {
 		t.Fatal(err)
 	}
@@ -176,7 +180,9 @@ func TestMarshalUnmarshalSNEKBootstrapACKFrame(t *testing.T) {
 	t.Log("Got: ", buf[:n])
 	t.Log("Want:", expected)
 
-	var output Frame
+	output := Frame{
+		Payload: make([]byte, 0, MaxPayloadSize),
+	}
 	if _, err := output.UnmarshalBinary(buf[:n]); err != nil {
 		t.Fatal(err)
 	}
@@ -232,7 +238,9 @@ func TestMarshalUnmarshalSNEKSetupFrame(t *testing.T) {
 	t.Log("Got: ", buf[:n])
 	t.Log("Want:", expected)
 
-	var output Frame
+	output := Frame{
+		Payload: make([]byte, 0, MaxPayloadSize),
+	}
 	if _, err := output.UnmarshalBinary(buf[:n]); err != nil {
 		t.Fatal(err)
 	}
@@ -281,7 +289,9 @@ func TestMarshalUnmarshalSNEKTeardownFrame(t *testing.T) {
 	t.Log("Got: ", buf[:n])
 	t.Log("Want:", expected)
 
-	var output Frame
+	output := Frame{
+		Payload: make([]byte, 0, MaxPayloadSize),
+	}
 	if _, err := output.UnmarshalBinary(buf[:n]); err != nil {
 		t.Fatal(err)
 	}
@@ -304,16 +314,16 @@ func TestMarshalUnmarshalSNEKFrame(t *testing.T) {
 	pk2, _, _ := ed25519.GenerateKey(nil)
 	input := Frame{
 		Version: Version0,
-		Type:    TypeVirtualSnake,
+		Type:    TypeVirtualSnakeRouted,
 		Payload: []byte("HELLO!"),
 	}
 	copy(input.SourceKey[:], pk1)
 	copy(input.DestinationKey[:], pk2)
 	expected := []byte{
 		0x70, 0x69, 0x6e, 0x65, // magic bytes
-		0,                      // version 0
-		byte(TypeVirtualSnake), // type greedy
-		0, 0,                   // extra
+		0,                            // version 0
+		byte(TypeVirtualSnakeRouted), // type greedy
+		0, 0,                         // extra
 		0, 82, // frame length
 		0, 6, // payload length
 	}
@@ -334,7 +344,9 @@ func TestMarshalUnmarshalSNEKFrame(t *testing.T) {
 		t.Fatalf("wrong marshalled output")
 	}
 
-	var output Frame
+	output := Frame{
+		Payload: make([]byte, 0, MaxPayloadSize),
+	}
 	if _, err := output.UnmarshalBinary(buf[:n]); err != nil {
 		t.Fatal(err)
 	}
@@ -351,23 +363,5 @@ func TestMarshalUnmarshalSNEKFrame(t *testing.T) {
 		fmt.Println("want: ", input.Payload)
 		fmt.Println("got: ", output.Payload)
 		t.Fatal("wrong payload")
-	}
-}
-
-func TestUpdatePath(t *testing.T) {
-	frame := Frame{
-		Version:     Version0,
-		Type:        TypeSource,
-		Destination: SwitchPorts{1, 2, 3, 4},
-		Source:      SwitchPorts{},
-	}
-	expectedDst := SwitchPorts{2, 3, 4}
-	expectedSrc := SwitchPorts{5}
-	frame.UpdateSourceRoutedPath(5)
-	if !frame.Destination.EqualTo(expectedDst) {
-		t.Fatalf("got %v, expected %v", frame.Destination, expectedDst)
-	}
-	if !frame.Source.EqualTo(expectedSrc) {
-		t.Fatalf("got %v, expected %v", frame.Source, expectedSrc)
 	}
 }

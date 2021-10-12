@@ -20,13 +20,13 @@ import (
 )
 
 func TestMarshalBinaryVaru64(t *testing.T) {
+	var bin [4]byte
 	input := Varu64(12345678)
 	expected := []byte{133, 241, 194, 78}
-	bin, err := input.MarshalBinary()
-	if err != nil {
+	if _, err := input.MarshalBinary(bin[:]); err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Equal(bin, expected) {
+	if !bytes.Equal(bin[:], expected) {
 		t.Fatalf("expected %v, got %v", expected, bin)
 	}
 	if length := input.Length(); length != len(expected) {

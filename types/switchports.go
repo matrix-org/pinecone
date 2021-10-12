@@ -43,19 +43,17 @@ func (s SwitchPorts) String() string {
 	return "[" + strings.Join(ports, " ") + "]"
 }
 
-func (p SwitchPorts) MarshalBinary() ([]byte, error) {
-	buf := make([]byte, 2, 2+len(p)*10)
-	l := 0
+func (p SwitchPorts) MarshalBinary(buf []byte) (int, error) {
+	l := 2
 	for _, a := range p {
-		b, err := Varu64(a).MarshalBinary()
+		n, err := Varu64(a).MarshalBinary(buf[l:])
 		if err != nil {
-			return buf, fmt.Errorf("Varu64(a).MarshalBinary: %w", err)
+			return 0, fmt.Errorf("Varu64(a).MarshalBinary: %w", err)
 		}
-		buf = append(buf, b...)
-		l += len(b)
+		l += n
 	}
-	binary.BigEndian.PutUint16(buf[:2], uint16(l))
-	return buf[:l+2], nil
+	binary.BigEndian.PutUint16(buf[:2], uint16(l-2))
+	return l, nil
 }
 
 func (p *SwitchPorts) UnmarshalBinary(b []byte) (int, error) {

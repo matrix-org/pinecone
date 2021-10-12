@@ -20,17 +20,18 @@ import (
 )
 
 func TestSwitchPorts(t *testing.T) {
+	var b [7]byte
 	expected := []byte{0, 5, 1, 2, 3, 159, 32}
 	input := SwitchPorts{1, 2, 3, 4000}
-	b, err := input.MarshalBinary()
+	_, err := input.MarshalBinary(b[:])
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Equal(b, expected) {
+	if !bytes.Equal(b[:], expected) {
 		t.Fatalf("MarshalBinary produced %v, expected %v", b, expected)
 	}
 	var output SwitchPorts
-	if _, err := output.UnmarshalBinary(b); err != nil {
+	if _, err := output.UnmarshalBinary(b[:]); err != nil {
 		t.Fatal(err)
 	}
 	if !input.EqualTo(output) {
@@ -42,16 +43,16 @@ func TestSwitchPortDistances(t *testing.T) {
 	us := SwitchPorts{1, 2, 3, 4}
 	parent := SwitchPorts{1, 2, 3}
 	root := SwitchPorts{}
-	if dist := us.DistanceTo(root); dist != 4 {
-		t.Fatalf("distance from us to root should be 4, got %d", dist)
+	if dist := us.DistanceTo(root); dist != 6 {
+		t.Fatalf("distance from us to root should be 6, got %d", dist)
 	}
-	if dist := parent.DistanceTo(root); dist != 3 {
-		t.Fatalf("distance from parent to root should be 3, got %d", dist)
+	if dist := parent.DistanceTo(root); dist != 5 {
+		t.Fatalf("distance from parent to root should be 5, got %d", dist)
 	}
-	if dist := root.DistanceTo(us); dist != 4 {
-		t.Fatalf("distance from root to us should be 4, got %d", dist)
+	if dist := root.DistanceTo(us); dist != 6 {
+		t.Fatalf("distance from root to us should be 6, got %d", dist)
 	}
-	if dist := root.DistanceTo(parent); dist != 3 {
-		t.Fatalf("distance from root to parent should be 3, got %d", dist)
+	if dist := root.DistanceTo(parent); dist != 5 {
+		t.Fatalf("distance from root to parent should be 5, got %d", dist)
 	}
 }
