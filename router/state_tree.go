@@ -238,10 +238,8 @@ func (s *state) _handleTreeAnnouncement(p *peer, f *types.Frame) error {
 		case s._waiting:
 			// if we're reparenting then this should be impossible, as it implies
 			// that the update came from ourselves for some reason
-		case rootDelta > 0:
+		case newUpdate.IsLoopOrChildOf(s.r.public):
 			fallthrough
-		case rootDelta == 0 && newUpdate.Sequence > lastParentUpdate.Sequence:
-			s._sendTreeAnnouncements()
 		case rootDelta < 0:
 			fallthrough
 		case rootDelta == 0 || newUpdate.Sequence == lastParentUpdate.Sequence:
@@ -255,6 +253,10 @@ func (s *state) _handleTreeAnnouncement(p *peer, f *types.Frame) error {
 					}
 				})
 			})
+		case rootDelta > 0:
+			fallthrough
+		case rootDelta == 0 && newUpdate.Sequence > lastParentUpdate.Sequence:
+			s._sendTreeAnnouncements()
 		}
 	} else if !s._waiting { // update came from another peer and we're not waiting to re-parent
 		switch {
