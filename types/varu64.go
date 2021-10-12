@@ -14,17 +14,22 @@
 
 package types
 
+import "fmt"
+
 type Varu64 uint64
 
-func (n Varu64) MarshalBinary() ([]byte, error) {
-	var b [10]byte
-	i := len(b) - 1
+func (n Varu64) MarshalBinary(b []byte) (int, error) {
+	if len(b) < n.Length() {
+		return 0, fmt.Errorf("input slice too small")
+	}
+	l := n.Length()
+	i := l - 1
 	b[i] = byte(n & 0x7f)
 	for n >>= 7; n != 0; n >>= 7 {
 		i--
 		b[i] = byte(n | 0x80)
 	}
-	return b[i:], nil
+	return l, nil
 }
 
 func (n *Varu64) UnmarshalBinary(buf []byte) (int, error) {

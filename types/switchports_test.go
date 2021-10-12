@@ -20,17 +20,18 @@ import (
 )
 
 func TestSwitchPorts(t *testing.T) {
+	var b [7]byte
 	expected := []byte{0, 5, 1, 2, 3, 159, 32}
 	input := SwitchPorts{1, 2, 3, 4000}
-	b, err := input.MarshalBinary()
+	_, err := input.MarshalBinary(b[:])
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Equal(b, expected) {
+	if !bytes.Equal(b[:], expected) {
 		t.Fatalf("MarshalBinary produced %v, expected %v", b, expected)
 	}
 	var output SwitchPorts
-	if _, err := output.UnmarshalBinary(b); err != nil {
+	if _, err := output.UnmarshalBinary(b[:]); err != nil {
 		t.Fatal(err)
 	}
 	if !input.EqualTo(output) {
