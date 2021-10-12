@@ -57,7 +57,7 @@ func (r *Router) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
 	}
 	switch frame.Type {
 	case types.TypeTreeRouted:
-		addr = types.TreeCoordinates(frame.Source)
+		addr = frame.Source
 
 	case types.TypeVirtualSnakeRouted:
 		addr = frame.SourceKey
@@ -85,7 +85,7 @@ func (r *Router) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 	}()
 
 	switch ga := addr.(type) {
-	case types.TreeCoordinates:
+	case types.Coordinates:
 		phony.Block(r.state, func() {
 			frame := getFrame()
 			frame.Type = types.TypeTreeRouted

@@ -76,12 +76,16 @@ func NewRouter(log *log.Logger, sk ed25519.PrivateKey, id string, sim Simulator)
 	return r
 }
 
-func (r *Router) ToggleDebug() {
-	if !r.debug.Toggle() {
+// ToggleDebug toggles debug mode on and off. Returns true if now
+// enabled or false if now disabled.
+func (r *Router) ToggleDebug() bool {
+	enabled := !r.debug.Toggle()
+	if enabled {
 		r.log.Println("Enabled debug logging")
 	} else {
 		r.log.Println("Disabled debug logging")
 	}
+	return enabled
 }
 
 // IsConnected returns true if the node is connected within the

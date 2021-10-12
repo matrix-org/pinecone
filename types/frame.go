@@ -61,9 +61,9 @@ type Frame struct {
 	Version        FrameVersion
 	Type           FrameType
 	Extra          [2]byte
-	Destination    SwitchPorts
+	Destination    Coordinates
 	DestinationKey PublicKey
-	Source         SwitchPorts
+	Source         Coordinates
 	SourceKey      PublicKey
 	Payload        []byte
 }
@@ -73,9 +73,9 @@ func (f *Frame) Reset() {
 	for i := range f.Extra {
 		f.Extra[i] = 0
 	}
-	f.Destination = SwitchPorts{}
+	f.Destination = Coordinates{}
 	f.DestinationKey = PublicKey{}
-	f.Source = SwitchPorts{}
+	f.Source = Coordinates{}
 	f.SourceKey = PublicKey{}
 	f.Payload = f.Payload[:0]
 }

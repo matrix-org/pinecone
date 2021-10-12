@@ -25,8 +25,8 @@ func TestMarshalUnmarshalFrame(t *testing.T) {
 	input := Frame{
 		Version:     Version0,
 		Type:        TypeTreeRouted,
-		Destination: SwitchPorts{1, 2, 3, 4, 5000},
-		Source:      SwitchPorts{4, 3, 2, 1},
+		Destination: Coordinates{1, 2, 3, 4, 5000},
+		Source:      Coordinates{4, 3, 2, 1},
 		Payload:     []byte("ABCDEFG"),
 	}
 	expected := []byte{
@@ -87,7 +87,7 @@ func TestMarshalUnmarshalSNEKBootstrapFrame(t *testing.T) {
 	input := Frame{
 		Version: Version0,
 		Type:    TypeVirtualSnakeBootstrap,
-		Source:  SwitchPorts{1, 2, 3, 4, 5},
+		Source:  Coordinates{1, 2, 3, 4, 5},
 		Payload: []byte{9, 9, 9, 9, 9},
 	}
 	copy(input.DestinationKey[:], pk)
@@ -144,8 +144,8 @@ func TestMarshalUnmarshalSNEKBootstrapACKFrame(t *testing.T) {
 	input := Frame{
 		Version:     Version0,
 		Type:        TypeVirtualSnakeBootstrapACK,
-		Source:      SwitchPorts{1, 2, 3, 4, 5},
-		Destination: SwitchPorts{5, 4, 3, 2, 1},
+		Source:      Coordinates{1, 2, 3, 4, 5},
+		Destination: Coordinates{5, 4, 3, 2, 1},
 		Payload:     []byte{9, 9, 9, 9, 9},
 	}
 	copy(input.DestinationKey[:], pk1)
@@ -206,7 +206,7 @@ func TestMarshalUnmarshalSNEKSetupFrame(t *testing.T) {
 	input := Frame{
 		Version:     Version0,
 		Type:        TypeVirtualSnakeSetup,
-		Destination: SwitchPorts{5, 4, 3, 2, 1},
+		Destination: Coordinates{5, 4, 3, 2, 1},
 		Payload:     []byte{9, 9, 9, 9, 9, 9, 9, 9, 9, 9},
 	}
 	copy(input.DestinationKey[:], pk1)

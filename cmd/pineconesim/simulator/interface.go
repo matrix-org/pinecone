@@ -22,7 +22,7 @@ import (
 	"github.com/matrix-org/pinecone/types"
 )
 
-func (sim *Simulator) LookupCoords(target string) (types.SwitchPorts, error) {
+func (sim *Simulator) LookupCoords(target string) (types.Coordinates, error) {
 	sim.nodesMutex.RLock()
 	defer sim.nodesMutex.RUnlock()
 	node, ok := sim.nodes[target]
@@ -32,7 +32,7 @@ func (sim *Simulator) LookupCoords(target string) (types.SwitchPorts, error) {
 	return node.Coords(), nil
 }
 
-func (sim *Simulator) LookupNodeID(target types.SwitchPorts) (string, error) {
+func (sim *Simulator) LookupNodeID(target types.Coordinates) (string, error) {
 	sim.nodesMutex.RLock()
 	defer sim.nodesMutex.RUnlock()
 	for id, n := range sim.nodes {

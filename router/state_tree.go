@@ -94,19 +94,19 @@ func (s *state) _rootAnnouncement() *rootAnnouncementWithTime {
 	return s._announcements[s._parent]
 }
 
-func (s *state) coords() types.SwitchPorts {
-	var coords types.SwitchPorts
+func (s *state) coords() types.Coordinates {
+	var coords types.Coordinates
 	phony.Block(s, func() {
 		coords = s._coords()
 	})
 	return coords
 }
 
-func (s *state) _coords() types.SwitchPorts {
+func (s *state) _coords() types.Coordinates {
 	if ann := s._rootAnnouncement(); ann != nil {
 		return ann.Coords()
 	}
-	return types.SwitchPorts{}
+	return types.Coordinates{}
 }
 
 func (s *state) _becomeRoot() {

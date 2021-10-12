@@ -22,7 +22,7 @@ import (
 func TestSwitchPorts(t *testing.T) {
 	var b [7]byte
 	expected := []byte{0, 5, 1, 2, 3, 159, 32}
-	input := SwitchPorts{1, 2, 3, 4000}
+	input := Coordinates{1, 2, 3, 4000}
 	_, err := input.MarshalBinary(b[:])
 	if err != nil {
 		t.Fatal(err)
@@ -30,7 +30,7 @@ func TestSwitchPorts(t *testing.T) {
 	if !bytes.Equal(b[:], expected) {
 		t.Fatalf("MarshalBinary produced %v, expected %v", b, expected)
 	}
-	var output SwitchPorts
+	var output Coordinates
 	if _, err := output.UnmarshalBinary(b[:]); err != nil {
 		t.Fatal(err)
 	}
@@ -40,9 +40,9 @@ func TestSwitchPorts(t *testing.T) {
 }
 
 func TestSwitchPortDistances(t *testing.T) {
-	us := SwitchPorts{1, 2, 3, 4}
-	parent := SwitchPorts{1, 2, 3}
-	root := SwitchPorts{}
+	us := Coordinates{1, 2, 3, 4}
+	parent := Coordinates{1, 2, 3}
+	root := Coordinates{}
 	if dist := us.DistanceTo(root); dist != 6 {
 		t.Fatalf("distance from us to root should be 6, got %d", dist)
 	}

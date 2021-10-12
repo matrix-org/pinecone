@@ -103,13 +103,14 @@ func (s *state) _forward(p *peer, f *types.Frame) error {
 
 	case types.TypeSNEKPong:
 		if f.DestinationKey == s.r.public {
-			v, ok := s.r.pings.Load(f.SourceKey)
+			id := f.SourceKey.String()
+			v, ok := s.r.pings.Load(id)
 			if !ok {
 				return nil
 			}
 			ch := v.(chan struct{})
 			close(ch)
-			s.r.pings.Delete(f.SourceKey)
+			s.r.pings.Delete(id)
 			return nil
 		}
 
@@ -126,13 +127,14 @@ func (s *state) _forward(p *peer, f *types.Frame) error {
 
 	case types.TypeTreePong:
 		if deadend {
-			v, ok := s.r.pings.Load(f.Source.String())
+			id := f.Source.String()
+			v, ok := s.r.pings.Load(id)
 			if !ok {
 				return nil
 			}
 			ch := v.(chan struct{})
 			close(ch)
-			s.r.pings.Delete(f.Source.String())
+			s.r.pings.Delete(id)
 			return nil
 		}
 	}

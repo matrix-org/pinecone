@@ -37,7 +37,7 @@ func (sim *Simulator) PingTree(from, to string) error {
 		sim.treePathConvergenceMutex.Unlock()
 	}()
 
-	if _, err := fromnode.TreePing(ctx, tonode.Coords()); err != nil {
+	if _, err := fromnode.Ping(ctx, tonode.Coords()); err != nil {
 		return fmt.Errorf("fromnode.TreePing: %w", err)
 	}
 
@@ -62,7 +62,7 @@ func (sim *Simulator) PingSNEK(from, to string) error {
 		sim.snekPathConvergenceMutex.Unlock()
 	}()
 
-	if _, err := fromnode.SNEKPing(ctx, tonode.PublicKey()); err != nil {
+	if _, err := fromnode.Ping(ctx, tonode.PublicKey()); err != nil {
 		return fmt.Errorf("fromnode.SNEKPing: %w", err)
 	}
 

@@ -114,18 +114,18 @@ func (a *SwitchAnnouncement) SanityCheck(from PublicKey) error {
 	return nil
 }
 
-func (a *SwitchAnnouncement) Coords() SwitchPorts {
+func (a *SwitchAnnouncement) Coords() Coordinates {
 	sigs := a.Signatures
-	coords := make(SwitchPorts, 0, len(sigs))
+	coords := make(Coordinates, 0, len(sigs))
 	for _, sig := range sigs {
 		coords = append(coords, SwitchPortID(sig.Hop))
 	}
 	return coords
 }
 
-func (a *SwitchAnnouncement) PeerCoords() SwitchPorts {
+func (a *SwitchAnnouncement) PeerCoords() Coordinates {
 	sigs := a.Signatures
-	coords := make(SwitchPorts, 0, len(sigs)-1)
+	coords := make(Coordinates, 0, len(sigs)-1)
 	for _, sig := range sigs[:len(sigs)-1] {
 		coords = append(coords, SwitchPortID(sig.Hop))
 	}

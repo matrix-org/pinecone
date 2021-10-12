@@ -21,21 +21,25 @@ import (
 )
 
 type SwitchPortID Varu64
-type SwitchPorts []SwitchPortID
+type Coordinates []SwitchPortID
 
-func (s SwitchPorts) Len() int {
+func (s Coordinates) Network() string {
+	return "tree"
+}
+
+func (s Coordinates) Len() int {
 	return len(s)
 }
 
-func (s SwitchPorts) Swap(i, j int) {
+func (s Coordinates) Swap(i, j int) {
 	s[i], s[j] = s[j], s[i]
 }
 
-func (s SwitchPorts) Less(i, j int) bool {
+func (s Coordinates) Less(i, j int) bool {
 	return s[i] < s[j]
 }
 
-func (s SwitchPorts) String() string {
+func (s Coordinates) String() string {
 	ports := make([]string, 0, len(s))
 	for _, p := range s {
 		ports = append(ports, fmt.Sprintf("%d", p))
@@ -43,7 +47,7 @@ func (s SwitchPorts) String() string {
 	return "[" + strings.Join(ports, " ") + "]"
 }
 
-func (p SwitchPorts) MarshalBinary(buf []byte) (int, error) {
+func (p Coordinates) MarshalBinary(buf []byte) (int, error) {
 	l := 2
 	for _, a := range p {
 		n, err := Varu64(a).MarshalBinary(buf[l:])
@@ -56,9 +60,9 @@ func (p SwitchPorts) MarshalBinary(buf []byte) (int, error) {
 	return l, nil
 }
 
-func (p *SwitchPorts) UnmarshalBinary(b []byte) (int, error) {
+func (p *Coordinates) UnmarshalBinary(b []byte) (int, error) {
 	l := int(binary.BigEndian.Uint16(b[:2]))
-	ports := make(SwitchPorts, 0, 16)
+	ports := make(Coordinates, 0, 16)
 	if rl := len(b); rl < 2+l {
 		return 0, fmt.Errorf("expecting %d bytes but got %d bytes", 2+l, rl)
 	}
@@ -81,7 +85,7 @@ func (p *SwitchPorts) UnmarshalBinary(b []byte) (int, error) {
 	return read, nil
 }
 
-func (p SwitchPorts) EqualTo(o SwitchPorts) bool {
+func (p Coordinates) EqualTo(o Coordinates) bool {
 	if len(p) != len(o) {
 		return false
 	}
@@ -93,16 +97,16 @@ func (p SwitchPorts) EqualTo(o SwitchPorts) bool {
 	return true
 }
 
-func (a *SwitchPorts) Copy() SwitchPorts {
-	return append(SwitchPorts{}, *a...)
+func (a *Coordinates) Copy() Coordinates {
+	return append(Coordinates{}, *a...)
 }
 
-func (a SwitchPorts) DistanceTo(b SwitchPorts) int {
+func (a Coordinates) DistanceTo(b Coordinates) int {
 	ancestor := getCommonPrefix(a, b)
 	return len(a) + len(b) - 2*ancestor
 }
 
-func getCommonPrefix(a, b SwitchPorts) int {
+func getCommonPrefix(a, b Coordinates) int {
 	c := -1
 	l := len(a)
 	if len(b) < l {

@@ -26,14 +26,14 @@ import (
 
 type Simulator interface {
 	ReportDistance(a, b string, l int64)
-	LookupCoords(string) (types.SwitchPorts, error)
-	LookupNodeID(types.SwitchPorts) (string, error)
+	LookupCoords(string) (types.Coordinates, error)
+	LookupNodeID(types.Coordinates) (string, error)
 	LookupPublicKey(types.PublicKey) (string, error)
 	ReportNewLink(net.Conn, types.PublicKey, types.PublicKey)
 	ReportDeadLink(types.PublicKey, types.PublicKey)
 }
 
-func (r *Router) Coords() types.SwitchPorts {
+func (r *Router) Coords() types.Coordinates {
 	return r.state.coords()
 }
 
@@ -145,49 +145,45 @@ func (r *Router) Peers() []PeerInfo {
 	return peers
 }
 
-func (r *Router) SNEKPing(ctx context.Context, dst types.PublicKey) (time.Duration, error) {
-	if dst == r.public {
-		return 0, nil
-	}
-	phony.Block(r.state, func() {
-		frame := getFrame()
-		frame.Type = types.TypeSNEKPing
-		frame.DestinationKey = dst
-		frame.SourceKey = r.public
-		_ = r.state._forward(r.local, frame)
-	})
-	start := time.Now()
-	v, existing := r.pings.LoadOrStore(dst, make(chan struct{}))
-	if existing {
-		return 0, fmt.Errorf("a ping to this node is already in progress")
-	}
-	defer r.pings.Delete(dst)
-	ch := v.(chan struct{})
-	select {
-	case <-ctx.Done():
-		return 0, fmt.Errorf("ping timed out")
-	case <-ch:
-		return time.Since(start), nil
-	}
-}
+func (r *Router) Ping(ctx context.Context, a net.Addr) (time.Duration, error) {
+	id := a.String()
+	switch dst := a.(type) {
+	case types.PublicKey:
+		if dst == r.public {
+			return 0, nil
+		}
+		phony.Block(r.state, func() {
+			frame := getFrame()
+			frame.Type = types.TypeSNEKPing
+			frame.DestinationKey = dst
+			frame.SourceKey = r.public
+			_ = r.state._forward(r.local, frame)
+		})
 
-func (r *Router) TreePing(ctx context.Context, dst types.SwitchPorts) (time.Duration, error) {
-	if dst.EqualTo(r.state.coords()) {
-		return 0, nil
+	case types.Coordinates:
+		if dst.EqualTo(r.state.coords()) {
+			return 0, nil
+		}
+		phony.Block(r.state, func() {
+			frame := getFrame()
+			frame.Type = types.TypeTreePing
+			frame.Destination = dst
+			frame.Source = r.state._coords()
+			_ = r.state._forward(r.local, frame)
+		})
+
+	default:
+		return 0, &net.AddrError{
+			Err:  "unexpected address type",
+			Addr: a.String(),
+		}
 	}
-	phony.Block(r.state, func() {
-		frame := getFrame()
-		frame.Type = types.TypeTreePing
-		frame.Destination = dst
-		frame.Source = r.state._coords()
-		_ = r.state._forward(r.local, frame)
-	})
 	start := time.Now()
-	v, existing := r.pings.LoadOrStore(dst.String(), make(chan struct{}))
+	v, existing := r.pings.LoadOrStore(id, make(chan struct{}))
 	if existing {
 		return 0, fmt.Errorf("a ping to this node is already in progress")
 	}
-	defer r.pings.Delete(dst.String())
+	defer r.pings.Delete(id)
 	ch := v.(chan struct{})
 	select {
 	case <-ctx.Done():
