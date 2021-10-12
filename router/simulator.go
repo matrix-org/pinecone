@@ -87,8 +87,6 @@ func (r *Router) DHTInfo() (asc, desc *DHTNeighbour, table map[virtualSnakeIndex
 			}
 			switch {
 			case v.RootPublicKey != ann.RootPublicKey:
-				fallthrough
-			case v.RootSequence != ann.Sequence:
 				stale++
 			}
 		}
