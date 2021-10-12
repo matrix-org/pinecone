@@ -42,16 +42,16 @@ func TestSwitchPortDistances(t *testing.T) {
 	us := SwitchPorts{1, 2, 3, 4}
 	parent := SwitchPorts{1, 2, 3}
 	root := SwitchPorts{}
-	if dist := us.DistanceTo(root); dist != 4 {
-		t.Fatalf("distance from us to root should be 4, got %d", dist)
+	if dist := us.DistanceTo(root); dist != 6 {
+		t.Fatalf("distance from us to root should be 6, got %d", dist)
 	}
-	if dist := parent.DistanceTo(root); dist != 3 {
-		t.Fatalf("distance from parent to root should be 3, got %d", dist)
+	if dist := parent.DistanceTo(root); dist != 5 {
+		t.Fatalf("distance from parent to root should be 5, got %d", dist)
 	}
-	if dist := root.DistanceTo(us); dist != 4 {
-		t.Fatalf("distance from root to us should be 4, got %d", dist)
+	if dist := root.DistanceTo(us); dist != 6 {
+		t.Fatalf("distance from root to us should be 6, got %d", dist)
 	}
-	if dist := root.DistanceTo(parent); dist != 3 {
-		t.Fatalf("distance from root to parent should be 3, got %d", dist)
+	if dist := root.DistanceTo(parent); dist != 5 {
+		t.Fatalf("distance from root to parent should be 5, got %d", dist)
 	}
 }

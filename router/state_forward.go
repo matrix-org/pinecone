@@ -28,30 +28,12 @@ func (s *state) _nextHopsFor(from *peer, frame *types.Frame) *peer {
 		return nil
 
 	// SNEK routing
-	case types.TypeVirtualSnake, types.TypeVirtualSnakeBootstrap, types.TypeSNEKPing, types.TypeSNEKPong:
+	case types.TypeVirtualSnakeRouted, types.TypeVirtualSnakeBootstrap, types.TypeSNEKPing, types.TypeSNEKPong:
 		nexthop = s._nextHopsSNEK(from, frame, frame.Type == types.TypeVirtualSnakeBootstrap)
 
 	// Tree routing
-	case types.TypeGreedy, types.TypeVirtualSnakeBootstrapACK, types.TypeVirtualSnakeSetup, types.TypeTreePing, types.TypeTreePong:
+	case types.TypeTreeRouted, types.TypeVirtualSnakeBootstrapACK, types.TypeVirtualSnakeSetup, types.TypeTreePing, types.TypeTreePong:
 		nexthop = s._nextHopsTree(from, frame)
-
-	// Source routing
-	case types.TypeSource:
-		if len(frame.Destination) == 0 {
-			return s.r.local
-		}
-		var nexthop *peer
-		port := s._peers[frame.Destination[0]]
-		if frame.Destination[0] == from.port {
-			return nil
-		}
-		frame.Destination = frame.Destination[1:]
-		if from != nexthop && nexthop != nil && nexthop.started.Load() {
-			nexthop = port
-		}
-		if nexthop != nil {
-			return nexthop
-		}
 	}
 	return nexthop
 }
@@ -62,7 +44,7 @@ func (s *state) _forward(p *peer, f *types.Frame) error {
 
 	switch f.Type {
 	// Protocol messages
-	case types.TypeSTP:
+	case types.TypeTreeAnnouncement:
 		if err := s._handleTreeAnnouncement(p, f); err != nil {
 			return fmt.Errorf("s._handleTreeAnnouncement (port %d): %s", p.port, err)
 		}
@@ -106,7 +88,7 @@ func (s *state) _forward(p *peer, f *types.Frame) error {
 		return nil
 
 	// Traffic messages
-	case types.TypeVirtualSnake, types.TypeGreedy, types.TypeSource:
+	case types.TypeVirtualSnakeRouted, types.TypeTreeRouted:
 
 	case types.TypeSNEKPing:
 		if f.DestinationKey == s.r.public {

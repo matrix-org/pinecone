@@ -73,7 +73,7 @@ func (a *rootAnnouncementWithTime) forPeer(p *peer) *types.Frame {
 		panic("failed to sign switch announcement: " + err.Error())
 	}
 	frame := getFrame()
-	frame.Type = types.TypeSTP
+	frame.Type = types.TypeTreeAnnouncement
 	n, err := announcement.MarshalBinary(frame.Payload[:cap(frame.Payload)])
 	if err != nil {
 		panic("failed to marshal switch announcement: " + err.Error())

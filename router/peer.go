@@ -71,7 +71,7 @@ func (p *peer) local() bool {
 func (p *peer) send(f *types.Frame) bool {
 	switch f.Type {
 	// Protocol messages
-	case types.TypeSTP, types.TypeKeepalive:
+	case types.TypeTreeAnnouncement, types.TypeKeepalive:
 		fallthrough
 	case types.TypeVirtualSnakeBootstrap, types.TypeVirtualSnakeBootstrapACK:
 		fallthrough
@@ -84,7 +84,7 @@ func (p *peer) send(f *types.Frame) bool {
 		return p.proto.push(f)
 
 	// Traffic messages
-	case types.TypeVirtualSnake, types.TypeGreedy, types.TypeSource:
+	case types.TypeVirtualSnakeRouted, types.TypeTreeRouted:
 		fallthrough
 	case types.TypeSNEKPing, types.TypeSNEKPong, types.TypeTreePing, types.TypeTreePong:
 		return p.traffic.push(f)
