@@ -302,11 +302,8 @@ func (s *state) _handleBootstrapACK(from *peer, rx *types.Frame) error {
 	send.SourceKey = s.r.public
 	send.Payload = append(send.Payload[:0], buf...)
 	nexthop := s.r.state._nextHopsTree(s.r.local, send)
-	if nexthop == nil || nexthop.local() || nexthop.proto == nil {
-		return nil // fmt.Errorf("no next-hop")
-	}
-	if !nexthop.proto.push(send) {
-		return nil // fmt.Errorf("failed to send setup")
+	if nexthop == nil || nexthop.local() || nexthop.proto == nil || !nexthop.proto.push(send) {
+		return nil // no next-hop or failed to send to queue
 	}
 	index := virtualSnakeIndex{
 		PublicKey: s.r.public,
@@ -344,7 +341,7 @@ func (s *state) _handleSetup(from *peer, rx *types.Frame, nexthop *peer) error {
 	}
 	if setup.RootPublicKey != root.RootPublicKey || setup.RootSequence != root.Sequence {
 		s._sendTeardownForRejectedPath(rx.SourceKey, setup.PathID, from)
-		return nil // fmt.Errorf("setup root/sequence mismatch")
+		return nil
 	}
 	index := virtualSnakeIndex{
 		PublicKey: rx.SourceKey,
@@ -426,7 +423,7 @@ func (s *state) _handleSetup(from *peer, rx *types.Frame, nexthop *peer) error {
 	// can't do that then there's no point in keeping the path.
 	if nexthop == nil || nexthop.local() || nexthop.proto == nil || !nexthop.proto.push(rx) {
 		s._sendTeardownForRejectedPath(rx.SourceKey, setup.PathID, from)
-		return nil // fmt.Errorf("unable to forward setup packet (next-hop %s)", nexthop)
+		return nil // no next hop or failed to send to peer queue
 	}
 	// Add a new routing table entry as we are intermediate to
 	// the path.
