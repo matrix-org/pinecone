@@ -236,7 +236,8 @@ func (p *peer) _read() {
 	}
 	p.router.state.Act(&p.reader, func() {
 		if err := p.router.state._forward(p, f); err != nil {
-			p.router.log.Println("Error handling packet:", err)
+			p.stop(fmt.Errorf("p.router.state._forward: %w", err))
+			return
 		}
 	})
 	p.reader.Act(nil, p._read)

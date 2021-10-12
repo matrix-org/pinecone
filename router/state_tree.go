@@ -55,7 +55,7 @@ type rootAnnouncementWithTime struct {
 
 func (a *rootAnnouncementWithTime) forPeer(p *peer) *types.Frame {
 	if p == nil || p.port == 0 {
-		return nil
+		panic("trying to send announcement to nil port or port 0")
 	}
 	announcement := a.SwitchAnnouncement
 	announcement.Signatures = append([]types.SignatureWithHop{}, a.Signatures...)
@@ -65,20 +65,18 @@ func (a *rootAnnouncementWithTime) forPeer(p *peer) *types.Frame {
 			// includes our signature. This shouldn't really happen but if we
 			// did send it, other nodes would end up ignoring the announcement
 			// anyway since it would appear to be a routing loop.
-			return nil
+			panic("trying to send announcement with loop")
 		}
 	}
 	// Sign the announcement.
 	if err := announcement.Sign(p.router.private[:], p.port); err != nil {
-		p.router.log.Println("Failed to sign switch announcement:", err)
-		return nil
+		panic("failed to sign switch announcement: " + err.Error())
 	}
 	frame := getFrame()
 	frame.Type = types.TypeSTP
 	n, err := announcement.MarshalBinary(frame.Payload[:cap(frame.Payload)])
 	if err != nil {
-		p.router.log.Println("Failed to marshal switch announcement:", err)
-		return nil
+		panic("failed to marshal switch announcement: " + err.Error())
 	}
 	frame.Payload = frame.Payload[:n]
 	return frame
@@ -120,15 +118,13 @@ func (s *state) _becomeRoot() {
 }
 
 func (s *state) sendTreeAnnouncementToPeer(ann *rootAnnouncementWithTime, p *peer) {
-	if peerAnn := ann.forPeer(p); peerAnn != nil {
-		p.proto.push(peerAnn)
-	}
+	p.proto.push(ann.forPeer(p))
 }
 
 func (s *state) _sendTreeAnnouncements() {
 	ann := s._rootAnnouncement()
 	for _, p := range s._peers {
-		if p == nil || !p.started.Load() {
+		if p == nil || p.port == 0 || !p.started.Load() {
 			continue
 		}
 		s.sendTreeAnnouncementToPeer(ann, p)
@@ -186,10 +182,6 @@ func (s *state) _nextHopsTree(from *peer, f *types.Frame) *peer {
 		peerCoords := ann.PeerCoords()
 		peerDist := int64(peerCoords.DistanceTo(f.Destination))
 		switch {
-		case peerDist == 0 || f.Destination.EqualTo(peerCoords):
-			// The peer is the actual destination.
-			return p
-
 		case peerDist < bestDist:
 			// The peer is closer to the destination.
 			bestDist, bestOrdering = peerDist, ann.receiveOrder

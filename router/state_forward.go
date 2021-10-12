@@ -64,7 +64,8 @@ func (s *state) _forward(p *peer, f *types.Frame) error {
 	// TODO: remove this when we figure out why loops happen.
 	f.Extra[0]++
 	if f.Extra[0] == math.MaxUint8-1 {
-		return fmt.Errorf("TTL expired on packet of type %s", f.Type)
+		s.r.log.Println("TTL expired on packet of type", f.Type)
+		return nil
 	}
 
 	switch f.Type {
@@ -162,12 +163,9 @@ func (s *state) _forward(p *peer, f *types.Frame) error {
 		}
 	}
 
-	if nexthop != nil {
-		if !nexthop.send(f) {
-			return fmt.Errorf("dropping forwarded packet of type %s", f.Type)
-		}
-		return nil
+	if nexthop != nil && !nexthop.send(f) {
+		s.r.log.Println("Dropping forwarded packet of type", f.Type)
 	}
 
-	return fmt.Errorf("no next-hop found for packet of type %s", f.Type)
+	return nil
 }

@@ -63,7 +63,6 @@ func (r *Router) localPeer() *peer {
 		public:   r.public,
 		traffic:  newLIFOQueue(TrafficBuffer),
 	}
-	peer.started.Store(true)
 	return peer
 }
 

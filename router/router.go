@@ -72,6 +72,7 @@ func NewRouter(log *log.Logger, sk ed25519.PrivateKey, id string, sim Simulator)
 	r.state._peers[0] = r.local
 	r.state.Act(nil, r.state._start)
 	r.log.Println("Router identity:", r.public.String())
+	r.debug.Store(sim != nil)
 	return r
 }
 
@@ -137,9 +138,7 @@ func (r *Router) Connect(conn net.Conn, public types.PublicKey, zone string, pee
 			r.log.Println("Connected to peer", new.public.String(), "on port", new.port)
 			v, _ := r.active.LoadOrStore(hex.EncodeToString(new.public[:])+zone, atomic.NewUint64(0))
 			v.(*atomic.Uint64).Inc()
-			if ann := r.state._rootAnnouncement().forPeer(new); ann != nil {
-				new.proto.push(ann)
-			}
+			new.proto.push(r.state._rootAnnouncement().forPeer(new))
 			new.started.Store(true)
 			new.reader.Act(nil, new._read)
 			new.writer.Act(nil, new._write)
