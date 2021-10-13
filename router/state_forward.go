@@ -20,6 +20,9 @@ import (
 	"github.com/matrix-org/pinecone/types"
 )
 
+// _nextHopsFor returns the next-hop for the given frame. It will examine the packet
+// type and use the correct routing algorithm to determine the next-hop. It is possible
+// for this function to return `nil` if there is no suitable candidate.
 func (s *state) _nextHopsFor(from *peer, frame *types.Frame) *peer {
 	var nexthop *peer
 	switch frame.Type {
@@ -38,22 +41,30 @@ func (s *state) _nextHopsFor(from *peer, frame *types.Frame) *peer {
 	return nexthop
 }
 
+// _forward handles frames received from a given peer. In most cases, this function will
+// look up the best next-hop for a given frame and forward it to the appropriate peer
+// queue if possible. In some special cases, like tree announcements, path setups and
+// teardowns, special handling will be done before forwarding if needed.
 func (s *state) _forward(p *peer, f *types.Frame) error {
 	nexthop := s._nextHopsFor(p, f)
 	deadend := nexthop == p.router.local
 
 	switch f.Type {
-	// Protocol messages
 	case types.TypeTreeAnnouncement:
+		// Tree announcements are a special case. The _handleTreeAnnouncement function
+		// will generate new tree announcements and send them to peers if needed.
 		if err := s._handleTreeAnnouncement(p, f); err != nil {
 			return fmt.Errorf("s._handleTreeAnnouncement (port %d): %s", p.port, err)
 		}
 		return nil
 
 	case types.TypeKeepalive:
+		// Keepalives are sent on a peering and are never forwarded.
 		return nil
 
 	case types.TypeVirtualSnakeBootstrap:
+		// Bootstrap messages are only handled specially when they reach a dead end.
+		// Otherwise they are forwarded normally by falling through.
 		if deadend {
 			if err := s._handleBootstrap(p, f); err != nil {
 				return fmt.Errorf("s._handleBootstrap (port %d): %s", p.port, err)
@@ -62,6 +73,8 @@ func (s *state) _forward(p *peer, f *types.Frame) error {
 		}
 
 	case types.TypeVirtualSnakeBootstrapACK:
+		// Bootstrap ACK messages are only handled specially when they reach a dead end.
+		// Otherwise they are forwarded normally by falling through.
 		if deadend {
 			if err := s._handleBootstrapACK(p, f); err != nil {
 				return fmt.Errorf("s._handleBootstrapACK (port %d): %s", p.port, err)
@@ -70,12 +83,17 @@ func (s *state) _forward(p *peer, f *types.Frame) error {
 		}
 
 	case types.TypeVirtualSnakeSetup:
+		// Setup messages are handled at each node on the path. Since the _handleSetup
+		// function needs to be sure that the setup message was queued to the next-hop
+		// before installing the route, we do not need to forward the packet here.
 		if err := s._handleSetup(p, f, nexthop); err != nil {
 			return fmt.Errorf("s._handleSetup (port %d): %s", p.port, err)
 		}
 		return nil
 
 	case types.TypeVirtualSnakeTeardown:
+		// Teardown messages are a special case where there might be more than one
+		// next-hop, so this is handled specifically.
 		if nexthops, err := s._handleTeardown(p, f); err != nil {
 			return fmt.Errorf("s._handleTeardown (port %d): %s", p.port, err)
 		} else {
@@ -87,10 +105,15 @@ func (s *state) _forward(p *peer, f *types.Frame) error {
 		}
 		return nil
 
-	// Traffic messages
 	case types.TypeVirtualSnakeRouted, types.TypeTreeRouted:
+		// Traffic type packets are forwarded normally by falling through. There
+		// are no special rules to apply to these packets, regardless of whether
+		// they are SNEK-routed or tree-routed.
 
 	case types.TypeSNEKPing:
+		if s.r.simulator == nil {
+			return nil
+		}
 		if f.DestinationKey == s.r.public {
 			of := f
 			defer framePool.Put(of)
@@ -102,6 +125,9 @@ func (s *state) _forward(p *peer, f *types.Frame) error {
 		}
 
 	case types.TypeSNEKPong:
+		if s.r.simulator == nil {
+			return nil
+		}
 		if f.DestinationKey == s.r.public {
 			id := f.SourceKey.String()
 			v, ok := s.r.pings.Load(id)
@@ -115,6 +141,9 @@ func (s *state) _forward(p *peer, f *types.Frame) error {
 		}
 
 	case types.TypeTreePing:
+		if s.r.simulator == nil {
+			return nil
+		}
 		if deadend {
 			of := f
 			defer framePool.Put(of)
@@ -126,6 +155,9 @@ func (s *state) _forward(p *peer, f *types.Frame) error {
 		}
 
 	case types.TypeTreePong:
+		if s.r.simulator == nil {
+			return nil
+		}
 		if deadend {
 			id := f.Source.String()
 			v, ok := s.r.pings.Load(id)
@@ -139,6 +171,9 @@ func (s *state) _forward(p *peer, f *types.Frame) error {
 		}
 	}
 
+	// If there's a suitable next-hop then try sending the packet. If we fail
+	// to queue up the packet then we will log it but there isn't an awful lot
+	// we can do at this point.
 	if nexthop != nil && !nexthop.send(f) {
 		s.r.log.Println("Dropping forwarded packet of type", f.Type)
 	}
