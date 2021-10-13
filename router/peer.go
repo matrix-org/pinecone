@@ -29,6 +29,9 @@ import (
 	"go.uber.org/atomic"
 )
 
+// NOTE: Functions prefixed with an underscore (_) are only safe to be called
+// from the actor that owns them, in order to prevent data races.
+
 const PeerKeepaliveInterval = time.Second * 3
 const PeerKeepaliveTimeout = time.Second * 5
 

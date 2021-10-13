@@ -20,6 +20,9 @@ import (
 	"github.com/Arceliar/phony"
 )
 
+// NOTE: Functions prefixed with an underscore (_) are only safe to be called
+// from the actor that owns them, in order to prevent data races.
+
 type state struct {
 	phony.Inbox
 	r              *Router

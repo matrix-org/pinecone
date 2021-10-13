@@ -42,6 +42,7 @@ func (s *state) _maintainTree() {
 	case <-s.r.context.Done():
 		return
 	default:
+		defer s._maintainTreeIn(announcementInterval)
 	}
 
 	// If we don't have a parent then we are acting as if we are a root node,
@@ -52,8 +53,6 @@ func (s *state) _maintainTree() {
 		s._sequence++
 		s._sendTreeAnnouncements()
 	}
-
-	s._maintainTreeIn(announcementInterval)
 }
 
 type rootAnnouncementWithTime struct {

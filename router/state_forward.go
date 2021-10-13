@@ -29,7 +29,7 @@ func (s *state) _nextHopsFor(from *peer, frame *types.Frame) *peer {
 
 	// SNEK routing
 	case types.TypeVirtualSnakeRouted, types.TypeVirtualSnakeBootstrap, types.TypeSNEKPing, types.TypeSNEKPong:
-		nexthop = s._nextHopsSNEK(from, frame, frame.Type == types.TypeVirtualSnakeBootstrap)
+		nexthop = s._nextHopsSNEK(frame, frame.Type == types.TypeVirtualSnakeBootstrap)
 
 	// Tree routing
 	case types.TypeTreeRouted, types.TypeVirtualSnakeBootstrapACK, types.TypeVirtualSnakeSetup, types.TypeTreePing, types.TypeTreePong:
@@ -40,7 +40,7 @@ func (s *state) _nextHopsFor(from *peer, frame *types.Frame) *peer {
 
 func (s *state) _forward(p *peer, f *types.Frame) error {
 	nexthop := s._nextHopsFor(p, f)
-	deadend := nexthop == nil || nexthop == p.router.local
+	deadend := nexthop == p.router.local
 
 	switch f.Type {
 	// Protocol messages

@@ -24,6 +24,9 @@ import (
 	"github.com/matrix-org/pinecone/util"
 )
 
+// NOTE: Functions prefixed with an underscore (_) are only safe to be called
+// from the actor that owns them, in order to prevent data races.
+
 const virtualSnakeMaintainInterval = time.Second
 const virtualSnakeNeighExpiryPeriod = time.Hour
 
@@ -44,10 +47,15 @@ type virtualSnakeEntry struct {
 	RootSequence  types.Varu64
 }
 
+// valid returns true if the update hasn't expired, or false if it has. It is
+// required for updates to time out eventually, in the case that paths don't get
+// torn down properly for some reason.
 func (e *virtualSnakeEntry) valid() bool {
 	return time.Since(e.LastSeen) < virtualSnakeNeighExpiryPeriod
 }
 
+// _maintainSnake is responsible for working out if we need to send bootstraps
+// or to clean up any old paths.
 func (s *state) _maintainSnake() {
 	select {
 	case <-s.r.context.Done():
@@ -56,46 +64,71 @@ func (s *state) _maintainSnake() {
 		defer s._maintainSnakeIn(virtualSnakeMaintainInterval)
 	}
 
+	// Work out if we are able to bootstrap. If we are the root node then
+	// we don't send bootstraps, since there's nowhere for them to go —
+	// bootstraps are sent up to the next ascending node, but as the root,
+	// we already have the highest key on the network.
 	rootAnn := s._rootAnnouncement()
 	canBootstrap := s._parent != nil && rootAnn.RootPublicKey != s.r.public
 	willBootstrap := false
 
+	// The ascending node is the node with the next highest key.
 	if asc := s._ascending; asc != nil {
 		switch {
 		case !asc.valid():
+			// The ascending path entry has expired, so tear it down and then
+			// see if we can bootstrap again.
 			s._sendTeardownForExistingPath(s.r.local, asc.PublicKey, asc.PathID)
 			fallthrough
 		case asc.RootPublicKey != rootAnn.RootPublicKey || asc.RootSequence != rootAnn.Sequence:
+			// The ascending node was set up with a different root key or sequence
+			// number. In this case, we will send another bootstrap to the remote
+			// side in order to hopefully replace the path with a new one.
 			willBootstrap = canBootstrap
 		}
 	} else {
+		// We don't have an ascending node at all, so if we can, we'll try
+		// bootstrapping to locate it.
 		willBootstrap = canBootstrap
 	}
 
+	// The descending node is the node with the next lowest key.
 	if desc := s._descending; desc != nil && !desc.valid() {
+		// The descending path has expired, so tear it down and then that should
+		// prompt the remote side into sending a new bootstrap to set up a new
+		// path, if they are still alive.
 		s._sendTeardownForExistingPath(s.r.local, desc.PublicKey, desc.PathID)
 	}
 
-	// Send bootstrap messages into the network. Ordinarily we
-	// would only want to do this when starting up or after a
-	// predefined interval, but for now we'll continue to send
-	// them on a regular interval until we can derive some better
-	// connection state.
+	// If one of the previous conditions means that we need to bootstrap, then
+	// send the actual bootstrap message into the network.
 	if willBootstrap {
 		s._bootstrapNow()
 	}
 }
 
+// _bootstrapNow is responsible for sending a bootstrap message to the network.
 func (s *state) _bootstrapNow() {
+	// If we are the root node then there's no point in trying to bootstrap. We
+	// already have the highest public key on the network so a bootstrap won't be
+	// able to go anywhere in ascending order.
 	if s._parent == nil {
 		return
 	}
+	// If we already have a relationship with an ascending node and that has the
+	// same root key and sequence number (i.e. nothing has changed in the tree since
+	// the path was set up) then we don't need to send another bootstrap message just
+	// yet. We'll either wait for the path to be torn down, expire or for the tree to
+	// change.
 	ann := s._rootAnnouncement()
 	if asc := s._ascending; asc != nil && asc.Source.started.Load() {
 		if asc.RootPublicKey == ann.RootPublicKey && asc.RootSequence == ann.Sequence {
 			return
 		}
 	}
+	// Construct the bootstrap packet. We will include our root key and sequence
+	// number in the update so that the remote side can determine if we are both using
+	// the same root node when processing the update.
 	b := frameBufferPool.Get().(*[types.MaxFrameSize]byte)
 	payload := b[:8+ed25519.PublicKeySize+ann.Sequence.Length()]
 	defer frameBufferPool.Put(b)
@@ -103,40 +136,52 @@ func (s *state) _bootstrapNow() {
 		RootPublicKey: ann.RootPublicKey,
 		RootSequence:  ann.Sequence,
 	}
+	// Generate a random path ID.
 	if _, err := rand.Read(bootstrap.PathID[:]); err != nil {
 		return
 	}
 	if _, err := bootstrap.MarshalBinary(payload[:]); err != nil {
 		return
 	}
+	// Construct the frame. We set the destination key to be our own public key. As
+	// the bootstrap routing defaults to routing towards higher keys, this should
+	// mean that the message gets forwarded up to the next highest key from ours.
 	send := getFrame()
 	send.Type = types.TypeVirtualSnakeBootstrap
 	send.DestinationKey = s.r.public
 	send.Source = s._coords()
 	send.Payload = append(send.Payload[:0], payload...)
-	if p := s._nextHopsSNEK(s.r.local, send, true); p != nil && p.proto != nil {
+	// Bootstrap messages are routed using SNEK routing with special rules for
+	// bootstrap packets.
+	if p := s._nextHopsSNEK(send, true); p != nil && p.proto != nil {
 		p.proto.push(send)
 	}
 }
 
-func (s *state) _nextHopsSNEK(from *peer, rx *types.Frame, bootstrap bool) *peer {
+// _nextHopsSNEK locates the best next-hop for a given SNEK-routed frame. The
+// bootstrap flag determines whether the frame should be routed using bootstrap
+// specific rules — this should only be used for VirtualSnakeBootstrap frames.
+func (s *state) _nextHopsSNEK(rx *types.Frame, bootstrap bool) *peer {
 	destKey := rx.DestinationKey
+	// If the message isn't a bootstrap message and the destination is for our
+	// own public key, handle the frame locally — it's basically loopback.
 	if !bootstrap && s.r.public == destKey {
 		return s.r.local
 	}
 	rootAnn := s._rootAnnouncement()
+	// We start off with our own key as the best key. Any suitable next-hop
+	// candidate has to improve on our own key in order to forward the frame,
+	// otherwise we'll return the local router port instead.
 	bestKey := s.r.public
-	var bestPeer *peer
-	if !bootstrap {
-		bestPeer = s.r.local
-	}
+	bestPeer := s.r.local
+	// newCandidate updates the best key and best peer with new candidates.
 	newCandidate := func(key types.PublicKey, p *peer) {
 		bestKey, bestPeer = key, p
 	}
+	// newCheckedCandidate performs some sanity checks on the candidate before
+	// passing it to newCandidate.
 	newCheckedCandidate := func(candidate types.PublicKey, p *peer) {
 		switch {
-		case bootstrap && candidate == s.r.public:
-			// do nothing
 		case !bootstrap && candidate == destKey && bestKey != destKey:
 			newCandidate(candidate, p)
 		case util.DHTOrdered(destKey, candidate, bestKey):
@@ -144,21 +189,23 @@ func (s *state) _nextHopsSNEK(from *peer, rx *types.Frame, bootstrap bool) *peer
 		}
 	}
 
-	// Check if we can use the path to the root via our parent as a starting point
+	// Check if we can use the path to the root via our parent as a starting
+	// point. We can't do this if we are the root node as there would be no
+	// parent or ascending paths.
 	if s._parent != nil && s._parent.started.Load() {
 		switch {
 		case bootstrap && bestKey == destKey:
-			// Bootstraps always start working towards the root so that
-			// they go somewhere rather than getting stuck
+			// Bootstraps always start working towards the root so that they
+			// go somewhere rather than getting stuck.
 			fallthrough
 		case util.DHTOrdered(bestKey, destKey, rootAnn.RootPublicKey):
-			// The destination key is higher than our own key, so
-			// start using the path to the root as the first candidate
+			// The destination key is higher than our own key, so start using
+			// the path to the root as the first candidate.
 			newCandidate(rootAnn.RootPublicKey, s._parent)
 		}
 
-		// Check our direct ancestors
-		// bestKey <= destKey < rootKey
+		// Check our direct ancestors in the tree, that is, all nodes between
+		// ourselves and the root node via the parent port.
 		if ann := s._announcements[s._parent]; ann != nil {
 			for _, ancestor := range ann.Signatures {
 				newCheckedCandidate(ancestor.PublicKey, s._parent)
@@ -166,7 +213,8 @@ func (s *state) _nextHopsSNEK(from *peer, rx *types.Frame, bootstrap bool) *peer
 		}
 	}
 
-	// Check our direct peers ancestors
+	// Check all of the ancestors of our direct peers too, that is, all nodes
+	// between our direct peer and the root node.
 	for p, ann := range s._announcements {
 		if !p.started.Load() {
 			continue
@@ -176,21 +224,26 @@ func (s *state) _nextHopsSNEK(from *peer, rx *types.Frame, bootstrap bool) *peer
 		}
 	}
 
-	// Check our direct peers
+	// Check whether our current best candidate is actually a direct peer.
+	// This might happen if we spotted the node in our direct ancestors for
+	// example, only in this case it would make more sense to route directly
+	// to the peer via our peering with them as opposed to routing via our
+	// parent port.
 	for p := range s._announcements {
 		if !p.started.Load() {
 			continue
 		}
 		if peerKey := p.public; bestKey == peerKey {
-			// We've seen this key already, either as one of our ancestors
-			// or as an ancestor of one of our peers, but it turns out we
-			// are directly peered with that node, so use the more direct
-			// path instead
+			// We've seen this key already and we are directly peered, so use
+			// the peering instead of the previous selected port.
 			newCandidate(peerKey, p)
 		}
 	}
 
-	// Check our DHT entries
+	// Check our DHT entries. In particular, we are only looking at the source
+	// side of the DHT paths. Since setups travel from the lower key to the
+	// higher one, this is effectively looking for paths that descend through
+	// keyspace toward lower keys rather than ascend toward higher ones.
 	for _, entry := range s._table {
 		if !entry.Source.started.Load() || !entry.valid() || entry.Source == s.r.local {
 			continue
@@ -201,6 +254,8 @@ func (s *state) _nextHopsSNEK(from *peer, rx *types.Frame, bootstrap bool) *peer
 	return bestPeer
 }
 
+// _handleBootstrap is called in response to receiving a bootstrap packet.
+// This function will send a bootstrap ACK back to the sender.
 func (s *state) _handleBootstrap(from *peer, rx *types.Frame) error {
 	// Unmarshal the bootstrap.
 	var bootstrap types.VirtualSnakeBootstrap
@@ -208,6 +263,8 @@ func (s *state) _handleBootstrap(from *peer, rx *types.Frame) error {
 	if err != nil {
 		return fmt.Errorf("bootstrap.UnmarshalBinary: %w", err)
 	}
+	// In response to a bootstrap, we'll send back a bootstrap ACK packet to
+	// the sender. We'll include our own root details in the ACK.
 	root := s._rootAnnouncement()
 	bootstrapACK := types.VirtualSnakeBootstrapACK{
 		PathID:        bootstrap.PathID,
@@ -220,6 +277,9 @@ func (s *state) _handleBootstrap(from *peer, rx *types.Frame) error {
 	if _, err := bootstrapACK.MarshalBinary(buf[:]); err != nil {
 		return fmt.Errorf("bootstrapACK.MarshalBinary: %w", err)
 	}
+	// Bootstrap ACKs are routed using tree routing, so we need to take the
+	// coordinates from the source field of the received packet and set the
+	// destination of the ACK packet to that.
 	send := getFrame()
 	send.Type = types.TypeVirtualSnakeBootstrapACK
 	send.Destination = rx.Source
@@ -233,6 +293,10 @@ func (s *state) _handleBootstrap(from *peer, rx *types.Frame) error {
 	return nil
 }
 
+// _handleBootstrapACK is called in response to receiving a bootstrap ACK
+// packet. This function will work out whether the remote node is a suitable
+// candidate to set up an outbound path to, and if so, will send path setup
+// packets to the network.
 func (s *state) _handleBootstrapACK(from *peer, rx *types.Frame) error {
 	// Unmarshal the bootstrap ACK.
 	var bootstrapACK types.VirtualSnakeBootstrapACK
@@ -250,11 +314,14 @@ func (s *state) _handleBootstrapACK(from *peer, rx *types.Frame) error {
 		// a routing loop has occurred somewhere. Don't act on the bootstrap
 		// in that case.
 	case bootstrapACK.RootPublicKey != root.RootPublicKey:
-		// Root doesn't match so we won't be able to forward using tree space.
+		// The root key in the bootstrap ACK doesn't match our own key, so
+		// routing setup packets using tree routing would fail.
 	case bootstrapACK.RootSequence != root.Sequence:
-		// Sequence number doesn't match so something is out of date.
+		// The root sequence number in the bootstrap ACK doesn't match our own
+		// root sequence, so it seems that they have a different root announcement
+		// to us.
 	case asc != nil && asc.valid():
-		// We already have an ascending entry and it hasn't expired.
+		// We already have an ascending entry and it hasn't expired yet.
 		switch {
 		case asc.PublicKey == rx.SourceKey && bootstrapACK.PathID != asc.PathID:
 			// We've received another bootstrap ACK from our direct ascending node.
@@ -281,9 +348,12 @@ func (s *state) _handleBootstrapACK(from *peer, rx *types.Frame) error {
 		// there's a node out there that hasn't converged to a closer node
 		// yet, so we'll just ignore the acknowledgement.
 	}
+	// If we haven't decided we like the update then we won't do anything at this
+	// point so give up.
 	if !update {
 		return nil
 	}
+	// Include our own root information in the update.
 	setup := types.VirtualSnakeSetup{ // nolint:gosimple
 		PathID:        bootstrapACK.PathID,
 		RootPublicKey: root.RootPublicKey,
@@ -295,6 +365,11 @@ func (s *state) _handleBootstrapACK(from *peer, rx *types.Frame) error {
 	if _, err := setup.MarshalBinary(buf[:]); err != nil {
 		return fmt.Errorf("setup.MarshalBinary: %w", err)
 	}
+	// Setup messages routed using tree routing. The destination key is set in the
+	// header so that a node can determine if the setup message arrived at the
+	// intended destination instead of forwarding it. The source key is set to our
+	// public key, since this is the lower of the two keys that intermediate nodes
+	// will populate into their routing tables.
 	send := getFrame()
 	send.Type = types.TypeVirtualSnakeSetup
 	send.Destination = rx.Source
@@ -302,8 +377,20 @@ func (s *state) _handleBootstrapACK(from *peer, rx *types.Frame) error {
 	send.SourceKey = s.r.public
 	send.Payload = append(send.Payload[:0], buf...)
 	nexthop := s.r.state._nextHopsTree(s.r.local, send)
-	if nexthop == nil || nexthop.local() || nexthop.proto == nil || !nexthop.proto.push(send) {
-		return nil // no next-hop or failed to send to queue
+	// Importantly, we will only create a DHT entry if it appears as though our next
+	// hop has actually accepted the packet. Otherwise we'll create a path entry and
+	// the setup message won't go anywhere.
+	switch {
+	case nexthop == nil:
+		fallthrough // No peer was identified, which shouldn't happen.
+	case nexthop.local():
+		fallthrough // The peer is local, which shouldn't happen.
+	case !nexthop.started.Load():
+		fallthrough // The peer has shut down or errored.
+	case nexthop.proto == nil:
+		fallthrough // The peer doesn't have a protocol queue for some reason.
+	case !nexthop.proto.push(send):
+		return nil // We failed to push the message into the peer queue.
 	}
 	index := virtualSnakeIndex{
 		PublicKey: s.r.public,
@@ -318,9 +405,10 @@ func (s *state) _handleBootstrapACK(from *peer, rx *types.Frame) error {
 		RootPublicKey:     bootstrapACK.RootPublicKey,
 		RootSequence:      bootstrapACK.RootSequence,
 	}
-	// Remote side is responsible for clearing up the replaced path, but
+	// The remote side is responsible for clearing up the replaced path, but
 	// we do want to make sure we don't have any old paths to other nodes
-	// that *aren't* the new ascending node lying around.
+	// that *aren't* the new ascending node lying around. This helps to avoid
+	// routing loops.
 	for dhtKey, entry := range s._table {
 		if entry.Source == s.r.local && entry.PublicKey != rx.SourceKey {
 			s._sendTeardownForExistingPath(s.r.local, dhtKey.PublicKey, dhtKey.PathID)
@@ -332,6 +420,9 @@ func (s *state) _handleBootstrapACK(from *peer, rx *types.Frame) error {
 	return nil
 }
 
+// _handleSetup is called in response to receiving setup packets. Note that
+// these packets are handled even as we forward them, as setup packets should be
+// processed by each node on the path.
 func (s *state) _handleSetup(from *peer, rx *types.Frame, nexthop *peer) error {
 	root := s._rootAnnouncement()
 	// Unmarshal the setup.
@@ -347,13 +438,15 @@ func (s *state) _handleSetup(from *peer, rx *types.Frame, nexthop *peer) error {
 		PublicKey: rx.SourceKey,
 		PathID:    setup.PathID,
 	}
+	// If we already have a path for this public key and path ID combo, which
+	// *shouldn't* happen, then we need to tear down both the existing path and
+	// then send back a teardown to the sender notifying them that there was a
+	// problem. This will probably trigger a new setup, but that's OK, it should
+	// have a new path ID.
 	if _, ok := s._table[index]; ok {
 		s._sendTeardownForExistingPath(s.r.local, rx.SourceKey, setup.PathID) // first call fixes routing table
-		if _, ok := s._table[index]; ok && s.r.debug.Load() {
-			panic("should have cleaned up duplicate path in routing table")
-		}
-		s._sendTeardownForRejectedPath(rx.SourceKey, setup.PathID, from) // second call sends back to origin
-		return nil                                                       // fmt.Errorf("setup is a duplicate")
+		s._sendTeardownForRejectedPath(rx.SourceKey, setup.PathID, from)      // second call sends back to origin
+		return nil
 	}
 	// If we're at the destination of the setup then update our predecessor
 	// with information from the bootstrap.
@@ -362,9 +455,12 @@ func (s *state) _handleSetup(from *peer, rx *types.Frame, nexthop *peer) error {
 		desc := s._descending
 		switch {
 		case setup.RootPublicKey != root.RootPublicKey:
-			// Root doesn't match so we won't be able to forward using tree space.
+			// The root key in the setup packet doesn't match our own key, so
+			// routing setup packets using tree routing would fail.
 		case setup.RootSequence != root.Sequence:
-			// Sequence number doesn't match so something is out of date.
+			// The root sequence number in the setup packet doesn't match our own
+			// root sequence, so it seems that they have a different root announcement
+			// to us.
 		case !util.LessThan(rx.SourceKey, s.r.public):
 			// The bootstrapping key should be less than ours but it isn't.
 		case desc != nil && desc.valid():
@@ -421,9 +517,18 @@ func (s *state) _handleSetup(from *peer, rx *types.Frame, nexthop *peer) error {
 	}
 	// Try to forward the setup onto the next node first. If we
 	// can't do that then there's no point in keeping the path.
-	if nexthop == nil || nexthop.local() || nexthop.proto == nil || !nexthop.proto.push(rx) {
+	switch {
+	case nexthop == nil:
+		fallthrough // No peer was identified, which shouldn't happen.
+	case nexthop.local():
+		fallthrough // The peer is local, which shouldn't happen.
+	case !nexthop.started.Load():
+		fallthrough // The peer has shut down or errored.
+	case nexthop.proto == nil:
+		fallthrough // The peer doesn't have a protocol queue for some reason.
+	case !nexthop.proto.push(rx):
 		s._sendTeardownForRejectedPath(rx.SourceKey, setup.PathID, from)
-		return nil // no next hop or failed to send to peer queue
+		return nil // We failed to push the message into the peer queue.
 	}
 	// Add a new routing table entry as we are intermediate to
 	// the path.
@@ -439,6 +544,8 @@ func (s *state) _handleSetup(from *peer, rx *types.Frame, nexthop *peer) error {
 	return nil
 }
 
+// _handleTeardown is called in response to receiving a teardown packet from the
+// network.
 func (s *state) _handleTeardown(from *peer, rx *types.Frame) ([]*peer, error) {
 	if len(rx.Payload) < 8 {
 		return nil, fmt.Errorf("payload too short")
@@ -450,6 +557,8 @@ func (s *state) _handleTeardown(from *peer, rx *types.Frame) ([]*peer, error) {
 	return s._teardownPath(from, rx.DestinationKey, teardown.PathID), nil
 }
 
+// _sendTeardownForRejectedPath sends a teardown into the network for a path
+// that was received but not accepted.
 func (s *state) _sendTeardownForRejectedPath(pathKey types.PublicKey, pathID types.VirtualSnakePathID, via *peer) {
 	if _, ok := s._table[virtualSnakeIndex{pathKey, pathID}]; s.r.debug.Load() && ok {
 		panic("rejected path should not be in routing table")
@@ -459,6 +568,9 @@ func (s *state) _sendTeardownForRejectedPath(pathKey types.PublicKey, pathID typ
 	}
 }
 
+// _sendTeardownForExistingPath sends a teardown into the network for a path
+// that was already accepted into the routing table but is being replaced or
+// removed.
 func (s *state) _sendTeardownForExistingPath(from *peer, pathKey types.PublicKey, pathID types.VirtualSnakePathID) {
 	frame := s._getTeardown(pathKey, pathID)
 	for _, nexthop := range s._teardownPath(from, pathKey, pathID) {
@@ -468,6 +580,8 @@ func (s *state) _sendTeardownForExistingPath(from *peer, pathKey types.PublicKey
 	}
 }
 
+// _getTeardown generates a frame containing a teardown message for the given
+// path key and path ID.
 func (s *state) _getTeardown(pathKey types.PublicKey, pathID types.VirtualSnakePathID) *types.Frame {
 	var payload [8]byte
 	teardown := types.VirtualSnakeTeardown{
@@ -483,6 +597,9 @@ func (s *state) _getTeardown(pathKey types.PublicKey, pathID types.VirtualSnakeP
 	return frame
 }
 
+// _teardownPath processes a teardown message by tearing down any
+// related routes, returning a slice of next-hop candidates that the
+// teardown must be forwarded to.
 func (s *state) _teardownPath(from *peer, pathKey types.PublicKey, pathID types.VirtualSnakePathID) []*peer {
 	if asc := s._ascending; asc != nil && asc.PublicKey == pathKey && asc.PathID == pathID {
 		switch {
