@@ -296,7 +296,7 @@ func (s *state) _handleTreeAnnouncement(p *peer, f *types.Frame) error {
 				s.Act(nil, func() {
 					s._waiting = false
 					if s._selectNewParent() {
-						s._bootstrapNow()
+						s._bootstrapIn(0)
 					}
 				})
 			})
@@ -337,7 +337,7 @@ func (s *state) _handleTreeAnnouncement(p *peer, f *types.Frame) error {
 			// still makes sense to keep our current parent. We will reparent
 			// if not, sending out a new SNEK bootstrap into the network.
 			if s._selectNewParent() {
-				s._bootstrapNow()
+				s._bootstrapIn(time.Second)
 			}
 		}
 	}

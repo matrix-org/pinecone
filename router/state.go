@@ -26,18 +26,19 @@ import (
 // state is an actor that owns all of the mutable state for the Pinecone router.
 type state struct {
 	phony.Inbox
-	r              *Router
-	_peers         []*peer            // All switch ports, connected and disconnected
-	_ascending     *virtualSnakeEntry // Next ascending node in keyspace
-	_descending    *virtualSnakeEntry // Next descending node in keyspace
-	_parent        *peer              // Our chosen parent in the tree
-	_announcements announcementTable  // Announcements received from our peers
-	_table         virtualSnakeTable  // Virtual snake DHT entries
-	_ordering      uint64             // Used to order incoming tree announcements
-	_sequence      uint64             // Used to sequence our root tree announcements
-	_treetimer     *time.Timer        // Tree maintenance timer
-	_snaketimer    *time.Timer        // Virtual snake maintenance timer
-	_waiting       bool               // Is the tree waiting to reparent?
+	r               *Router
+	_peers          []*peer            // All switch ports, connected and disconnected
+	_ascending      *virtualSnakeEntry // Next ascending node in keyspace
+	_descending     *virtualSnakeEntry // Next descending node in keyspace
+	_parent         *peer              // Our chosen parent in the tree
+	_announcements  announcementTable  // Announcements received from our peers
+	_table          virtualSnakeTable  // Virtual snake DHT entries
+	_ordering       uint64             // Used to order incoming tree announcements
+	_sequence       uint64             // Used to sequence our root tree announcements
+	_treetimer      *time.Timer        // Tree maintenance timer
+	_snaketimer     *time.Timer        // Virtual snake maintenance timer
+	_bootstraptimer *time.Timer        // Virtual snake bootstrap timer
+	_waiting        bool               // Is the tree waiting to reparent?
 }
 
 // _start resets the state and starts tree and virtual snake maintenance.
@@ -55,9 +56,12 @@ func (s *state) _start() {
 	s._snaketimer = time.AfterFunc(time.Second, func() {
 		s.Act(nil, s._maintainSnake)
 	})
+	s._bootstraptimer = time.AfterFunc(time.Second, func() {
+		s.Act(nil, s._bootstrapNow)
+	})
 
 	s._maintainTreeIn(0)
-	s._maintainSnakeIn(0)
+	s._bootstrapIn(0)
 }
 
 // _maintainTreeIn resets the tree maintenance timer to the specified
@@ -82,6 +86,18 @@ func (s *state) _maintainSnakeIn(d time.Duration) {
 		}
 	}
 	s._snaketimer.Reset(d)
+}
+
+// _bootstrapIn resets the virtual snake bootstrap timer to the
+// specified duration.
+func (s *state) _bootstrapIn(d time.Duration) {
+	if !s._bootstraptimer.Stop() {
+		select {
+		case <-s._bootstraptimer.C:
+		default:
+		}
+	}
+	s._bootstraptimer.Reset(d)
 }
 
 // _portDisconnected is called when a peer disconnects.
@@ -151,6 +167,6 @@ func (s *state) _portDisconnected(peer *peer) {
 	}
 
 	if bootstrap {
-		s._bootstrapNow()
+		s._bootstrapIn(0)
 	}
 }

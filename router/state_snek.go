@@ -103,7 +103,7 @@ func (s *state) _maintainSnake() {
 	// If one of the previous conditions means that we need to bootstrap, then
 	// send the actual bootstrap message into the network.
 	if willBootstrap {
-		s._bootstrapNow()
+		s._bootstrapIn(0)
 	}
 }
 
@@ -608,7 +608,7 @@ func (s *state) _teardownPath(from *peer, pathKey types.PublicKey, pathID types.
 		case from == asc.Destination: // from network
 			s._ascending = nil
 			delete(s._table, virtualSnakeIndex{asc.PublicKey, asc.PathID})
-			defer s._bootstrapNow()
+			defer s._bootstrapIn(0)
 			return []*peer{asc.Destination}
 		}
 	}
