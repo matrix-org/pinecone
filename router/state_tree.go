@@ -35,6 +35,8 @@ const announcementInterval = time.Minute * 30
 // will assume that the peer is dead.
 const announcementTimeout = time.Minute * 45
 
+type announcementTable map[*peer]*rootAnnouncementWithTime
+
 // _maintainTree sends out root announcements if we are
 // considering ourselves to be a root node.
 func (s *state) _maintainTree() {
