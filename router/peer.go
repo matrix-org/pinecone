@@ -41,20 +41,25 @@ const (
 	PeerTypeRemote
 )
 
+// peer contains information about a given active peering. There are two
+// actors - a read actor (which is responsible for reading frames from the
+// peering) and a write actor (which is responsible for writing frames to
+// the peering). Having separate actors allows reads and writes to take
+// place concurrently.
 type peer struct {
 	reader   phony.Inbox
 	writer   phony.Inbox
-	router   *Router            // populated by router
-	port     types.SwitchPortID // populated by router
-	context  context.Context    // populated by router
-	cancel   context.CancelFunc // populated by router
-	conn     net.Conn           // populated by router
-	zone     string             // populated by router
-	peertype int                // populated by router
-	public   types.PublicKey    // populated by router
-	started  atomic.Bool        // prevents more than one shutdown
-	proto    *fifoQueue         // thread-safe
-	traffic  *lifoQueue         // thread-safe
+	router   *Router
+	port     types.SwitchPortID // Not mutated after peer setup.
+	context  context.Context    // Not mutated after peer setup.
+	cancel   context.CancelFunc // Not mutated after peer setup.
+	conn     net.Conn           // Not mutated after peer setup.
+	zone     string             // Not mutated after peer setup.
+	peertype int                // Not mutated after peer setup.
+	public   types.PublicKey    // Not mutated after peer setup.
+	started  atomic.Bool        // Thread-safe toggle for marking a peer as down.
+	proto    *fifoQueue         // Thread-safe queue for outbound protocol messages.
+	traffic  *lifoQueue         // Thread-safe queue for outbound traffic messages.
 }
 
 func (p *peer) String() string { // to make sim less ugly
@@ -67,10 +72,18 @@ func (p *peer) String() string { // to make sim less ugly
 	return fmt.Sprintf("%d", p.port)
 }
 
+// local returns true if the peer refers to the local router peer, or
+// false if the peer is an actual connected peer. It is safe to be called from
+// other actors.
 func (p *peer) local() bool {
 	return p == p.router.local
 }
 
+// send queues a frame to be sent to this peer. It is safe to be called from
+// other actors. The frame will be allocated to the correct queue automatically
+// depending on whether it is a protocol frame or a traffic frame. This function
+// will return true if the message was correctly queued or false if it was dropped,
+// i.e. due to the queue overflowing.
 func (p *peer) send(f *types.Frame) bool {
 	switch f.Type {
 	// Protocol messages
@@ -96,71 +109,114 @@ func (p *peer) send(f *types.Frame) bool {
 	return false
 }
 
+// stop will immediately mark a port as offline, before dispatching a task to
+// the state actor to clean up the peering. Once the peering has been stopped,
+// it will immediately be marked as unsuitable in next-hop or parent selection
+// candidates. A task will then be dispatched to the state actor in order to
+// clean up. It is safe to call this function more than once although only the
+// first call will have any effect.
 func (p *peer) stop(err error) {
 	// The atomic switch here immediately makes sure that the port won't be
 	// used. Then we'll cancel the context and reduce the connection count.
+	// Using a compare-and-swap ensures that we only act upon the stop call
+	// once for a given peering.
 	if !p.started.CAS(true, false) {
 		return
 	}
+
+	// Cancel the context, which will stop at the next iteration of the reader
+	// and writer actor function calls.
 	p.cancel()
+
+	// Decrease the connection count for this peer in this zone. The multicast
+	// code uses this to determine whether we are already connected to a peer in
+	// a given zone and to ignore beacons from them if we are.
 	index := hex.EncodeToString(p.public[:]) + p.zone
 	if v, ok := p.router.active.Load(index); ok && v.(*atomic.Uint64).Dec() == 0 {
 		p.router.active.Delete(index)
 	}
-	// Next we'll send a message to the state inbox asking it to clean
-	// up the port.
+
+	// Next we'll send a message to the state inbox in order to clean up.
 	p.router.state.Act(nil, func() {
+		// Make sure that the connection is closed.
+		_ = p.conn.Close()
+
+		// Drop all of the frames that are sitting in this peer's queues, since there
+		// is no way to send them at this point.
+		p.proto.reset()
+		p.traffic.reset()
+
+		// Notify the tree and SNEK that the port was disconnected.: This triggers
+		// tearing down of paths and possible tree re-parenting.
 		p.router.state._portDisconnected(p)
 
+		// Find the port entry and clean it up.
 		for i, rp := range p.router.state._peers {
 			if rp == p {
-				rp.proto.reset()
-				rp.traffic.reset()
 				p.router.state._peers[i] = nil
-				if err != nil {
-					p.router.log.Println("Disconnected from peer", p.public.String(), "on port", i, "due to error:", err)
-				} else {
-					p.router.log.Println("Disconnected from peer", p.public.String(), "on port", i)
-				}
 				break
 			}
+		}
+
+		// Finally, yell about the disconnection in the logs.
+		if err != nil {
+			p.router.log.Println("Disconnected from peer", p.public.String(), "on port", p.port, "due to error:", err)
+		} else {
+			p.router.log.Println("Disconnected from peer", p.public.String(), "on port", p.port)
 		}
 	})
 }
 
+// _write waits for packets to arrive in one of the peer queues and writes
+// them to the peering connection. This function must be called from the
+// peer's writer actor only.
 func (p *peer) _write() {
+	// If the peering has stopped then we should give up.
 	if !p.started.Load() {
 		return
 	}
 	var frame *types.Frame
+	// The keepalive function will return a channel that either matches the
+	// keepalive interval (if enabled) or blocks forever (if disabled).
 	keepalive := func() <-chan time.Time {
 		if !p.router.keepalives {
 			return make(chan time.Time)
 		}
 		return time.After(PeerKeepaliveInterval)
 	}
+	// Wait for some work to do.
 	select {
 	case <-p.context.Done():
-		p.stop(nil)
+		// The peer context has been cancelled, which implies that the port
+		// has just been stopped.
 		return
 	case frame = <-p.proto.pop():
+		// A protocol packet is ready to send.
 		p.proto.ack()
 	case <-p.traffic.wait():
+		// A traffic packet is ready to send.
 		frame, _ = p.traffic.pop()
 	case <-keepalive():
+		// Nothing else happened but we reached the keepalive interval, so
+		// we will generate a keepalive frame to send instead.
 		frame = getFrame()
 		frame.Type = types.TypeKeepalive
 	}
+	// If the frame is `nil` at this point, it's probably because the queues
+	// were reset. This *shouldn't* happen at this stage but the guard doesn't
+	// hurt.
 	if frame == nil {
-		// usually happens if the queue has been reset
 		p.stop(fmt.Errorf("queue reset"))
 		return
 	}
 	defer framePool.Put(frame)
+	// We might have been waiting for a little while for one of the above
+	// cases to happen, so let's check one more time that the peering wasn't
+	// stopped before we try to marshal and send the frame.
 	if !p.started.Load() {
-		// check that the peering wasn't killed while we waited
 		return
 	}
+	// Marshal the frame.
 	buf := frameBufferPool.Get().(*[types.MaxFrameSize]byte)
 	defer frameBufferPool.Put(buf)
 	n, err := frame.MarshalBinary(buf[:])
@@ -168,80 +224,117 @@ func (p *peer) _write() {
 		p.stop(fmt.Errorf("frame.MarshalBinary: %w", err))
 		return
 	}
+	// If keepalives are enabled then we should set a write deadline to ensure
+	// that the write doesn't block for too long. We don't do this when keepalives
+	// are disabled, which allows writes to take longer.
 	if p.router.keepalives {
 		if err := p.conn.SetWriteDeadline(time.Now().Add(PeerKeepaliveInterval)); err != nil {
 			p.stop(fmt.Errorf("p.conn.SetWriteDeadline: %w", err))
 			return
 		}
 	}
+	// Write the frame to the peering.
 	wn, err := p.conn.Write(buf[:n])
 	if err != nil {
 		p.stop(fmt.Errorf("p.conn.Write: %w", err))
 		return
 	}
+	// Check that we wrote the number of bytes that we were expecting to write.
+	// If we didn't then that implies that something went wrong, so shut down the
+	// peering.
 	if wn != n {
 		p.stop(fmt.Errorf("p.conn.Write length %d != %d", wn, n))
 		return
 	}
+	// If keepalives are enabled then we should reset the write deadline.
 	if p.router.keepalives {
 		if err := p.conn.SetWriteDeadline(time.Time{}); err != nil {
 			p.stop(fmt.Errorf("p.conn.SetWriteDeadline: %w", err))
 			return
 		}
 	}
+	// This is effectively a recursive call to queue up the next write into
+	// the actor inbox.
 	p.writer.Act(nil, p._write)
 }
 
+// _read waits for packets to arrive from the peering and then handles
+// them appropriate. This function must be called from the peer's reader
+// actor only.
 func (p *peer) _read() {
+	// If the peering has stopped then we should give up.
 	if !p.started.Load() {
 		return
 	}
 	b := frameBufferPool.Get().(*[types.MaxFrameSize]byte)
 	defer frameBufferPool.Put(b)
+	// If keepalives are enabled then we should set a read deadline to ensure
+	// that the read doesn't block for too long. If we wait for a packet for too long
+	// then we assume the remote peer is dead, as they should have sent us a keepalive
+	// packet by then.
 	if p.router.keepalives {
 		if err := p.conn.SetReadDeadline(time.Now().Add(PeerKeepaliveTimeout)); err != nil {
 			p.stop(fmt.Errorf("p.conn.SetReadDeadline: %w", err))
 			return
 		}
 	}
+	// Wait for the packet to arrive from the remote peer and read only enough bytes to
+	// get the header. This will tell us how much more we need to read to get the rest
+	// of the frame.
 	if _, err := io.ReadFull(p.conn, b[:types.FrameHeaderLength]); err != nil {
 		p.stop(fmt.Errorf("io.ReadFull: %w", err))
 		return
 	}
+	// Check for the presence of the magic bytes at the beginning of the frame. If they
+	// are missing then something is wrong — either they sent us garbage or the offsets
+	// in one of the previous packets was incorrect.
 	if !bytes.Equal(b[:4], types.FrameMagicBytes) {
 		p.stop(fmt.Errorf("missing magic bytes"))
 		return
 	}
+	// Now read the rest of the packet. If something goes wrong with this then we will
+	// assume that either the length given to us earlier was incorrect, or something else
+	// is wrong with the peering, so we will stop the peering in either case.
 	expecting := int(binary.BigEndian.Uint16(b[types.FrameHeaderLength-2 : types.FrameHeaderLength]))
 	n, err := io.ReadFull(p.conn, b[types.FrameHeaderLength:expecting])
 	if err != nil {
 		p.stop(fmt.Errorf("io.ReadFull: %w", err))
 		return
 	}
+	// If keepalives are disabled then we can reset the read deadline again.
 	if p.router.keepalives {
 		if err := p.conn.SetReadDeadline(time.Time{}); err != nil {
 			p.stop(fmt.Errorf("conn.SetReadDeadline: %w", err))
 			return
 		}
 	}
+	// We might have been waiting for a little while for the above to yield a
+	// new frame, so let's check one more time that the peering wasn't stopped
+	// before we try to unmarshal and handle the frame.
 	if !p.started.Load() {
-		// check that the peering wasn't killed while we waited
 		return
 	}
+	// Check that we read the number of bytes that we were expecting to read.
+	// If we didn't then that implies that something went wrong, so shut down the
+	// peering.
 	if n < expecting-types.FrameHeaderLength {
 		p.stop(fmt.Errorf("expecting %d bytes but got %d bytes", expecting, n))
 		return
 	}
+	// Unmarshal the frame.
 	f := getFrame()
 	if _, err := f.UnmarshalBinary(b[:n+types.FrameHeaderLength]); err != nil {
 		p.stop(fmt.Errorf("f.UnmarshalBinary: %w", err))
 		return
 	}
+	// Send the frame across to the state actor to be handled/forwarded.
 	p.router.state.Act(&p.reader, func() {
 		if err := p.router.state._forward(p, f); err != nil {
 			p.stop(fmt.Errorf("p.router.state._forward: %w", err))
 			return
 		}
 	})
+	// This is effectively a recursive call to queue up the next read into
+	// the actor inbox.
 	p.reader.Act(nil, p._read)
 }
