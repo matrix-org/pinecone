@@ -22,7 +22,9 @@ import (
 	"github.com/matrix-org/pinecone/types"
 )
 
-func (r *Router) localPeer() *peer {
+// newLocalPeer returns a new local peer. It should only be called once when
+// the router is set up.
+func (r *Router) newLocalPeer() *peer {
 	peer := &peer{
 		router:   r,
 		port:     0,
@@ -37,15 +39,11 @@ func (r *Router) localPeer() *peer {
 	return peer
 }
 
-// ReadFrom reads the next packet that was delivered to this
-// node over the Pinecone network. Only traffic packets will
-// be returned here - no protocol messages will be included.
-// The net.Addr returned will contain the appropriate return
-// path based on the mechanism used to deliver the packet.
-// If the packet was delivered using greedy routing, then the
-// net.Addr will contain the source coordinates. If the packet
-// was delivered using source routing, then the net.Addr will
-// contain the source-routed path back to the sender.
+// ReadFrom reads the next packet that was delivered to this node over the
+// Pinecone network. Only traffic frames will be returned here (not protocol
+// frames). The returned address will either be a `types.PublicKey` (if the
+// frame was delivered using SNEK routing) or `types.Coordinates` (if the frame
+// was delivered using tree routing).
 func (r *Router) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
 	var frame *types.Frame
 	select {
@@ -71,11 +69,11 @@ func (r *Router) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
 	return
 }
 
-// WriteTo sends a packet into the Pinecone network. The
-// packet will be sent as a traffic packet. The net.Addr must
-// be one of the Pinecone address types (e.g. GreedyAddr or
-// SourceAddr), as this will dictate the method of delivery
-// used to forward the packet.
+// WriteTo sends a packet into the Pinecone network. The packet will be sent
+// as a traffic packet. The supplied net.Addr will dictate the method used to
+// route the packet — the address should be a `types.PublicKey` for SNEK routing
+// or `types.Coordinates` for tree routing. Supplying an unsupported address type
+// will result in a `*net.AddrError` being returned.
 func (r *Router) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 	timer := time.NewTimer(time.Second * 5)
 	defer func() {
@@ -116,8 +114,8 @@ func (r *Router) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 	}
 }
 
-// LocalAddr returns a net.Addr containing the greedy routing
-// coordinates for this node.
+// LocalAddr returns a net.Addr containing the public key of the node for
+// SNEK routing.
 func (r *Router) LocalAddr() net.Addr {
 	return r.PublicKey()
 }

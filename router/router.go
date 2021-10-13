@@ -61,15 +61,19 @@ func NewRouter(log *log.Logger, sk ed25519.PrivateKey, id string, sim Simulator)
 		cancel:     cancel,
 		keepalives: sim == nil,
 	}
+	// Populate the node keys from the supplied private key.
 	copy(r.private[:], sk)
 	r.public = r.private.Public()
+	// Create a state actor.
 	r.state = &state{
 		r:      r,
 		_table: make(virtualSnakeTable),
 		_peers: make([]*peer, PortCount),
 	}
-	r.local = r.localPeer()
+	// Create a new local peer and wire it into port 0.
+	r.local = r.newLocalPeer()
 	r.state._peers[0] = r.local
+	// Start the state actor.
 	r.state.Act(nil, r.state._start)
 	r.log.Println("Router identity:", r.public.String())
 	r.debug.Store(sim != nil)
@@ -99,23 +103,31 @@ func (r *Router) IsConnected(key types.PublicKey, zone string) bool {
 	return count.Load() > 0
 }
 
+// Close will stop the Pinecone node. Once this has been called, the node cannot
+// be restarted or reused.
 func (r *Router) Close() error {
 	phony.Block(nil, r.cancel)
 	return nil
 }
 
+// PrivateKey returns the private key of the node.
 func (r *Router) PrivateKey() types.PrivateKey {
 	return r.private
 }
 
+// PublicKey returns the public key of the node.
 func (r *Router) PublicKey() types.PublicKey {
 	return r.public
 }
 
+// Addr returns the local address of the node in the form of a `types.PublicKey`.
 func (r *Router) Addr() net.Addr {
 	return r.PublicKey()
 }
 
+// Connect takes a connection and attaches it to the switch as a peering. This
+// function assumes that you already know the public key of the remote node. If
+// this is not true, then AuthenticatedConnect should be used instead.
 func (r *Router) Connect(conn net.Conn, public types.PublicKey, zone string, peertype int) (types.SwitchPortID, error) {
 	var new *peer
 	phony.Block(r.state, func() {
@@ -155,6 +167,9 @@ func (r *Router) Connect(conn net.Conn, public types.PublicKey, zone string, pee
 	return new.port, nil
 }
 
+// AuthenticatedConnect takes a connection and exchanges a handshake containing
+// node capabilities and public keys. If the handshake succeeds then the connection
+// will be connected to the Pinecone switch.
 func (r *Router) AuthenticatedConnect(conn net.Conn, zone string, peertype int) (types.SwitchPortID, error) {
 	handshake := []byte{
 		ourVersion,
