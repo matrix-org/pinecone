@@ -15,6 +15,7 @@
 package router
 
 import (
+	"encoding/binary"
 	"fmt"
 
 	"github.com/matrix-org/pinecone/types"
@@ -111,9 +112,6 @@ func (s *state) _forward(p *peer, f *types.Frame) error {
 		// they are SNEK-routed or tree-routed.
 
 	case types.TypeSNEKPing:
-		if s.r.simulator == nil {
-			return nil
-		}
 		if f.DestinationKey == s.r.public {
 			of := f
 			defer framePool.Put(of)
@@ -121,29 +119,29 @@ func (s *state) _forward(p *peer, f *types.Frame) error {
 			f.Type = types.TypeSNEKPong
 			f.DestinationKey = of.SourceKey
 			f.SourceKey = s.r.public
+			f.Extra = of.Extra
 			nexthop = s._nextHopsFor(s.r.local, f)
+		} else {
+			hops := binary.BigEndian.Uint16(f.Extra[:])
+			hops++
+			binary.BigEndian.PutUint16(f.Extra[:], hops)
 		}
 
 	case types.TypeSNEKPong:
-		if s.r.simulator == nil {
-			return nil
-		}
 		if f.DestinationKey == s.r.public {
 			id := f.SourceKey.String()
 			v, ok := s.r.pings.Load(id)
 			if !ok {
 				return nil
 			}
-			ch := v.(chan struct{})
+			ch := v.(chan uint16)
+			ch <- binary.BigEndian.Uint16(f.Extra[:])
 			close(ch)
 			s.r.pings.Delete(id)
 			return nil
 		}
 
 	case types.TypeTreePing:
-		if s.r.simulator == nil {
-			return nil
-		}
 		if deadend {
 			of := f
 			defer framePool.Put(of)
@@ -151,20 +149,23 @@ func (s *state) _forward(p *peer, f *types.Frame) error {
 			f.Type = types.TypeTreePong
 			f.Destination = append(f.Destination[:0], of.Source...)
 			f.Source = append(f.Source[:0], s._coords()...)
+			f.Extra = of.Extra
 			nexthop = s._nextHopsFor(s.r.local, f)
+		} else {
+			hops := binary.BigEndian.Uint16(f.Extra[:])
+			hops++
+			binary.BigEndian.PutUint16(f.Extra[:], hops)
 		}
 
 	case types.TypeTreePong:
-		if s.r.simulator == nil {
-			return nil
-		}
 		if deadend {
 			id := f.Source.String()
 			v, ok := s.r.pings.Load(id)
 			if !ok {
 				return nil
 			}
-			ch := v.(chan struct{})
+			ch := v.(chan uint16)
+			ch <- binary.BigEndian.Uint16(f.Extra[:])
 			close(ch)
 			s.r.pings.Delete(id)
 			return nil

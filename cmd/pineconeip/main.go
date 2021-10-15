@@ -68,8 +68,7 @@ func main() {
 		}()
 	}
 
-	pineconeRouter := router.NewRouter(logger, sk, "", nil)
-	//pineconeRouter.AllowImpreciseTraffic(true)
+	pineconeRouter := router.NewRouter(logger, sk, false)
 	pineconeMulticast := multicast.NewMulticast(logger, pineconeRouter)
 	pineconeMulticast.Start()
 	pineconeTUN, err := tun.NewTUN(pineconeRouter)
@@ -156,9 +155,6 @@ func main() {
 				pprof.StopCPUProfile()
 				logger.Println("Profile written:", fn)
 			})
-
-		case syscall.SIGUSR2:
-			pineconeRouter.ToggleDebug()
 		}
 	}
 }

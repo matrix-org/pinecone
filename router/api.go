@@ -12,6 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//go:build !minimal
+// +build !minimal
+
 package router
 
 import (
@@ -23,15 +26,6 @@ import (
 	"github.com/Arceliar/phony"
 	"github.com/matrix-org/pinecone/types"
 )
-
-type Simulator interface {
-	ReportDistance(a, b string, l int64)
-	LookupCoords(string) (types.Coordinates, error)
-	LookupNodeID(types.Coordinates) (string, error)
-	LookupPublicKey(types.PublicKey) (string, error)
-	ReportNewLink(net.Conn, types.PublicKey, types.PublicKey)
-	ReportDeadLink(types.PublicKey, types.PublicKey)
-}
 
 func (r *Router) Coords() types.Coordinates {
 	return r.state.coords()
@@ -63,18 +57,18 @@ func (r *Router) IsRoot() bool {
 	return r.RootPublicKey() == r.public
 }
 
-func (r *Router) DHTInfo() (asc, desc *DHTNeighbour, table map[virtualSnakeIndex]virtualSnakeEntry, stale int) {
+func (r *Router) DHTInfo() (asc, desc *NeighbourInfo, table map[virtualSnakeIndex]virtualSnakeEntry, stale int) {
 	table = map[virtualSnakeIndex]virtualSnakeEntry{}
 	phony.Block(r.state, func() {
 		ann := r.state._rootAnnouncement()
 		if a := r.state._ascending; a != nil {
-			asc = &DHTNeighbour{
+			asc = &NeighbourInfo{
 				PublicKey: a.Origin,
 				PathID:    a.PathID,
 			}
 		}
 		if d := r.state._descending; d != nil {
-			desc = &DHTNeighbour{
+			desc = &NeighbourInfo{
 				PublicKey: d.PublicKey,
 				PathID:    d.PathID,
 			}
@@ -97,17 +91,17 @@ func (r *Router) DHTInfo() (asc, desc *DHTNeighbour, table map[virtualSnakeIndex
 	return
 }
 
-func (r *Router) Descending() *DHTNeighbour {
+func (r *Router) Descending() *NeighbourInfo {
 	_, desc, _, _ := r.DHTInfo()
 	return desc
 }
 
-func (r *Router) Ascending() *DHTNeighbour {
+func (r *Router) Ascending() *NeighbourInfo {
 	asc, _, _, _ := r.DHTInfo()
 	return asc
 }
 
-type DHTNeighbour struct {
+type NeighbourInfo struct {
 	PublicKey types.PublicKey
 	PathID    types.VirtualSnakePathID
 }
@@ -121,7 +115,7 @@ type PeerInfo struct {
 }
 
 func (r *Router) Peers() []PeerInfo {
-	peers := make([]PeerInfo, 0, PortCount)
+	peers := make([]PeerInfo, 0, portCount)
 	phony.Block(r.state, func() {
 		for _, p := range r.state._peers {
 			if p == nil || !p.started.Load() {
@@ -145,12 +139,12 @@ func (r *Router) Peers() []PeerInfo {
 	return peers
 }
 
-func (r *Router) Ping(ctx context.Context, a net.Addr) (time.Duration, error) {
+func (r *Router) Ping(ctx context.Context, a net.Addr) (uint16, time.Duration, error) {
 	id := a.String()
 	switch dst := a.(type) {
 	case types.PublicKey:
 		if dst == r.public {
-			return 0, nil
+			return 0, 0, nil
 		}
 		phony.Block(r.state, func() {
 			frame := getFrame()
@@ -162,7 +156,7 @@ func (r *Router) Ping(ctx context.Context, a net.Addr) (time.Duration, error) {
 
 	case types.Coordinates:
 		if dst.EqualTo(r.state.coords()) {
-			return 0, nil
+			return 0, 0, nil
 		}
 		phony.Block(r.state, func() {
 			frame := getFrame()
@@ -173,22 +167,22 @@ func (r *Router) Ping(ctx context.Context, a net.Addr) (time.Duration, error) {
 		})
 
 	default:
-		return 0, &net.AddrError{
+		return 0, 0, &net.AddrError{
 			Err:  "unexpected address type",
 			Addr: a.String(),
 		}
 	}
 	start := time.Now()
-	v, existing := r.pings.LoadOrStore(id, make(chan struct{}))
+	v, existing := r.pings.LoadOrStore(id, make(chan uint16))
 	if existing {
-		return 0, fmt.Errorf("a ping to this node is already in progress")
+		return 0, 0, fmt.Errorf("a ping to this node is already in progress")
 	}
 	defer r.pings.Delete(id)
-	ch := v.(chan struct{})
+	ch := v.(chan uint16)
 	select {
 	case <-ctx.Done():
-		return 0, fmt.Errorf("ping timed out")
-	case <-ch:
-		return time.Since(start), nil
+		return 0, 0, fmt.Errorf("ping timed out")
+	case hops := <-ch:
+		return hops, time.Since(start), nil
 	}
 }

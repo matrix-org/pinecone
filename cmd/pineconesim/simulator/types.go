@@ -27,6 +27,7 @@ type Node struct {
 }
 
 type Distance struct {
-	Real     int64
-	Observed int64
+	Real         int64
+	ObservedTree int64
+	ObservedSNEK int64
 }

@@ -493,14 +493,6 @@ func (s *state) _handleSetup(from *peer, rx *types.Frame, nexthop *peer) error {
 		if desc != nil {
 			// Tear down the previous path, if there was one.
 			s._sendTeardownForExistingPath(s.r.local, desc.PublicKey, desc.PathID)
-			if s.r.debug.Load() {
-				if s._descending != nil {
-					panic("should have cleaned up descending node")
-				}
-				if _, ok := s._table[virtualSnakeIndex{desc.PublicKey, desc.PathID}]; ok {
-					panic("should have cleaned up descending entry in routing table")
-				}
-			}
 		}
 		entry := &virtualSnakeEntry{
 			virtualSnakeIndex: &index,
@@ -560,9 +552,6 @@ func (s *state) _handleTeardown(from *peer, rx *types.Frame) ([]*peer, error) {
 // _sendTeardownForRejectedPath sends a teardown into the network for a path
 // that was received but not accepted.
 func (s *state) _sendTeardownForRejectedPath(pathKey types.PublicKey, pathID types.VirtualSnakePathID, via *peer) {
-	if _, ok := s._table[virtualSnakeIndex{pathKey, pathID}]; s.r.debug.Load() && ok {
-		panic("rejected path should not be in routing table")
-	}
 	if via != nil {
 		via.proto.push(s._getTeardown(pathKey, pathID))
 	}

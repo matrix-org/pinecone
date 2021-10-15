@@ -86,7 +86,7 @@ func (sim *Simulator) ReportDeadLink(source, target types.PublicKey) {
 	delete(sim.wires[sourceID], target.String())
 }
 
-func (sim *Simulator) ReportDistance(a, b string, l int64) {
+func (sim *Simulator) ReportDistance(a, b string, l int64, snek bool) {
 	if strings.Compare(a, b) > 0 {
 		a, b = b, a
 	}
@@ -98,7 +98,11 @@ func (sim *Simulator) ReportDistance(a, b string, l int64) {
 	if _, ok := sim.dists[a][b]; !ok {
 		sim.dists[a][b] = &Distance{}
 	}
-	sim.dists[a][b].Observed = l
+	if snek {
+		sim.dists[a][b].ObservedSNEK = l
+	} else {
+		sim.dists[a][b].ObservedTree = l
+	}
 	if sim.dists[a][b].Real == 0 {
 		na, _ := sim.graph.GetMapping(a)
 		nb, _ := sim.graph.GetMapping(b)

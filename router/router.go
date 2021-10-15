@@ -21,6 +21,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"math"
 	"net"
@@ -32,14 +33,11 @@ import (
 	"go.uber.org/atomic"
 )
 
-const PortCount = math.MaxUint8
-const TrafficBuffer = math.MaxUint8
+const portCount = math.MaxUint8
+const trafficBuffer = math.MaxUint8
 
 type Router struct {
 	log        *log.Logger
-	id         string
-	debug      atomic.Bool
-	simulator  Simulator
 	context    context.Context
 	cancel     context.CancelFunc
 	public     types.PublicKey
@@ -51,15 +49,16 @@ type Router struct {
 	state      *state
 }
 
-func NewRouter(log *log.Logger, sk ed25519.PrivateKey, id string, sim Simulator) *Router {
+func NewRouter(logger *log.Logger, sk ed25519.PrivateKey, debug bool) *Router {
+	if logger == nil {
+		logger = log.New(ioutil.Discard, "", 0)
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	r := &Router{
-		log:        log,
-		id:         id,
-		simulator:  sim,
+		log:        logger,
 		context:    ctx,
 		cancel:     cancel,
-		keepalives: sim == nil,
+		keepalives: !debug,
 	}
 	// Populate the node keys from the supplied private key.
 	copy(r.private[:], sk)
@@ -68,7 +67,7 @@ func NewRouter(log *log.Logger, sk ed25519.PrivateKey, id string, sim Simulator)
 	r.state = &state{
 		r:      r,
 		_table: make(virtualSnakeTable),
-		_peers: make([]*peer, PortCount),
+		_peers: make([]*peer, portCount),
 	}
 	// Create a new local peer and wire it into port 0.
 	r.local = r.newLocalPeer()
@@ -76,20 +75,7 @@ func NewRouter(log *log.Logger, sk ed25519.PrivateKey, id string, sim Simulator)
 	// Start the state actor.
 	r.state.Act(nil, r.state._start)
 	r.log.Println("Router identity:", r.public.String())
-	r.debug.Store(sim != nil)
 	return r
-}
-
-// ToggleDebug toggles debug mode on and off. Returns true if now
-// enabled or false if now disabled.
-func (r *Router) ToggleDebug() bool {
-	enabled := !r.debug.Toggle()
-	if enabled {
-		r.log.Println("Enabled debug logging")
-	} else {
-		r.log.Println("Disabled debug logging")
-	}
-	return enabled
 }
 
 // IsConnected returns true if the node is connected within the
@@ -148,7 +134,7 @@ func (r *Router) Connect(conn net.Conn, public types.PublicKey, zone string, pee
 				context:  ctx,
 				cancel:   cancel,
 				proto:    newFIFOQueue(),
-				traffic:  newLIFOQueue(TrafficBuffer),
+				traffic:  newLIFOQueue(trafficBuffer),
 			}
 			r.state._peers[i] = new
 			r.log.Println("Connected to peer", new.public.String(), "on port", new.port)
@@ -184,7 +170,7 @@ func (r *Router) AuthenticatedConnect(conn net.Conn, zone string, peertype int) 
 	binary.BigEndian.PutUint32(handshake[4:8], ourCapabilities)
 	handshake = append(handshake, r.public[:ed25519.PublicKeySize]...)
 	handshake = append(handshake, ed25519.Sign(r.private[:], handshake)...)
-	if err := conn.SetDeadline(time.Now().Add(PeerKeepaliveInterval)); err != nil {
+	if err := conn.SetDeadline(time.Now().Add(peerKeepaliveInterval)); err != nil {
 		return 0, fmt.Errorf("conn.SetDeadline: %w", err)
 	}
 	if _, err := conn.Write(handshake); err != nil {

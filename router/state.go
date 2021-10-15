@@ -45,7 +45,7 @@ func (s *state) _start() {
 	s._parent = nil
 	s._ascending = nil
 	s._descending = nil
-	s._announcements = make(announcementTable, PortCount)
+	s._announcements = make(announcementTable, portCount)
 	s._table = virtualSnakeTable{}
 	s._ordering = 0
 

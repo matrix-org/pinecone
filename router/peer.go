@@ -32,8 +32,8 @@ import (
 // NOTE: Functions prefixed with an underscore (_) are only safe to be called
 // from the actor that owns them, in order to prevent data races.
 
-const PeerKeepaliveInterval = time.Second * 3
-const PeerKeepaliveTimeout = time.Second * 5
+const peerKeepaliveInterval = time.Second * 3
+const peerKeepaliveTimeout = time.Second * 5
 
 const (
 	PeerTypeMulticast int = iota
@@ -182,7 +182,7 @@ func (p *peer) _write() {
 		if !p.router.keepalives {
 			return make(chan time.Time)
 		}
-		return time.After(PeerKeepaliveInterval)
+		return time.After(peerKeepaliveInterval)
 	}
 	// Wait for some work to do.
 	select {
@@ -228,7 +228,7 @@ func (p *peer) _write() {
 	// that the write doesn't block for too long. We don't do this when keepalives
 	// are disabled, which allows writes to take longer.
 	if p.router.keepalives {
-		if err := p.conn.SetWriteDeadline(time.Now().Add(PeerKeepaliveInterval)); err != nil {
+		if err := p.conn.SetWriteDeadline(time.Now().Add(peerKeepaliveInterval)); err != nil {
 			p.stop(fmt.Errorf("p.conn.SetWriteDeadline: %w", err))
 			return
 		}
@@ -273,7 +273,7 @@ func (p *peer) _read() {
 	// then we assume the remote peer is dead, as they should have sent us a keepalive
 	// packet by then.
 	if p.router.keepalives {
-		if err := p.conn.SetReadDeadline(time.Now().Add(PeerKeepaliveTimeout)); err != nil {
+		if err := p.conn.SetReadDeadline(time.Now().Add(peerKeepaliveTimeout)); err != nil {
 			p.stop(fmt.Errorf("p.conn.SetReadDeadline: %w", err))
 			return
 		}

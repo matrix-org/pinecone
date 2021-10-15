@@ -176,11 +176,11 @@ func main() {
 					go func() {
 						for pair := range tasks {
 							log.Println("Tree ping from", pair.from, "to", pair.to)
-							if err := sim.PingTree(pair.from, pair.to); err != nil {
+							if _, _, err := sim.PingTree(pair.from, pair.to); err != nil {
 								log.Println("Tree ping from", pair.from, "to", pair.to, "failed:", err)
 							}
 							log.Println("SNEK ping from", pair.from, "to", pair.to)
-							if err := sim.PingSNEK(pair.from, pair.to); err != nil {
+							if _, _, err := sim.PingSNEK(pair.from, pair.to); err != nil {
 								log.Println("SNEK ping from", pair.from, "to", pair.to, "failed:", err)
 							}
 						}
@@ -253,7 +253,8 @@ func configureHTTPRouting(sim *simulator.Simulator) {
 		}
 
 		data := PageData{
-			AvgStretch:          "Not tested",
+			TreeAvgStretch:      "Not tested",
+			SNEKAvgStretch:      "Not tested",
 			TreePathConvergence: "Not tested",
 			SNEKPathConvergence: "Not tested",
 			Uptime:              sim.Uptime().Round(time.Second),
@@ -411,37 +412,58 @@ func configureHTTPRouting(sim *simulator.Simulator) {
 			})
 		}
 		var stretchT float64
-		var stretchC int
+		var stretchS float64
+		var stretchTC int
+		var stretchSC int
 		for a, aa := range sim.Distances() {
 			for b, d := range aa {
 				if a == b {
 					continue
 				}
-				dist := Dist{
-					From:     a,
-					To:       b,
-					Real:     "TBD",
-					Observed: "TBD",
-					Stretch:  "TBD",
-				}
-				dist.Real = fmt.Sprintf("%d", d.Real)
-				if d.Observed >= d.Real {
-					dist.Observed = fmt.Sprintf("%d", d.Observed)
-				}
-				if d.Observed >= d.Real {
-					stretch := float64(1)
-					if d.Real > 0 && d.Observed > 0 {
-						stretch = float64(1) / float64(d.Real) * float64(d.Observed)
+				/*
+					dist := Dist{
+						From:         a,
+						To:           b,
+						Real:         "TBD",
+						TreeObserved: "TBD",
+						SNEKObserved: "TBD",
+						TreeStretch:  "TBD",
+						SNEKStretch:  "TBD",
 					}
-					dist.Stretch = fmt.Sprintf("%.2f", stretch)
+					dist.Real = fmt.Sprintf("%d", d.Real)
+					if d.ObservedTree >= d.Real {
+						dist.TreeObserved = fmt.Sprintf("%d", d.ObservedTree)
+					}
+					if d.ObservedSNEK >= d.Real {
+						dist.SNEKObserved = fmt.Sprintf("%d", d.ObservedSNEK)
+					}
+				*/
+				if d.ObservedTree >= d.Real {
+					stretch := float64(1)
+					if d.Real > 0 && d.ObservedTree > 0 {
+						stretch = float64(1) / float64(d.Real) * float64(d.ObservedTree)
+					}
+					//dist.TreeStretch = fmt.Sprintf("%.2f", stretch)
 					stretchT += stretch
-					stretchC++
+					stretchTC++
 				}
-				//data.Dists = append(data.Dists, dist)
+				if d.ObservedSNEK >= d.Real {
+					stretch := float64(1)
+					if d.Real > 0 && d.ObservedSNEK > 0 {
+						stretch = float64(1) / float64(d.Real) * float64(d.ObservedSNEK)
+					}
+					//dist.SNEKStretch = fmt.Sprintf("%.2f", stretch)
+					stretchS += stretch
+					stretchSC++
+				}
+				// data.Dists = append(data.Dists, dist)
 			}
 		}
-		if stretch := stretchT / float64(stretchC); stretch >= 1 {
-			data.AvgStretch = fmt.Sprintf("%.2f", stretch)
+		if stretch := stretchT / float64(stretchTC); stretch >= 1 {
+			data.TreeAvgStretch = fmt.Sprintf("%.2f", stretch)
+		}
+		if stretch := stretchS / float64(stretchSC); stretch >= 1 {
+			data.SNEKAvgStretch = fmt.Sprintf("%.2f", stretch)
 		}
 		_ = tmpl.Execute(w, data)
 	})
@@ -474,7 +496,8 @@ type PageData struct {
 	Links               []Link
 	Roots               []Root
 	Dists               []Dist
-	AvgStretch          string
+	TreeAvgStretch      string
+	SNEKAvgStretch      string
 	TreePathConvergence string
 	SNEKPathConvergence string
 	NodeInfo            *NodeInfo
@@ -532,9 +555,11 @@ type Root struct {
 }
 
 type Dist struct {
-	From     string
-	To       string
-	Real     string
-	Observed string
-	Stretch  string
+	From         string
+	To           string
+	Real         string
+	TreeObserved string
+	SNEKObserved string
+	TreeStretch  string
+	SNEKStretch  string
 }

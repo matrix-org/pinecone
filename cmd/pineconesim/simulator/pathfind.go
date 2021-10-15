@@ -20,7 +20,7 @@ import (
 	"time"
 )
 
-func (sim *Simulator) PingTree(from, to string) error {
+func (sim *Simulator) PingTree(from, to string) (uint16, time.Duration, error) {
 	fromnode := sim.nodes[from]
 	tonode := sim.nodes[to]
 	success := false
@@ -37,15 +37,17 @@ func (sim *Simulator) PingTree(from, to string) error {
 		sim.treePathConvergenceMutex.Unlock()
 	}()
 
-	if _, err := fromnode.Ping(ctx, tonode.Coords()); err != nil {
-		return fmt.Errorf("fromnode.TreePing: %w", err)
+	hops, rtt, err := fromnode.Ping(ctx, tonode.Coords())
+	if err != nil {
+		return 0, 0, fmt.Errorf("fromnode.TreePing: %w", err)
 	}
 
 	success = true
-	return nil
+	sim.ReportDistance(from, to, int64(hops), false)
+	return hops, rtt, nil
 }
 
-func (sim *Simulator) PingSNEK(from, to string) error {
+func (sim *Simulator) PingSNEK(from, to string) (uint16, time.Duration, error) {
 	fromnode := sim.nodes[from]
 	tonode := sim.nodes[to]
 	success := false
@@ -62,10 +64,12 @@ func (sim *Simulator) PingSNEK(from, to string) error {
 		sim.snekPathConvergenceMutex.Unlock()
 	}()
 
-	if _, err := fromnode.Ping(ctx, tonode.PublicKey()); err != nil {
-		return fmt.Errorf("fromnode.SNEKPing: %w", err)
+	hops, rtt, err := fromnode.Ping(ctx, tonode.PublicKey())
+	if err != nil {
+		return 0, 0, fmt.Errorf("fromnode.SNEKPing: %w", err)
 	}
 
 	success = true
-	return nil
+	sim.ReportDistance(from, to, int64(hops), true)
+	return hops, rtt, nil
 }
