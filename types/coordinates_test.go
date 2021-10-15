@@ -40,19 +40,29 @@ func TestSwitchPorts(t *testing.T) {
 }
 
 func TestSwitchPortDistances(t *testing.T) {
-	us := Coordinates{1, 2, 3, 4}
-	parent := Coordinates{1, 2, 3}
 	root := Coordinates{}
-	if dist := us.DistanceTo(root); dist != 6 {
-		t.Fatalf("distance from us to root should be 6, got %d", dist)
+	parent := Coordinates{1, 2, 3}
+	us := Coordinates{1, 2, 3, 4}
+	other := Coordinates{1, 3, 3, 4, 7, 6, 1}
+	if dist := us.DistanceTo(root); dist != 4 {
+		t.Fatalf("distance from us to root should be 4, got %d", dist)
 	}
-	if dist := parent.DistanceTo(root); dist != 5 {
-		t.Fatalf("distance from parent to root should be 5, got %d", dist)
+	if dist := parent.DistanceTo(root); dist != 3 {
+		t.Fatalf("distance from parent to root should be 3, got %d", dist)
 	}
-	if dist := root.DistanceTo(us); dist != 6 {
-		t.Fatalf("distance from root to us should be 6, got %d", dist)
+	if dist := root.DistanceTo(us); dist != 4 {
+		t.Fatalf("distance from root to us should be 4, got %d", dist)
 	}
-	if dist := root.DistanceTo(parent); dist != 5 {
-		t.Fatalf("distance from root to parent should be 5, got %d", dist)
+	if dist := root.DistanceTo(parent); dist != 3 {
+		t.Fatalf("distance from root to parent should be 3, got %d", dist)
+	}
+	if dist := us.DistanceTo(other); dist != 9 {
+		t.Fatalf("distance from us to other should be 9, got %d", dist)
+	}
+	if dist := parent.DistanceTo(other); dist != 8 {
+		t.Fatalf("distance from parent to other should be 8, got %d", dist)
+	}
+	if dist := root.DistanceTo(other); dist != 7 {
+		t.Fatalf("distance from root to other should be 7, got %d", dist)
 	}
 }

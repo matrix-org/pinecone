@@ -107,7 +107,7 @@ func (a Coordinates) DistanceTo(b Coordinates) int {
 }
 
 func getCommonPrefix(a, b Coordinates) int {
-	c := -1
+	c := 0
 	l := len(a)
 	if len(b) < l {
 		l = len(b)
@@ -116,7 +116,7 @@ func getCommonPrefix(a, b Coordinates) int {
 		if a[i] != b[i] {
 			break
 		}
-		c = i
+		c++
 	}
 	return c
 }
