@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/Arceliar/phony"
+	"github.com/matrix-org/pinecone/types"
 )
 
 // NOTE: Functions prefixed with an underscore (_) are only safe to be called
@@ -33,6 +34,7 @@ type state struct {
 	_parent        *peer              // Our chosen parent in the tree
 	_announcements announcementTable  // Announcements received from our peers
 	_table         virtualSnakeTable  // Virtual snake DHT entries
+	_coords        types.Coordinates  // Our current coordinates
 	_ordering      uint64             // Used to order incoming tree announcements
 	_sequence      uint64             // Used to sequence our root tree announcements
 	_treetimer     *time.Timer        // Tree maintenance timer
