@@ -223,7 +223,7 @@ func configureHTTPRouting(sim *simulator.Simulator) {
 			return
 		}
 		conn := util.WrapWebSocketConn(c)
-		if _, err = n.AuthenticatedConnect(conn, "websocket", router.PeerTypeRemote); err != nil {
+		if _, err = n.AuthenticatedConnect(conn, "websocket", router.PeerTypeRemote, true); err != nil {
 			return
 		}
 		log.Printf("WebSocket peer %q connected to sim node %q\n", c.RemoteAddr(), nodeID)

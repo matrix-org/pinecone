@@ -47,19 +47,20 @@ const (
 // the peering). Having separate actors allows reads and writes to take
 // place concurrently.
 type peer struct {
-	reader   phony.Inbox
-	writer   phony.Inbox
-	router   *Router
-	port     types.SwitchPortID // Not mutated after peer setup.
-	context  context.Context    // Not mutated after peer setup.
-	cancel   context.CancelFunc // Not mutated after peer setup.
-	conn     net.Conn           // Not mutated after peer setup.
-	zone     string             // Not mutated after peer setup.
-	peertype int                // Not mutated after peer setup.
-	public   types.PublicKey    // Not mutated after peer setup.
-	started  atomic.Bool        // Thread-safe toggle for marking a peer as down.
-	proto    *fifoQueue         // Thread-safe queue for outbound protocol messages.
-	traffic  *lifoQueue         // Thread-safe queue for outbound traffic messages.
+	reader     phony.Inbox
+	writer     phony.Inbox
+	router     *Router
+	port       types.SwitchPortID // Not mutated after peer setup.
+	context    context.Context    // Not mutated after peer setup.
+	cancel     context.CancelFunc // Not mutated after peer setup.
+	conn       net.Conn           // Not mutated after peer setup.
+	zone       string             // Not mutated after peer setup.
+	peertype   int                // Not mutated after peer setup.
+	public     types.PublicKey    // Not mutated after peer setup.
+	keepalives bool               // Not mutated after peer setup.
+	started    atomic.Bool        // Thread-safe toggle for marking a peer as down.
+	proto      *fifoQueue         // Thread-safe queue for outbound protocol messages.
+	traffic    *lifoQueue         // Thread-safe queue for outbound traffic messages.
 }
 
 func (p *peer) String() string { // to make sim less ugly
@@ -179,7 +180,7 @@ func (p *peer) _write() {
 	// The keepalive function will return a channel that either matches the
 	// keepalive interval (if enabled) or blocks forever (if disabled).
 	keepalive := func() <-chan time.Time {
-		if !p.router.keepalives {
+		if !p.keepalives {
 			return make(chan time.Time)
 		}
 		return time.After(peerKeepaliveInterval)
@@ -227,7 +228,7 @@ func (p *peer) _write() {
 	// If keepalives are enabled then we should set a write deadline to ensure
 	// that the write doesn't block for too long. We don't do this when keepalives
 	// are disabled, which allows writes to take longer.
-	if p.router.keepalives {
+	if p.keepalives {
 		if err := p.conn.SetWriteDeadline(time.Now().Add(peerKeepaliveInterval)); err != nil {
 			p.stop(fmt.Errorf("p.conn.SetWriteDeadline: %w", err))
 			return
@@ -247,7 +248,7 @@ func (p *peer) _write() {
 		return
 	}
 	// If keepalives are enabled then we should reset the write deadline.
-	if p.router.keepalives {
+	if p.keepalives {
 		if err := p.conn.SetWriteDeadline(time.Time{}); err != nil {
 			p.stop(fmt.Errorf("p.conn.SetWriteDeadline: %w", err))
 			return
@@ -272,7 +273,7 @@ func (p *peer) _read() {
 	// that the read doesn't block for too long. If we wait for a packet for too long
 	// then we assume the remote peer is dead, as they should have sent us a keepalive
 	// packet by then.
-	if p.router.keepalives {
+	if p.keepalives {
 		if err := p.conn.SetReadDeadline(time.Now().Add(peerKeepaliveTimeout)); err != nil {
 			p.stop(fmt.Errorf("p.conn.SetReadDeadline: %w", err))
 			return
@@ -302,7 +303,7 @@ func (p *peer) _read() {
 		return
 	}
 	// If keepalives are disabled then we can reset the read deadline again.
-	if p.router.keepalives {
+	if p.keepalives {
 		if err := p.conn.SetReadDeadline(time.Time{}); err != nil {
 			p.stop(fmt.Errorf("conn.SetReadDeadline: %w", err))
 			return

@@ -77,7 +77,7 @@ func (sim *Simulator) CreateNode(t string) error {
 				if err := c.SetLinger(0); err != nil {
 					panic(err)
 				}
-				if _, err = n.AuthenticatedConnect(c, "sim", router.PeerTypeRemote); err != nil {
+				if _, err = n.AuthenticatedConnect(c, "sim", router.PeerTypeRemote, true); err != nil {
 					continue
 				}
 			}

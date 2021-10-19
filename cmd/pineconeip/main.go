@@ -103,7 +103,7 @@ func main() {
 				panic(err)
 			}
 
-			port, err := pineconeRouter.AuthenticatedConnect(conn, "", router.PeerTypeRemote)
+			port, err := pineconeRouter.AuthenticatedConnect(conn, "", router.PeerTypeRemote, true)
 			if err != nil {
 				panic(err)
 			}
@@ -125,7 +125,7 @@ func main() {
 				panic(err)
 			}
 
-			port, err := pineconeRouter.AuthenticatedConnect(conn, "", router.PeerTypeRemote)
+			port, err := pineconeRouter.AuthenticatedConnect(conn, "", router.PeerTypeRemote, true)
 			if err != nil {
 				panic(err)
 			}

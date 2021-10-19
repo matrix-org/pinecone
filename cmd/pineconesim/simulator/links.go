@@ -58,7 +58,7 @@ func (sim *Simulator) ConnectNodes(a, b string) error {
 			panic(err)
 		}
 		sc := &util.SlowConn{Conn: c, ReadJitter: 5 * time.Millisecond}
-		if _, err := nb.AuthenticatedConnect(sc, "sim", router.PeerTypeRemote); err != nil {
+		if _, err := nb.AuthenticatedConnect(sc, "sim", router.PeerTypeRemote, false); err != nil {
 			return fmt.Errorf("nb.AuthenticatedConnect: %w", err)
 		}
 		register(sc)
@@ -67,12 +67,12 @@ func (sim *Simulator) ConnectNodes(a, b string) error {
 		pa = &util.SlowConn{Conn: pa, ReadJitter: 5 * time.Millisecond}
 		pb = &util.SlowConn{Conn: pb, ReadJitter: 5 * time.Millisecond}
 		go func() {
-			if _, err := na.Connect(pa, nb.PublicKey(), "sim", router.PeerTypeRemote); err != nil {
+			if _, err := na.Connect(pa, nb.PublicKey(), "sim", router.PeerTypeRemote, false); err != nil {
 				return
 			}
 		}()
 		go func() {
-			if _, err := nb.Connect(pb, na.PublicKey(), "sim", router.PeerTypeRemote); err != nil {
+			if _, err := nb.Connect(pb, na.PublicKey(), "sim", router.PeerTypeRemote, false); err != nil {
 				return
 			}
 		}()

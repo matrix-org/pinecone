@@ -37,16 +37,15 @@ const portCount = math.MaxUint8
 const trafficBuffer = math.MaxUint8
 
 type Router struct {
-	log        *log.Logger
-	context    context.Context
-	cancel     context.CancelFunc
-	public     types.PublicKey
-	private    types.PrivateKey
-	keepalives bool
-	active     sync.Map
-	pings      sync.Map // types.PublicKey -> chan struct{}
-	local      *peer
-	state      *state
+	log     *log.Logger
+	context context.Context
+	cancel  context.CancelFunc
+	public  types.PublicKey
+	private types.PrivateKey
+	active  sync.Map
+	pings   sync.Map // types.PublicKey -> chan struct{}
+	local   *peer
+	state   *state
 }
 
 func NewRouter(logger *log.Logger, sk ed25519.PrivateKey, debug bool) *Router {
@@ -55,10 +54,9 @@ func NewRouter(logger *log.Logger, sk ed25519.PrivateKey, debug bool) *Router {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	r := &Router{
-		log:        logger,
-		context:    ctx,
-		cancel:     cancel,
-		keepalives: !debug,
+		log:     logger,
+		context: ctx,
+		cancel:  cancel,
 	}
 	// Populate the node keys from the supplied private key.
 	copy(r.private[:], sk)
@@ -114,7 +112,7 @@ func (r *Router) Addr() net.Addr {
 // Connect takes a connection and attaches it to the switch as a peering. This
 // function assumes that you already know the public key of the remote node. If
 // this is not true, then AuthenticatedConnect should be used instead.
-func (r *Router) Connect(conn net.Conn, public types.PublicKey, zone string, peertype int) (types.SwitchPortID, error) {
+func (r *Router) Connect(conn net.Conn, public types.PublicKey, zone string, peertype int, keepalives bool) (types.SwitchPortID, error) {
 	var new *peer
 	phony.Block(r.state, func() {
 		for i, p := range r.state._peers {
@@ -125,16 +123,17 @@ func (r *Router) Connect(conn net.Conn, public types.PublicKey, zone string, pee
 			}
 			ctx, cancel := context.WithCancel(r.context)
 			new = &peer{
-				router:   r,
-				port:     types.SwitchPortID(i),
-				conn:     conn,
-				public:   public,
-				zone:     zone,
-				peertype: peertype,
-				context:  ctx,
-				cancel:   cancel,
-				proto:    newFIFOQueue(),
-				traffic:  newLIFOQueue(trafficBuffer),
+				router:     r,
+				port:       types.SwitchPortID(i),
+				conn:       conn,
+				public:     public,
+				zone:       zone,
+				peertype:   peertype,
+				keepalives: keepalives,
+				context:    ctx,
+				cancel:     cancel,
+				proto:      newFIFOQueue(),
+				traffic:    newLIFOQueue(trafficBuffer),
 			}
 			r.state._peers[i] = new
 			r.log.Println("Connected to peer", new.public.String(), "on port", new.port)
@@ -156,7 +155,7 @@ func (r *Router) Connect(conn net.Conn, public types.PublicKey, zone string, pee
 // AuthenticatedConnect takes a connection and exchanges a handshake containing
 // node capabilities and public keys. If the handshake succeeds then the connection
 // will be connected to the Pinecone switch.
-func (r *Router) AuthenticatedConnect(conn net.Conn, zone string, peertype int) (types.SwitchPortID, error) {
+func (r *Router) AuthenticatedConnect(conn net.Conn, zone string, peertype int, keepalives bool) (types.SwitchPortID, error) {
 	handshake := []byte{
 		ourVersion,
 		0, // unused
@@ -201,7 +200,7 @@ func (r *Router) AuthenticatedConnect(conn net.Conn, zone string, peertype int) 
 		conn.Close()
 		return 0, fmt.Errorf("peer sent invalid signature")
 	}
-	port, err := r.Connect(conn, public, zone, peertype)
+	port, err := r.Connect(conn, public, zone, peertype, keepalives)
 	if err != nil {
 		return 0, fmt.Errorf("r.Connect failed: %w (close: %s)", err, conn.Close())
 	}
