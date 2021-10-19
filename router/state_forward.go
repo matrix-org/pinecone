@@ -148,7 +148,7 @@ func (s *state) _forward(p *peer, f *types.Frame) error {
 			f = getFrame()
 			f.Type = types.TypeTreePong
 			f.Destination = append(f.Destination[:0], of.Source...)
-			f.Source = append(f.Source[:0], s._coords...)
+			f.Source = append(f.Source[:0], s._coords()...)
 			f.Extra = of.Extra
 			nexthop = s._nextHopsFor(s.r.local, f)
 		} else {

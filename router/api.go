@@ -162,7 +162,7 @@ func (r *Router) Ping(ctx context.Context, a net.Addr) (uint16, time.Duration, e
 			frame := getFrame()
 			frame.Type = types.TypeTreePing
 			frame.Destination = dst
-			frame.Source = r.state._coords
+			frame.Source = r.state._coords()
 			_ = r.state._forward(r.local, frame)
 		})
 

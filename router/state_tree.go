@@ -115,9 +115,18 @@ func (s *state) _rootAnnouncement() *rootAnnouncementWithTime {
 func (s *state) coords() types.Coordinates {
 	var coords types.Coordinates
 	phony.Block(s, func() {
-		coords = s._coords
+		coords = s._coords()
 	})
 	return coords
+}
+
+// _coords returns our tree coordinates, or an empty array if we are the
+// root.
+func (s *state) _coords() types.Coordinates {
+	if ann := s._rootAnnouncement(); ann != nil {
+		return ann.Coords()
+	}
+	return types.Coordinates{}
 }
 
 // _becomeRoot removes our current parent, effectively making us a root
@@ -128,7 +137,6 @@ func (s *state) _becomeRoot() {
 		return
 	}
 	s._parent = nil
-	s._coords = types.Coordinates{}
 	s._maintainTree()
 }
 
@@ -155,7 +163,8 @@ func (s *state) _sendTreeAnnouncements() {
 // possible for this function to return nil if no next best-hop is available.
 func (s *state) _nextHopsTree(from *peer, f *types.Frame) *peer {
 	// If it's loopback then don't bother doing anything else.
-	if f.Destination.EqualTo(s._coords) {
+	ourCoords := s._coords()
+	if f.Destination.EqualTo(ourCoords) {
 		return s.r.local
 	}
 
@@ -163,7 +172,7 @@ func (s *state) _nextHopsTree(from *peer, f *types.Frame) *peer {
 	// message. This is important because we'll only forward a frame
 	// to a peer that takes the message closer to the destination than
 	// we are.
-	ourDist := int64(s._coords.DistanceTo(f.Destination))
+	ourDist := int64(ourCoords.DistanceTo(f.Destination))
 	if ourDist == 0 {
 		// It's impossible to get closer so there's a pretty good
 		// chance at this point that the traffic is destined for us.
@@ -254,9 +263,6 @@ func (s *state) _handleTreeAnnouncement(p *peer, f *types.Frame) error {
 		receiveOrder:       s._ordering,
 		coordinates:        newUpdate.PeerCoords(),
 	}
-	if p == s._parent {
-		s._coords = s._announcements[s._parent].Coords()
-	}
 
 	if p == s._parent { // The update came from our current parent.
 		switch {
@@ -321,7 +327,6 @@ func (s *state) _handleTreeAnnouncement(p *peer, f *types.Frame) error {
 			// and then send out tree announcements to our peers, notifying
 			// them of the change.
 			s._parent = p
-			s._coords = newUpdate.Coords()
 			s._sendTreeAnnouncements()
 		case rootDelta < 0:
 			// The update seems to contain a weaker root key than our existing
@@ -422,7 +427,6 @@ func (s *state) _selectNewParent() bool {
 			// will update to our new parent and then send tree announcements
 			// to our peers to notify them of the change.
 			s._parent = bestPeer
-			s._coords = s._announcements[s._parent].Coords()
 			s._sendTreeAnnouncements()
 			return true
 		}

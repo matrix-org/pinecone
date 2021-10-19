@@ -149,7 +149,7 @@ func (s *state) _bootstrapNow() {
 	send := getFrame()
 	send.Type = types.TypeVirtualSnakeBootstrap
 	send.DestinationKey = s.r.public
-	send.Source = s._coords
+	send.Source = s._coords()
 	send.Payload = append(send.Payload[:0], payload...)
 	// Bootstrap messages are routed using SNEK routing with special rules for
 	// bootstrap packets.
@@ -284,7 +284,7 @@ func (s *state) _handleBootstrap(from *peer, rx *types.Frame) error {
 	send.Type = types.TypeVirtualSnakeBootstrapACK
 	send.Destination = rx.Source
 	send.DestinationKey = rx.DestinationKey
-	send.Source = s._coords
+	send.Source = s._coords()
 	send.SourceKey = s.r.public
 	send.Payload = append(send.Payload[:0], buf...)
 	if p := s._nextHopsTree(s.r.local, send); p != nil && p.proto != nil {
