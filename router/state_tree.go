@@ -59,8 +59,9 @@ func (s *state) _maintainTree() {
 
 type rootAnnouncementWithTime struct {
 	types.SwitchAnnouncement
-	receiveTime  time.Time // when did we receive the update?
-	receiveOrder uint64    // the relative order that the update was received
+	receiveTime  time.Time         // when did we receive the update?
+	receiveOrder uint64            // the relative order that the update was received
+	coordinates  types.Coordinates // the peer coordinates from this announcement
 }
 
 // forPeer generates a frame with a signed root announcement for the given
@@ -200,7 +201,7 @@ func (s *state) _nextHopsTree(from *peer, f *types.Frame) *peer {
 
 		// Look up the coordinates of the peer, and the distance
 		// across the tree to those coordinates.
-		peerCoords := ann.PeerCoords()
+		peerCoords := ann.coordinates
 		peerDist := int64(peerCoords.DistanceTo(f.Destination))
 		switch {
 		case peerDist < bestDist:
@@ -260,6 +261,7 @@ func (s *state) _handleTreeAnnouncement(p *peer, f *types.Frame) error {
 		SwitchAnnouncement: newUpdate,
 		receiveTime:        time.Now(),
 		receiveOrder:       s._ordering,
+		coordinates:        newUpdate.PeerCoords(),
 	}
 
 	if p == s._parent { // The update came from our current parent.

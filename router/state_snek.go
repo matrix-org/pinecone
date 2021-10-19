@@ -207,8 +207,8 @@ func (s *state) _nextHopsSNEK(rx *types.Frame, bootstrap bool) *peer {
 		// Check our direct ancestors in the tree, that is, all nodes between
 		// ourselves and the root node via the parent port.
 		if ann := s._announcements[s._parent]; ann != nil {
-			for _, ancestor := range ann.Signatures {
-				newCheckedCandidate(ancestor.PublicKey, s._parent)
+			for i := 0; i < len(ann.Signatures); i++ {
+				newCheckedCandidate(ann.Signatures[i].PublicKey, s._parent)
 			}
 		}
 	}
@@ -219,8 +219,8 @@ func (s *state) _nextHopsSNEK(rx *types.Frame, bootstrap bool) *peer {
 		if !p.started.Load() {
 			continue
 		}
-		for _, hop := range ann.Signatures {
-			newCheckedCandidate(hop.PublicKey, p)
+		for i := 0; i < len(ann.Signatures); i++ {
+			newCheckedCandidate(ann.Signatures[i].PublicKey, p)
 		}
 	}
 
