@@ -245,7 +245,7 @@ func (s *state) _nextHopsSNEK(rx *types.Frame, bootstrap bool) *peer {
 	// higher one, this is effectively looking for paths that descend through
 	// keyspace toward lower keys rather than ascend toward higher ones.
 	for _, entry := range s._table {
-		if !entry.Source.started.Load() || !entry.valid() || entry.Source == s.r.local {
+		if !entry.Source.started.Load() || entry.Source == s.r.local {
 			continue
 		}
 		newCheckedCandidate(entry.PublicKey, entry.Source)
