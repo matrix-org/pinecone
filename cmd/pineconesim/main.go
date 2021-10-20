@@ -325,7 +325,7 @@ func configureHTTPRouting(sim *simulator.Simulator) {
 							PathID:          hex.EncodeToString(k.PathID[:]),
 							DestinationPort: v.Destination,
 							SourcePort:      v.Source,
-							Sequence:        int(v.RootSequence),
+							Sequence:        int(v.Root.RootSequence),
 						},
 					)
 				}

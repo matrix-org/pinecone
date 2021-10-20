@@ -13,9 +13,8 @@ func (p VirtualSnakePathID) MarshalJSON() ([]byte, error) {
 }
 
 type VirtualSnakeBootstrap struct {
-	PathID        VirtualSnakePathID
-	RootPublicKey PublicKey
-	RootSequence  Varu64
+	PathID VirtualSnakePathID
+	Root
 }
 
 func (v *VirtualSnakeBootstrap) MarshalBinary(buf []byte) (int, error) {
@@ -49,9 +48,8 @@ func (v *VirtualSnakeBootstrap) UnmarshalBinary(buf []byte) (int, error) {
 }
 
 type VirtualSnakeBootstrapACK struct {
-	PathID        VirtualSnakePathID
-	RootPublicKey PublicKey
-	RootSequence  Varu64
+	PathID VirtualSnakePathID
+	Root
 }
 
 func (v *VirtualSnakeBootstrapACK) MarshalBinary(buf []byte) (int, error) {
@@ -85,9 +83,8 @@ func (v *VirtualSnakeBootstrapACK) UnmarshalBinary(buf []byte) (int, error) {
 }
 
 type VirtualSnakeSetup struct {
-	PathID        VirtualSnakePathID
-	RootPublicKey PublicKey
-	RootSequence  Varu64
+	PathID VirtualSnakePathID
+	Root
 }
 
 func (v *VirtualSnakeSetup) MarshalBinary(buf []byte) (int, error) {

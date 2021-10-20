@@ -83,7 +83,7 @@ func (r *Router) DHTInfo() (asc, desc *NeighbourInfo, table map[virtualSnakeInde
 				stale += 1
 			}
 			switch {
-			case v.RootPublicKey != ann.RootPublicKey:
+			case v.Root.RootPublicKey != ann.RootPublicKey:
 				stale++
 			}
 		}

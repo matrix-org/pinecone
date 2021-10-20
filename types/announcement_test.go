@@ -27,7 +27,9 @@ func TestMarshalUnmarshalAnnouncement(t *testing.T) {
 	pk2, sk2, _ := ed25519.GenerateKey(nil)
 	pk3, sk3, _ := ed25519.GenerateKey(nil)
 	input := &SwitchAnnouncement{
-		Sequence: 1,
+		Root: Root{
+			RootSequence: 1,
+		},
 	}
 	copy(input.RootPublicKey[:], pkr)
 	var err error

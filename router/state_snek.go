@@ -39,12 +39,11 @@ type virtualSnakeIndex struct {
 
 type virtualSnakeEntry struct {
 	*virtualSnakeIndex
-	Origin        types.PublicKey
-	Source        *peer
-	Destination   *peer
-	LastSeen      time.Time
-	RootPublicKey types.PublicKey
-	RootSequence  types.Varu64
+	Origin      types.PublicKey
+	Source      *peer
+	Destination *peer
+	LastSeen    time.Time
+	Root        types.Root
 }
 
 // valid returns true if the update hasn't expired, or false if it has. It is
@@ -80,7 +79,7 @@ func (s *state) _maintainSnake() {
 			// see if we can bootstrap again.
 			s._sendTeardownForExistingPath(s.r.local, asc.PublicKey, asc.PathID)
 			fallthrough
-		case asc.RootPublicKey != rootAnn.RootPublicKey || asc.RootSequence != rootAnn.Sequence:
+		case !asc.Root.EqualTo(&rootAnn.Root):
 			// The ascending node was set up with a different root key or sequence
 			// number. In this case, we will send another bootstrap to the remote
 			// side in order to hopefully replace the path with a new one.
@@ -122,7 +121,7 @@ func (s *state) _bootstrapNow() {
 	// change.
 	ann := s._rootAnnouncement()
 	if asc := s._ascending; asc != nil && asc.Source.started.Load() {
-		if asc.RootPublicKey == ann.RootPublicKey && asc.RootSequence == ann.Sequence {
+		if asc.Root.EqualTo(&ann.Root) {
 			return
 		}
 	}
@@ -130,11 +129,10 @@ func (s *state) _bootstrapNow() {
 	// number in the update so that the remote side can determine if we are both using
 	// the same root node when processing the update.
 	b := frameBufferPool.Get().(*[types.MaxFrameSize]byte)
-	payload := b[:8+ed25519.PublicKeySize+ann.Sequence.Length()]
+	payload := b[:8+ed25519.PublicKeySize+ann.RootSequence.Length()]
 	defer frameBufferPool.Put(b)
 	bootstrap := types.VirtualSnakeBootstrap{
-		RootPublicKey: ann.RootPublicKey,
-		RootSequence:  ann.Sequence,
+		Root: ann.Root,
 	}
 	// Generate a random path ID.
 	if _, err := rand.Read(bootstrap.PathID[:]); err != nil {
@@ -176,7 +174,7 @@ func (s *state) _nextHopsSNEK(rx *types.Frame, bootstrap bool) *peer {
 	bestPeer := s.r.local
 	// newCandidate updates the best key and best peer with new candidates.
 	newCandidate := func(key types.PublicKey, p *peer) {
-		if bootstrap && !s._announcements[p].EqualTo(&rootAnn.SwitchAnnouncement) {
+		if bootstrap && !s._announcements[p].Root.EqualTo(&rootAnn.Root) {
 			// By ensuring that bootstraps can only exit on interfaces where
 			// a good root announcement has been received, we can avoid some
 			// kinds of eclipse attacks where some but not all malicious peers
@@ -270,16 +268,21 @@ func (s *state) _handleBootstrap(from *peer, rx *types.Frame) error {
 	if err != nil {
 		return fmt.Errorf("bootstrap.UnmarshalBinary: %w", err)
 	}
+	// Check that the root key and sequence number in the update match our
+	// current root, otherwise we won't be able to route back to them using
+	// tree routing anyway. If they don't match, silently drop the bootstrap.
+	root := s._rootAnnouncement()
+	if !root.Root.EqualTo(&bootstrap.Root) {
+		return nil
+	}
 	// In response to a bootstrap, we'll send back a bootstrap ACK packet to
 	// the sender. We'll include our own root details in the ACK.
-	root := s._rootAnnouncement()
 	bootstrapACK := types.VirtualSnakeBootstrapACK{
-		PathID:        bootstrap.PathID,
-		RootPublicKey: root.RootPublicKey,
-		RootSequence:  root.Sequence,
+		PathID: bootstrap.PathID,
+		Root:   root.Root,
 	}
 	b := frameBufferPool.Get().(*[types.MaxFrameSize]byte)
-	buf := b[:8+ed25519.PublicKeySize+root.Sequence.Length()]
+	buf := b[:8+ed25519.PublicKeySize+root.RootSequence.Length()]
 	defer frameBufferPool.Put(b)
 	if _, err := bootstrapACK.MarshalBinary(buf[:]); err != nil {
 		return fmt.Errorf("bootstrapACK.MarshalBinary: %w", err)
@@ -320,13 +323,10 @@ func (s *state) _handleBootstrapACK(from *peer, rx *types.Frame) error {
 		// so either another node has forwarded it to us incorrectly, or
 		// a routing loop has occurred somewhere. Don't act on the bootstrap
 		// in that case.
-	case bootstrapACK.RootPublicKey != root.RootPublicKey:
-		// The root key in the bootstrap ACK doesn't match our own key, so
-		// routing setup packets using tree routing would fail.
-	case bootstrapACK.RootSequence != root.Sequence:
-		// The root sequence number in the bootstrap ACK doesn't match our own
-		// root sequence, so it seems that they have a different root announcement
-		// to us.
+	case !bootstrapACK.Root.EqualTo(&root.Root):
+		// The root key in the bootstrap ACK doesn't match our own key, or the
+		// sequence doesn't match, so it is quite possible that routing setup packets
+		// using tree routing would fail.
 	case asc != nil && asc.valid():
 		// We already have an ascending entry and it hasn't expired yet.
 		switch {
@@ -362,12 +362,11 @@ func (s *state) _handleBootstrapACK(from *peer, rx *types.Frame) error {
 	}
 	// Include our own root information in the update.
 	setup := types.VirtualSnakeSetup{ // nolint:gosimple
-		PathID:        bootstrapACK.PathID,
-		RootPublicKey: root.RootPublicKey,
-		RootSequence:  root.Sequence,
+		PathID: bootstrapACK.PathID,
+		Root:   root.Root,
 	}
 	b := frameBufferPool.Get().(*[types.MaxFrameSize]byte)
-	buf := b[:8+ed25519.PublicKeySize+root.Sequence.Length()]
+	buf := b[:8+ed25519.PublicKeySize+root.RootSequence.Length()]
 	defer frameBufferPool.Put(b)
 	if _, err := setup.MarshalBinary(buf[:]); err != nil {
 		return fmt.Errorf("setup.MarshalBinary: %w", err)
@@ -409,8 +408,7 @@ func (s *state) _handleBootstrapACK(from *peer, rx *types.Frame) error {
 		Source:            s.r.local,
 		Destination:       nexthop,
 		LastSeen:          time.Now(),
-		RootPublicKey:     bootstrapACK.RootPublicKey,
-		RootSequence:      bootstrapACK.RootSequence,
+		Root:              bootstrapACK.Root,
 	}
 	// The remote side is responsible for clearing up the replaced path, but
 	// we do want to make sure we don't have any old paths to other nodes
@@ -437,7 +435,7 @@ func (s *state) _handleSetup(from *peer, rx *types.Frame, nexthop *peer) error {
 	if _, err := setup.UnmarshalBinary(rx.Payload); err != nil {
 		return fmt.Errorf("setup.UnmarshalBinary: %w", err)
 	}
-	if setup.RootPublicKey != root.RootPublicKey || setup.RootSequence != root.Sequence {
+	if !root.Root.EqualTo(&setup.Root) {
 		s._sendTeardownForRejectedPath(rx.SourceKey, setup.PathID, from)
 		return nil
 	}
@@ -461,13 +459,10 @@ func (s *state) _handleSetup(from *peer, rx *types.Frame, nexthop *peer) error {
 		update := false
 		desc := s._descending
 		switch {
-		case setup.RootPublicKey != root.RootPublicKey:
-			// The root key in the setup packet doesn't match our own key, so
-			// routing setup packets using tree routing would fail.
-		case setup.RootSequence != root.Sequence:
-			// The root sequence number in the setup packet doesn't match our own
-			// root sequence, so it seems that they have a different root announcement
-			// to us.
+		case !root.Root.EqualTo(&setup.Root):
+			// The root key in the bootstrap ACK doesn't match our own key, or the
+			// sequence doesn't match, so it is quite possible that routing setup packets
+			// using tree routing would fail.
 		case !util.LessThan(rx.SourceKey, s.r.public):
 			// The bootstrapping key should be less than ours but it isn't.
 		case desc != nil && desc.valid():
@@ -507,8 +502,7 @@ func (s *state) _handleSetup(from *peer, rx *types.Frame, nexthop *peer) error {
 			Source:            from,
 			Destination:       s.r.local,
 			LastSeen:          time.Now(),
-			RootPublicKey:     setup.RootPublicKey,
-			RootSequence:      setup.RootSequence,
+			Root:              setup.Root,
 		}
 		s._table[index] = entry
 		s._descending = entry
@@ -535,8 +529,7 @@ func (s *state) _handleSetup(from *peer, rx *types.Frame, nexthop *peer) error {
 		virtualSnakeIndex: &index,
 		Origin:            rx.SourceKey,
 		LastSeen:          time.Now(),
-		RootPublicKey:     setup.RootPublicKey,
-		RootSequence:      setup.RootSequence,
+		Root:              setup.Root,
 		Source:            from,    // node with lower of the two keys
 		Destination:       nexthop, // node with higher of the two keys
 	}

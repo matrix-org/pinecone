@@ -21,10 +21,14 @@ import (
 	"os"
 )
 
-type SwitchAnnouncement struct {
+type Root struct {
 	RootPublicKey PublicKey
-	Sequence      Varu64
-	Signatures    []SignatureWithHop
+	RootSequence  Varu64
+}
+
+type SwitchAnnouncement struct {
+	Root
+	Signatures []SignatureWithHop
 }
 
 func (a *SwitchAnnouncement) Sign(privKey ed25519.PrivateKey, forPort SwitchPortID) error {
@@ -50,7 +54,7 @@ func (a *SwitchAnnouncement) UnmarshalBinary(data []byte) (int, error) {
 		return 0, fmt.Errorf("expecting at least %d bytes, got %d bytes", expected, size)
 	}
 	remaining := data[copy(a.RootPublicKey[:ed25519.PublicKeySize], data):]
-	if l, err := a.Sequence.UnmarshalBinary(remaining); err != nil {
+	if l, err := a.RootSequence.UnmarshalBinary(remaining); err != nil {
 		return 0, fmt.Errorf("a.Sequence.UnmarshalBinary: %w", err)
 	} else {
 		remaining = remaining[l:]
@@ -75,7 +79,7 @@ func (a *SwitchAnnouncement) UnmarshalBinary(data []byte) (int, error) {
 func (a *SwitchAnnouncement) MarshalBinary(buffer []byte) (int, error) {
 	offset := 0
 	offset += copy(buffer[offset:], a.RootPublicKey[:]) // a.RootPublicKey
-	dn, err := a.Sequence.MarshalBinary(buffer[offset:])
+	dn, err := a.RootSequence.MarshalBinary(buffer[offset:])
 	if err != nil {
 		return 0, fmt.Errorf("a.Sequence.MarshalBinary: %w", err)
 	}
@@ -139,8 +143,8 @@ func (a *SwitchAnnouncement) AncestorParent() PublicKey {
 	return a.Signatures[len(a.Signatures)-2].PublicKey
 }
 
-func (a *SwitchAnnouncement) EqualTo(b *SwitchAnnouncement) bool {
-	return a.RootPublicKey == b.RootPublicKey && a.Sequence == b.Sequence
+func (a *Root) EqualTo(b *Root) bool {
+	return a.RootPublicKey == b.RootPublicKey && a.RootSequence == b.RootSequence
 }
 
 func (a *SwitchAnnouncement) IsLoopOrChildOf(pk PublicKey) bool {

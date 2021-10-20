@@ -101,8 +101,10 @@ func (s *state) _rootAnnouncement() *rootAnnouncementWithTime {
 	if s._parent == nil || s._announcements[s._parent] == nil {
 		return &rootAnnouncementWithTime{
 			SwitchAnnouncement: types.SwitchAnnouncement{
-				RootPublicKey: s.r.public,
-				Sequence:      types.Varu64(s._sequence),
+				Root: types.Root{
+					RootPublicKey: s.r.public,
+					RootSequence:  types.Varu64(s._sequence),
+				},
 			},
 		}
 	}
@@ -192,10 +194,8 @@ func (s *state) _nextHopsTree(from *peer, f *types.Frame) *peer {
 			continue // ignore peers that haven't sent us announcements
 		case p == from:
 			continue // don't route back where the packet came from
-		case ourRoot.RootPublicKey != ann.RootPublicKey:
-			continue // ignore peers that are following a different root
-		case ourRoot.Sequence != ann.Sequence:
-			continue // ignore peers that have different root updates
+		case !ourRoot.Root.EqualTo(&ann.Root):
+			continue // ignore peers that are following a different root or seq
 		}
 
 		// Look up the coordinates of the peer, and the distance
@@ -239,7 +239,7 @@ func (s *state) _handleTreeAnnouncement(p *peer, f *types.Frame) error {
 	// If the peer is replaying an old sequence number to us then we
 	// assume that they are up to no good.
 	if ann := s._announcements[p]; ann != nil {
-		if newUpdate.RootPublicKey == ann.RootPublicKey && newUpdate.Sequence < ann.Sequence {
+		if newUpdate.RootPublicKey == ann.RootPublicKey && newUpdate.RootSequence < ann.RootSequence {
 			return fmt.Errorf("update replays old sequence number")
 		}
 	}
@@ -277,7 +277,7 @@ func (s *state) _handleTreeAnnouncement(p *peer, f *types.Frame) error {
 			// The update contains a weaker root key, which is also bad
 			// news.
 			fallthrough
-		case rootDelta == 0 || newUpdate.Sequence == lastParentUpdate.Sequence:
+		case rootDelta == 0 || newUpdate.RootSequence == lastParentUpdate.RootSequence:
 			// The update contains the same root key, but the sequence
 			// number is being replayed. This usually happens when the
 			// parent has chosen a new parent and is re-signing the last
@@ -305,7 +305,7 @@ func (s *state) _handleTreeAnnouncement(p *peer, f *types.Frame) error {
 			// Since this node is already our parent, we can just send out
 			// the update as normal.
 			fallthrough
-		case rootDelta == 0 && newUpdate.Sequence > lastParentUpdate.Sequence:
+		case rootDelta == 0 && newUpdate.RootSequence > lastParentUpdate.RootSequence:
 			// The root update contains the same key as before but it has
 			// a new sequence number, so the parent is repeating a new
 			// update to us. We will repeat that update to our peers.
@@ -354,14 +354,15 @@ func (s *state) _selectNewParent() bool {
 	// don't have any peers that also have this root update then this will
 	// cause us to fail parent selection, marking ourselves as the root.
 	root := s._rootAnnouncement()
-	bestKey := root.RootPublicKey
-	bestSeq := root.Sequence
+	bestRoot := root.Root
 
 	// If our own key happens to be stronger than our current root for some
 	// reason then we will just compare against our own key instead.
-	if bestKey.CompareTo(s.r.public) < 0 {
-		bestKey = s.r.public
-		bestSeq = 0
+	if bestRoot.RootPublicKey.CompareTo(s.r.public) < 0 {
+		bestRoot = types.Root{
+			RootPublicKey: s.r.public,
+			RootSequence:  0,
+		}
 	}
 	bestOrder := uint64(math.MaxUint64)
 	var bestPeer *peer
@@ -380,14 +381,13 @@ func (s *state) _selectNewParent() bool {
 			continue
 		}
 		accept := func() {
-			bestKey = ann.RootPublicKey
+			bestRoot = ann.Root
 			bestPeer = peer
 			bestOrder = ann.receiveOrder
-			bestSeq = ann.Sequence
 		}
 		// Work out if the parent's announcement contains a stronger root
 		// key than our current best candidate.
-		keyDelta := ann.RootPublicKey.CompareTo(bestKey)
+		keyDelta := ann.RootPublicKey.CompareTo(bestRoot.RootPublicKey)
 		switch {
 		case ann.IsLoopOrChildOf(s.r.public):
 			// The announcement from this peer contains our own public key in
@@ -400,12 +400,12 @@ func (s *state) _selectNewParent() bool {
 		case keyDelta < 0:
 			// The peer has a weaker root key than our current best candidate,
 			// so ignore this peer.
-		case ann.Sequence > bestSeq:
+		case ann.RootSequence > bestRoot.RootSequence:
 			// The peer has the same root key as our current candidate but the
 			// sequence number is higher, so they have sent us a newer tree
 			// announcement. They are a better candidate as a result.
 			accept()
-		case ann.Sequence < bestSeq:
+		case ann.RootSequence < bestRoot.RootSequence:
 			// The peer has the same root key as our current candidate but a
 			// worse sequence number, so their announcement is out of date.
 		case ann.receiveOrder < bestOrder:
