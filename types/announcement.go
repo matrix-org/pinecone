@@ -139,6 +139,10 @@ func (a *SwitchAnnouncement) AncestorParent() PublicKey {
 	return a.Signatures[len(a.Signatures)-2].PublicKey
 }
 
+func (a *SwitchAnnouncement) EqualTo(b *SwitchAnnouncement) bool {
+	return a.RootPublicKey == b.RootPublicKey && a.Sequence == b.Sequence
+}
+
 func (a *SwitchAnnouncement) IsLoopOrChildOf(pk PublicKey) bool {
 	m := map[PublicKey]struct{}{}
 	for _, sig := range a.Signatures {

@@ -176,6 +176,13 @@ func (s *state) _nextHopsSNEK(rx *types.Frame, bootstrap bool) *peer {
 	bestPeer := s.r.local
 	// newCandidate updates the best key and best peer with new candidates.
 	newCandidate := func(key types.PublicKey, p *peer) {
+		if bootstrap && !s._announcements[p].EqualTo(&rootAnn.SwitchAnnouncement) {
+			// By ensuring that bootstraps can only exit on interfaces where
+			// a good root announcement has been received, we can avoid some
+			// kinds of eclipse attacks where some but not all malicious peers
+			// withhold correct root updates from us.
+			return
+		}
 		bestKey, bestPeer = key, p
 	}
 	// newCheckedCandidate performs some sanity checks on the candidate before
