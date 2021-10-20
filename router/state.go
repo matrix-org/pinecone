@@ -130,7 +130,7 @@ func (s *state) _portDisconnected(peer *peer) {
 	// If the ascending path was also lost because it went via the now-dead
 	// peering then clear that path (although we can't send a teardown) and
 	// then bootstrap again.
-	if asc := s._ascending; asc != nil && asc.Source == peer {
+	if asc := s._ascending; asc != nil && asc.Destination == peer {
 		s._teardownPath(s.r.local, asc.PublicKey, asc.PathID)
 		bootstrap = true
 	}
