@@ -599,7 +599,7 @@ func (s *state) _handleSetup(from *peer, rx *types.Frame, nexthop *peer) error {
 // _handleTeardown is called in response to receiving a teardown packet from the
 // network.
 func (s *state) _handleTeardown(from *peer, rx *types.Frame) ([]*peer, error) {
-	if len(rx.Payload) < 8 {
+	if len(rx.Payload) < types.VirtualSnakePathIDLength {
 		return nil, fmt.Errorf("payload too short")
 	}
 	var teardown types.VirtualSnakeTeardown

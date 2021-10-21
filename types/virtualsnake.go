@@ -136,29 +136,23 @@ func (v *VirtualSnakeSetup) UnmarshalBinary(buf []byte) (int, error) {
 }
 
 type VirtualSnakeTeardown struct {
-	PathID         VirtualSnakePathID
-	SourceSig      VirtualSnakePathSig
-	DestinationSig VirtualSnakePathSig
+	PathID VirtualSnakePathID
 }
 
 func (v *VirtualSnakeTeardown) MarshalBinary(buf []byte) (int, error) {
-	if len(buf) < VirtualSnakePathIDLength+(ed25519.SignatureSize*2) {
+	if len(buf) < VirtualSnakePathIDLength {
 		return 0, fmt.Errorf("buffer too small")
 	}
 	offset := 0
 	offset += copy(buf[offset:], v.PathID[:])
-	offset += copy(buf[offset:], v.SourceSig[:])
-	offset += copy(buf[offset:], v.DestinationSig[:])
 	return offset, nil
 }
 
 func (v *VirtualSnakeTeardown) UnmarshalBinary(buf []byte) (int, error) {
-	if len(buf) < VirtualSnakePathIDLength+(ed25519.SignatureSize*2) {
+	if len(buf) < VirtualSnakePathIDLength {
 		return 0, fmt.Errorf("buffer too small")
 	}
 	offset := 0
 	offset += copy(v.PathID[:], buf[offset:])
-	offset += copy(v.SourceSig[:], buf[offset:])
-	offset += copy(v.DestinationSig[:], buf[offset:])
 	return offset, nil
 }
