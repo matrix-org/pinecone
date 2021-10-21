@@ -15,7 +15,6 @@
 package router
 
 import (
-	"crypto/ed25519"
 	"crypto/rand"
 	"fmt"
 	"time"
@@ -129,7 +128,6 @@ func (s *state) _bootstrapNow() {
 	// number in the update so that the remote side can determine if we are both using
 	// the same root node when processing the update.
 	b := frameBufferPool.Get().(*[types.MaxFrameSize]byte)
-	payload := b[:8+ed25519.PublicKeySize+ann.RootSequence.Length()]
 	defer frameBufferPool.Put(b)
 	bootstrap := types.VirtualSnakeBootstrap{
 		Root: ann.Root,
@@ -138,7 +136,8 @@ func (s *state) _bootstrapNow() {
 	if _, err := rand.Read(bootstrap.PathID[:]); err != nil {
 		return
 	}
-	if _, err := bootstrap.MarshalBinary(payload[:]); err != nil {
+	n, err := bootstrap.MarshalBinary(b[:])
+	if err != nil {
 		return
 	}
 	// Construct the frame. We set the destination key to be our own public key. As
@@ -148,7 +147,7 @@ func (s *state) _bootstrapNow() {
 	send.Type = types.TypeVirtualSnakeBootstrap
 	send.DestinationKey = s.r.public
 	send.Source = s._coords()
-	send.Payload = append(send.Payload[:0], payload...)
+	send.Payload = append(send.Payload[:0], b[:n]...)
 	// Bootstrap messages are routed using SNEK routing with special rules for
 	// bootstrap packets.
 	if p := s._nextHopsSNEK(send, true); p != nil && p.proto != nil {
@@ -264,8 +263,7 @@ func (s *state) _nextHopsSNEK(rx *types.Frame, bootstrap bool) *peer {
 func (s *state) _handleBootstrap(from *peer, rx *types.Frame) error {
 	// Unmarshal the bootstrap.
 	var bootstrap types.VirtualSnakeBootstrap
-	_, err := bootstrap.UnmarshalBinary(rx.Payload)
-	if err != nil {
+	if _, err := bootstrap.UnmarshalBinary(rx.Payload); err != nil {
 		return fmt.Errorf("bootstrap.UnmarshalBinary: %w", err)
 	}
 	// Check that the root key and sequence number in the update match our
@@ -282,9 +280,9 @@ func (s *state) _handleBootstrap(from *peer, rx *types.Frame) error {
 		Root:   root.Root,
 	}
 	b := frameBufferPool.Get().(*[types.MaxFrameSize]byte)
-	buf := b[:8+ed25519.PublicKeySize+root.RootSequence.Length()]
 	defer frameBufferPool.Put(b)
-	if _, err := bootstrapACK.MarshalBinary(buf[:]); err != nil {
+	n, err := bootstrapACK.MarshalBinary(b[:])
+	if err != nil {
 		return fmt.Errorf("bootstrapACK.MarshalBinary: %w", err)
 	}
 	// Bootstrap ACKs are routed using tree routing, so we need to take the
@@ -296,7 +294,7 @@ func (s *state) _handleBootstrap(from *peer, rx *types.Frame) error {
 	send.DestinationKey = rx.DestinationKey
 	send.Source = s._coords()
 	send.SourceKey = s.r.public
-	send.Payload = append(send.Payload[:0], buf...)
+	send.Payload = append(send.Payload[:0], b[:n]...)
 	if p := s._nextHopsTree(s.r.local, send); p != nil && p.proto != nil {
 		p.proto.push(send)
 	}
@@ -366,9 +364,9 @@ func (s *state) _handleBootstrapACK(from *peer, rx *types.Frame) error {
 		Root:   root.Root,
 	}
 	b := frameBufferPool.Get().(*[types.MaxFrameSize]byte)
-	buf := b[:8+ed25519.PublicKeySize+root.RootSequence.Length()]
 	defer frameBufferPool.Put(b)
-	if _, err := setup.MarshalBinary(buf[:]); err != nil {
+	n, err := setup.MarshalBinary(b[:])
+	if err != nil {
 		return fmt.Errorf("setup.MarshalBinary: %w", err)
 	}
 	// Setup messages routed using tree routing. The destination key is set in the
@@ -381,7 +379,7 @@ func (s *state) _handleBootstrapACK(from *peer, rx *types.Frame) error {
 	send.Destination = rx.Source
 	send.DestinationKey = rx.SourceKey
 	send.SourceKey = s.r.public
-	send.Payload = append(send.Payload[:0], buf...)
+	send.Payload = append(send.Payload[:0], b[:n]...)
 	nexthop := s.r.state._nextHopsTree(s.r.local, send)
 	// Importantly, we will only create a DHT entry if it appears as though our next
 	// hop has actually accepted the packet. Otherwise we'll create a path entry and
@@ -572,17 +570,19 @@ func (s *state) _sendTeardownForExistingPath(from *peer, pathKey types.PublicKey
 // _getTeardown generates a frame containing a teardown message for the given
 // path key and path ID.
 func (s *state) _getTeardown(pathKey types.PublicKey, pathID types.VirtualSnakePathID) *types.Frame {
-	var payload [8]byte
+	payload := frameBufferPool.Get().(*[types.MaxFrameSize]byte)
+	defer frameBufferPool.Put(payload)
 	teardown := types.VirtualSnakeTeardown{
 		PathID: pathID,
 	}
-	if _, err := teardown.MarshalBinary(payload[:]); err != nil {
+	n, err := teardown.MarshalBinary(payload[:])
+	if err != nil {
 		return nil
 	}
 	frame := getFrame()
 	frame.Type = types.TypeVirtualSnakeTeardown
 	frame.DestinationKey = pathKey
-	frame.Payload = append(frame.Payload[:0], payload[:]...)
+	frame.Payload = append(frame.Payload[:0], payload[:n]...)
 	return frame
 }
 
