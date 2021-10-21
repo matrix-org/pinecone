@@ -15,6 +15,7 @@
 package router
 
 import (
+	"crypto/ed25519"
 	"crypto/rand"
 	"fmt"
 	"time"
@@ -135,6 +136,12 @@ func (s *state) _bootstrapNow() {
 	// Generate a random path ID.
 	if _, err := rand.Read(bootstrap.PathID[:]); err != nil {
 		return
+	}
+	if s.r.secure {
+		copy(
+			bootstrap.SourceSig[:],
+			ed25519.Sign(s.r.private[:], append(s.r.public[:], bootstrap.PathID[:]...)),
+		)
 	}
 	n, err := bootstrap.MarshalBinary(b[:])
 	if err != nil {
@@ -266,6 +273,15 @@ func (s *state) _handleBootstrap(from *peer, rx *types.Frame) error {
 	if _, err := bootstrap.UnmarshalBinary(rx.Payload); err != nil {
 		return fmt.Errorf("bootstrap.UnmarshalBinary: %w", err)
 	}
+	if s.r.secure {
+		if !ed25519.Verify(
+			rx.DestinationKey[:],
+			append(rx.DestinationKey[:], bootstrap.PathID[:]...),
+			bootstrap.SourceSig[:],
+		) {
+			return nil
+		}
+	}
 	// Check that the root key and sequence number in the update match our
 	// current root, otherwise we won't be able to route back to them using
 	// tree routing anyway. If they don't match, silently drop the bootstrap.
@@ -276,8 +292,18 @@ func (s *state) _handleBootstrap(from *peer, rx *types.Frame) error {
 	// In response to a bootstrap, we'll send back a bootstrap ACK packet to
 	// the sender. We'll include our own root details in the ACK.
 	bootstrapACK := types.VirtualSnakeBootstrapACK{
-		PathID: bootstrap.PathID,
-		Root:   root.Root,
+		PathID:    bootstrap.PathID,
+		Root:      root.Root,
+		SourceSig: bootstrap.SourceSig,
+	}
+	if s.r.secure {
+		copy(
+			bootstrapACK.DestinationSig[:],
+			ed25519.Sign(
+				s.r.private[:],
+				append(bootstrap.SourceSig[:], append(rx.DestinationKey[:], bootstrap.PathID[:]...)...),
+			),
+		)
 	}
 	b := frameBufferPool.Get().(*[types.MaxFrameSize]byte)
 	defer frameBufferPool.Put(b)
@@ -311,6 +337,22 @@ func (s *state) _handleBootstrapACK(from *peer, rx *types.Frame) error {
 	_, err := bootstrapACK.UnmarshalBinary(rx.Payload)
 	if err != nil {
 		return fmt.Errorf("bootstrapACK.UnmarshalBinary: %w", err)
+	}
+	if s.r.secure {
+		if !ed25519.Verify(
+			s.r.public[:],
+			append(s.r.public[:], bootstrapACK.PathID[:]...),
+			bootstrapACK.SourceSig[:],
+		) {
+			return nil
+		}
+		if !ed25519.Verify(
+			rx.SourceKey[:],
+			append(bootstrapACK.SourceSig[:], append(rx.DestinationKey[:], bootstrapACK.PathID[:]...)...),
+			bootstrapACK.DestinationSig[:],
+		) {
+			return nil
+		}
 	}
 	root := s._rootAnnouncement()
 	update := false
@@ -360,8 +402,10 @@ func (s *state) _handleBootstrapACK(from *peer, rx *types.Frame) error {
 	}
 	// Include our own root information in the update.
 	setup := types.VirtualSnakeSetup{ // nolint:gosimple
-		PathID: bootstrapACK.PathID,
-		Root:   root.Root,
+		PathID:         bootstrapACK.PathID,
+		Root:           root.Root,
+		SourceSig:      bootstrapACK.SourceSig,
+		DestinationSig: bootstrapACK.DestinationSig,
 	}
 	b := frameBufferPool.Get().(*[types.MaxFrameSize]byte)
 	defer frameBufferPool.Put(b)
@@ -432,6 +476,24 @@ func (s *state) _handleSetup(from *peer, rx *types.Frame, nexthop *peer) error {
 	var setup types.VirtualSnakeSetup
 	if _, err := setup.UnmarshalBinary(rx.Payload); err != nil {
 		return fmt.Errorf("setup.UnmarshalBinary: %w", err)
+	}
+	if s.r.secure {
+		if !ed25519.Verify(
+			rx.SourceKey[:],
+			append(rx.SourceKey[:], setup.PathID[:]...),
+			setup.SourceSig[:],
+		) {
+			s._sendTeardownForRejectedPath(rx.SourceKey, setup.PathID, from)
+			return nil
+		}
+		if !ed25519.Verify(
+			rx.DestinationKey[:],
+			append(setup.SourceSig[:], append(rx.SourceKey[:], setup.PathID[:]...)...),
+			setup.DestinationSig[:],
+		) {
+			s._sendTeardownForRejectedPath(rx.SourceKey, setup.PathID, from)
+			return nil
+		}
 	}
 	if !root.Root.EqualTo(&setup.Root) {
 		s._sendTeardownForRejectedPath(rx.SourceKey, setup.PathID, from)

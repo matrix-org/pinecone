@@ -25,6 +25,7 @@ import (
 	"log"
 	"math"
 	"net"
+	"os"
 	"sync"
 	"time"
 
@@ -46,6 +47,7 @@ type Router struct {
 	pings   sync.Map // types.PublicKey -> chan struct{}
 	local   *peer
 	state   *state
+	secure  bool
 }
 
 func NewRouter(logger *log.Logger, sk ed25519.PrivateKey, debug bool) *Router {
@@ -53,10 +55,12 @@ func NewRouter(logger *log.Logger, sk ed25519.PrivateKey, debug bool) *Router {
 		logger = log.New(ioutil.Discard, "", 0)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
+	_, insecure := os.LookupEnv("PINECONE_DISABLE_SIGNATURES")
 	r := &Router{
 		log:     logger,
 		context: ctx,
 		cancel:  cancel,
+		secure:  !insecure,
 	}
 	// Populate the node keys from the supplied private key.
 	copy(r.private[:], sk)
