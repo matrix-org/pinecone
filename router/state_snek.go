@@ -138,6 +138,8 @@ func (s *state) _bootstrapNow() {
 		return
 	}
 	if s.r.secure {
+		// Sign the path key and path ID with our own key. This forms the "source
+		// signature", which anyone can use to verify that we sent the bootstrap.
 		copy(
 			bootstrap.SourceSig[:],
 			ed25519.Sign(s.r.private[:], append(s.r.public[:], bootstrap.PathID[:]...)),
@@ -274,6 +276,8 @@ func (s *state) _handleBootstrap(from *peer, rx *types.Frame) error {
 		return fmt.Errorf("bootstrap.UnmarshalBinary: %w", err)
 	}
 	if s.r.secure {
+		// Check that the bootstrap message was signed by the node that claims
+		// to have sent it. Silently drop it if there's a signature problem.
 		if !ed25519.Verify(
 			rx.DestinationKey[:],
 			append(rx.DestinationKey[:], bootstrap.PathID[:]...),
@@ -297,6 +301,10 @@ func (s *state) _handleBootstrap(from *peer, rx *types.Frame) error {
 		SourceSig: bootstrap.SourceSig,
 	}
 	if s.r.secure {
+		// Since we're the "destination" of the bootstrap, we'll add a new
+		// "destination signature", in which we sign the source signature,
+		// the path key and the path ID. This allows anyone else to verify
+		// that we accepted this specific bootstrap.
 		copy(
 			bootstrapACK.DestinationSig[:],
 			ed25519.Sign(
@@ -339,6 +347,8 @@ func (s *state) _handleBootstrapACK(from *peer, rx *types.Frame) error {
 		return fmt.Errorf("bootstrapACK.UnmarshalBinary: %w", err)
 	}
 	if s.r.secure {
+		// Verify that the source signature hasn't been changed by the remote
+		// side. If it has then it won't validate using our own public key.
 		if !ed25519.Verify(
 			s.r.public[:],
 			append(s.r.public[:], bootstrapACK.PathID[:]...),
@@ -346,6 +356,9 @@ func (s *state) _handleBootstrapACK(from *peer, rx *types.Frame) error {
 		) {
 			return nil
 		}
+		// Verify that the destination signature is OK, which allows us to confirm
+		// that the remote node accepted our bootstrap and that the remote node is
+		// who they claim to be.
 		if !ed25519.Verify(
 			rx.SourceKey[:],
 			append(bootstrapACK.SourceSig[:], append(rx.DestinationKey[:], bootstrapACK.PathID[:]...)...),
@@ -478,6 +491,8 @@ func (s *state) _handleSetup(from *peer, rx *types.Frame, nexthop *peer) error {
 		return fmt.Errorf("setup.UnmarshalBinary: %w", err)
 	}
 	if s.r.secure {
+		// Verify the source signature using the source key. A valid signature proves
+		// that the node that sent the setup is actually who they say they are.
 		if !ed25519.Verify(
 			rx.SourceKey[:],
 			append(rx.SourceKey[:], setup.PathID[:]...),
@@ -486,6 +501,9 @@ func (s *state) _handleSetup(from *peer, rx *types.Frame, nexthop *peer) error {
 			s._sendTeardownForRejectedPath(rx.SourceKey, setup.PathID, from)
 			return nil
 		}
+		// Verify the destination signature using the destination key. A valid signature
+		// proves that the node that the setup message is being sent to actually accepted
+		// the bootstrap and therefore this path is legitimate and not spoofed.
 		if !ed25519.Verify(
 			rx.DestinationKey[:],
 			append(setup.SourceSig[:], append(rx.SourceKey[:], setup.PathID[:]...)...),
