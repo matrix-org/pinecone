@@ -129,7 +129,6 @@ func (s *state) _bootstrapNow() {
 	// number in the update so that the remote side can determine if we are both using
 	// the same root node when processing the update.
 	b := frameBufferPool.Get().(*[types.MaxFrameSize]byte)
-	payload := b[:8+ed25519.PublicKeySize+ann.RootSequence.Length()]
 	defer frameBufferPool.Put(b)
 	bootstrap := types.VirtualSnakeBootstrap{
 		Root: ann.Root,
@@ -138,7 +137,16 @@ func (s *state) _bootstrapNow() {
 	if _, err := rand.Read(bootstrap.PathID[:]); err != nil {
 		return
 	}
-	if _, err := bootstrap.MarshalBinary(payload[:]); err != nil {
+	if s.r.secure {
+		// Sign the path key and path ID with our own key. This forms the "source
+		// signature", which anyone can use to verify that we sent the bootstrap.
+		copy(
+			bootstrap.SourceSig[:],
+			ed25519.Sign(s.r.private[:], append(s.r.public[:], bootstrap.PathID[:]...)),
+		)
+	}
+	n, err := bootstrap.MarshalBinary(b[:])
+	if err != nil {
 		return
 	}
 	// Construct the frame. We set the destination key to be our own public key. As
@@ -148,7 +156,7 @@ func (s *state) _bootstrapNow() {
 	send.Type = types.TypeVirtualSnakeBootstrap
 	send.DestinationKey = s.r.public
 	send.Source = s._coords()
-	send.Payload = append(send.Payload[:0], payload...)
+	send.Payload = append(send.Payload[:0], b[:n]...)
 	// Bootstrap messages are routed using SNEK routing with special rules for
 	// bootstrap packets.
 	if p := s._nextHopsSNEK(send, true); p != nil && p.proto != nil {
@@ -264,9 +272,19 @@ func (s *state) _nextHopsSNEK(rx *types.Frame, bootstrap bool) *peer {
 func (s *state) _handleBootstrap(from *peer, rx *types.Frame) error {
 	// Unmarshal the bootstrap.
 	var bootstrap types.VirtualSnakeBootstrap
-	_, err := bootstrap.UnmarshalBinary(rx.Payload)
-	if err != nil {
+	if _, err := bootstrap.UnmarshalBinary(rx.Payload); err != nil {
 		return fmt.Errorf("bootstrap.UnmarshalBinary: %w", err)
+	}
+	if s.r.secure {
+		// Check that the bootstrap message was signed by the node that claims
+		// to have sent it. Silently drop it if there's a signature problem.
+		if !ed25519.Verify(
+			rx.DestinationKey[:],
+			append(rx.DestinationKey[:], bootstrap.PathID[:]...),
+			bootstrap.SourceSig[:],
+		) {
+			return nil
+		}
 	}
 	// Check that the root key and sequence number in the update match our
 	// current root, otherwise we won't be able to route back to them using
@@ -278,13 +296,27 @@ func (s *state) _handleBootstrap(from *peer, rx *types.Frame) error {
 	// In response to a bootstrap, we'll send back a bootstrap ACK packet to
 	// the sender. We'll include our own root details in the ACK.
 	bootstrapACK := types.VirtualSnakeBootstrapACK{
-		PathID: bootstrap.PathID,
-		Root:   root.Root,
+		PathID:    bootstrap.PathID,
+		Root:      root.Root,
+		SourceSig: bootstrap.SourceSig,
+	}
+	if s.r.secure {
+		// Since we're the "destination" of the bootstrap, we'll add a new
+		// "destination signature", in which we sign the source signature,
+		// the path key and the path ID. This allows anyone else to verify
+		// that we accepted this specific bootstrap.
+		copy(
+			bootstrapACK.DestinationSig[:],
+			ed25519.Sign(
+				s.r.private[:],
+				append(bootstrap.SourceSig[:], append(rx.DestinationKey[:], bootstrap.PathID[:]...)...),
+			),
+		)
 	}
 	b := frameBufferPool.Get().(*[types.MaxFrameSize]byte)
-	buf := b[:8+ed25519.PublicKeySize+root.RootSequence.Length()]
 	defer frameBufferPool.Put(b)
-	if _, err := bootstrapACK.MarshalBinary(buf[:]); err != nil {
+	n, err := bootstrapACK.MarshalBinary(b[:])
+	if err != nil {
 		return fmt.Errorf("bootstrapACK.MarshalBinary: %w", err)
 	}
 	// Bootstrap ACKs are routed using tree routing, so we need to take the
@@ -296,7 +328,7 @@ func (s *state) _handleBootstrap(from *peer, rx *types.Frame) error {
 	send.DestinationKey = rx.DestinationKey
 	send.Source = s._coords()
 	send.SourceKey = s.r.public
-	send.Payload = append(send.Payload[:0], buf...)
+	send.Payload = append(send.Payload[:0], b[:n]...)
 	if p := s._nextHopsTree(s.r.local, send); p != nil && p.proto != nil {
 		p.proto.push(send)
 	}
@@ -313,6 +345,27 @@ func (s *state) _handleBootstrapACK(from *peer, rx *types.Frame) error {
 	_, err := bootstrapACK.UnmarshalBinary(rx.Payload)
 	if err != nil {
 		return fmt.Errorf("bootstrapACK.UnmarshalBinary: %w", err)
+	}
+	if s.r.secure {
+		// Verify that the source signature hasn't been changed by the remote
+		// side. If it has then it won't validate using our own public key.
+		if !ed25519.Verify(
+			s.r.public[:],
+			append(s.r.public[:], bootstrapACK.PathID[:]...),
+			bootstrapACK.SourceSig[:],
+		) {
+			return nil
+		}
+		// Verify that the destination signature is OK, which allows us to confirm
+		// that the remote node accepted our bootstrap and that the remote node is
+		// who they claim to be.
+		if !ed25519.Verify(
+			rx.SourceKey[:],
+			append(bootstrapACK.SourceSig[:], append(rx.DestinationKey[:], bootstrapACK.PathID[:]...)...),
+			bootstrapACK.DestinationSig[:],
+		) {
+			return nil
+		}
 	}
 	root := s._rootAnnouncement()
 	update := false
@@ -362,13 +415,15 @@ func (s *state) _handleBootstrapACK(from *peer, rx *types.Frame) error {
 	}
 	// Include our own root information in the update.
 	setup := types.VirtualSnakeSetup{ // nolint:gosimple
-		PathID: bootstrapACK.PathID,
-		Root:   root.Root,
+		PathID:         bootstrapACK.PathID,
+		Root:           root.Root,
+		SourceSig:      bootstrapACK.SourceSig,
+		DestinationSig: bootstrapACK.DestinationSig,
 	}
 	b := frameBufferPool.Get().(*[types.MaxFrameSize]byte)
-	buf := b[:8+ed25519.PublicKeySize+root.RootSequence.Length()]
 	defer frameBufferPool.Put(b)
-	if _, err := setup.MarshalBinary(buf[:]); err != nil {
+	n, err := setup.MarshalBinary(b[:])
+	if err != nil {
 		return fmt.Errorf("setup.MarshalBinary: %w", err)
 	}
 	// Setup messages routed using tree routing. The destination key is set in the
@@ -381,7 +436,7 @@ func (s *state) _handleBootstrapACK(from *peer, rx *types.Frame) error {
 	send.Destination = rx.Source
 	send.DestinationKey = rx.SourceKey
 	send.SourceKey = s.r.public
-	send.Payload = append(send.Payload[:0], buf...)
+	send.Payload = append(send.Payload[:0], b[:n]...)
 	nexthop := s.r.state._nextHopsTree(s.r.local, send)
 	// Importantly, we will only create a DHT entry if it appears as though our next
 	// hop has actually accepted the packet. Otherwise we'll create a path entry and
@@ -434,6 +489,29 @@ func (s *state) _handleSetup(from *peer, rx *types.Frame, nexthop *peer) error {
 	var setup types.VirtualSnakeSetup
 	if _, err := setup.UnmarshalBinary(rx.Payload); err != nil {
 		return fmt.Errorf("setup.UnmarshalBinary: %w", err)
+	}
+	if s.r.secure {
+		// Verify the source signature using the source key. A valid signature proves
+		// that the node that sent the setup is actually who they say they are.
+		if !ed25519.Verify(
+			rx.SourceKey[:],
+			append(rx.SourceKey[:], setup.PathID[:]...),
+			setup.SourceSig[:],
+		) {
+			s._sendTeardownForRejectedPath(rx.SourceKey, setup.PathID, from)
+			return nil
+		}
+		// Verify the destination signature using the destination key. A valid signature
+		// proves that the node that the setup message is being sent to actually accepted
+		// the bootstrap and therefore this path is legitimate and not spoofed.
+		if !ed25519.Verify(
+			rx.DestinationKey[:],
+			append(setup.SourceSig[:], append(rx.SourceKey[:], setup.PathID[:]...)...),
+			setup.DestinationSig[:],
+		) {
+			s._sendTeardownForRejectedPath(rx.SourceKey, setup.PathID, from)
+			return nil
+		}
 	}
 	if !root.Root.EqualTo(&setup.Root) {
 		s._sendTeardownForRejectedPath(rx.SourceKey, setup.PathID, from)
@@ -539,7 +617,7 @@ func (s *state) _handleSetup(from *peer, rx *types.Frame, nexthop *peer) error {
 // _handleTeardown is called in response to receiving a teardown packet from the
 // network.
 func (s *state) _handleTeardown(from *peer, rx *types.Frame) ([]*peer, error) {
-	if len(rx.Payload) < 8 {
+	if len(rx.Payload) < types.VirtualSnakePathIDLength {
 		return nil, fmt.Errorf("payload too short")
 	}
 	var teardown types.VirtualSnakeTeardown
@@ -572,17 +650,19 @@ func (s *state) _sendTeardownForExistingPath(from *peer, pathKey types.PublicKey
 // _getTeardown generates a frame containing a teardown message for the given
 // path key and path ID.
 func (s *state) _getTeardown(pathKey types.PublicKey, pathID types.VirtualSnakePathID) *types.Frame {
-	var payload [8]byte
+	payload := frameBufferPool.Get().(*[types.MaxFrameSize]byte)
+	defer frameBufferPool.Put(payload)
 	teardown := types.VirtualSnakeTeardown{
 		PathID: pathID,
 	}
-	if _, err := teardown.MarshalBinary(payload[:]); err != nil {
+	n, err := teardown.MarshalBinary(payload[:])
+	if err != nil {
 		return nil
 	}
 	frame := getFrame()
 	frame.Type = types.TypeVirtualSnakeTeardown
 	frame.DestinationKey = pathKey
-	frame.Payload = append(frame.Payload[:0], payload[:]...)
+	frame.Payload = append(frame.Payload[:0], payload[:n]...)
 	return frame
 }
 
