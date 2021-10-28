@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/RyanCarrier/dijkstra"
+	"github.com/matrix-org/pinecone/router/events"
 )
 
 type Simulator struct {
@@ -120,4 +121,8 @@ func (sim *Simulator) TreePathConvergence() map[string]map[string]bool {
 
 func (sim *Simulator) Uptime() time.Duration {
 	return time.Since(sim.startTime)
+}
+
+func (sim *Simulator) handlePeerAdded(node string, e events.PeerAdded) {
+	sim.log.Printf("Node %s: Peer added! Port: %d\n", node, e.Port)
 }

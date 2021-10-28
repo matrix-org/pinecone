@@ -87,6 +87,7 @@ func main() {
 		if err := sim.CreateNode(n); err != nil {
 			panic(err)
 		}
+		sim.StartNodeEventHandler(n)
 	}
 
 	for a, w := range wires {
@@ -200,6 +201,8 @@ func main() {
 type pair struct{ from, to string }
 
 func configureHTTPRouting(sim *simulator.Simulator) {
+	http.Handle("/scripts/", http.StripPrefix("/scripts/", http.FileServer(http.Dir("./cmd/pineconesim/scripts"))))
+
 	wsUpgrader := websocket.Upgrader{}
 	http.DefaultServeMux.HandleFunc("/simws", func(w http.ResponseWriter, r *http.Request) {
 		var n *simulator.Node
@@ -227,6 +230,82 @@ func configureHTTPRouting(sim *simulator.Simulator) {
 			return
 		}
 		log.Printf("WebSocket peer %q connected to sim node %q\n", c.RemoteAddr(), nodeID)
+	})
+	http.DefaultServeMux.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
+		var upgrader = websocket.Upgrader{}
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			log.Println(err)
+			return
+		}
+
+		go func() {
+			type APIMessageID int
+
+			const (
+				Uknown APIMessageID = iota
+				InitialState
+			)
+
+			nodes := sim.Nodes()
+			nodeIDs := make([]string, 0, len(nodes))
+			for key := range nodes {
+				nodeIDs = append(nodeIDs, key)
+			}
+
+			wires := sim.Wires()
+			physEdges := make(map[string][]string)
+			for node, wireMap := range wires {
+				endNodes := make([]string, 0, 3)
+				for endNode := range wireMap {
+					endNodes = append(endNodes, endNode)
+				}
+				physEdges[node] = endNodes
+			}
+
+			// Snake edges
+			snakeEdges := make(map[string][]string)
+			for id, n := range nodes {
+				for id2, n2 := range nodes {
+					p := n.Descending()
+					s := n.Ascending()
+					if p != nil && p.PublicKey == n2.PublicKey() {
+						snakeEdges[id] = append(snakeEdges[id], id2)
+					}
+					if s != nil && s.PublicKey == n2.PublicKey() {
+						snakeEdges[id] = append(snakeEdges[id], id2)
+					}
+				}
+			}
+
+			// Tree edges
+			treeEdges := make(map[string][]string)
+			for _, n1 := range nodes {
+				if n1.IsRoot() {
+					continue
+				}
+				r1, _ := sim.LookupPublicKey(n1.PublicKey())
+				r2, _ := sim.LookupPublicKey(n1.ParentPublicKey())
+				treeEdges[r1] = append(treeEdges[r1], r2)
+			}
+
+			if err := conn.WriteJSON(struct {
+				ID         APIMessageID
+				Nodes      []string
+				PhysEdges  map[string][]string
+				SnakeEdges map[string][]string
+				TreeEdges  map[string][]string
+			}{
+				InitialState,
+				nodeIDs,
+				physEdges,
+				snakeEdges,
+				treeEdges,
+			}); err != nil {
+				log.Println(err)
+				return
+			}
+		}()
 	})
 	http.DefaultServeMux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		tmpl := template.Must(template.ParseFiles("./cmd/pineconesim/page.html"))
@@ -346,63 +425,6 @@ func configureHTTPRouting(sim *simulator.Simulator) {
 
 		for range wires {
 			data.PathCount++
-		}
-
-		switch r.URL.Query().Get("view") {
-		case "snek":
-			for id, n := range nodes {
-				for id2, n2 := range nodes {
-					p := n.Descending()
-					s := n.Ascending()
-					if p != nil && p.PublicKey == n2.PublicKey() {
-						data.Links = append(data.Links, Link{
-							From:    id,
-							To:      id2,
-							Enabled: true,
-						})
-					}
-					if s != nil && s.PublicKey == n2.PublicKey() {
-						data.Links = append(data.Links, Link{
-							From:    id,
-							To:      id2,
-							Enabled: true,
-						})
-					}
-				}
-			}
-		case "tree":
-			for _, n1 := range nodes {
-				if n1.IsRoot() {
-					continue
-				}
-				r1, _ := sim.LookupPublicKey(n1.PublicKey())
-				r2, _ := sim.LookupPublicKey(n1.ParentPublicKey())
-				data.Links = append(data.Links, Link{
-					From:    r1,
-					To:      r2,
-					Enabled: true,
-				})
-			}
-		case "physical":
-			fallthrough
-		default:
-			for a, w := range wires {
-				for b, conn := range w {
-					data.Links = append(data.Links, Link{
-						From:    a,
-						To:      b,
-						Enabled: conn != nil,
-					})
-
-					// If we find any external nodes, let's show those too...
-					if _, ok := nodes[b]; !ok {
-						data.Nodes = append(data.Nodes, Node{
-							Name:       b,
-							IsExternal: true,
-						})
-					}
-				}
-			}
 		}
 
 		for n, r := range roots {

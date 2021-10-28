@@ -15,9 +15,16 @@
 package router
 
 import (
+	"context"
+	"encoding/hex"
+	"fmt"
+	"net"
 	"time"
 
 	"github.com/Arceliar/phony"
+	"github.com/matrix-org/pinecone/router/events"
+	"github.com/matrix-org/pinecone/types"
+	"go.uber.org/atomic"
 )
 
 // NOTE: Functions prefixed with an underscore (_) are only safe to be called
@@ -38,6 +45,51 @@ type state struct {
 	_treetimer     *time.Timer        // Tree maintenance timer
 	_snaketimer    *time.Timer        // Virtual snake maintenance timer
 	_waiting       bool               // Is the tree waiting to reparent?
+}
+
+// addPeer creates a new Peer and adds it to the switch in the next available port
+func (s *state) addPeer(conn net.Conn, public types.PublicKey, zone string, peertype int, keepalives bool) (types.SwitchPortID, error) {
+	var new *peer
+	for i, p := range s._peers {
+		if i == 0 || p != nil {
+			// Port 0 is reserved for the local router.
+			// Already allocated ports should be ignored.
+			continue
+		}
+		ctx, cancel := context.WithCancel(s.r.context)
+		new = &peer{
+			router:     s.r,
+			port:       types.SwitchPortID(i),
+			conn:       conn,
+			public:     public,
+			zone:       zone,
+			peertype:   peertype,
+			keepalives: keepalives,
+			context:    ctx,
+			cancel:     cancel,
+			proto:      newFIFOQueue(),
+			traffic:    newLIFOQueue(trafficBuffer),
+		}
+		s._peers[i] = new
+		s.r.log.Println("Connected to peer", new.public.String(), "on port", new.port)
+		v, _ := s.r.active.LoadOrStore(hex.EncodeToString(new.public[:])+zone, atomic.NewUint64(0))
+		v.(*atomic.Uint64).Inc()
+		new.proto.push(s.r.state._rootAnnouncement().forPeer(new))
+		new.started.Store(true)
+		new.reader.Act(nil, new._read)
+		new.writer.Act(nil, new._write)
+
+		s.r.publish(events.PeerAdded{Port: types.SwitchPortID(i)})
+		return types.SwitchPortID(i), nil
+	}
+
+	return 0, fmt.Errorf("no free switch ports")
+}
+
+// removePeer removes the Peer from the specified switch port
+func (s *state) removePeer(port types.SwitchPortID) {
+	s._peers[port] = nil
+	s.r.publish(events.PeerRemoved{Port: port})
 }
 
 // _start resets the state and starts tree and virtual snake maintenance.

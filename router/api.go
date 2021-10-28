@@ -24,8 +24,41 @@ import (
 	"time"
 
 	"github.com/Arceliar/phony"
+	"github.com/matrix-org/pinecone/router/events"
 	"github.com/matrix-org/pinecone/types"
 )
+
+type NeighbourInfo struct {
+	PublicKey types.PublicKey
+	PathID    types.VirtualSnakePathID
+}
+
+type PeerInfo struct {
+	Port          int
+	PublicKey     string
+	RootPublicKey string
+	PeerType      int
+	Zone          string
+}
+
+/* Possible events:
+   Peer Added (Port, PeerInfo)
+   Peer Removed (Port, PeerInfo)
+   Tree Coordinates Changed (Coordinates)
+   Tree Root Announcement Changed (RootAnnouncement)
+   Tree Parent Changed (PublicKey)
+   Snake Table Entry Added (VirtualSnakeEntry)
+   Snake Table Entry Removed (VirtualSnakeIndex?)
+   Snake Descending Node Changed (NeighbourInfo)
+   Snake Ascending Node Changed (NeighbourInfo)
+
+   Events need to be processed in FIFO order for this to work in the sim.
+*/
+
+// Subscribe registers a subscriber to this node's events
+func (r *Router) Subscribe(ch chan<- events.Event) {
+	r._subscribers = append(r._subscribers, ch)
+}
 
 func (r *Router) Coords() types.Coordinates {
 	return r.state.coords()
@@ -99,19 +132,6 @@ func (r *Router) Descending() *NeighbourInfo {
 func (r *Router) Ascending() *NeighbourInfo {
 	asc, _, _, _ := r.DHTInfo()
 	return asc
-}
-
-type NeighbourInfo struct {
-	PublicKey types.PublicKey
-	PathID    types.VirtualSnakePathID
-}
-
-type PeerInfo struct {
-	Port          int
-	PublicKey     string
-	RootPublicKey string
-	PeerType      int
-	Zone          string
 }
 
 func (r *Router) Peers() []PeerInfo {

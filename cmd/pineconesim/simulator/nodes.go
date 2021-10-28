@@ -22,6 +22,7 @@ import (
 	"net"
 
 	"github.com/matrix-org/pinecone/router"
+	"github.com/matrix-org/pinecone/router/events"
 )
 
 func (sim *Simulator) Node(t string) *Node {
@@ -87,4 +88,11 @@ func (sim *Simulator) CreateNode(t string) error {
 		sim.log.Printf("Created node %q\n", t)
 	}
 	return nil
+}
+
+func (sim *Simulator) StartNodeEventHandler(t string) {
+	ch := make(chan events.Event, 5)
+	handler := eventHandler{node: t, ch: ch}
+	go handler.Run(sim)
+	sim.nodes[t].Subscribe(ch)
 }

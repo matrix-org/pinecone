@@ -30,6 +30,7 @@ import (
 	"time"
 
 	"github.com/Arceliar/phony"
+	"github.com/matrix-org/pinecone/router/events"
 	"github.com/matrix-org/pinecone/types"
 	"go.uber.org/atomic"
 )
@@ -38,16 +39,17 @@ const portCount = math.MaxUint8
 const trafficBuffer = math.MaxUint8
 
 type Router struct {
-	log     *log.Logger
-	context context.Context
-	cancel  context.CancelFunc
-	public  types.PublicKey
-	private types.PrivateKey
-	active  sync.Map
-	pings   sync.Map // types.PublicKey -> chan struct{}
-	local   *peer
-	state   *state
-	secure  bool
+	log          *log.Logger
+	context      context.Context
+	cancel       context.CancelFunc
+	public       types.PublicKey
+	private      types.PrivateKey
+	active       sync.Map
+	pings        sync.Map // types.PublicKey -> chan struct{}
+	local        *peer
+	state        *state
+	secure       bool
+	_subscribers []chan<- events.Event
 }
 
 func NewRouter(logger *log.Logger, sk ed25519.PrivateKey, debug bool) *Router {
@@ -78,6 +80,17 @@ func NewRouter(logger *log.Logger, sk ed25519.PrivateKey, debug bool) *Router {
 	r.state.Act(nil, r.state._start)
 	r.log.Println("Router identity:", r.public.String())
 	return r
+}
+
+// publish notifies each subscriber of a new event
+func (r Router) publish(event events.Event) {
+	for _, subscriber := range r._subscribers {
+		select {
+		case subscriber <- event:
+		default:
+			r.log.Println("Subscriber buffer full, failed publishing event!")
+		}
+	}
 }
 
 // IsConnected returns true if the node is connected within the
@@ -117,43 +130,15 @@ func (r *Router) Addr() net.Addr {
 // function assumes that you already know the public key of the remote node. If
 // this is not true, then AuthenticatedConnect should be used instead.
 func (r *Router) Connect(conn net.Conn, public types.PublicKey, zone string, peertype int, keepalives bool) (types.SwitchPortID, error) {
-	var new *peer
+	port := types.SwitchPortID(0)
+	var err error
 	phony.Block(r.state, func() {
-		for i, p := range r.state._peers {
-			if i == 0 || p != nil {
-				// Port 0 is reserved for the local router.
-				// Already allocated ports should be ignored.
-				continue
-			}
-			ctx, cancel := context.WithCancel(r.context)
-			new = &peer{
-				router:     r,
-				port:       types.SwitchPortID(i),
-				conn:       conn,
-				public:     public,
-				zone:       zone,
-				peertype:   peertype,
-				keepalives: keepalives,
-				context:    ctx,
-				cancel:     cancel,
-				proto:      newFIFOQueue(),
-				traffic:    newLIFOQueue(trafficBuffer),
-			}
-			r.state._peers[i] = new
-			r.log.Println("Connected to peer", new.public.String(), "on port", new.port)
-			v, _ := r.active.LoadOrStore(hex.EncodeToString(new.public[:])+zone, atomic.NewUint64(0))
-			v.(*atomic.Uint64).Inc()
-			new.proto.push(r.state._rootAnnouncement().forPeer(new))
-			new.started.Store(true)
-			new.reader.Act(nil, new._read)
-			new.writer.Act(nil, new._write)
-			return
-		}
+		port, err = r.state.addPeer(conn, public, zone, peertype, keepalives)
 	})
-	if new == nil {
-		return 0, fmt.Errorf("no free switch ports")
+	if err != nil {
+		return types.SwitchPortID(0), err
 	}
-	return new.port, nil
+	return port, nil
 }
 
 // AuthenticatedConnect takes a connection and exchanges a handshake containing
