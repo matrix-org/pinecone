@@ -1,6 +1,6 @@
 import { graph } from "../main.js";
 
-let leftShown = false;
+let leftShown = true;
 let rightShown = false;
 
 function toggleLeftPanel() {

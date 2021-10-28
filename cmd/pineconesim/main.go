@@ -289,6 +289,7 @@ func configureHTTPRouting(sim *simulator.Simulator) {
 				treeEdges[r1] = append(treeEdges[r1], r2)
 			}
 
+			// TODO : Fragment this message when it gets too large, otherwise the sim UI locks up
 			if err := conn.WriteJSON(struct {
 				ID         APIMessageID
 				Nodes      []string
