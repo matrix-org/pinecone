@@ -132,13 +132,13 @@ class Graph {
     constructor(canvas) {
         this.canvas = canvas;
         this.currentData = this.physData;
-        // this.network = new vis.Network(this.canvas, this.currentData, this.options);
-        // this.setupHandlers();
     }
 
     startGraph() {
         this.network = new vis.Network(this.canvas, this.currentData, this.options);
         this.setupHandlers();
+
+        // HACK : network won't restabilize unless I give a node a kick...
         this.kickNode(this.nodeIDs[0]);
     }
 
