@@ -58,8 +58,6 @@ body {
 
 .right {
     background-color: var(--color-dull-grey);
-    /* TODO: Why doesn't this max work? */
-    /* width: max(max-content, calc(var(--toggle-box-size) + var(--toggle-box-margin) * 2)); */
     width: 0;
     max-width: 30vw;
     height: calc(100vh - var(--topnav-height));

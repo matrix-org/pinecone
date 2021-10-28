@@ -29,6 +29,10 @@ function handleSimMessage(msg) {
                 graph.addEdge("tree", key, msg.data.TreeEdges[key][i]);
             }
         }
+
+        if (msg.data.End === true) {
+            graph.startGraph();
+        }
         break;
     default:
         console.log("Unhandled message ID");

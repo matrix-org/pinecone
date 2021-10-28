@@ -132,8 +132,14 @@ class Graph {
     constructor(canvas) {
         this.canvas = canvas;
         this.currentData = this.physData;
+        // this.network = new vis.Network(this.canvas, this.currentData, this.options);
+        // this.setupHandlers();
+    }
+
+    startGraph() {
         this.network = new vis.Network(this.canvas, this.currentData, this.options);
         this.setupHandlers();
+        this.kickNode(this.nodeIDs[0]);
     }
 
     setupHandlers() {
@@ -191,19 +197,27 @@ class Graph {
     }
 
     stabilize() {
-        this.network.stabilize();
+        if (this.network) {
+            this.network.stabilize();
+        }
     }
 
     startSimulation() {
-        this.network.startSimulation();
+        if (this.network) {
+            this.network.startSimulation();
+        }
     }
 
     stopSimulation() {
-        this.network.stopSimulation();
+        if (this.network) {
+            this.network.stopSimulation();
+        }
     }
 
     saveNodePositions() {
-        this.network.storePositions();
+        if (this.network) {
+            this.network.storePositions();
+        }
     }
 
     getNodePositions() {
@@ -215,21 +229,35 @@ class Graph {
 
         switch(dataset) {
         case "physical":
-            this.network.setData(this.physData);
+            this.currentData = this.physData;
+            if (this.network) {
+                this.network.setData(this.currentData);
+            }
             break;
         case "snake":
-            this.network.setData(this.snakeData);
+            this.currentData = this.snakeData;
+            if (this.network) {
+                this.network.setData(this.currentData);
+            }
             break;
         case "tree":
-            this.network.setData(this.treeData);
+            this.currentData = this.treeData;
+            if (this.network) {
+                this.network.setData(this.treeData);
+            }
             break;
         case "geographic":
-            this.network.setData(this.geoData);
+            this.currentData = this.geoData;
+            if (this.network) {
+                this.network.setData(this.geoData);
+            }
             break;
         }
 
         if (selectedNodes) {
-            this.network.selectNodes(selectedNodes);
+            if (this.network) {
+                this.network.selectNodes(selectedNodes);
+            }
         }
 
         // HACK : network won't restabilize unless I give a node a kick...
@@ -237,7 +265,7 @@ class Graph {
     }
 
     kickNode(node) {
-        if (node) {
+        if (node && this.network) {
             let position = this.network.getPosition(node);
             this.network.moveNode(node, position.x + 0.1, position.y);
         }
