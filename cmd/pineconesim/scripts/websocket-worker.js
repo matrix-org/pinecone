@@ -31,11 +31,14 @@ class WebsocketWorker {
         if (this.state && this.state.socket) {
             console.log('Disconnected.');
         }
-        this.state.socket = new WebSocket(this.state.url);
-        this.state.socket.onopen = this.socketOpenListener;
-        this.state.socket.onmessage = this.socketMessageListener;
-        this.state.socket.onclose = this.socketCloseListener;
-        this.state.socket.onerror = this.socketErrorListener;
+
+        if (this.state) {
+            this.state.socket = new WebSocket(this.state.url);
+            this.state.socket.onopen = this.socketOpenListener;
+            this.state.socket.onmessage = this.socketMessageListener;
+            this.state.socket.onclose = this.socketCloseListener;
+            this.state.socket.onerror = this.socketErrorListener;
+        }
     }
 }
 
