@@ -95,4 +95,6 @@ func (sim *Simulator) StartNodeEventHandler(t string) {
 	handler := eventHandler{node: t, ch: ch}
 	go handler.Run(sim)
 	sim.nodes[t].Subscribe(ch)
+
+	sim.State.AddNode(t, sim.nodes[t].PublicKey().String())
 }

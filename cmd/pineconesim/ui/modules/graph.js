@@ -120,6 +120,11 @@ class Graph {
                 hover: getComputedStyle(document.documentElement)
                     .getPropertyValue('--color-blue-pill'),
             },
+            arrows: {
+                to: {
+                    enabled: true,
+                },
+            },
             width: 2,
             selectionWidth: 4,
         },
@@ -179,6 +184,18 @@ class Graph {
         this.nodeIDs.push(id);
     }
 
+    removeNode(id) {
+        this.physData.nodes.remove(id);
+        this.snakeData.nodes.remove(id);
+        this.treeData.nodes.remove(id);
+        this.geoData.nodes.remove(id);
+
+        const index = this.nodeIDs.indexOf(id);
+        if (index > -1) {
+            this.nodeIDs.splice(index, 1);
+        }
+    }
+
     addEdge(dataset, from, to) {
         switch(dataset) {
         case "physical":
@@ -192,6 +209,56 @@ class Graph {
             break;
         case "geographic":
             this.geoData.edges.add({from, to});
+            break;
+        }
+    }
+
+    removeEdge(dataset, from, to) {
+        let matchingEdges = [];
+        switch(dataset) {
+        case "physical":
+            matchingEdges = this.physData.edges.get({
+                filter: function (item) {
+                    return (item.from === from && item.to === to);
+                }
+            });
+
+            if (matchingEdges.length >= 1) {
+                this.physData.edges.remove(matchingEdges[0]);
+            }
+            break;
+        case "snake":
+            matchingEdges = this.snakeData.edges.get({
+                filter: function (item) {
+                    return (item.from === from && item.to === to);
+                }
+            });
+
+            if (matchingEdges.length >= 1) {
+                this.snakeData.edges.remove(matchingEdges[0]);
+            }
+            break;
+        case "tree":
+            matchingEdges = this.treeData.edges.get({
+                filter: function (item) {
+                    return (item.from === from && item.to === to);
+                }
+            });
+
+            if (matchingEdges.length >= 1) {
+                this.treeData.edges.remove(matchingEdges[0]);
+            }
+            break;
+        case "geographic":
+            matchingEdges = this.geoData.edges.get({
+                filter: function (item) {
+                    return (item.from === from && item.to === to);
+                }
+            });
+
+            if (matchingEdges.length >= 1) {
+                this.geoData.edges.remove(matchingEdges[0]);
+            }
             break;
         }
     }

@@ -200,26 +200,6 @@ func main() {
 
 type pair struct{ from, to string }
 
-type APIMessageID int
-
-const (
-	Uknown APIMessageID = iota
-	InitialState
-)
-
-type SimulatorMsg struct {
-	ID APIMessageID
-}
-
-type InitialStateMsg struct {
-	SimulatorMsg
-	Nodes      []string
-	PhysEdges  map[string][]string
-	SnakeEdges map[string][]string
-	TreeEdges  map[string][]string
-	End        bool
-}
-
 func min(a, b int) int {
 	if a <= b {
 		return a
@@ -227,8 +207,107 @@ func min(a, b int) int {
 	return b
 }
 
+func userProxy(conn *websocket.Conn, sim *simulator.Simulator) {
+	nodes := sim.Nodes()
+	connections := sim.State.GetNodeConnections()
+
+	physEdges := make(map[string][]string)
+	for node, conns := range connections {
+		physEdges[node] = conns
+	}
+
+	nodeIDs := make([]string, 0, len(nodes))
+	snakeEdges := make(map[string][]string)
+	treeEdges := make(map[string][]string)
+
+	for id, n := range nodes {
+		// Node IDs
+		nodeIDs = append(nodeIDs, id)
+
+		// Snake edges
+		for id2, n2 := range nodes {
+			p := n.Descending()
+			s := n.Ascending()
+			if p != nil && p.PublicKey == n2.PublicKey() {
+				snakeEdges[id] = append(snakeEdges[id], id2)
+			}
+			if s != nil && s.PublicKey == n2.PublicKey() {
+				snakeEdges[id] = append(snakeEdges[id], id2)
+			}
+		}
+
+		// Tree Edges
+		if !n.IsRoot() {
+			r1, _ := sim.LookupPublicKey(n.PublicKey())
+			r2, _ := sim.LookupPublicKey(n.ParentPublicKey())
+			treeEdges[r1] = append(treeEdges[r1], r2)
+		}
+	}
+
+	batchSize := 25
+	for i := 0; i < len(nodeIDs); i += batchSize {
+		nodeBatch := nodeIDs[i:min(i+batchSize, len(nodeIDs))]
+		end := false
+		if nodeBatch[len(nodeBatch)-1] == nodeIDs[len(nodeIDs)-1] {
+			end = true
+		}
+
+		physBatch := make(map[string][]string)
+		snakeBatch := make(map[string][]string)
+		treeBatch := make(map[string][]string)
+
+		for _, node := range nodeBatch {
+			if physEdges[node] != nil {
+				physBatch[node] = physEdges[node]
+			}
+
+			if snakeEdges[node] != nil {
+				snakeBatch[node] = snakeEdges[node]
+			}
+
+			if treeEdges[node] != nil {
+				treeBatch[node] = treeEdges[node]
+			}
+		}
+
+		if err := conn.WriteJSON(simulator.InitialStateMsg{
+			MsgID:      simulator.SimulatorMsg{ID: simulator.SimInitialState},
+			Nodes:      nodeBatch,
+			PhysEdges:  physBatch,
+			SnakeEdges: snakeBatch,
+			TreeEdges:  treeBatch,
+			End:        end,
+		}); err != nil {
+			log.Println(err)
+			return
+		}
+	}
+
+	ch := make(chan simulator.SimEvent, 5)
+	sim.State.Subscribe(ch)
+	for {
+		event := <-ch
+		eventType := simulator.Uknown
+		switch event.(type) {
+		case simulator.NodeAdded:
+			eventType = simulator.SimNodeAdded
+		case simulator.NodeRemoved:
+			eventType = simulator.SimNodeRemoved
+		case simulator.PeerAdded:
+			eventType = simulator.SimPeerAdded
+		case simulator.PeerRemoved:
+			eventType = simulator.SimPeerRemoved
+		}
+
+		conn.WriteJSON(simulator.StateUpdateMsg{
+			MsgID: simulator.SimulatorMsg{ID: eventType},
+			Event: event,
+		})
+	}
+}
+
 func configureHTTPRouting(sim *simulator.Simulator) {
-	http.Handle("/scripts/", http.StripPrefix("/scripts/", http.FileServer(http.Dir("./cmd/pineconesim/scripts"))))
+	http.Handle("/ui/", http.StripPrefix("/ui/", http.FileServer(http.Dir("./cmd/pineconesim/ui"))))
 
 	wsUpgrader := websocket.Upgrader{}
 	http.DefaultServeMux.HandleFunc("/simws", func(w http.ResponseWriter, r *http.Request) {
@@ -265,89 +344,13 @@ func configureHTTPRouting(sim *simulator.Simulator) {
 			log.Println(err)
 			return
 		}
-
-		nodes := sim.Nodes()
-		wires := sim.Wires()
-		physEdges := make(map[string][]string)
-		for node, wireMap := range wires {
-			endNodes := make([]string, 0, 3)
-			for endNode := range wireMap {
-				endNodes = append(endNodes, endNode)
-			}
-			physEdges[node] = endNodes
-		}
-
-		nodeIDs := make([]string, 0, len(nodes))
-		snakeEdges := make(map[string][]string)
-		treeEdges := make(map[string][]string)
-
-		for id, n := range nodes {
-			// Node IDs
-			nodeIDs = append(nodeIDs, id)
-
-			// Snake edges
-			for id2, n2 := range nodes {
-				p := n.Descending()
-				s := n.Ascending()
-				if p != nil && p.PublicKey == n2.PublicKey() {
-					snakeEdges[id] = append(snakeEdges[id], id2)
-				}
-				if s != nil && s.PublicKey == n2.PublicKey() {
-					snakeEdges[id] = append(snakeEdges[id], id2)
-				}
-			}
-
-			// Tree Edges
-			if !n.IsRoot() {
-				r1, _ := sim.LookupPublicKey(n.PublicKey())
-				r2, _ := sim.LookupPublicKey(n.ParentPublicKey())
-				treeEdges[r1] = append(treeEdges[r1], r2)
-			}
-		}
-
-		batchSize := 25
-		for i := 0; i < len(nodeIDs); i += batchSize {
-			nodeBatch := nodeIDs[i:min(i+batchSize, len(nodeIDs))]
-			end := false
-			if nodeBatch[len(nodeBatch)-1] == nodeIDs[len(nodeIDs)-1] {
-				end = true
-			}
-
-			physBatch := make(map[string][]string)
-			snakeBatch := make(map[string][]string)
-			treeBatch := make(map[string][]string)
-
-			for _, node := range nodeBatch {
-				if physEdges[node] != nil {
-					physBatch[node] = physEdges[node]
-				}
-
-				if snakeEdges[node] != nil {
-					snakeBatch[node] = snakeEdges[node]
-				}
-
-				if treeEdges[node] != nil {
-					treeBatch[node] = treeEdges[node]
-				}
-			}
-
-			if err := conn.WriteJSON(InitialStateMsg{
-				SimulatorMsg{InitialState},
-				nodeBatch,
-				physBatch,
-				snakeBatch,
-				treeBatch,
-				end,
-			}); err != nil {
-				log.Println(err)
-				return
-			}
-		}
+		go userProxy(conn, sim)
 	})
 	http.DefaultServeMux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		tmpl := template.Must(template.ParseFiles("./cmd/pineconesim/page.html"))
 		nodes := sim.Nodes()
-		wires := sim.Wires()
+
+		wires := sim.State.GetNodeConnections()
 		totalCount := len(nodes) * len(nodes)
 		dhtConvergence := 0
 		pathConvergence := 0
@@ -460,9 +463,12 @@ func configureHTTPRouting(sim *simulator.Simulator) {
 			}
 		}
 
-		for range wires {
-			data.PathCount++
+		for _, v := range wires {
+			for range v {
+				data.PathCount++
+			}
 		}
+		data.PathCount /= 2
 
 		for n, r := range roots {
 			data.Roots = append(data.Roots, Root{

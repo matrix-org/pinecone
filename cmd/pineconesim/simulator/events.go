@@ -16,6 +16,40 @@ package simulator
 
 import "github.com/matrix-org/pinecone/router/events"
 
+type SimEvent interface {
+	isEvent()
+}
+
+type NodeAdded struct {
+	Node string
+}
+
+// Tag NodeAdded as an Event
+func (e NodeAdded) isEvent() {}
+
+type NodeRemoved struct {
+	Node string
+}
+
+// Tag NodeRemoved as an Event
+func (e NodeRemoved) isEvent() {}
+
+type PeerAdded struct {
+	Node string
+	Peer string
+}
+
+// Tag PeerAdded as an Event
+func (e PeerAdded) isEvent() {}
+
+type PeerRemoved struct {
+	Node string
+	Peer string
+}
+
+// Tag PeerRemoved as an Event
+func (e PeerRemoved) isEvent() {}
+
 type eventHandler struct {
 	node string
 	ch   <-chan events.Event
@@ -26,7 +60,9 @@ func (h eventHandler) Run(sim *Simulator) {
 		event := <-h.ch
 		switch e := event.(type) {
 		case events.PeerAdded:
-			sim.handlePeerAdded(h.node, e)
+			sim.handlePeerAdded(h.node, e.PeerID, int(e.Port))
+		case events.PeerRemoved:
+			sim.handlePeerRemoved(h.node, e.PeerID, int(e.Port))
 		default:
 			sim.log.Println("Unhandled event!")
 		}

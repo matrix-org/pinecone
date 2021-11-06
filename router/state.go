@@ -47,8 +47,8 @@ type state struct {
 	_waiting       bool               // Is the tree waiting to reparent?
 }
 
-// addPeer creates a new Peer and adds it to the switch in the next available port
-func (s *state) addPeer(conn net.Conn, public types.PublicKey, zone string, peertype int, keepalives bool) (types.SwitchPortID, error) {
+// _addPeer creates a new Peer and adds it to the switch in the next available port
+func (s *state) _addPeer(conn net.Conn, public types.PublicKey, zone string, peertype int, keepalives bool) (types.SwitchPortID, error) {
 	var new *peer
 	for i, p := range s._peers {
 		if i == 0 || p != nil {
@@ -79,17 +79,18 @@ func (s *state) addPeer(conn net.Conn, public types.PublicKey, zone string, peer
 		new.reader.Act(nil, new._read)
 		new.writer.Act(nil, new._write)
 
-		s.r.publish(events.PeerAdded{Port: types.SwitchPortID(i)})
+		s.r.publish(events.PeerAdded{Port: types.SwitchPortID(i), PeerID: new.public.String()})
 		return types.SwitchPortID(i), nil
 	}
 
 	return 0, fmt.Errorf("no free switch ports")
 }
 
-// removePeer removes the Peer from the specified switch port
-func (s *state) removePeer(port types.SwitchPortID) {
+// _removePeer removes the Peer from the specified switch port
+func (s *state) _removePeer(port types.SwitchPortID) {
+	peerID := s._peers[port].public.String()
 	s._peers[port] = nil
-	s.r.publish(events.PeerRemoved{Port: port})
+	s.r.publish(events.PeerRemoved{Port: port, PeerID: peerID})
 }
 
 // _start resets the state and starts tree and virtual snake maintenance.

@@ -133,7 +133,7 @@ func (r *Router) Connect(conn net.Conn, public types.PublicKey, zone string, pee
 	port := types.SwitchPortID(0)
 	var err error
 	phony.Block(r.state, func() {
-		port, err = r.state.addPeer(conn, public, zone, peertype, keepalives)
+		port, err = r.state._addPeer(conn, public, zone, peertype, keepalives)
 	})
 	if err != nil {
 		return types.SwitchPortID(0), err

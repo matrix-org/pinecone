@@ -12,28 +12,33 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package events
+package simulator
 
-import (
-	"github.com/matrix-org/pinecone/types"
+type APIMessageID int
+
+const (
+	Uknown APIMessageID = iota
+	SimInitialState
+	SimNodeAdded
+	SimNodeRemoved
+	SimPeerAdded
+	SimPeerRemoved
 )
 
-type Event interface {
-	isEvent()
+type SimulatorMsg struct {
+	ID APIMessageID
 }
 
-type PeerAdded struct {
-	Port   types.SwitchPortID
-	PeerID string
+type InitialStateMsg struct {
+	MsgID      SimulatorMsg
+	Nodes      []string
+	PhysEdges  map[string][]string
+	SnakeEdges map[string][]string
+	TreeEdges  map[string][]string
+	End        bool
 }
 
-// Tag PeerAdded as an Event
-func (e PeerAdded) isEvent() {}
-
-type PeerRemoved struct {
-	Port   types.SwitchPortID
-	PeerID string
+type StateUpdateMsg struct {
+	MsgID SimulatorMsg
+	Event SimEvent
 }
-
-// Tag PeerRemoved as an Event
-func (e PeerRemoved) isEvent() {}

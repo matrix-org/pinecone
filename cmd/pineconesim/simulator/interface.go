@@ -16,7 +16,6 @@ package simulator
 
 import (
 	"fmt"
-	"net"
 	"strings"
 
 	"github.com/matrix-org/pinecone/types"
@@ -52,38 +51,6 @@ func (sim *Simulator) LookupPublicKey(target types.PublicKey) (string, error) {
 		}
 	}
 	return "", fmt.Errorf("public key %s not known", target.String())
-}
-
-func (sim *Simulator) ReportNewLink(c net.Conn, source, target types.PublicKey) {
-	sourceID, err := sim.LookupPublicKey(source)
-	if err != nil {
-		return
-	}
-	if _, err = sim.LookupPublicKey(target); err == nil {
-		return
-	}
-	sim.wiresMutex.Lock()
-	defer sim.wiresMutex.Unlock()
-	if _, ok := sim.wires[sourceID]; !ok {
-		sim.wires[sourceID] = map[string]net.Conn{}
-	}
-	sim.wires[sourceID][target.String()] = c
-}
-
-func (sim *Simulator) ReportDeadLink(source, target types.PublicKey) {
-	sourceID, err := sim.LookupPublicKey(source)
-	if err != nil {
-		return
-	}
-	if _, err = sim.LookupPublicKey(target); err == nil {
-		return
-	}
-	sim.wiresMutex.Lock()
-	defer sim.wiresMutex.Unlock()
-	if _, ok := sim.wires[sourceID]; !ok {
-		return
-	}
-	delete(sim.wires[sourceID], target.String())
 }
 
 func (sim *Simulator) ReportDistance(a, b string, l int64, snek bool) {

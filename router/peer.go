@@ -154,7 +154,7 @@ func (p *peer) stop(err error) {
 		// Find the port entry and clean it up.
 		for i, rp := range p.router.state._peers {
 			if rp == p {
-				p.router.state.removePeer(types.SwitchPortID(i))
+				p.router.state._removePeer(types.SwitchPortID(i))
 				break
 			}
 		}

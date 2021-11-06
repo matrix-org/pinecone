@@ -21,7 +21,6 @@ import (
 	"time"
 
 	"github.com/RyanCarrier/dijkstra"
-	"github.com/matrix-org/pinecone/router/events"
 )
 
 type Simulator struct {
@@ -41,6 +40,7 @@ type Simulator struct {
 	treePathConvergence      map[string]map[string]bool
 	treePathConvergenceMutex sync.RWMutex
 	startTime                time.Time
+	State                    *StateAccessor
 }
 
 func NewSimulator(log *log.Logger, sockets, ping bool) *Simulator {
@@ -54,6 +54,7 @@ func NewSimulator(log *log.Logger, sockets, ping bool) *Simulator {
 		snekPathConvergence: make(map[string]map[string]bool),
 		treePathConvergence: make(map[string]map[string]bool),
 		startTime:           time.Now(),
+		State:               NewStateAccessor(),
 	}
 	return sim
 }
@@ -66,12 +67,6 @@ func (sim *Simulator) Nodes() map[string]*Node {
 	sim.nodesMutex.RLock()
 	defer sim.nodesMutex.RUnlock()
 	return sim.nodes
-}
-
-func (sim *Simulator) Wires() map[string]map[string]net.Conn {
-	sim.wiresMutex.RLock()
-	defer sim.wiresMutex.RUnlock()
-	return sim.wires
 }
 
 func (sim *Simulator) Distances() map[string]map[string]*Distance {
@@ -123,6 +118,16 @@ func (sim *Simulator) Uptime() time.Duration {
 	return time.Since(sim.startTime)
 }
 
-func (sim *Simulator) handlePeerAdded(node string, e events.PeerAdded) {
-	sim.log.Printf("Node %s: Peer added! Port: %d\n", node, e.Port)
+func (sim *Simulator) handlePeerAdded(node string, peerID string, port int) {
+	sim.log.Printf("Node %s: Peer added! Peer: %s\n", node, peerID)
+	if peerNode, err := sim.State.GetNodeName(peerID); err == nil {
+		sim.State.AddPeerConnection(node, peerNode, port)
+	}
+}
+
+func (sim *Simulator) handlePeerRemoved(node string, peerID string, port int) {
+	sim.log.Printf("Node %s: Peer removed! Peer: %s\n", node, peerID)
+	if peerNode, err := sim.State.GetNodeName(peerID); err == nil {
+		sim.State.RemovePeerConnection(node, peerNode, port)
+	}
 }
