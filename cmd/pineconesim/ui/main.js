@@ -5,8 +5,8 @@ const worker = new Worker("ui/websocket-worker.js");
 export var graph = new Graph(document.getElementById("canvas"));
 
 function handleSimMessage(msg) {
-    console.log(msg.data);
-    switch(msg.data.MsgID.ID) {
+    // console.log(msg.data);
+    switch(msg.data.MsgID) {
     case 1: // Initial State
         for (let i = 0; i < msg.data.Nodes.length; i++) {
             graph.addNode(msg.data.Nodes[i]);
@@ -34,34 +34,41 @@ function handleSimMessage(msg) {
             graph.startGraph();
         }
         break;
-    case 2: // Node Added
-        console.log("Node added " + msg.data.Event.Node);
-        graph.addNode(msg.data.Event.Node);
-        break;
-    case 3: // Node Removed
-        console.log("Node removed " + msg.data.Event.Node);
-        graph.removeNode(msg.data.Event.Node);
-        break;
-    case 4: // Peer Added
-        console.log("Peer added: Node: " + msg.data.Event.Node + " Peer: " + msg.data.Event.Peer);
-        graph.addEdge("physical", msg.data.Event.Node, msg.data.Event.Peer);
-        break;
-    case 5: // Peer Removed
-        console.log("Peer removed: Node: " + msg.data.Event.Node + " Peer: " + msg.data.Event.Peer);
-        graph.removeEdge("physical", msg.data.Event.Node, msg.data.Event.Peer);
-        break;
-    case 6: // Snake Ascending Updated
-        console.log("Snake Asc Updated: Node: " + msg.data.Event.Node + " Peer: " + msg.data.Event.Peer);
-        graph.removeEdge("snake", msg.data.Event.Node, msg.data.Event.Prev);
-        if (msg.data.Event.Peer != "") {
-            graph.addEdge("snake", msg.data.Event.Node, msg.data.Event.Peer);
-        }
-        break;
-    case 7: // Snake Descending Updated
-        console.log("Snake Desc Updated: Node: " + msg.data.Event.Node + " Peer: " + msg.data.Event.Peer);
-        graph.removeEdge("snake", msg.data.Event.Node, msg.data.Event.Prev);
-        if (msg.data.Event.Peer != "") {
-            graph.addEdge("snake", msg.data.Event.Node, msg.data.Event.Peer);
+    case 2: // State Update
+        for (let i = 0; i < msg.data.Events.length; i++) {
+            let event = msg.data.Events[i].Event;
+            switch(msg.data.Events[i].UpdateID) {
+            case 1: // Node Added
+                // console.log("Node added " + event.Node);
+                graph.addNode(event.Node);
+                break;
+            case 2: // Node Removed
+                // console.log("Node removed " + event.Node);
+                graph.removeNode(event.Node);
+                break;
+            case 3: // Peer Added
+                // console.log("Peer added: Node: " + event.Node + " Peer: " + event.Peer);
+                graph.addEdge("physical", event.Node, event.Peer);
+                break;
+            case 4: // Peer Removed
+                // console.log("Peer removed: Node: " + event.Node + " Peer: " + event.Peer);
+                graph.removeEdge("physical", event.Node, event.Peer);
+                break;
+            case 5: // Snake Ascending Updated
+                // console.log("Snake Asc Updated: Node: " + event.Node + " Peer: " + event.Peer);
+                graph.removeEdge("snake", event.Node, event.Prev);
+                if (event.Peer != "") {
+                    graph.addEdge("snake", event.Node, event.Peer);
+                }
+                break;
+            case 6: // Snake Descending Updated
+                // console.log("Snake Desc Updated: Node: " + event.Node + " Peer: " + event.Peer);
+                graph.removeEdge("snake", event.Node, event.Prev);
+                if (event.Peer != "") {
+                    graph.addEdge("snake", event.Node, event.Peer);
+                }
+                break;
+            }
         }
         break;
     default:

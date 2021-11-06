@@ -56,6 +56,7 @@ func NewSimulator(log *log.Logger, sockets, ping bool) *Simulator {
 		startTime:           time.Now(),
 		State:               NewStateAccessor(),
 	}
+
 	return sim
 }
 
@@ -119,21 +120,18 @@ func (sim *Simulator) Uptime() time.Duration {
 }
 
 func (sim *Simulator) handlePeerAdded(node string, peerID string, port int) {
-	sim.log.Printf("Node %s: Peer added! Peer: %s\n", node, peerID)
 	if peerNode, err := sim.State.GetNodeName(peerID); err == nil {
 		sim.State.AddPeerConnection(node, peerNode, port)
 	}
 }
 
 func (sim *Simulator) handlePeerRemoved(node string, peerID string, port int) {
-	sim.log.Printf("Node %s: Peer removed! Peer: %s\n", node, peerID)
 	if peerNode, err := sim.State.GetNodeName(peerID); err == nil {
 		sim.State.RemovePeerConnection(node, peerNode, port)
 	}
 }
 
 func (sim *Simulator) handleSnakeAscUpdate(node string, peerID string) {
-	sim.log.Printf("Node %s: Snake asc updated! Peer: %s\n", node, peerID)
 	if peerNode, err := sim.State.GetNodeName(peerID); err == nil {
 		sim.State.UpdateAscendingPeer(node, peerNode)
 	} else {
@@ -142,7 +140,6 @@ func (sim *Simulator) handleSnakeAscUpdate(node string, peerID string) {
 }
 
 func (sim *Simulator) handleSnakeDescUpdate(node string, peerID string) {
-	sim.log.Printf("Node %s: Snake desc updated! Peer: %s\n", node, peerID)
 	if peerNode, err := sim.State.GetNodeName(peerID); err == nil {
 		sim.State.UpdateDescendingPeer(node, peerNode)
 	} else {

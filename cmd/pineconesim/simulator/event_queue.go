@@ -14,40 +14,26 @@
 
 package simulator
 
-type APIMessageID int
-type APIUpdateID int
+import "errors"
 
-const (
-	UnknownMessage APIMessageID = iota
-	SimInitialState
-	SimUpdate
-)
-
-const (
-	UnknownUpdate APIUpdateID = iota
-	SimNodeAdded
-	SimNodeRemoved
-	SimPeerAdded
-	SimPeerRemoved
-	SimSnakeAscUpdated
-	SimSnakeDescUpdated
-)
-
-type SimEventMsg struct {
-	UpdateID APIUpdateID
-	Event    SimEvent
+type EventQueue struct {
+	q chan SimEventMsg
 }
 
-type InitialStateMsg struct {
-	MsgID      APIMessageID
-	Nodes      []string
-	PhysEdges  map[string][]string
-	SnakeEdges map[string][]string
-	TreeEdges  map[string][]string
-	End        bool
+func (q *EventQueue) Insert(item SimEventMsg) {
+	q.q <- item
 }
 
-type StateUpdateMsg struct {
-	MsgID  APIMessageID
-	Events []SimEventMsg
+func (q *EventQueue) Remove() (SimEventMsg, error) {
+	if len(q.q) > 0 {
+		item := <-q.q
+		return item, nil
+	}
+	return SimEventMsg{UpdateID: UnknownUpdate}, errors.New("Queue is empty")
+}
+
+func NewEventQueue(capacity int) *EventQueue {
+	return &EventQueue{
+		q: make(chan SimEventMsg, capacity),
+	}
 }

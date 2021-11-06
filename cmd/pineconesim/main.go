@@ -253,7 +253,7 @@ func userProxy(conn *websocket.Conn, sim *simulator.Simulator) {
 		}
 
 		if err := conn.WriteJSON(simulator.InitialStateMsg{
-			MsgID:      simulator.SimulatorMsg{ID: simulator.SimInitialState},
+			MsgID:      simulator.SimInitialState,
 			Nodes:      nodeBatch,
 			PhysEdges:  physBatch,
 			SnakeEdges: snakeBatch,
@@ -265,11 +265,32 @@ func userProxy(conn *websocket.Conn, sim *simulator.Simulator) {
 		}
 	}
 
-	ch := make(chan simulator.SimEvent, 5)
+	ch := make(chan simulator.SimEvent, 10)
 	sim.State.Subscribe(ch)
+
+	queue := simulator.NewEventQueue(25)
+	go func() {
+		for {
+			var msgs []simulator.SimEventMsg
+			for i := 0; i < 25; i++ {
+				if msg, err := queue.Remove(); err == nil {
+					msgs = append(msgs, msg)
+				} else {
+					break
+				}
+			}
+			if len(msgs) > 0 {
+				conn.WriteJSON(simulator.StateUpdateMsg{
+					MsgID:  simulator.SimUpdate,
+					Events: msgs,
+				})
+			}
+		}
+	}()
+
 	for {
 		event := <-ch
-		eventType := simulator.Uknown
+		eventType := simulator.UnknownUpdate
 		switch event.(type) {
 		case simulator.NodeAdded:
 			eventType = simulator.SimNodeAdded
@@ -285,10 +306,15 @@ func userProxy(conn *websocket.Conn, sim *simulator.Simulator) {
 			eventType = simulator.SimSnakeDescUpdated
 		}
 
-		conn.WriteJSON(simulator.StateUpdateMsg{
-			MsgID: simulator.SimulatorMsg{ID: eventType},
-			Event: event,
+		queue.Insert(simulator.SimEventMsg{
+			UpdateID: eventType,
+			Event:    event,
 		})
+
+		// conn.WriteJSON(simulator.StateUpdateMsg{
+		// 	MsgID: simulator.SimulatorMsg{ID: eventType},
+		// 	Event: event,
+		// })
 	}
 }
 
