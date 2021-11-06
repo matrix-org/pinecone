@@ -156,7 +156,9 @@ func (s *state) _portDisconnected(peer *peer) {
 	if peercount == 0 {
 		s._parent = nil
 		s._ascending = nil
+		s.r.publish(events.SnakeAscUpdate{PeerID: ""})
 		s._descending = nil
+		s.r.publish(events.SnakeDescUpdate{PeerID: ""})
 		for k := range s._announcements {
 			delete(s._announcements, k)
 		}

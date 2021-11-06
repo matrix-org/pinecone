@@ -37,3 +37,17 @@ type PeerRemoved struct {
 
 // Tag PeerRemoved as an Event
 func (e PeerRemoved) isEvent() {}
+
+type SnakeAscUpdate struct {
+	PeerID string
+}
+
+// Tag SnakeAscUpdate as an Event
+func (e SnakeAscUpdate) isEvent() {}
+
+type SnakeDescUpdate struct {
+	PeerID string
+}
+
+// Tag SnakeDescUpdate as an Event
+func (e SnakeDescUpdate) isEvent() {}

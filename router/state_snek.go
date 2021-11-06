@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/matrix-org/pinecone/router/events"
 	"github.com/matrix-org/pinecone/types"
 	"github.com/matrix-org/pinecone/util"
 )
@@ -470,6 +471,7 @@ func (s *state) _handleBootstrapACK(from *peer, rx *types.Frame) error {
 	// Install the new route into the DHT.
 	s._table[index] = entry
 	s._ascending = entry
+	s.r.publish(events.SnakeAscUpdate{PeerID: entry.Origin.String()})
 	return nil
 }
 
@@ -577,6 +579,7 @@ func (s *state) _handleSetup(from *peer, rx *types.Frame, nexthop *peer) error {
 		}
 		s._table[index] = entry
 		s._descending = entry
+		s.r.publish(events.SnakeDescUpdate{PeerID: entry.PublicKey.String()})
 		return nil
 	}
 	// Try to forward the setup onto the next node first. If we
@@ -669,6 +672,7 @@ func (s *state) _teardownPath(from *peer, pathKey types.PublicKey, pathID types.
 			fallthrough
 		case from == asc.Destination: // from network
 			s._ascending = nil
+			s.r.publish(events.SnakeAscUpdate{PeerID: ""})
 			delete(s._table, virtualSnakeIndex{asc.PublicKey, asc.PathID})
 			return []*peer{asc.Destination}
 		}
@@ -679,6 +683,7 @@ func (s *state) _teardownPath(from *peer, pathKey types.PublicKey, pathID types.
 			fallthrough
 		case from.local(): // originated locally
 			s._descending = nil
+			s.r.publish(events.SnakeDescUpdate{PeerID: ""})
 			delete(s._table, virtualSnakeIndex{desc.PublicKey, desc.PathID})
 			return []*peer{desc.Source}
 		}

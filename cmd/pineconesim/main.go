@@ -209,32 +209,14 @@ func min(a, b int) int {
 
 func userProxy(conn *websocket.Conn, sim *simulator.Simulator) {
 	nodes := sim.Nodes()
-	connections := sim.State.GetNodeConnections()
-
-	physEdges := make(map[string][]string)
-	for node, conns := range connections {
-		physEdges[node] = conns
-	}
+	physEdges := sim.State.GetNodePeers()
+	snakeEdges := sim.State.GetSnakeNeighbours()
 
 	nodeIDs := make([]string, 0, len(nodes))
-	snakeEdges := make(map[string][]string)
 	treeEdges := make(map[string][]string)
-
 	for id, n := range nodes {
 		// Node IDs
 		nodeIDs = append(nodeIDs, id)
-
-		// Snake edges
-		for id2, n2 := range nodes {
-			p := n.Descending()
-			s := n.Ascending()
-			if p != nil && p.PublicKey == n2.PublicKey() {
-				snakeEdges[id] = append(snakeEdges[id], id2)
-			}
-			if s != nil && s.PublicKey == n2.PublicKey() {
-				snakeEdges[id] = append(snakeEdges[id], id2)
-			}
-		}
 
 		// Tree Edges
 		if !n.IsRoot() {
@@ -297,6 +279,10 @@ func userProxy(conn *websocket.Conn, sim *simulator.Simulator) {
 			eventType = simulator.SimPeerAdded
 		case simulator.PeerRemoved:
 			eventType = simulator.SimPeerRemoved
+		case simulator.SnakeAscUpdate:
+			eventType = simulator.SimSnakeAscUpdated
+		case simulator.SnakeDescUpdate:
+			eventType = simulator.SimSnakeDescUpdated
 		}
 
 		conn.WriteJSON(simulator.StateUpdateMsg{
@@ -350,7 +336,7 @@ func configureHTTPRouting(sim *simulator.Simulator) {
 		tmpl := template.Must(template.ParseFiles("./cmd/pineconesim/page.html"))
 		nodes := sim.Nodes()
 
-		wires := sim.State.GetNodeConnections()
+		wires := sim.State.GetNodePeers()
 		totalCount := len(nodes) * len(nodes)
 		dhtConvergence := 0
 		pathConvergence := 0

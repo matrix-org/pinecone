@@ -20,14 +20,18 @@ import (
 )
 
 type NodeState struct {
-	peerID      string
-	connections map[int]string
+	peerID         string
+	connections    map[int]string
+	ascendingPeer  string
+	descendingPeer string
 }
 
 func NewNodeState(peerID string) *NodeState {
 	node := &NodeState{
-		peerID:      peerID,
-		connections: make(map[int]string),
+		peerID:         peerID,
+		connections:    make(map[int]string),
+		ascendingPeer:  "",
+		descendingPeer: "",
 	}
 	return node
 }
@@ -66,7 +70,10 @@ func (s *StateAccessor) Subscribe(ch chan<- SimEvent) State {
 	return stateCopy
 }
 
-func (s *StateAccessor) GetNodeConnections() map[string][]string {
+func (s *StateAccessor) GetNodePeers() map[string][]string {
+	s.m.Lock()
+	defer s.m.Unlock()
+
 	conns := make(map[string][]string)
 	for name, node := range s.state.nodes {
 		var nodeConns []string
@@ -76,6 +83,20 @@ func (s *StateAccessor) GetNodeConnections() map[string][]string {
 		conns[name] = nodeConns
 	}
 	return conns
+}
+
+func (s *StateAccessor) GetSnakeNeighbours() map[string][]string {
+	s.m.Lock()
+	defer s.m.Unlock()
+
+	peers := make(map[string][]string)
+	for name, node := range s.state.nodes {
+		var nodeConns []string
+		nodeConns = append(nodeConns, node.ascendingPeer)
+		nodeConns = append(nodeConns, node.descendingPeer)
+		peers[name] = nodeConns
+	}
+	return peers
 }
 
 func (s *StateAccessor) GetNodeName(peerID string) (string, error) {
@@ -113,6 +134,30 @@ func (s *StateAccessor) RemovePeerConnection(from string, to string, port int) {
 		delete(s.state.nodes[from].connections, port)
 	}
 	s.publish(PeerRemoved{Node: from, Peer: to})
+}
+
+func (s *StateAccessor) UpdateAscendingPeer(node string, peerID string) {
+	s.m.Lock()
+	defer s.m.Unlock()
+
+	if _, ok := s.state.nodes[node]; ok {
+		prev := s.state.nodes[node].ascendingPeer
+		s.state.nodes[node].ascendingPeer = peerID
+
+		s.publish(SnakeAscUpdate{Node: node, Peer: peerID, Prev: prev})
+	}
+}
+
+func (s *StateAccessor) UpdateDescendingPeer(node string, peerID string) {
+	s.m.Lock()
+	defer s.m.Unlock()
+
+	if _, ok := s.state.nodes[node]; ok {
+		prev := s.state.nodes[node].descendingPeer
+		s.state.nodes[node].descendingPeer = peerID
+
+		s.publish(SnakeDescUpdate{Node: node, Peer: peerID, Prev: prev})
+	}
 }
 
 func (s *StateAccessor) publish(event SimEvent) {

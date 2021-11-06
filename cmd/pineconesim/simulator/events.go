@@ -50,6 +50,24 @@ type PeerRemoved struct {
 // Tag PeerRemoved as an Event
 func (e PeerRemoved) isEvent() {}
 
+type SnakeAscUpdate struct {
+	Node string
+	Peer string
+	Prev string
+}
+
+// Tag SnakeAscUpdate as an Event
+func (e SnakeAscUpdate) isEvent() {}
+
+type SnakeDescUpdate struct {
+	Node string
+	Peer string
+	Prev string
+}
+
+// Tag SnakeDescUpdate as an Event
+func (e SnakeDescUpdate) isEvent() {}
+
 type eventHandler struct {
 	node string
 	ch   <-chan events.Event
@@ -63,6 +81,10 @@ func (h eventHandler) Run(sim *Simulator) {
 			sim.handlePeerAdded(h.node, e.PeerID, int(e.Port))
 		case events.PeerRemoved:
 			sim.handlePeerRemoved(h.node, e.PeerID, int(e.Port))
+		case events.SnakeAscUpdate:
+			sim.handleSnakeAscUpdate(h.node, e.PeerID)
+		case events.SnakeDescUpdate:
+			sim.handleSnakeDescUpdate(h.node, e.PeerID)
 		default:
 			sim.log.Println("Unhandled event!")
 		}

@@ -131,3 +131,21 @@ func (sim *Simulator) handlePeerRemoved(node string, peerID string, port int) {
 		sim.State.RemovePeerConnection(node, peerNode, port)
 	}
 }
+
+func (sim *Simulator) handleSnakeAscUpdate(node string, peerID string) {
+	sim.log.Printf("Node %s: Snake asc updated! Peer: %s\n", node, peerID)
+	if peerNode, err := sim.State.GetNodeName(peerID); err == nil {
+		sim.State.UpdateAscendingPeer(node, peerNode)
+	} else {
+		sim.State.UpdateAscendingPeer(node, "")
+	}
+}
+
+func (sim *Simulator) handleSnakeDescUpdate(node string, peerID string) {
+	sim.log.Printf("Node %s: Snake desc updated! Peer: %s\n", node, peerID)
+	if peerNode, err := sim.State.GetNodeName(peerID); err == nil {
+		sim.State.UpdateDescendingPeer(node, peerNode)
+	} else {
+		sim.State.UpdateDescendingPeer(node, "")
+	}
+}

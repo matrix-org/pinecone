@@ -23,6 +23,8 @@ const (
 	SimNodeRemoved
 	SimPeerAdded
 	SimPeerRemoved
+	SimSnakeAscUpdated
+	SimSnakeDescUpdated
 )
 
 type SimulatorMsg struct {

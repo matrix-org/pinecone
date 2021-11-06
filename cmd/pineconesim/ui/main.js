@@ -50,6 +50,20 @@ function handleSimMessage(msg) {
         console.log("Peer removed: Node: " + msg.data.Event.Node + " Peer: " + msg.data.Event.Peer);
         graph.removeEdge("physical", msg.data.Event.Node, msg.data.Event.Peer);
         break;
+    case 6: // Snake Ascending Updated
+        console.log("Snake Asc Updated: Node: " + msg.data.Event.Node + " Peer: " + msg.data.Event.Peer);
+        graph.removeEdge("snake", msg.data.Event.Node, msg.data.Event.Prev);
+        if (msg.data.Event.Peer != "") {
+            graph.addEdge("snake", msg.data.Event.Node, msg.data.Event.Peer);
+        }
+        break;
+    case 7: // Snake Descending Updated
+        console.log("Snake Desc Updated: Node: " + msg.data.Event.Node + " Peer: " + msg.data.Event.Peer);
+        graph.removeEdge("snake", msg.data.Event.Node, msg.data.Event.Prev);
+        if (msg.data.Event.Peer != "") {
+            graph.addEdge("snake", msg.data.Event.Node, msg.data.Event.Peer);
+        }
+        break;
     default:
         console.log("Unhandled message ID");
         break;
