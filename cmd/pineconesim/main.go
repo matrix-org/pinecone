@@ -310,11 +310,6 @@ func userProxy(conn *websocket.Conn, sim *simulator.Simulator) {
 			UpdateID: eventType,
 			Event:    event,
 		})
-
-		// conn.WriteJSON(simulator.StateUpdateMsg{
-		// 	MsgID: simulator.SimulatorMsg{ID: eventType},
-		// 	Event: event,
-		// })
 	}
 }
 

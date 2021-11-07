@@ -199,7 +199,16 @@ class Graph {
     addEdge(dataset, from, to) {
         switch(dataset) {
         case "physical":
-            this.physData.edges.add({from, to});
+            let matchingEdges = this.physData.edges.get({
+                filter: function (item) {
+                    return ((item.from === from && item.to === to) || (item.to === from && item.from === to));
+                }
+            });
+
+            // Don't create duplicate edges in the physical topology
+            if (matchingEdges.length === 0) {
+                this.physData.edges.add({from, to});
+            }
             break;
         case "snake":
             this.snakeData.edges.add({from, to});
@@ -219,12 +228,14 @@ class Graph {
         case "physical":
             matchingEdges = this.physData.edges.get({
                 filter: function (item) {
-                    return (item.from === from && item.to === to);
+                    return ((item.from === from && item.to === to) || (item.to === from && item.from === to));
                 }
             });
 
             if (matchingEdges.length >= 1) {
-                this.physData.edges.remove(matchingEdges[0]);
+                for (let i = 0; i < matchingEdges.length; i++) {
+                    this.physData.edges.remove(matchingEdges[i]);
+                }
             }
             break;
         case "snake":
