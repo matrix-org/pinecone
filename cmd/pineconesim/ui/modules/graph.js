@@ -120,11 +120,11 @@ class Graph {
                 hover: getComputedStyle(document.documentElement)
                     .getPropertyValue('--color-blue-pill'),
             },
-            arrows: {
-                to: {
-                    enabled: true,
-                },
-            },
+            // arrows: {
+            //     to: {
+            //         enabled: true,
+            //     },
+            // },
             width: 2,
             selectionWidth: 4,
         },
