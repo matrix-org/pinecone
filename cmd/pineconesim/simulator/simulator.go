@@ -131,6 +131,14 @@ func (sim *Simulator) handlePeerRemoved(node string, peerID string, port int) {
 	}
 }
 
+func (sim *Simulator) handleTreeParentUpdate(node string, peerID string) {
+	if peerNode, err := sim.State.GetNodeName(peerID); err == nil {
+		sim.State.UpdateParent(node, peerNode)
+	} else {
+		sim.State.UpdateParent(node, "")
+	}
+}
+
 func (sim *Simulator) handleSnakeAscUpdate(node string, peerID string) {
 	if peerNode, err := sim.State.GetNodeName(peerID); err == nil {
 		sim.State.UpdateAscendingPeer(node, peerNode)

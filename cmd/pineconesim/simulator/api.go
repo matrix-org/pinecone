@@ -29,6 +29,7 @@ const (
 	SimNodeRemoved
 	SimPeerAdded
 	SimPeerRemoved
+	SimTreeParentUpdated
 	SimSnakeAscUpdated
 	SimSnakeDescUpdated
 )
@@ -43,7 +44,7 @@ type InitialStateMsg struct {
 	Nodes      []string
 	PhysEdges  map[string][]string
 	SnakeEdges map[string][]string
-	TreeEdges  map[string][]string
+	TreeEdges  map[string]string
 	End        bool
 }
 

@@ -49,7 +49,7 @@ type state struct {
 
 // _start resets the state and starts tree and virtual snake maintenance.
 func (s *state) _start() {
-	s._parent = nil
+	s._setParent(nil)
 	s._setAscendingNode(nil)
 	s._setDescendingNode(nil)
 	s._announcements = make(announcementTable, portCount)
@@ -137,6 +137,17 @@ func (s *state) _removePeer(port types.SwitchPortID) {
 	s.r.publish(events.PeerRemoved{Port: port, PeerID: peerID})
 }
 
+func (s *state) _setParent(peer *peer) {
+	s._parent = peer
+
+	peerID := ""
+	if peer != nil {
+		peerID = peer.public.String()
+	}
+
+	s.r.publish(events.TreeParentUpdate{PeerID: peerID})
+}
+
 func (s *state) _setAscendingNode(node *virtualSnakeEntry) {
 	s._ascending = node
 
@@ -176,7 +187,7 @@ func (s *state) _portDisconnected(peer *peer) {
 	// snake state. When we connect to a peer in the future, we will do so
 	// with a blank slate.
 	if peercount == 0 {
-		s._parent = nil
+		s._setParent(nil)
 		s._setAscendingNode(nil)
 		s._setDescendingNode(nil)
 		for k := range s._announcements {

@@ -22,6 +22,7 @@ import (
 type NodeState struct {
 	peerID         string
 	connections    map[int]string
+	parent         string
 	ascendingPeer  string
 	descendingPeer string
 }
@@ -30,6 +31,7 @@ func NewNodeState(peerID string) *NodeState {
 	node := &NodeState{
 		peerID:         peerID,
 		connections:    make(map[int]string),
+		parent:         "",
 		ascendingPeer:  "",
 		descendingPeer: "",
 	}
@@ -85,6 +87,17 @@ func (s *StateAccessor) GetNodePeers() map[string][]string {
 	return conns
 }
 
+func (s *StateAccessor) GetTreeParents() map[string]string {
+	s.m.Lock()
+	defer s.m.Unlock()
+
+	peers := make(map[string]string)
+	for name, node := range s.state.nodes {
+		peers[name] = node.parent
+	}
+	return peers
+}
+
 func (s *StateAccessor) GetSnakeNeighbours() map[string][]string {
 	s.m.Lock()
 	defer s.m.Unlock()
@@ -137,6 +150,18 @@ func (s *StateAccessor) RemovePeerConnection(from string, to string, port int) {
 		delete(s.state.nodes[from].connections, port)
 	}
 	s.publish(PeerRemoved{Node: from, Peer: to})
+}
+
+func (s *StateAccessor) UpdateParent(node string, peerID string) {
+	s.m.Lock()
+	defer s.m.Unlock()
+
+	if _, ok := s.state.nodes[node]; ok {
+		prev := s.state.nodes[node].parent
+		s.state.nodes[node].parent = peerID
+
+		s.publish(TreeParentUpdate{Node: node, Peer: peerID, Prev: prev})
+	}
 }
 
 func (s *StateAccessor) UpdateAscendingPeer(node string, peerID string) {

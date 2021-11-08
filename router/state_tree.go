@@ -137,7 +137,7 @@ func (s *state) _becomeRoot() {
 	if s._parent == nil {
 		return
 	}
-	s._parent = nil
+	s._setParent(nil)
 	s._maintainTree()
 }
 
@@ -324,7 +324,7 @@ func (s *state) _handleTreeAnnouncement(p *peer, f *types.Frame) error {
 			// root. In that case, we will switch to this node as our parent
 			// and then send out tree announcements to our peers, notifying
 			// them of the change.
-			s._parent = p
+			s._setParent(p)
 			s._sendTreeAnnouncements()
 		case rootDelta < 0:
 			// The update seems to contain a weaker root key than our existing
@@ -424,7 +424,7 @@ func (s *state) _selectNewParent() bool {
 			// The chosen candidate is different to our current parent, so we
 			// will update to our new parent and then send tree announcements
 			// to our peers to notify them of the change.
-			s._parent = bestPeer
+			s._setParent(bestPeer)
 			s._sendTreeAnnouncements()
 			return true
 		}

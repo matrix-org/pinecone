@@ -50,6 +50,15 @@ type PeerRemoved struct {
 // Tag PeerRemoved as an Event
 func (e PeerRemoved) isEvent() {}
 
+type TreeParentUpdate struct {
+	Node string
+	Peer string
+	Prev string
+}
+
+// Tag TreeParentUpdate as an Event
+func (e TreeParentUpdate) isEvent() {}
+
 type SnakeAscUpdate struct {
 	Node string
 	Peer string
@@ -81,6 +90,8 @@ func (h eventHandler) Run(sim *Simulator) {
 			sim.handlePeerAdded(h.node, e.PeerID, int(e.Port))
 		case events.PeerRemoved:
 			sim.handlePeerRemoved(h.node, e.PeerID, int(e.Port))
+		case events.TreeParentUpdate:
+			sim.handleTreeParentUpdate(h.node, e.PeerID)
 		case events.SnakeAscUpdate:
 			sim.handleSnakeAscUpdate(h.node, e.PeerID)
 		case events.SnakeDescUpdate:

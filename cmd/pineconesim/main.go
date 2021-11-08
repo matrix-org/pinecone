@@ -209,22 +209,14 @@ func min(a, b int) int {
 
 func userProxy(conn *websocket.Conn, sim *simulator.Simulator) {
 	nodes := sim.Nodes()
+	nodeIDs := make([]string, 0, len(nodes))
+	for id := range nodes {
+		nodeIDs = append(nodeIDs, id)
+	}
+
 	physEdges := sim.State.GetNodePeers()
 	snakeEdges := sim.State.GetSnakeNeighbours()
-
-	nodeIDs := make([]string, 0, len(nodes))
-	treeEdges := make(map[string][]string)
-	for id, n := range nodes {
-		// Node IDs
-		nodeIDs = append(nodeIDs, id)
-
-		// Tree Edges
-		if !n.IsRoot() {
-			r1, _ := sim.LookupPublicKey(n.PublicKey())
-			r2, _ := sim.LookupPublicKey(n.ParentPublicKey())
-			treeEdges[r1] = append(treeEdges[r1], r2)
-		}
-	}
+	treeEdges := sim.State.GetTreeParents()
 
 	batchSize := 25
 	for i := 0; i < len(nodeIDs); i += batchSize {
@@ -236,19 +228,19 @@ func userProxy(conn *websocket.Conn, sim *simulator.Simulator) {
 
 		physBatch := make(map[string][]string)
 		snakeBatch := make(map[string][]string)
-		treeBatch := make(map[string][]string)
+		treeBatch := make(map[string]string)
 
 		for _, node := range nodeBatch {
-			if physEdges[node] != nil {
-				physBatch[node] = physEdges[node]
+			if val, ok := physEdges[node]; ok {
+				physBatch[node] = val
 			}
 
-			if snakeEdges[node] != nil {
-				snakeBatch[node] = snakeEdges[node]
+			if val, ok := snakeEdges[node]; ok {
+				snakeBatch[node] = val
 			}
 
-			if treeEdges[node] != nil {
-				treeBatch[node] = treeEdges[node]
+			if val, ok := treeEdges[node]; ok {
+				treeBatch[node] = val
 			}
 		}
 
@@ -300,6 +292,8 @@ func userProxy(conn *websocket.Conn, sim *simulator.Simulator) {
 			eventType = simulator.SimPeerAdded
 		case simulator.PeerRemoved:
 			eventType = simulator.SimPeerRemoved
+		case simulator.TreeParentUpdate:
+			eventType = simulator.SimTreeParentUpdated
 		case simulator.SnakeAscUpdate:
 			eventType = simulator.SimSnakeAscUpdated
 		case simulator.SnakeDescUpdate:

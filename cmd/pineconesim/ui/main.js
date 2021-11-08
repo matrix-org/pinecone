@@ -25,9 +25,7 @@ function handleSimMessage(msg) {
         }
 
         for (let [key, value] of Object.entries(msg.data.TreeEdges)) {
-            for (let i = 0; i < msg.data.TreeEdges[key].length; i++) {
-                graph.addEdge("tree", key, msg.data.TreeEdges[key][i]);
-            }
+            graph.addEdge("tree", key, value);
         }
 
         if (msg.data.End === true) {
@@ -54,14 +52,21 @@ function handleSimMessage(msg) {
                 // console.log("Peer removed: Node: " + event.Node + " Peer: " + event.Peer);
                 graph.removeEdge("physical", event.Node, event.Peer);
                 break;
-            case 5: // Snake Ascending Updated
+            case 5: // Tree Parent Updated
+                // console.log("Tree Parent Updated: Node: " + event.Node + " Peer: " + event.Peer);
+                graph.removeEdge("tree", event.Node, event.Prev);
+                if (event.Peer != "") {
+                    graph.addEdge("tree", event.Node, event.Peer);
+                }
+                break;
+            case 6: // Snake Ascending Updated
                 // console.log("Snake Asc Updated: Node: " + event.Node + " Peer: " + event.Peer);
                 graph.removeEdge("snake", event.Node, event.Prev);
                 if (event.Peer != "") {
                     graph.addEdge("snake", event.Node, event.Peer);
                 }
                 break;
-            case 6: // Snake Descending Updated
+            case 7: // Snake Descending Updated
                 // console.log("Snake Desc Updated: Node: " + event.Node + " Peer: " + event.Peer);
                 graph.removeEdge("snake", event.Node, event.Prev);
                 if (event.Peer != "") {
