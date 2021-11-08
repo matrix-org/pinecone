@@ -21,6 +21,7 @@ import (
 	"log"
 	"net"
 
+	"github.com/Arceliar/phony"
 	"github.com/matrix-org/pinecone/router"
 	"github.com/matrix-org/pinecone/router/events"
 )
@@ -96,5 +97,5 @@ func (sim *Simulator) StartNodeEventHandler(t string) {
 	go handler.Run(sim)
 	sim.nodes[t].Subscribe(ch)
 
-	sim.State.AddNode(t, sim.nodes[t].PublicKey().String())
+	phony.Block(sim.State, func() { sim.State._addNode(t, sim.nodes[t].PublicKey().String()) })
 }

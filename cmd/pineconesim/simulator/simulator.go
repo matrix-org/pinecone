@@ -121,36 +121,36 @@ func (sim *Simulator) Uptime() time.Duration {
 
 func (sim *Simulator) handlePeerAdded(node string, peerID string, port int) {
 	if peerNode, err := sim.State.GetNodeName(peerID); err == nil {
-		sim.State.AddPeerConnection(node, peerNode, port)
+		sim.State.Act(nil, func() { sim.State._addPeerConnection(node, peerNode, port) })
 	}
 }
 
 func (sim *Simulator) handlePeerRemoved(node string, peerID string, port int) {
 	if peerNode, err := sim.State.GetNodeName(peerID); err == nil {
-		sim.State.RemovePeerConnection(node, peerNode, port)
+		sim.State.Act(nil, func() { sim.State._removePeerConnection(node, peerNode, port) })
 	}
 }
 
 func (sim *Simulator) handleTreeParentUpdate(node string, peerID string) {
 	if peerNode, err := sim.State.GetNodeName(peerID); err == nil {
-		sim.State.UpdateParent(node, peerNode)
+		sim.State.Act(nil, func() { sim.State._updateParent(node, peerNode) })
 	} else {
-		sim.State.UpdateParent(node, "")
+		sim.State.Act(nil, func() { sim.State._updateParent(node, "") })
 	}
 }
 
 func (sim *Simulator) handleSnakeAscUpdate(node string, peerID string) {
 	if peerNode, err := sim.State.GetNodeName(peerID); err == nil {
-		sim.State.UpdateAscendingPeer(node, peerNode)
+		sim.State.Act(nil, func() { sim.State._updateAscendingPeer(node, peerNode) })
 	} else {
-		sim.State.UpdateAscendingPeer(node, "")
+		sim.State.Act(nil, func() { sim.State._updateAscendingPeer(node, "") })
 	}
 }
 
 func (sim *Simulator) handleSnakeDescUpdate(node string, peerID string) {
 	if peerNode, err := sim.State.GetNodeName(peerID); err == nil {
-		sim.State.UpdateDescendingPeer(node, peerNode)
+		sim.State.Act(nil, func() { sim.State._updateDescendingPeer(node, peerNode) })
 	} else {
-		sim.State.UpdateDescendingPeer(node, "")
+		sim.State.Act(nil, func() { sim.State._updateDescendingPeer(node, "") })
 	}
 }

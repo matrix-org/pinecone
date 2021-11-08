@@ -73,6 +73,19 @@ func (s *StateAccessor) Subscribe(ch chan<- SimEvent) State {
 	return stateCopy
 }
 
+func (s *StateAccessor) GetLinkCount() float64 {
+	count := 0.0
+	phony.Block(s, func() {
+		for _, node := range s._state.Nodes {
+			for range node.Connections {
+				// Each peer connection represents half of a physical link between nodes
+				count += 0.5
+			}
+		}
+	})
+	return count
+}
+
 func (s *StateAccessor) GetNodeName(peerID string) (string, error) {
 	node := ""
 	err := fmt.Errorf("Provided peerID is not associated with a known node")
@@ -87,75 +100,50 @@ func (s *StateAccessor) GetNodeName(peerID string) (string, error) {
 	return node, err
 }
 
-func (s *StateAccessor) GetLinkCount() float64 {
-	count := 0.0
-	phony.Block(s, func() {
-		for _, node := range s._state.Nodes {
-			for range node.Connections {
-				// Each peer connection represents half of a physical link between nodes
-				count += 0.5
-			}
-		}
-	})
-	return count
+func (s *StateAccessor) _addNode(name string, peerID string) {
+	s._state.Nodes[name] = NewNodeState(peerID)
+	s._publish(NodeAdded{Node: name})
 }
 
-func (s *StateAccessor) AddNode(name string, peerID string) {
-	phony.Block(s, func() {
-		s._state.Nodes[name] = NewNodeState(peerID)
-		s._publish(NodeAdded{Node: name})
-	})
+func (s *StateAccessor) _addPeerConnection(from string, to string, port int) {
+	if _, ok := s._state.Nodes[from]; ok {
+		s._state.Nodes[from].Connections[port] = to
+	}
+	s._publish(PeerAdded{Node: from, Peer: to})
 }
 
-func (s *StateAccessor) AddPeerConnection(from string, to string, port int) {
-	phony.Block(s, func() {
-		if _, ok := s._state.Nodes[from]; ok {
-			s._state.Nodes[from].Connections[port] = to
-		}
-		s._publish(PeerAdded{Node: from, Peer: to})
-	})
+func (s *StateAccessor) _removePeerConnection(from string, to string, port int) {
+	if _, ok := s._state.Nodes[from]; ok {
+		delete(s._state.Nodes[from].Connections, port)
+	}
+	s._publish(PeerRemoved{Node: from, Peer: to})
 }
 
-func (s *StateAccessor) RemovePeerConnection(from string, to string, port int) {
-	phony.Block(s, func() {
-		if _, ok := s._state.Nodes[from]; ok {
-			delete(s._state.Nodes[from].Connections, port)
-		}
-		s._publish(PeerRemoved{Node: from, Peer: to})
-	})
+func (s *StateAccessor) _updateParent(node string, peerID string) {
+	if _, ok := s._state.Nodes[node]; ok {
+		prev := s._state.Nodes[node].Parent
+		s._state.Nodes[node].Parent = peerID
+
+		s._publish(TreeParentUpdate{Node: node, Peer: peerID, Prev: prev})
+	}
 }
 
-func (s *StateAccessor) UpdateParent(node string, peerID string) {
-	phony.Block(s, func() {
-		if _, ok := s._state.Nodes[node]; ok {
-			prev := s._state.Nodes[node].Parent
-			s._state.Nodes[node].Parent = peerID
+func (s *StateAccessor) _updateAscendingPeer(node string, peerID string) {
+	if _, ok := s._state.Nodes[node]; ok {
+		prev := s._state.Nodes[node].AscendingPeer
+		s._state.Nodes[node].AscendingPeer = peerID
 
-			s._publish(TreeParentUpdate{Node: node, Peer: peerID, Prev: prev})
-		}
-	})
+		s._publish(SnakeAscUpdate{Node: node, Peer: peerID, Prev: prev})
+	}
 }
 
-func (s *StateAccessor) UpdateAscendingPeer(node string, peerID string) {
-	phony.Block(s, func() {
-		if _, ok := s._state.Nodes[node]; ok {
-			prev := s._state.Nodes[node].AscendingPeer
-			s._state.Nodes[node].AscendingPeer = peerID
+func (s *StateAccessor) _updateDescendingPeer(node string, peerID string) {
+	if _, ok := s._state.Nodes[node]; ok {
+		prev := s._state.Nodes[node].DescendingPeer
+		s._state.Nodes[node].DescendingPeer = peerID
 
-			s._publish(SnakeAscUpdate{Node: node, Peer: peerID, Prev: prev})
-		}
-	})
-}
-
-func (s *StateAccessor) UpdateDescendingPeer(node string, peerID string) {
-	phony.Block(s, func() {
-		if _, ok := s._state.Nodes[node]; ok {
-			prev := s._state.Nodes[node].DescendingPeer
-			s._state.Nodes[node].DescendingPeer = peerID
-
-			s._publish(SnakeDescUpdate{Node: node, Peer: peerID, Prev: prev})
-		}
-	})
+		s._publish(SnakeDescUpdate{Node: node, Peer: peerID, Prev: prev})
+	}
 }
 
 func (s *StateAccessor) _publish(event SimEvent) {
