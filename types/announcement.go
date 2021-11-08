@@ -16,7 +16,6 @@ package types
 
 import (
 	"crypto/ed25519"
-	"encoding/hex"
 	"fmt"
 	"os"
 )
@@ -98,7 +97,7 @@ func (a *SwitchAnnouncement) SanityCheck(from PublicKey) error {
 	if len(a.Signatures) == 0 {
 		return fmt.Errorf("update has no signatures")
 	}
-	sigs := make(map[string]struct{})
+	sigs := make(map[PublicKey]struct{}, len(a.Signatures))
 	for index, sig := range a.Signatures {
 		if index == 0 && sig.PublicKey != a.RootPublicKey {
 			return fmt.Errorf("update first signature doesn't match root key")
@@ -109,11 +108,10 @@ func (a *SwitchAnnouncement) SanityCheck(from PublicKey) error {
 		if index == len(a.Signatures)-1 && from != sig.PublicKey {
 			return fmt.Errorf("update last signature is not from direct peer")
 		}
-		pk := hex.EncodeToString(sig.PublicKey[:])
-		if _, ok := sigs[pk]; ok {
+		if _, ok := sigs[sig.PublicKey]; ok {
 			return fmt.Errorf("update contains routing loop")
 		}
-		sigs[pk] = struct{}{}
+		sigs[sig.PublicKey] = struct{}{}
 	}
 	return nil
 }
