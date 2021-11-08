@@ -91,7 +91,7 @@ func (sim *Simulator) CreateNode(t string) error {
 }
 
 func (sim *Simulator) StartNodeEventHandler(t string) {
-	ch := make(chan events.Event, 10)
+	ch := make(chan events.Event)
 	handler := eventHandler{node: t, ch: ch}
 	go handler.Run(sim)
 	sim.nodes[t].Subscribe(ch)

@@ -123,7 +123,9 @@ func (s *state) _addPeer(conn net.Conn, public types.PublicKey, zone string, pee
 		new.reader.Act(nil, new._read)
 		new.writer.Act(nil, new._write)
 
-		s.r.publish(events.PeerAdded{Port: types.SwitchPortID(i), PeerID: new.public.String()})
+		s.r.Act(nil, func() {
+			s.r._publish(events.PeerAdded{Port: types.SwitchPortID(i), PeerID: new.public.String()})
+		})
 		return types.SwitchPortID(i), nil
 	}
 
@@ -134,7 +136,9 @@ func (s *state) _addPeer(conn net.Conn, public types.PublicKey, zone string, pee
 func (s *state) _removePeer(port types.SwitchPortID) {
 	peerID := s._peers[port].public.String()
 	s._peers[port] = nil
-	s.r.publish(events.PeerRemoved{Port: port, PeerID: peerID})
+	s.r.Act(nil, func() {
+		s.r._publish(events.PeerRemoved{Port: port, PeerID: peerID})
+	})
 }
 
 func (s *state) _setParent(peer *peer) {
@@ -144,8 +148,9 @@ func (s *state) _setParent(peer *peer) {
 	if peer != nil {
 		peerID = peer.public.String()
 	}
-
-	s.r.publish(events.TreeParentUpdate{PeerID: peerID})
+	s.r.Act(nil, func() {
+		s.r._publish(events.TreeParentUpdate{PeerID: peerID})
+	})
 }
 
 func (s *state) _setAscendingNode(node *virtualSnakeEntry) {
@@ -156,7 +161,9 @@ func (s *state) _setAscendingNode(node *virtualSnakeEntry) {
 		peerID = node.Origin.String()
 	}
 
-	s.r.publish(events.SnakeAscUpdate{PeerID: peerID})
+	s.r.Act(nil, func() {
+		s.r._publish(events.SnakeAscUpdate{PeerID: peerID})
+	})
 }
 
 func (s *state) _setDescendingNode(node *virtualSnakeEntry) {
@@ -167,7 +174,9 @@ func (s *state) _setDescendingNode(node *virtualSnakeEntry) {
 		peerID = node.PublicKey.String()
 	}
 
-	s.r.publish(events.SnakeDescUpdate{PeerID: peerID})
+	s.r.Act(nil, func() {
+		s.r._publish(events.SnakeDescUpdate{PeerID: peerID})
+	})
 }
 
 // _portDisconnected is called when a peer disconnects.

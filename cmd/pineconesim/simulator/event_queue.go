@@ -14,8 +14,6 @@
 
 package simulator
 
-import "errors"
-
 type EventQueue struct {
 	q chan SimEventMsg
 }
@@ -25,11 +23,7 @@ func (q *EventQueue) Insert(item SimEventMsg) {
 }
 
 func (q *EventQueue) Remove() (SimEventMsg, error) {
-	if len(q.q) > 0 {
-		item := <-q.q
-		return item, nil
-	}
-	return SimEventMsg{UpdateID: UnknownUpdate}, errors.New("Queue is empty")
+	return <-q.q, nil
 }
 
 func NewEventQueue(capacity int) *EventQueue {
