@@ -16,180 +16,152 @@ package simulator
 
 import (
 	"fmt"
-	"sync"
+
+	"github.com/Arceliar/phony"
 )
 
 type NodeState struct {
-	peerID         string
-	connections    map[int]string
-	parent         string
-	ascendingPeer  string
-	descendingPeer string
+	PeerID         string
+	Connections    map[int]string
+	Parent         string
+	AscendingPeer  string
+	DescendingPeer string
 }
 
 func NewNodeState(peerID string) *NodeState {
 	node := &NodeState{
-		peerID:         peerID,
-		connections:    make(map[int]string),
-		parent:         "",
-		ascendingPeer:  "",
-		descendingPeer: "",
+		PeerID:         peerID,
+		Connections:    make(map[int]string),
+		Parent:         "",
+		AscendingPeer:  "",
+		DescendingPeer: "",
 	}
 	return node
 }
 
 type State struct {
-	nodes map[string]*NodeState
+	Nodes map[string]*NodeState
 }
 
 func NewState() *State {
 	state := &State{
-		nodes: make(map[string]*NodeState),
+		Nodes: make(map[string]*NodeState),
 	}
 	return state
 }
 
 type StateAccessor struct {
-	m           *sync.Mutex
-	subscribers []chan<- SimEvent
-
-	state *State
+	phony.Inbox
+	_subscribers map[chan<- SimEvent]*phony.Inbox
+	_state       *State
 }
 
 func NewStateAccessor() *StateAccessor {
 	sa := &StateAccessor{
-		m:     &sync.Mutex{},
-		state: NewState(),
+		_state:       NewState(),
+		_subscribers: make(map[chan<- SimEvent]*phony.Inbox),
 	}
 	return sa
 }
 
 func (s *StateAccessor) Subscribe(ch chan<- SimEvent) State {
-	s.m.Lock()
-	s.subscribers = append(s.subscribers, ch)
-	stateCopy := *s.state
-	s.m.Unlock()
+	var stateCopy State
+	phony.Block(s, func() {
+		s._subscribers[ch] = &phony.Inbox{}
+		stateCopy = *s._state
+	})
 	return stateCopy
 }
 
-func (s *StateAccessor) GetNodePeers() map[string][]string {
-	s.m.Lock()
-	defer s.m.Unlock()
-
-	conns := make(map[string][]string)
-	for name, node := range s.state.nodes {
-		var nodeConns []string
-		for _, conn := range node.connections {
-			nodeConns = append(nodeConns, conn)
-		}
-		conns[name] = nodeConns
-	}
-	return conns
-}
-
-func (s *StateAccessor) GetTreeParents() map[string]string {
-	s.m.Lock()
-	defer s.m.Unlock()
-
-	peers := make(map[string]string)
-	for name, node := range s.state.nodes {
-		peers[name] = node.parent
-	}
-	return peers
-}
-
-func (s *StateAccessor) GetSnakeNeighbours() map[string][]string {
-	s.m.Lock()
-	defer s.m.Unlock()
-
-	peers := make(map[string][]string)
-	for name, node := range s.state.nodes {
-		var nodeConns []string
-		nodeConns = append(nodeConns, node.ascendingPeer)
-		nodeConns = append(nodeConns, node.descendingPeer)
-		peers[name] = nodeConns
-	}
-	return peers
-}
-
 func (s *StateAccessor) GetNodeName(peerID string) (string, error) {
-	s.m.Lock()
-	defer s.m.Unlock()
+	node := ""
+	err := fmt.Errorf("Provided peerID is not associated with a known node")
 
-	for k, v := range s.state.nodes {
-		if v.peerID == peerID {
-			return k, nil
+	phony.Block(s, func() {
+		for k, v := range s._state.Nodes {
+			if v.PeerID == peerID {
+				node, err = k, nil
+			}
 		}
-	}
-	return "", fmt.Errorf("Provided peerID is not associated with a known node")
+	})
+	return node, err
+}
+
+func (s *StateAccessor) GetLinkCount() float64 {
+	count := 0.0
+	phony.Block(s, func() {
+		for _, node := range s._state.Nodes {
+			for range node.Connections {
+				// Each peer connection represents half of a physical link between nodes
+				count += 0.5
+			}
+		}
+	})
+	return count
 }
 
 func (s *StateAccessor) AddNode(name string, peerID string) {
-	s.m.Lock()
-	defer s.m.Unlock()
-
-	s.state.nodes[name] = NewNodeState(peerID)
-	s.publish(NodeAdded{Node: name})
+	phony.Block(s, func() {
+		s._state.Nodes[name] = NewNodeState(peerID)
+		s._publish(NodeAdded{Node: name})
+	})
 }
 
 func (s *StateAccessor) AddPeerConnection(from string, to string, port int) {
-	s.m.Lock()
-	defer s.m.Unlock()
-
-	if _, ok := s.state.nodes[from]; ok {
-		s.state.nodes[from].connections[port] = to
-	}
-	s.publish(PeerAdded{Node: from, Peer: to})
+	phony.Block(s, func() {
+		if _, ok := s._state.Nodes[from]; ok {
+			s._state.Nodes[from].Connections[port] = to
+		}
+		s._publish(PeerAdded{Node: from, Peer: to})
+	})
 }
 
 func (s *StateAccessor) RemovePeerConnection(from string, to string, port int) {
-	s.m.Lock()
-	defer s.m.Unlock()
-
-	if _, ok := s.state.nodes[from]; ok {
-		delete(s.state.nodes[from].connections, port)
-	}
-	s.publish(PeerRemoved{Node: from, Peer: to})
+	phony.Block(s, func() {
+		if _, ok := s._state.Nodes[from]; ok {
+			delete(s._state.Nodes[from].Connections, port)
+		}
+		s._publish(PeerRemoved{Node: from, Peer: to})
+	})
 }
 
 func (s *StateAccessor) UpdateParent(node string, peerID string) {
-	s.m.Lock()
-	defer s.m.Unlock()
+	phony.Block(s, func() {
+		if _, ok := s._state.Nodes[node]; ok {
+			prev := s._state.Nodes[node].Parent
+			s._state.Nodes[node].Parent = peerID
 
-	if _, ok := s.state.nodes[node]; ok {
-		prev := s.state.nodes[node].parent
-		s.state.nodes[node].parent = peerID
-
-		s.publish(TreeParentUpdate{Node: node, Peer: peerID, Prev: prev})
-	}
+			s._publish(TreeParentUpdate{Node: node, Peer: peerID, Prev: prev})
+		}
+	})
 }
 
 func (s *StateAccessor) UpdateAscendingPeer(node string, peerID string) {
-	s.m.Lock()
-	defer s.m.Unlock()
+	phony.Block(s, func() {
+		if _, ok := s._state.Nodes[node]; ok {
+			prev := s._state.Nodes[node].AscendingPeer
+			s._state.Nodes[node].AscendingPeer = peerID
 
-	if _, ok := s.state.nodes[node]; ok {
-		prev := s.state.nodes[node].ascendingPeer
-		s.state.nodes[node].ascendingPeer = peerID
-
-		s.publish(SnakeAscUpdate{Node: node, Peer: peerID, Prev: prev})
-	}
+			s._publish(SnakeAscUpdate{Node: node, Peer: peerID, Prev: prev})
+		}
+	})
 }
 
 func (s *StateAccessor) UpdateDescendingPeer(node string, peerID string) {
-	s.m.Lock()
-	defer s.m.Unlock()
+	phony.Block(s, func() {
+		if _, ok := s._state.Nodes[node]; ok {
+			prev := s._state.Nodes[node].DescendingPeer
+			s._state.Nodes[node].DescendingPeer = peerID
 
-	if _, ok := s.state.nodes[node]; ok {
-		prev := s.state.nodes[node].descendingPeer
-		s.state.nodes[node].descendingPeer = peerID
-
-		s.publish(SnakeDescUpdate{Node: node, Peer: peerID, Prev: prev})
-	}
+			s._publish(SnakeDescUpdate{Node: node, Peer: peerID, Prev: prev})
+		}
+	})
 }
 
-func (s *StateAccessor) publish(event SimEvent) {
-	for _, subscriber := range s.subscribers {
-		subscriber <- event
+func (s *StateAccessor) _publish(event SimEvent) {
+	for ch, inbox := range s._subscribers {
+		inbox.Act(nil, func() {
+			ch <- event
+		})
 	}
 }

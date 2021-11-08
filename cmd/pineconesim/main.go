@@ -208,15 +208,35 @@ func min(a, b int) int {
 }
 
 func userProxy(conn *websocket.Conn, sim *simulator.Simulator) {
-	nodes := sim.Nodes()
-	nodeIDs := make([]string, 0, len(nodes))
-	for id := range nodes {
+	ch := make(chan simulator.SimEvent)
+	state := sim.State.Subscribe(ch)
+
+	nodeIDs := make([]string, 0, len(state.Nodes))
+	for id := range state.Nodes {
 		nodeIDs = append(nodeIDs, id)
 	}
 
-	physEdges := sim.State.GetNodePeers()
-	snakeEdges := sim.State.GetSnakeNeighbours()
-	treeEdges := sim.State.GetTreeParents()
+	physEdges := make(map[string][]string)
+	for name, node := range state.Nodes {
+		var nodeConns []string
+		for _, conn := range node.Connections {
+			nodeConns = append(nodeConns, conn)
+		}
+		physEdges[name] = nodeConns
+	}
+
+	treeEdges := make(map[string]string)
+	for name, node := range state.Nodes {
+		treeEdges[name] = node.Parent
+	}
+
+	snakeEdges := make(map[string][]string)
+	for name, node := range state.Nodes {
+		var nodeConns []string
+		nodeConns = append(nodeConns, node.AscendingPeer)
+		nodeConns = append(nodeConns, node.DescendingPeer)
+		snakeEdges[name] = nodeConns
+	}
 
 	batchSize := 25
 	for i := 0; i < len(nodeIDs); i += batchSize {
@@ -257,29 +277,6 @@ func userProxy(conn *websocket.Conn, sim *simulator.Simulator) {
 		}
 	}
 
-	ch := make(chan simulator.SimEvent, 10)
-	sim.State.Subscribe(ch)
-
-	queue := simulator.NewEventQueue(25)
-	go func() {
-		for {
-			var msgs []simulator.SimEventMsg
-			for i := 0; i < 25; i++ {
-				if msg, err := queue.Remove(); err == nil {
-					msgs = append(msgs, msg)
-				} else {
-					break
-				}
-			}
-			if len(msgs) > 0 {
-				conn.WriteJSON(simulator.StateUpdateMsg{
-					MsgID:  simulator.SimUpdate,
-					Events: msgs,
-				})
-			}
-		}
-	}()
-
 	for {
 		event := <-ch
 		eventType := simulator.UnknownUpdate
@@ -300,10 +297,12 @@ func userProxy(conn *websocket.Conn, sim *simulator.Simulator) {
 			eventType = simulator.SimSnakeDescUpdated
 		}
 
-		queue.Insert(simulator.SimEventMsg{
-			UpdateID: eventType,
-			Event:    event,
-		})
+		conn.WriteJSON(simulator.StateUpdateMsg{
+			MsgID: simulator.SimUpdate,
+			Events: []simulator.SimEventMsg{simulator.SimEventMsg{
+				UpdateID: eventType,
+				Event:    event,
+			}}})
 	}
 }
 
@@ -351,7 +350,6 @@ func configureHTTPRouting(sim *simulator.Simulator) {
 		tmpl := template.Must(template.ParseFiles("./cmd/pineconesim/page.html"))
 		nodes := sim.Nodes()
 
-		wires := sim.State.GetNodePeers()
 		totalCount := len(nodes) * len(nodes)
 		dhtConvergence := 0
 		pathConvergence := 0
@@ -464,12 +462,7 @@ func configureHTTPRouting(sim *simulator.Simulator) {
 			}
 		}
 
-		for _, v := range wires {
-			for range v {
-				data.PathCount++
-			}
-		}
-		data.PathCount /= 2
+		data.PathCount = int(sim.State.GetLinkCount())
 
 		for n, r := range roots {
 			data.Roots = append(data.Roots, Root{
