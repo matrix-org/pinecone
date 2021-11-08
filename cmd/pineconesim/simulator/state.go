@@ -100,6 +100,9 @@ func (s *StateAccessor) GetSnakeNeighbours() map[string][]string {
 }
 
 func (s *StateAccessor) GetNodeName(peerID string) (string, error) {
+	s.m.Lock()
+	defer s.m.Unlock()
+
 	for k, v := range s.state.nodes {
 		if v.peerID == peerID {
 			return k, nil

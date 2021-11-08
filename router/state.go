@@ -47,6 +47,50 @@ type state struct {
 	_waiting       bool               // Is the tree waiting to reparent?
 }
 
+// _start resets the state and starts tree and virtual snake maintenance.
+func (s *state) _start() {
+	s._parent = nil
+	s._setAscendingNode(nil)
+	s._setDescendingNode(nil)
+	s._announcements = make(announcementTable, portCount)
+	s._table = virtualSnakeTable{}
+	s._ordering = 0
+
+	s._treetimer = time.AfterFunc(announcementInterval, func() {
+		s.Act(nil, s._maintainTree)
+	})
+	s._snaketimer = time.AfterFunc(time.Second, func() {
+		s.Act(nil, s._maintainSnake)
+	})
+
+	s._maintainTreeIn(0)
+	s._maintainSnakeIn(0)
+}
+
+// _maintainTreeIn resets the tree maintenance timer to the specified
+// duration.
+func (s *state) _maintainTreeIn(d time.Duration) {
+	if !s._treetimer.Stop() {
+		select {
+		case <-s._treetimer.C:
+		default:
+		}
+	}
+	s._treetimer.Reset(d)
+}
+
+// _maintainSnakeIn resets the virtual snake maintenance timer to the
+// specified duration.
+func (s *state) _maintainSnakeIn(d time.Duration) {
+	if !s._snaketimer.Stop() {
+		select {
+		case <-s._snaketimer.C:
+		default:
+		}
+	}
+	s._snaketimer.Reset(d)
+}
+
 // _addPeer creates a new Peer and adds it to the switch in the next available port
 func (s *state) _addPeer(conn net.Conn, public types.PublicKey, zone string, peertype int, keepalives bool) (types.SwitchPortID, error) {
 	var new *peer
@@ -93,48 +137,26 @@ func (s *state) _removePeer(port types.SwitchPortID) {
 	s.r.publish(events.PeerRemoved{Port: port, PeerID: peerID})
 }
 
-// _start resets the state and starts tree and virtual snake maintenance.
-func (s *state) _start() {
-	s._parent = nil
-	s._ascending = nil
-	s._descending = nil
-	s._announcements = make(announcementTable, portCount)
-	s._table = virtualSnakeTable{}
-	s._ordering = 0
+func (s *state) _setAscendingNode(node *virtualSnakeEntry) {
+	s._ascending = node
 
-	s._treetimer = time.AfterFunc(announcementInterval, func() {
-		s.Act(nil, s._maintainTree)
-	})
-	s._snaketimer = time.AfterFunc(time.Second, func() {
-		s.Act(nil, s._maintainSnake)
-	})
+	peerID := ""
+	if node != nil {
+		peerID = node.Origin.String()
+	}
 
-	s._maintainTreeIn(0)
-	s._maintainSnakeIn(0)
+	s.r.publish(events.SnakeAscUpdate{PeerID: peerID})
 }
 
-// _maintainTreeIn resets the tree maintenance timer to the specified
-// duration.
-func (s *state) _maintainTreeIn(d time.Duration) {
-	if !s._treetimer.Stop() {
-		select {
-		case <-s._treetimer.C:
-		default:
-		}
-	}
-	s._treetimer.Reset(d)
-}
+func (s *state) _setDescendingNode(node *virtualSnakeEntry) {
+	s._descending = node
 
-// _maintainSnakeIn resets the virtual snake maintenance timer to the
-// specified duration.
-func (s *state) _maintainSnakeIn(d time.Duration) {
-	if !s._snaketimer.Stop() {
-		select {
-		case <-s._snaketimer.C:
-		default:
-		}
+	peerID := ""
+	if node != nil {
+		peerID = node.PublicKey.String()
 	}
-	s._snaketimer.Reset(d)
+
+	s.r.publish(events.SnakeDescUpdate{PeerID: peerID})
 }
 
 // _portDisconnected is called when a peer disconnects.
@@ -155,10 +177,8 @@ func (s *state) _portDisconnected(peer *peer) {
 	// with a blank slate.
 	if peercount == 0 {
 		s._parent = nil
-		s._ascending = nil
-		s.r.publish(events.SnakeAscUpdate{PeerID: ""})
-		s._descending = nil
-		s.r.publish(events.SnakeDescUpdate{PeerID: ""})
+		s._setAscendingNode(nil)
+		s._setDescendingNode(nil)
 		for k := range s._announcements {
 			delete(s._announcements, k)
 		}
