@@ -15,11 +15,11 @@ let selectedNodes = null;
 class Graph {
     nodeIDs = [];
 
-    physNodes = new vis.DataSet([]);
-    physEdges = new vis.DataSet([]);
-    physData = {
-        nodes: this.physNodes,
-        edges: this.physEdges
+    peerNodes = new vis.DataSet([]);
+    peerEdges = new vis.DataSet([]);
+    peerData = {
+        nodes: this.peerNodes,
+        edges: this.peerEdges
     };
 
     snakeNodes = new vis.DataSet([]);
@@ -136,7 +136,7 @@ class Graph {
 
     constructor(canvas) {
         this.canvas = canvas;
-        this.currentData = this.physData;
+        this.currentData = this.peerData;
     }
 
     startGraph() {
@@ -177,7 +177,7 @@ class Graph {
     }
 
     addNode(id) {
-        this.physData.nodes.add({ id: id, label: id });
+        this.peerData.nodes.add({ id: id, label: id });
         this.snakeData.nodes.add({ id: id, label: id });
         this.treeData.nodes.add({ id: id, label: id });
         this.geoData.nodes.add({ id: id, label: id });
@@ -185,7 +185,7 @@ class Graph {
     }
 
     removeNode(id) {
-        this.physData.nodes.remove(id);
+        this.peerData.nodes.remove(id);
         this.snakeData.nodes.remove(id);
         this.treeData.nodes.remove(id);
         this.geoData.nodes.remove(id);
@@ -198,16 +198,16 @@ class Graph {
 
     addEdge(dataset, from, to) {
         switch(dataset) {
-        case "physical":
-            let matchingEdges = this.physData.edges.get({
+        case "peer":
+            let matchingEdges = this.peerData.edges.get({
                 filter: function (item) {
                     return ((item.from === from && item.to === to) || (item.to === from && item.from === to));
                 }
             });
 
-            // Don't create duplicate edges in the physical topology
+            // Don't create duplicate edges in the peer topology
             if (matchingEdges.length === 0) {
-                this.physData.edges.add({from, to});
+                this.peerData.edges.add({from, to});
             }
             break;
         case "snake":
@@ -225,8 +225,8 @@ class Graph {
     removeEdge(dataset, from, to) {
         let matchingEdges = [];
         switch(dataset) {
-        case "physical":
-            matchingEdges = this.physData.edges.get({
+        case "peer":
+            matchingEdges = this.peerData.edges.get({
                 filter: function (item) {
                     return ((item.from === from && item.to === to) || (item.to === from && item.from === to));
                 }
@@ -234,7 +234,7 @@ class Graph {
 
             if (matchingEdges.length >= 1) {
                 for (let i = 0; i < matchingEdges.length; i++) {
-                    this.physData.edges.remove(matchingEdges[i]);
+                    this.peerData.edges.remove(matchingEdges[i]);
                 }
             }
             break;
@@ -306,8 +306,8 @@ class Graph {
         this.saveNodePositions();
 
         switch(dataset) {
-        case "physical":
-            this.currentData = this.physData;
+        case "peer":
+            this.currentData = this.peerData;
             if (this.network) {
                 this.network.setData(this.currentData);
             }

@@ -42,7 +42,7 @@ type SimEventMsg struct {
 type InitialStateMsg struct {
 	MsgID      APIMessageID
 	Nodes      []string
-	PhysEdges  map[string][]string
+	PeerEdges  map[string][]string
 	SnakeEdges map[string][]string
 	TreeEdges  map[string]string
 	End        bool

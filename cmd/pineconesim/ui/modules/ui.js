@@ -49,8 +49,8 @@ function selectNetworkType(networkType) {
     this.className += " active";
 
     switch(this.id) {
-    case "physicalTopo":
-        graph.changeDataSet("physical");
+    case "peerTopo":
+        graph.changeDataSet("peer");
         break;
     case "snakeTopo":
         graph.changeDataSet("snake");

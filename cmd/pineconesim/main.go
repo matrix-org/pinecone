@@ -216,13 +216,13 @@ func userProxy(conn *websocket.Conn, sim *simulator.Simulator) {
 		nodeIDs = append(nodeIDs, id)
 	}
 
-	physEdges := make(map[string][]string)
+	peerEdges := make(map[string][]string)
 	for name, node := range state.Nodes {
 		var nodeConns []string
 		for _, conn := range node.Connections {
 			nodeConns = append(nodeConns, conn)
 		}
-		physEdges[name] = nodeConns
+		peerEdges[name] = nodeConns
 	}
 
 	treeEdges := make(map[string]string)
@@ -251,7 +251,7 @@ func userProxy(conn *websocket.Conn, sim *simulator.Simulator) {
 		treeBatch := make(map[string]string)
 
 		for _, node := range nodeBatch {
-			if val, ok := physEdges[node]; ok {
+			if val, ok := peerEdges[node]; ok {
 				physBatch[node] = val
 			}
 
@@ -267,7 +267,7 @@ func userProxy(conn *websocket.Conn, sim *simulator.Simulator) {
 		if err := conn.WriteJSON(simulator.InitialStateMsg{
 			MsgID:      simulator.SimInitialState,
 			Nodes:      nodeBatch,
-			PhysEdges:  physBatch,
+			PeerEdges:  physBatch,
 			SnakeEdges: snakeBatch,
 			TreeEdges:  treeBatch,
 			End:        end,

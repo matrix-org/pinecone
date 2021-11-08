@@ -12,9 +12,9 @@ function handleSimMessage(msg) {
             graph.addNode(msg.data.Nodes[i]);
         }
 
-        for (let [key, value] of Object.entries(msg.data.PhysEdges)) {
-            for (let i = 0; i < msg.data.PhysEdges[key].length; i++) {
-                graph.addEdge("physical", key, msg.data.PhysEdges[key][i]);
+        for (let [key, value] of Object.entries(msg.data.PeerEdges)) {
+            for (let i = 0; i < msg.data.PeerEdges[key].length; i++) {
+                graph.addEdge("peer", key, msg.data.PeerEdges[key][i]);
             }
         }
 
@@ -46,11 +46,11 @@ function handleSimMessage(msg) {
                 break;
             case 3: // Peer Added
                 // console.log("Peer added: Node: " + event.Node + " Peer: " + event.Peer);
-                graph.addEdge("physical", event.Node, event.Peer);
+                graph.addEdge("peer", event.Node, event.Peer);
                 break;
             case 4: // Peer Removed
                 // console.log("Peer removed: Node: " + event.Node + " Peer: " + event.Peer);
-                graph.removeEdge("physical", event.Node, event.Peer);
+                graph.removeEdge("peer", event.Node, event.Peer);
                 break;
             case 5: // Tree Parent Updated
                 // console.log("Tree Parent Updated: Node: " + event.Node + " Peer: " + event.Peer);
