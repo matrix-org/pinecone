@@ -39,6 +39,7 @@ const portCount = math.MaxUint8
 const trafficBuffer = math.MaxUint8
 
 type Router struct {
+	phony.Inbox
 	log          *log.Logger
 	context      context.Context
 	cancel       context.CancelFunc
@@ -49,7 +50,7 @@ type Router struct {
 	local        *peer
 	state        *state
 	secure       bool
-	_subscribers []chan<- events.Event
+	_subscribers map[chan<- events.Event]*phony.Inbox
 }
 
 func NewRouter(logger *log.Logger, sk ed25519.PrivateKey, debug bool) *Router {
@@ -59,10 +60,11 @@ func NewRouter(logger *log.Logger, sk ed25519.PrivateKey, debug bool) *Router {
 	ctx, cancel := context.WithCancel(context.Background())
 	_, insecure := os.LookupEnv("PINECONE_DISABLE_SIGNATURES")
 	r := &Router{
-		log:     logger,
-		context: ctx,
-		cancel:  cancel,
-		secure:  !insecure,
+		log:          logger,
+		context:      ctx,
+		cancel:       cancel,
+		secure:       !insecure,
+		_subscribers: make(map[chan<- events.Event]*phony.Inbox),
 	}
 	// Populate the node keys from the supplied private key.
 	copy(r.private[:], sk)
@@ -82,14 +84,12 @@ func NewRouter(logger *log.Logger, sk ed25519.PrivateKey, debug bool) *Router {
 	return r
 }
 
-// publish notifies each subscriber of a new event
-func (r Router) publish(event events.Event) {
-	for _, subscriber := range r._subscribers {
-		select {
-		case subscriber <- event:
-		default:
-			r.log.Println("Subscriber buffer full, failed publishing event!")
-		}
+// _publish notifies each subscriber of a new event.
+func (r *Router) _publish(event events.Event) {
+	for ch, inbox := range r._subscribers {
+		inbox.Act(nil, func() {
+			ch <- event
+		})
 	}
 }
 

@@ -57,7 +57,9 @@ type PeerInfo struct {
 
 // Subscribe registers a subscriber to this node's events
 func (r *Router) Subscribe(ch chan<- events.Event) {
-	r._subscribers = append(r._subscribers, ch)
+	phony.Block(r, func() {
+		r._subscribers[ch] = &phony.Inbox{}
+	})
 }
 
 func (r *Router) Coords() types.Coordinates {
