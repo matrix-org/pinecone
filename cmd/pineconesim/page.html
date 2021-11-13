@@ -181,7 +181,14 @@
             </div>
 
         </div>
-        <script defer type="text/javascript" src="https://visjs.github.io/vis-network/standalone/umd/vis-network.min.js"></script>
-        <script type="module" src="ui/main.js"></script>
+        <script>
+         let visjsLocal = "ui/modules/vis-network.min.js";
+         let visjsRemote = "https://visjs.github.io/vis-network/standalone/umd/vis-network.min.js";
+         /* let visjsSrc = visjsLocal; */
+         let visjsSrc = visjsRemote;
+
+         document.write('<script defer src="' + visjsSrc + '"><\/script>');
+         document.write('<script type="module" src="ui/main.js"><\/script>');
+        </script>
     </body>
 </html>
