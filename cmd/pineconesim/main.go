@@ -263,7 +263,7 @@ func userProxy(conn *websocket.Conn, sim *simulator.Simulator) {
 	handleSimEvents(conn, ch)
 }
 
-func handleSimEvents(conn *websocket.Conn, ch chan simulator.SimEvent) {
+func handleSimEvents(conn *websocket.Conn, ch <-chan simulator.SimEvent) {
 	for {
 		event := <-ch
 		eventType := simulator.UnknownUpdate

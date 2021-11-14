@@ -87,8 +87,10 @@ func NewRouter(logger *log.Logger, sk ed25519.PrivateKey, debug bool) *Router {
 // _publish notifies each subscriber of a new event.
 func (r *Router) _publish(event events.Event) {
 	for ch, inbox := range r._subscribers {
+		// Create a copy of the pointer before passing into the lambda
+		chCopy := ch
 		inbox.Act(nil, func() {
-			ch <- event
+			chCopy <- event
 		})
 	}
 }

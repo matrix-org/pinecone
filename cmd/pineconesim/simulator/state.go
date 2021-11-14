@@ -83,6 +83,16 @@ func (s *StateAccessor) Subscribe(ch chan<- SimEvent) State {
 	return stateCopy
 }
 
+func (s *StateAccessor) _publish(event SimEvent) {
+	for ch, inbox := range s._subscribers {
+		// Create a copy of the pointer before passing into the lambda
+		chCopy := ch
+		inbox.Act(nil, func() {
+			chCopy <- event
+		})
+	}
+}
+
 func (s *StateAccessor) GetLinkCount() float64 {
 	count := 0.0
 	phony.Block(s, func() {
@@ -169,13 +179,5 @@ func (s *StateAccessor) _updateTreeRootAnnouncement(node string, root string, se
 			Sequence: sequence,
 			Time:     time,
 			Coords:   coords})
-	}
-}
-
-func (s *StateAccessor) _publish(event SimEvent) {
-	for ch, inbox := range s._subscribers {
-		inbox.Act(nil, func() {
-			ch <- event
-		})
 	}
 }
