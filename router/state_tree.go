@@ -161,15 +161,16 @@ func (s *state) _sendTreeAnnouncements() {
 
 	s.r.Act(nil, func() {
 		coords := []uint64{}
-		for i := range ann.Coords() {
-			coords = append(coords, uint64(i))
+		for _, val := range ann.Coords() {
+			coords = append(coords, uint64(val))
 		}
 
 		s.r._publish(events.TreeRootAnnUpdate{
 			Root:     ann.RootPublicKey.String(),
 			Sequence: uint64(ann.RootSequence),
 			Time:     uint64(ann.receiveTime.Unix()),
-			Coords:   coords})
+			Coords:   coords,
+		})
 	})
 }
 
