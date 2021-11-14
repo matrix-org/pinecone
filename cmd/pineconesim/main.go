@@ -200,13 +200,6 @@ func main() {
 
 type pair struct{ from, to string }
 
-func min(a, b int) int {
-	if a <= b {
-		return a
-	}
-	return b
-}
-
 const maxBatchSize int = 25
 
 func userProxy(conn *websocket.Conn, sim *simulator.Simulator) {
