@@ -209,7 +209,7 @@ class Graph {
         Nodes.delete(id);
     }
 
-    updateCoordinates(id, root, sequence, time, coords) {
+    updateRootAnnouncement(id, root, sequence, time, coords) {
         if (Nodes.has(id)) {
             let node = Nodes.get(id);
             node.announcement.root = root;

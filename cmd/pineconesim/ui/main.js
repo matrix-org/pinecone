@@ -13,7 +13,7 @@ function handleSimMessage(msg) {
         }
 
         for (let [key, value] of Object.entries(msg.data.RootState)) {
-            graph.updateCoordinates(key, value.Root, value.AnnSequence, value.AnnTime, value.Coords);
+            graph.updateRootAnnouncement(key, value.Root, value.AnnSequence, value.AnnTime, value.Coords);
         }
 
         for (let [key, value] of Object.entries(msg.data.PeerEdges)) {
@@ -79,7 +79,7 @@ function handleSimMessage(msg) {
                 break;
             case 8: // Tree Root Announcement Updated
                 // console.log("Tree Root Announcement Updated: Node: " + event.Node + " Root: " + event.Root + " Sequence: " + event.Sequence + " Time: " + event.Time + " Coords: " + event.Coords);
-                graph.updateCoordinates(event.Node, event.Root, event.Sequence, event.Time, event.Coords);
+                graph.updateRootAnnouncement(event.Node, event.Root, event.Sequence, event.Time, event.Coords);
             }
         }
         break;
