@@ -35,6 +35,13 @@ const (
 	SimTreeRootAnnUpdated
 )
 
+type RootState struct {
+	Root        string
+	AnnSequence uint64
+	AnnTime     uint64
+	Coords      []uint64
+}
+
 type SimEventMsg struct {
 	UpdateID APIUpdateID
 	Event    SimEvent
@@ -43,6 +50,7 @@ type SimEventMsg struct {
 type InitialStateMsg struct {
 	MsgID      APIMessageID
 	Nodes      []string
+	RootState  map[string]RootState
 	PeerEdges  map[string][]string
 	SnakeEdges map[string][]string
 	TreeEdges  map[string]string
