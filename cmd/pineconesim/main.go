@@ -215,14 +215,10 @@ func userProxy(conn *websocket.Conn, sim *simulator.Simulator) {
 	state := sim.State.Subscribe(ch)
 
 	// Split state into batches and send to the UI
-	rootState := make(map[string]simulator.RootState, maxBatchSize)
-	peerEdges := make(map[string][]string, maxBatchSize)
-	treeEdges := make(map[string]string, maxBatchSize)
-	snakeEdges := make(map[string][]string, maxBatchSize)
-
 	end := false
 	batchSize := 0
 	totalNodesProcessed := 0
+	nodeState := make(map[string]simulator.InitialNodeState, maxBatchSize)
 	for name, node := range state.Nodes {
 		batchSize++
 		totalNodesProcessed++
@@ -230,39 +226,35 @@ func userProxy(conn *websocket.Conn, sim *simulator.Simulator) {
 			end = true
 		}
 
-		// Root State
-		rootState[name] = simulator.RootState{
-			Root:        node.Announcement.Root,
-			AnnSequence: node.Announcement.Sequence,
-			AnnTime:     node.Announcement.Time,
-			Coords:      node.Coords,
-		}
-
 		// Peer Links
 		var peerConns []string
 		for _, conn := range node.Connections {
 			peerConns = append(peerConns, conn)
 		}
-		peerEdges[name] = peerConns
-
-		// Tree Links
-		treeEdges[name] = node.Parent
 
 		// Snake Links
 		var snakeConns []string
 		snakeConns = append(snakeConns, node.AscendingPeer)
 		snakeConns = append(snakeConns, node.DescendingPeer)
-		snakeEdges[name] = snakeConns
+
+		nodeState[name] = simulator.InitialNodeState{
+			RootState: simulator.RootState{
+				Root:        node.Announcement.Root,
+				AnnSequence: node.Announcement.Sequence,
+				AnnTime:     node.Announcement.Time,
+				Coords:      node.Coords,
+			},
+			Peers:           peerConns,
+			SnakeNeighbours: snakeConns,
+			TreeParent:      node.Parent,
+		}
 
 		if batchSize == int(maxBatchSize) || end {
 			// Send batch
 			if err := conn.WriteJSON(simulator.InitialStateMsg{
-				MsgID:      simulator.SimInitialState,
-				RootState:  rootState,
-				PeerEdges:  peerEdges,
-				SnakeEdges: snakeEdges,
-				TreeEdges:  treeEdges,
-				End:        end,
+				MsgID: simulator.SimInitialState,
+				Nodes: nodeState,
+				End:   end,
 			}); err != nil {
 				log.Println(err)
 				return
@@ -270,10 +262,7 @@ func userProxy(conn *websocket.Conn, sim *simulator.Simulator) {
 
 			// Reset Batch Info
 			batchSize = 0
-			rootState = make(map[string]simulator.RootState, maxBatchSize)
-			peerEdges = make(map[string][]string, maxBatchSize)
-			treeEdges = make(map[string]string, maxBatchSize)
-			snakeEdges = make(map[string][]string, maxBatchSize)
+			nodeState = make(map[string]simulator.InitialNodeState, maxBatchSize)
 		}
 	}
 

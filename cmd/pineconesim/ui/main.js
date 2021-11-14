@@ -8,25 +8,19 @@ function handleSimMessage(msg) {
     // console.log(msg.data);
     switch(msg.data.MsgID) {
     case 1: // Initial State
-        for (let [key, value] of Object.entries(msg.data.RootState)) {
+        for (let [key, value] of Object.entries(msg.data.Nodes)) {
             graph.addNode(key);
-            graph.updateRootAnnouncement(key, value.Root, value.AnnSequence, value.AnnTime, value.Coords);
-        }
+            graph.updateRootAnnouncement(key, value.RootState.Root, value.RootState.AnnSequence, value.RootState.AnnTime, value.RootState.Coords);
 
-        for (let [key, value] of Object.entries(msg.data.PeerEdges)) {
-            for (let i = 0; i < msg.data.PeerEdges[key].length; i++) {
-                graph.addEdge("peer", key, msg.data.PeerEdges[key][i]);
+            for (let i = 0; i < value.Peers.length; i++) {
+                graph.addEdge("peer", key, value.Peers[i]);
             }
-        }
 
-        for (let [key, value] of Object.entries(msg.data.SnakeEdges)) {
-            for (let i = 0; i < msg.data.SnakeEdges[key].length; i++) {
-                graph.addEdge("snake", key, msg.data.SnakeEdges[key][i]);
+            for (let i = 0; i < value.SnakeNeighbours.length; i++) {
+                graph.addEdge("snake", key, value.SnakeNeighbours[i]);
             }
-        }
 
-        for (let [key, value] of Object.entries(msg.data.TreeEdges)) {
-            graph.addEdge("tree", key, value);
+            graph.addEdge("tree", key, value.TreeParent);
         }
 
         if (msg.data.End === true) {
