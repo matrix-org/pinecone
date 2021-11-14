@@ -291,7 +291,7 @@ func (s *state) _handleTreeAnnouncement(p *peer, f *types.Frame) error {
 			// The update contains a weaker root key, which is also bad
 			// news.
 			fallthrough
-		case rootDelta == 0 || newUpdate.RootSequence == lastParentUpdate.RootSequence:
+		case rootDelta == 0 && newUpdate.RootSequence == lastParentUpdate.RootSequence:
 			// The update contains the same root key, but the sequence
 			// number is being replayed. This usually happens when the
 			// parent has chosen a new parent and is re-signing the last
