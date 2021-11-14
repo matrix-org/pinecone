@@ -207,20 +207,28 @@ func min(a, b int) int {
 	return b
 }
 
+const maxBatchSize int = 25
+
 func userProxy(conn *websocket.Conn, sim *simulator.Simulator) {
 	// Subscribe to sim events and grab snapshot of current state
 	ch := make(chan simulator.SimEvent)
 	state := sim.State.Subscribe(ch)
 
-	// Structure local sim state for sending to the UI
-	nodeIDs := make([]string, 0, len(state.Nodes))
-	rootState := make(map[string]simulator.RootState)
-	peerEdges := make(map[string][]string)
-	treeEdges := make(map[string]string)
-	snakeEdges := make(map[string][]string)
+	// Split state into batches and send to the UI
+	rootState := make(map[string]simulator.RootState, maxBatchSize)
+	peerEdges := make(map[string][]string, maxBatchSize)
+	treeEdges := make(map[string]string, maxBatchSize)
+	snakeEdges := make(map[string][]string, maxBatchSize)
+
+	end := false
+	batchSize := 0
+	totalNodesProcessed := 0
 	for name, node := range state.Nodes {
-		// Node List
-		nodeIDs = append(nodeIDs, name)
+		batchSize++
+		totalNodesProcessed++
+		if totalNodesProcessed == len(state.Nodes) {
+			end = true
+		}
 
 		// Root State
 		rootState[name] = simulator.RootState{
@@ -237,59 +245,35 @@ func userProxy(conn *websocket.Conn, sim *simulator.Simulator) {
 		}
 		peerEdges[name] = peerConns
 
-		// Tree
+		// Tree Links
 		treeEdges[name] = node.Parent
 
-		// Snake
+		// Snake Links
 		var snakeConns []string
 		snakeConns = append(snakeConns, node.AscendingPeer)
 		snakeConns = append(snakeConns, node.DescendingPeer)
 		snakeEdges[name] = snakeConns
-	}
 
-	// Split state into batches and send to the UI
-	batchSize := 25
-	for i := 0; i < len(nodeIDs); i += batchSize {
-		nodeBatch := nodeIDs[i:min(i+batchSize, len(nodeIDs))]
-		end := false
-		if nodeBatch[len(nodeBatch)-1] == nodeIDs[len(nodeIDs)-1] {
-			end = true
-		}
-
-		rootBatch := make(map[string]simulator.RootState)
-		physBatch := make(map[string][]string)
-		snakeBatch := make(map[string][]string)
-		treeBatch := make(map[string]string)
-
-		for _, node := range nodeBatch {
-			if val, ok := rootState[node]; ok {
-				rootBatch[node] = val
+		if batchSize == int(maxBatchSize) || end {
+			// Send batch
+			if err := conn.WriteJSON(simulator.InitialStateMsg{
+				MsgID:      simulator.SimInitialState,
+				RootState:  rootState,
+				PeerEdges:  peerEdges,
+				SnakeEdges: snakeEdges,
+				TreeEdges:  treeEdges,
+				End:        end,
+			}); err != nil {
+				log.Println(err)
+				return
 			}
 
-			if val, ok := peerEdges[node]; ok {
-				physBatch[node] = val
-			}
-
-			if val, ok := snakeEdges[node]; ok {
-				snakeBatch[node] = val
-			}
-
-			if val, ok := treeEdges[node]; ok {
-				treeBatch[node] = val
-			}
-		}
-
-		if err := conn.WriteJSON(simulator.InitialStateMsg{
-			MsgID:      simulator.SimInitialState,
-			Nodes:      nodeBatch,
-			RootState:  rootBatch,
-			PeerEdges:  physBatch,
-			SnakeEdges: snakeBatch,
-			TreeEdges:  treeBatch,
-			End:        end,
-		}); err != nil {
-			log.Println(err)
-			return
+			// Reset Batch Info
+			batchSize = 0
+			rootState = make(map[string]simulator.RootState, maxBatchSize)
+			peerEdges = make(map[string][]string, maxBatchSize)
+			treeEdges = make(map[string]string, maxBatchSize)
+			snakeEdges = make(map[string][]string, maxBatchSize)
 		}
 	}
 

@@ -8,11 +8,8 @@ function handleSimMessage(msg) {
     // console.log(msg.data);
     switch(msg.data.MsgID) {
     case 1: // Initial State
-        for (let i = 0; i < msg.data.Nodes.length; i++) {
-            graph.addNode(msg.data.Nodes[i]);
-        }
-
         for (let [key, value] of Object.entries(msg.data.RootState)) {
+            graph.addNode(key);
             graph.updateRootAnnouncement(key, value.Root, value.AnnSequence, value.AnnTime, value.Coords);
         }
 
