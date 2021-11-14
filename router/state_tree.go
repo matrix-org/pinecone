@@ -165,10 +165,17 @@ func (s *state) _sendTreeAnnouncements() {
 			coords = append(coords, uint64(val))
 		}
 
+		var announcementTime int64
+		if ann.RootPublicKey == s.r.public {
+			announcementTime = time.Now().UnixMilli()
+		} else {
+			announcementTime = ann.receiveTime.UnixMilli()
+		}
+
 		s.r._publish(events.TreeRootAnnUpdate{
 			Root:     ann.RootPublicKey.String(),
 			Sequence: uint64(ann.RootSequence),
-			Time:     uint64(ann.receiveTime.Unix()),
+			Time:     uint64(announcementTime),
 			Coords:   coords,
 		})
 	})
