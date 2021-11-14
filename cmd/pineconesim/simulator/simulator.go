@@ -132,29 +132,34 @@ func (sim *Simulator) handlePeerRemoved(node string, peerID string, port int) {
 }
 
 func (sim *Simulator) handleTreeParentUpdate(node string, peerID string) {
+	peerName := ""
 	if peerNode, err := sim.State.GetNodeName(peerID); err == nil {
-		sim.State.Act(nil, func() { sim.State._updateParent(node, peerNode) })
-	} else {
-		sim.State.Act(nil, func() { sim.State._updateParent(node, "") })
+		peerName = peerNode
 	}
+	sim.State.Act(nil, func() { sim.State._updateParent(node, peerName) })
 }
 
 func (sim *Simulator) handleSnakeAscUpdate(node string, peerID string) {
+	peerName := ""
 	if peerNode, err := sim.State.GetNodeName(peerID); err == nil {
-		sim.State.Act(nil, func() { sim.State._updateAscendingPeer(node, peerNode) })
-	} else {
-		sim.State.Act(nil, func() { sim.State._updateAscendingPeer(node, "") })
+		peerName = peerNode
 	}
+
+	sim.State.Act(nil, func() { sim.State._updateAscendingPeer(node, peerName) })
 }
 
 func (sim *Simulator) handleSnakeDescUpdate(node string, peerID string) {
+	peerName := ""
 	if peerNode, err := sim.State.GetNodeName(peerID); err == nil {
-		sim.State.Act(nil, func() { sim.State._updateDescendingPeer(node, peerNode) })
-	} else {
-		sim.State.Act(nil, func() { sim.State._updateDescendingPeer(node, "") })
+		peerName = peerNode
 	}
+	sim.State.Act(nil, func() { sim.State._updateDescendingPeer(node, peerName) })
 }
 
 func (sim *Simulator) handleTreeRootAnnUpdate(node string, root string, sequence uint64, time uint64, coords []uint64) {
-	sim.State.Act(nil, func() { sim.State._updateTreeRootAnnouncement(node, root, sequence, time, coords) })
+	rootName := ""
+	if peerNode, err := sim.State.GetNodeName(root); err == nil {
+		rootName = peerNode
+	}
+	sim.State.Act(nil, func() { sim.State._updateTreeRootAnnouncement(node, rootName, sequence, time, coords) })
 }
