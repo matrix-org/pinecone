@@ -18,6 +18,23 @@ import (
 	"github.com/matrix-org/pinecone/types"
 )
 
+/* API Events:
+DONE:
+   Peer Added
+   Peer Removed
+   Tree Parent Changed
+   Snake Descending Node Changed
+   Snake Ascending Node Changed
+   Tree Root Announcement Changed
+
+TODO:
+   Snake Table Entry Added
+   Snake Table Entry Removed
+
+NOTE:
+   Events need to be processed in FIFO order.
+*/
+
 type Event interface {
 	isEvent()
 }

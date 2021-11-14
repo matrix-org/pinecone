@@ -41,20 +41,6 @@ type PeerInfo struct {
 	Zone          string
 }
 
-/* Possible events:
-   Peer Added (Port, PeerInfo)
-   Peer Removed (Port, PeerInfo)
-   Tree Coordinates Changed (Coordinates)
-   Tree Root Announcement Changed (RootAnnouncement)
-   Tree Parent Changed (PublicKey)
-   Snake Table Entry Added (VirtualSnakeEntry)
-   Snake Table Entry Removed (VirtualSnakeIndex?)
-   Snake Descending Node Changed (NeighbourInfo)
-   Snake Ascending Node Changed (NeighbourInfo)
-
-   Events need to be processed in FIFO order for this to work in the sim.
-*/
-
 // Subscribe registers a subscriber to this node's events
 func (r *Router) Subscribe(ch chan<- events.Event) {
 	phony.Block(r, func() {
