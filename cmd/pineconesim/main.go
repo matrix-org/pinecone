@@ -208,9 +208,11 @@ func min(a, b int) int {
 }
 
 func userProxy(conn *websocket.Conn, sim *simulator.Simulator) {
+	// Subscribe to sim events and grab snapshot of current state
 	ch := make(chan simulator.SimEvent)
 	state := sim.State.Subscribe(ch)
 
+	// Structure local sim state for sending to the UI
 	nodeIDs := make([]string, 0, len(state.Nodes))
 	rootState := make(map[string]simulator.RootState)
 	peerEdges := make(map[string][]string)
@@ -245,6 +247,7 @@ func userProxy(conn *websocket.Conn, sim *simulator.Simulator) {
 		snakeEdges[name] = snakeConns
 	}
 
+	// Split state into batches and send to the UI
 	batchSize := 25
 	for i := 0; i < len(nodeIDs); i += batchSize {
 		nodeBatch := nodeIDs[i:min(i+batchSize, len(nodeIDs))]
@@ -290,6 +293,11 @@ func userProxy(conn *websocket.Conn, sim *simulator.Simulator) {
 		}
 	}
 
+	// Start event handler for future sim events
+	handleSimEvents(conn, ch)
+}
+
+func handleSimEvents(conn *websocket.Conn, ch chan simulator.SimEvent) {
 	for {
 		event := <-ch
 		eventType := simulator.UnknownUpdate
