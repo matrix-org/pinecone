@@ -322,10 +322,10 @@ func handleSimEvents(conn *websocket.Conn, ch chan simulator.SimEvent) {
 
 		conn.WriteJSON(simulator.StateUpdateMsg{
 			MsgID: simulator.SimUpdate,
-			Events: []simulator.SimEventMsg{simulator.SimEventMsg{
+			Event: simulator.SimEventMsg{
 				UpdateID: eventType,
 				Event:    event,
-			}}})
+			}})
 	}
 }
 

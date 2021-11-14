@@ -58,6 +58,6 @@ type InitialStateMsg struct {
 }
 
 type StateUpdateMsg struct {
-	MsgID  APIMessageID
-	Events []SimEventMsg
+	MsgID APIMessageID
+	Event SimEventMsg
 }
