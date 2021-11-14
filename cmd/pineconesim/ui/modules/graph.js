@@ -12,6 +12,8 @@ titleElement.id = "nodeTooltip";
 
 let selectedNodes = null;
 
+let Nodes = new Map();
+
 class Graph {
     nodeIDs = [];
 
@@ -176,12 +178,21 @@ class Graph {
         });
     }
 
-    addNode(id) {
+    addNode(id, coords) {
         this.peerData.nodes.add({ id: id, label: id });
         this.snakeData.nodes.add({ id: id, label: id });
         this.treeData.nodes.add({ id: id, label: id });
         this.geoData.nodes.add({ id: id, label: id });
         this.nodeIDs.push(id);
+
+        Nodes.set(id, {
+            announcement: {
+                root: "",
+                sequence: 0,
+                time: 0,
+            },
+            coords: [],
+        });
     }
 
     removeNode(id) {
@@ -194,6 +205,26 @@ class Graph {
         if (index > -1) {
             this.nodeIDs.splice(index, 1);
         }
+
+        Nodes.delete(id);
+    }
+
+    updateCoordinates(id, root, sequence, time, coords) {
+        if (Nodes.has(id)) {
+            let node = Nodes.get(id);
+            node.announcement.root = root;
+            node.announcement.sequence = sequence;
+            node.announcement.time = time;
+            node.coords = coords;
+        }
+    }
+
+    getCoordinates(id) {
+        if (Node.has(id)) {
+            return Nodes.get(id);
+        }
+
+        return [];
     }
 
     addEdge(dataset, from, to) {

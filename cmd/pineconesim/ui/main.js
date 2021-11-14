@@ -73,6 +73,9 @@ function handleSimMessage(msg) {
                     graph.addEdge("snake", event.Node, event.Peer);
                 }
                 break;
+            case 8: // Tree Root Announcement Updated
+                console.log("Tree Root Announcement Updated: Node: " + event.Node + " Root: " + event.Root + " Sequence: " + event.Sequence + " Time: " + event.Time + " Coords: " + event.Coords);
+                graph.updateCoordinates(event.Node, event.Root, event.Sequence, event.Time, event.Coords);
             }
         }
         break;

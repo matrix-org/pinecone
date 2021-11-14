@@ -32,6 +32,7 @@ const (
 	SimTreeParentUpdated
 	SimSnakeAscUpdated
 	SimSnakeDescUpdated
+	SimTreeRootAnnUpdated
 )
 
 type SimEventMsg struct {

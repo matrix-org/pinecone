@@ -77,6 +77,17 @@ type SnakeDescUpdate struct {
 // Tag SnakeDescUpdate as an Event
 func (e SnakeDescUpdate) isEvent() {}
 
+type TreeRootAnnUpdate struct {
+	Node     string
+	Root     string // Root Public Key
+	Sequence uint64
+	Time     uint64 // Unix Time
+	Coords   []uint64
+}
+
+// Tag TreeRootAnnUpdate as an Event
+func (e TreeRootAnnUpdate) isEvent() {}
+
 type eventHandler struct {
 	node string
 	ch   <-chan events.Event
@@ -96,6 +107,8 @@ func (h eventHandler) Run(sim *Simulator) {
 			sim.handleSnakeAscUpdate(h.node, e.PeerID)
 		case events.SnakeDescUpdate:
 			sim.handleSnakeDescUpdate(h.node, e.PeerID)
+		case events.TreeRootAnnUpdate:
+			sim.handleTreeRootAnnUpdate(h.node, e.Root, e.Sequence, e.Time, e.Coords)
 		default:
 			sim.log.Println("Unhandled event!")
 		}

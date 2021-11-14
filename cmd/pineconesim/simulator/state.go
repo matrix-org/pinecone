@@ -20,10 +20,18 @@ import (
 	"github.com/Arceliar/phony"
 )
 
+type RootAnnouncement struct {
+	Root     string
+	Sequence uint64
+	Time     uint64
+}
+
 type NodeState struct {
 	PeerID         string
 	Connections    map[int]string
 	Parent         string
+	Coords         []uint64
+	Announcement   RootAnnouncement
 	AscendingPeer  string
 	DescendingPeer string
 }
@@ -33,6 +41,8 @@ func NewNodeState(peerID string) *NodeState {
 		PeerID:         peerID,
 		Connections:    make(map[int]string),
 		Parent:         "",
+		Announcement:   RootAnnouncement{},
+		Coords:         []uint64{},
 		AscendingPeer:  "",
 		DescendingPeer: "",
 	}
@@ -143,6 +153,22 @@ func (s *StateAccessor) _updateDescendingPeer(node string, peerID string) {
 		s._state.Nodes[node].DescendingPeer = peerID
 
 		s._publish(SnakeDescUpdate{Node: node, Peer: peerID, Prev: prev})
+	}
+}
+
+func (s *StateAccessor) _updateTreeRootAnnouncement(node string, root string, sequence uint64, time uint64, coords []uint64) {
+	if _, ok := s._state.Nodes[node]; ok {
+		s._state.Nodes[node].Announcement.Root = root
+		s._state.Nodes[node].Announcement.Sequence = sequence
+		s._state.Nodes[node].Announcement.Time = time
+		s._state.Nodes[node].Coords = coords
+
+		s._publish(TreeRootAnnUpdate{
+			Node:     node,
+			Root:     root,
+			Sequence: sequence,
+			Time:     time,
+			Coords:   coords})
 	}
 }
 

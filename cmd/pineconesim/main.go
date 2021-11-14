@@ -295,6 +295,8 @@ func userProxy(conn *websocket.Conn, sim *simulator.Simulator) {
 			eventType = simulator.SimSnakeAscUpdated
 		case simulator.SnakeDescUpdate:
 			eventType = simulator.SimSnakeDescUpdated
+		case simulator.TreeRootAnnUpdate:
+			eventType = simulator.SimTreeRootAnnUpdated
 		}
 
 		conn.WriteJSON(simulator.StateUpdateMsg{

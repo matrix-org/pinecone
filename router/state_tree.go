@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/Arceliar/phony"
+	"github.com/matrix-org/pinecone/router/events"
 	"github.com/matrix-org/pinecone/types"
 )
 
@@ -157,6 +158,19 @@ func (s *state) _sendTreeAnnouncements() {
 		}
 		s.sendTreeAnnouncementToPeer(ann, p)
 	}
+
+	s.r.Act(nil, func() {
+		coords := []uint64{}
+		for i := range ann.Coords() {
+			coords = append(coords, uint64(i))
+		}
+
+		s.r._publish(events.TreeRootAnnUpdate{
+			Root:     ann.RootPublicKey.String(),
+			Sequence: uint64(ann.RootSequence),
+			Time:     uint64(ann.receiveTime.Unix()),
+			Coords:   coords})
+	})
 }
 
 // _nextHopsTree returns the best next-hop candidate for a given frame. The

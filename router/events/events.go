@@ -58,3 +58,13 @@ type SnakeDescUpdate struct {
 
 // Tag SnakeDescUpdate as an Event
 func (e SnakeDescUpdate) isEvent() {}
+
+type TreeRootAnnUpdate struct {
+	Root     string // Root Public Key
+	Sequence uint64
+	Time     uint64 // Unix Time
+	Coords   []uint64
+}
+
+// Tag TreeRootAnnUpdate as an Event
+func (e TreeRootAnnUpdate) isEvent() {}

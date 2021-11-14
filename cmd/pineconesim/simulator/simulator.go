@@ -154,3 +154,7 @@ func (sim *Simulator) handleSnakeDescUpdate(node string, peerID string) {
 		sim.State.Act(nil, func() { sim.State._updateDescendingPeer(node, "") })
 	}
 }
+
+func (sim *Simulator) handleTreeRootAnnUpdate(node string, root string, sequence uint64, time uint64, coords []uint64) {
+	sim.State.Act(nil, func() { sim.State._updateTreeRootAnnouncement(node, root, sequence, time, coords) })
+}
