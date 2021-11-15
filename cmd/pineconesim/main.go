@@ -31,8 +31,6 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/matrix-org/pinecone/cmd/pineconesim/simulator"
-	"github.com/matrix-org/pinecone/router"
-	"github.com/matrix-org/pinecone/util"
 	"go.uber.org/atomic"
 
 	"net/http"
@@ -298,34 +296,6 @@ func handleSimEvents(conn *websocket.Conn, ch <-chan simulator.SimEvent) {
 func configureHTTPRouting(sim *simulator.Simulator) {
 	http.Handle("/ui/", http.StripPrefix("/ui/", http.FileServer(http.Dir("./cmd/pineconesim/ui"))))
 
-	wsUpgrader := websocket.Upgrader{}
-	http.DefaultServeMux.HandleFunc("/simws", func(w http.ResponseWriter, r *http.Request) {
-		var n *simulator.Node
-		nodeID := r.URL.Query().Get("node")
-		if nodeID != "" {
-			n = sim.Node(nodeID)
-		} else {
-			for id, node := range sim.Nodes() {
-				if node != nil {
-					n, nodeID = node, id
-					break
-				}
-			}
-		}
-		if n == nil {
-			w.WriteHeader(404)
-			return
-		}
-		c, err := wsUpgrader.Upgrade(w, r, nil)
-		if err != nil {
-			return
-		}
-		conn := util.WrapWebSocketConn(c)
-		if _, err = n.AuthenticatedConnect(conn, "websocket", router.PeerTypeRemote, true); err != nil {
-			return
-		}
-		log.Printf("WebSocket peer %q connected to sim node %q\n", c.RemoteAddr(), nodeID)
-	})
 	http.DefaultServeMux.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
 		var upgrader = websocket.Upgrader{}
 		conn, err := upgrader.Upgrade(w, r, nil)

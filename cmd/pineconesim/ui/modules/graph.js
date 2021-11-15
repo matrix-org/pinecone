@@ -14,8 +14,53 @@ titleElement.style.margin = "-4px";
 titleElement.id = "nodeTooltip";
 
 let selectedNodes = null;
+let panelNodes = null;
+let hoverNode = null;
 
 let Nodes = new Map();
+
+function handleNodeHoverUpdate(nodeID) {
+    let node = Nodes.get(nodeID);
+    let hoverPanel = document.getElementById('nodePopupText');
+    if (hoverPanel) {
+        hoverPanel.innerHTML = "<u><b>Node " + nodeID + "</b></u>" +
+            "<br>Coords: [" + node.coords + "]" +
+            "<br><br><u>Announcement</u>" +
+            "<br>Root: Node " + node.announcement.root +
+            "<br>Sequence: " + node.announcement.sequence +
+            "<br>Time: " + node.announcement.time + " ms";
+    }
+}
+
+function handleNodePanelUpdate(nodeID) {
+    let node = Nodes.get(nodeID);
+    let nodePanel = document.getElementById('currentNodeState');
+    if (nodePanel) {
+        nodePanel.innerHTML =
+            "<h3>Node Details</h3>" +
+            "<hr><table>" +
+            "<tr><td>Name:</td><td>" + nodeID + "</td></tr>" +
+            "<tr><td>Coordinates:</td><td>[" + node.coords + "]</td></tr>" +
+            "<tr><td>Public Key:</td><td><code>TODO</code></td></tr>" +
+            "<tr><td>Descending Key:</td><td><code>TODO</code></td></tr>" +
+            "<tr><td>Descending Path:</td><td><code>TODO</code></td></tr>" +
+            "<tr><td>Ascending Key:</td><td><code>TODO</code></td></tr>" +
+            "<tr><td>Ascending Path:</td><td><code>TODO</code></td></tr>" +
+            "</table>" +
+            "<hr><h4><u>Peers</u></h4>" +
+            "<table>" +
+            "<tr><th>Name</th><th>Public Key</th><th>Port</th><th>Root</th></tr>" +
+            // {{range .NodeInfo.Peers}}
+            "<tr><td><code>TODO</code></td><td><code>TODO</code></td><td><code>TODO</code></td><td><code>TODO</code></td></tr>" +
+            "</table>" +
+            "<hr><h4><u>SNEK Routes</u></h4>" +
+            "<table>" +
+            "<tr><th>Public Key</th><th>Path ID</th><th>Src</th><th>Dst</th><th>Seq</th></tr>" +
+            // {{range .NodeInfo.Entries}}
+            "<tr><td><code>TODO</code></td><td><code>TODO</code></td><td><code>TODO</code></td><td><code>TODO</code></td><td><code>TODO</code></td></tr>" +
+            "</table>";
+    }
+}
 
 class Graph {
     nodeIDs = [];
@@ -125,11 +170,6 @@ class Graph {
                 hover: getComputedStyle(document.documentElement)
                     .getPropertyValue('--color-blue-pill'),
             },
-            // arrows: {
-            //     to: {
-            //         enabled: true,
-            //     },
-            // },
             width: 2,
             selectionWidth: 4,
         },
@@ -154,17 +194,12 @@ class Graph {
 
     setupHandlers() {
         this.network.on("showPopup", function (params) {
-            // params is actually the node ID
             let text = document.createElement('div');
             text.id = "nodePopupText";
-            let node = Nodes.get(params);
-            text.innerHTML = "<u><b>Node " + params + "</b></u>" +
-                "<br>Coords: [" + node.coords + "]" +
-                "<br><br><u>Announcement</u>" +
-                "<br>Root: Node " + node.announcement.root +
-                "<br>Sequence: " + node.announcement.sequence +
-                "<br>Time: " + node.announcement.time + " ms";
             titleElement.appendChild(text);
+
+            hoverNode = params;
+            handleNodeHoverUpdate(params);
         });
 
         this.network.on("hidePopup", function () {
@@ -172,6 +207,8 @@ class Graph {
             if (prevText) {
                 titleElement.removeChild(prevText);
             }
+
+            hoverNode = null;
         });
 
         this.network.on("stabilized", function (params) {
@@ -180,12 +217,15 @@ class Graph {
 
         this.network.on("selectNode", function (params) {
             selectedNodes = params.nodes;
+            panelNodes = selectedNodes;
+            for (const node of params.nodes) {
+                handleNodePanelUpdate(node);
+            }
             openRightPanel();
         });
 
         this.network.on("deselectNode", function (params) {
             selectedNodes = params.nodes;
-            closeRightPanel();
         });
     }
 
@@ -227,6 +267,13 @@ class Graph {
             node.announcement.sequence = sequence;
             node.announcement.time = time;
             node.coords = coords;
+
+            if (panelNodes && panelNodes.indexOf(id) > -1) {
+                handleNodePanelUpdate(id);
+            }
+            if (hoverNode && hoverNode === id) {
+                handleNodeHoverUpdate(id);
+            }
         }
     }
 

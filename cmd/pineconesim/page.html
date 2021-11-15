@@ -9,184 +9,122 @@
             <div id="canvas"></div>
 
             <div>
-            <button class="toggle topLeft tooltip overlay" id="leftToggle">
-                &#9776;
-                <span class="tooltiptext tooltip-right">Toggle Panel</span>
-            </button>
+                <button class="toggle topLeft tooltip overlay" id="leftToggle">
+                    &#9776;
+                    <span class="tooltiptext tooltip-right">Toggle Panel</span>
+                </button>
 
-            <button class="toggle topRight tooltip overlay" id="rightToggle">
-                &#9776;
-                <span class="tooltiptext tooltip-left">Toggle Panel</span>
-            </button>
+                <button class="toggle topRight tooltip overlay" id="rightToggle">
+                    &#9776;
+                    <span class="tooltiptext tooltip-left">Toggle Panel</span>
+                </button>
 
-            <div class="icon-bar icon-bar-center overlay">
-                <a class="netselect tooltip active" href="#" id="peerTopo"><b>P</b>
-                    <span class="tooltiptext tooltip-bottom">Peer Topology</span>
-                </a>
-                <a class="netselect tooltip" href="#" id="treeTopo"><b>T</b>
-                    <span class="tooltiptext tooltip-bottom">Tree Topology</span>
-                </a>
-                <a class="netselect tooltip" href="#" id="snakeTopo"><b>S</b>
-                    <span class="tooltiptext tooltip-bottom">Snake Topology</span>
-                </a>
-                <a class="netselect tooltip" href="#" id="geographicTopo"><b>G</b>
-                    <span class="tooltiptext tooltip-bottom">Geographic Topology</span>
-                </a>
-            </div>
+                <div class="icon-bar icon-bar-center overlay">
+                    <a class="netselect tooltip active" href="#" id="peerTopo"><b>P</b>
+                        <span class="tooltiptext tooltip-bottom">Peer Topology</span>
+                    </a>
+                    <a class="netselect tooltip" href="#" id="treeTopo"><b>T</b>
+                        <span class="tooltiptext tooltip-bottom">Tree Topology</span>
+                    </a>
+                    <a class="netselect tooltip" href="#" id="snakeTopo"><b>S</b>
+                        <span class="tooltiptext tooltip-bottom">Snake Topology</span>
+                    </a>
+                    <a class="netselect tooltip" href="#" id="geographicTopo"><b>G</b>
+                        <span class="tooltiptext tooltip-bottom">Geographic Topology</span>
+                    </a>
+                </div>
 
-            <div class="left panel-overlay" id="left">
-                <div class="left-padding">
-                    <div class="shift-right">
-                        <h4>Statistics</h4>
+                <div class="left panel-overlay" id="left">
+                    <div class="left-padding">
+                        <div class="shift-right">
+                            <h3>Statistics</h3>
+                        </div>
+                        <hr>
+                        <table>
+                            <tr>
+                                <td style="text-align: right;">Total number of nodes:</td>
+                                <td style="text-align: left;">{{.NodeCount}}</td>
+                            </tr>
+                            <tr>
+                                <td style="text-align: right;">Total number of paths:</td>
+                                <td style="text-align: left;">{{.PathCount}}</td>
+                            </tr>
+                            <tr>
+                                <td style="text-align: right;">Tree path convergence:</td>
+                                <td style="text-align: left;">{{.TreePathConvergence}}</td>
+                            </tr>
+                            <tr>
+                                <td style="text-align: right;">SNEK path convergence:</td>
+                                <td style="text-align: left;">{{.SNEKPathConvergence}}</td>
+                            </tr>
+                            <tr>
+                                <td>Tree average stretch:</td>
+                                <td>{{.TreeAvgStretch}}</td>
+                            </tr>
+                            <tr>
+                                <td>SNEK average stretch:</td>
+                                <td>{{.SNEKAvgStretch}}</td>
+                            </tr>
+                        </table>
+
+                        <hr>
+                        <h4><u>Node Summary</u></h4>
+                        <table>
+                            <tr>
+                                <th>Name</th>
+                                <th>Port</th>
+                                <th>Coords</th>
+                                <th>Root</th>
+                                <th>↓</th>
+                                <th>Key</th>
+                                <th>↑</th>
+                                <th>#</th>
+                                <th>!</th>
+                            </tr>
+                            {{range .Nodes}}
+                            {{if not .IsExternal}}<tr>
+                                <td><a href="?view=snek&pk={{.Key}}">{{.Name}}</a></td>
+                                <td><code>{{.Port}}</code></td>
+                                <td><code>{{.Coords}}</code></td>
+                                <td><a href="?view=snek&pk={{.Root}}"><code>{{.Root}}</code></a></td>
+                                <td><a href="?view=snek&pk={{.Predecessor}}"><code>{{.Predecessor}}</code></a></td>
+                                <td><a href="?view=snek&pk={{.Key}}"><code>{{.Key}}</code></a></td>
+                                <td><a href="?view=snek&pk={{.Successor}}"><code>{{.Successor}}</code></a></td>
+                                <td><code>{{.DHTSize}}</code></td>
+                                <td><code>{{.DHTStalePaths}}</code></td>
+                                {{end}}</tr>{{end}}
+                        </table>
+
+                        <hr>
+                        <h4><u>Tree Building</u></h4>
+                        <table>
+                            <tr>
+                                <th>Root Key</th>
+                                <th>Convergence</th>
+                            </tr>
+                            {{range .Roots}}<tr>
+                                <td><code>{{.Name}}</code></td>
+                                <td>{{.References}}%</td>
+                            </tr>{{end}}
+                        </table>
                     </div>
-                    <table>
-                        <tr>
-                            <td style="text-align: right;">Total number of nodes:</td>
-                            <td style="text-align: left;">{{.NodeCount}}</td>
-                        </tr>
-                        <tr>
-                            <td style="text-align: right;">Total number of paths:</td>
-                            <td style="text-align: left;">{{.PathCount}}</td>
-                        </tr>
-                        <tr>
-                            <td style="text-align: right;">Tree path convergence:</td>
-                            <td style="text-align: left;">{{.TreePathConvergence}}</td>
-                        </tr>
-                        <tr>
-                            <td style="text-align: right;">SNEK path convergence:</td>
-                            <td style="text-align: left;">{{.SNEKPathConvergence}}</td>
-                        </tr>
-                        <tr>
-                            <td>Tree average stretch:</td>
-                            <td>{{.TreeAvgStretch}}</td>
-                        </tr>
-                        <tr>
-                            <td>SNEK average stretch:</td>
-                            <td>{{.SNEKAvgStretch}}</td>
-                        </tr>
-                    </table>
+                </div>
 
-                    <h4>Node Summary</h4>
-                    <table>
-                        <tr>
-                            <th>Name</th>
-                            <th>Port</th>
-                            <th>Coords</th>
-                            <th>Root</th>
-                            <th>↓</th>
-                            <th>Key</th>
-                            <th>↑</th>
-                            <th>#</th>
-                            <th>!</th>
-                        </tr>
-                        {{range .Nodes}}
-                        {{if not .IsExternal}}<tr>
-                            <td><a href="?view=snek&pk={{.Key}}">{{.Name}}</a></td>
-                            <td><code>{{.Port}}</code></td>
-                            <td><code>{{.Coords}}</code></td>
-                            <td><a href="?view=snek&pk={{.Root}}"><code>{{.Root}}</code></a></td>
-                            <td><a href="?view=snek&pk={{.Predecessor}}"><code>{{.Predecessor}}</code></a></td>
-                            <td><a href="?view=snek&pk={{.Key}}"><code>{{.Key}}</code></a></td>
-                            <td><a href="?view=snek&pk={{.Successor}}"><code>{{.Successor}}</code></a></td>
-                            <td><code>{{.DHTSize}}</code></td>
-                            <td><code>{{.DHTStalePaths}}</code></td>
-                            {{end}}</tr>{{end}}
-                    </table>
-
-                    <h4>Tree Building</h4>
-                    <table>
-                        <tr>
-                            <th>Root Key</th>
-                            <th>Convergence</th>
-                        </tr>
-                        {{range .Roots}}<tr>
-                            <td><code>{{.Name}}</code></td>
-                            <td>{{.References}}%</td>
-                        </tr>{{end}}
-                    </table>
+                <div class="right panel-overlay" id="right">
+                    <div class="right-padding">
+                        <div id="currentNodeState"/>
+                    </div>
                 </div>
             </div>
+            <script>
+             let visjsLocal = "ui/modules/vis-network.min.js";
+             let visjsRemote = "https://visjs.github.io/vis-network/standalone/umd/vis-network.min.js";
+             /* let visjsSrc = visjsLocal; */
+             let visjsSrc = visjsRemote;
 
-            <div class="right panel-overlay" id="right">
-                <div class="right-padding">
-                    {{if .NodeInfo}}
-                    <h4>Node Information</h4>
-                    <table>
-                        <tr>
-                            <td>Name:</td>
-                            <td>{{.NodeInfo.Name}}</td>
-                        </tr>
-                        <tr>
-                            <td>Public Key:</td>
-                            <td><code><a href="?view=snek&pk={{.NodeInfo.PublicKey}}">{{.NodeInfo.PublicKey}}</a></code></td>
-                        </tr>
-                        <tr>
-                            <td>Descending Key:</td>
-                            <td><code><a href="?view=snek&pk={{.NodeInfo.Descending}}">{{.NodeInfo.Descending}}</a></code></td>
-                        </tr>
-                        <tr>
-                            <td>Descending Path:</td>
-                            <td><code>{{.NodeInfo.DescendingPathID}}</code></td>
-                        </tr>
-                        <tr>
-                            <td>Ascending Key:</td>
-                            <td><code><a href="?view=snek&pk={{.NodeInfo.Ascending}}">{{.NodeInfo.Ascending}}</a></code></td>
-                        </tr>
-                        <tr>
-                            <td>Ascending Path:</td>
-                            <td><code>{{.NodeInfo.AscendingPathID}}</code></td>
-                        </tr>
-                    </table>
-                    <h4>Peers</h4>
-                    <table>
-                        <tr>
-                            <th>Name</th>
-                            <th>Public Key</th>
-                            <th>Port</th>
-                            <th>Root</th>
-                        </tr>
-                        {{range .NodeInfo.Peers}}
-                        <tr>
-                            <td><code><a href="?view=snek&pk={{.PublicKey}}">{{.Name}}</a></code></td>
-                            <td><code><a href="?view=snek&pk={{.PublicKey}}">{{.PublicKey}}</a></code></td>
-                            <td><code>{{.Port}}</code></td>
-                            <td><code><a href="?view=snek&pk={{.RootPublicKey}}">{{.RootPublicKey}}</a></code></td>
-                        </tr>
-                        {{end}}
-                    </table>
-                    <h4>DHT Paths (via this node)</h4>
-                    <table>
-                        <tr>
-                            <th>Public Key</th>
-                            <th>Path ID</th>
-                            <th>Src</th>
-                            <th>Dst</th>
-                            <th>Seq</th>
-                        </tr>
-                        {{range .NodeInfo.Entries}}
-                        <tr>
-                            <td><code><a href="?view=snek&pk={{.PublicKey}}">{{.PublicKey}}</a></code></td>
-                            <td><code>{{.PathID}}</code></td>
-                            <td><code>{{.SourcePort}}</code></td>
-                            <td><code>{{.DestinationPort}}</code></td>
-                            <td><code>{{.Sequence}}</code></td>
-                        </tr>
-                        {{end}}
-                    </table>
-                    {{end}}
-                </div>
-            </div>
-            </div>
-
+             document.write('<script defer src="' + visjsSrc + '"><\/script>');
+             document.write('<script type="module" src="ui/main.js"><\/script>');
+            </script>
         </div>
-        <script>
-         let visjsLocal = "ui/modules/vis-network.min.js";
-         let visjsRemote = "https://visjs.github.io/vis-network/standalone/umd/vis-network.min.js";
-         /* let visjsSrc = visjsLocal; */
-         let visjsSrc = visjsRemote;
-
-         document.write('<script defer src="' + visjsSrc + '"><\/script>');
-         document.write('<script type="module" src="ui/main.js"><\/script>');
-        </script>
     </body>
 </html>
