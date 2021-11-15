@@ -1,7 +1,10 @@
+import { openRightPanel, closeRightPanel } from "./ui.js";
+
 // You can supply an element as your title.
 var titleElement = document.createElement("div");
 titleElement.style.height = "10em";
-titleElement.style.width = "10em";
+// titleElement.style.minWidth = "10em";
+titleElement.style.width = "max-content";
 titleElement.style.color = getComputedStyle(document.documentElement)
     .getPropertyValue('--color-dull-grey');
 titleElement.style.backgroundColor = getComputedStyle(document.documentElement)
@@ -154,7 +157,13 @@ class Graph {
             // params is actually the node ID
             let text = document.createElement('div');
             text.id = "nodePopupText";
-            text.innerHTML = "Node " + params;
+            let node = Nodes.get(params);
+            text.innerHTML = "<u><b>Node " + params + "</b></u>" +
+                "<br>Coords: [" + node.coords + "]" +
+                "<br><br><u>Announcement</u>" +
+                "<br>Root: Node " + node.announcement.root +
+                "<br>Sequence: " + node.announcement.sequence +
+                "<br>Time: " + node.announcement.time + " ms";
             titleElement.appendChild(text);
         });
 
@@ -171,10 +180,12 @@ class Graph {
 
         this.network.on("selectNode", function (params) {
             selectedNodes = params.nodes;
+            openRightPanel();
         });
 
         this.network.on("deselectNode", function (params) {
             selectedNodes = params.nodes;
+            closeRightPanel();
         });
     }
 

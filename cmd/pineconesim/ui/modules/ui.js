@@ -3,6 +3,18 @@ import { graph } from "../main.js";
 let leftShown = true;
 let rightShown = false;
 
+export function openRightPanel() {
+    if (!rightShown) {
+        toggleRightPanel();
+    }
+}
+
+export function closeRightPanel() {
+    if (rightShown) {
+        toggleRightPanel();
+    }
+}
+
 function toggleLeftPanel() {
     let panel = document.getElementById("left");
 
