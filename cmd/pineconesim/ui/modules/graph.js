@@ -23,12 +23,13 @@ function handleNodeHoverUpdate(nodeID) {
     let node = Nodes.get(nodeID);
     let hoverPanel = document.getElementById('nodePopupText');
     if (hoverPanel) {
+        let time = node.announcement.time.toString();
         hoverPanel.innerHTML = "<u><b>Node " + nodeID + "</b></u>" +
             "<br>Coords: [" + node.coords + "]" +
             "<br><br><u>Announcement</u>" +
             "<br>Root: Node " + node.announcement.root +
             "<br>Sequence: " + node.announcement.sequence +
-            "<br>Time: " + node.announcement.time + " ms";
+            "<br>Time: " + time.slice(0, time.length - 3) + " ms";
     }
 }
 
