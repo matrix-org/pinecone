@@ -15,43 +15,8 @@
 package simulator
 
 import (
-	"fmt"
 	"strings"
-
-	"github.com/matrix-org/pinecone/types"
 )
-
-func (sim *Simulator) LookupCoords(target string) (types.Coordinates, error) {
-	sim.nodesMutex.RLock()
-	defer sim.nodesMutex.RUnlock()
-	node, ok := sim.nodes[target]
-	if !ok {
-		return nil, fmt.Errorf("node %q not known", target)
-	}
-	return node.Coords(), nil
-}
-
-func (sim *Simulator) LookupNodeID(target types.Coordinates) (string, error) {
-	sim.nodesMutex.RLock()
-	defer sim.nodesMutex.RUnlock()
-	for id, n := range sim.nodes {
-		if n.Coords().EqualTo(target) {
-			return id, nil
-		}
-	}
-	return "", fmt.Errorf("coords %v not known", target)
-}
-
-func (sim *Simulator) LookupPublicKey(target types.PublicKey) (string, error) {
-	sim.nodesMutex.RLock()
-	defer sim.nodesMutex.RUnlock()
-	for id, n := range sim.nodes {
-		if n.PublicKey() == target {
-			return id, nil
-		}
-	}
-	return "", fmt.Errorf("public key %s not known", target.String())
-}
 
 func (sim *Simulator) ReportDistance(a, b string, l int64, snek bool) {
 	if strings.Compare(a, b) > 0 {
