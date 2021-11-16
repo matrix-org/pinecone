@@ -260,19 +260,10 @@ class Graph {
         }
     }
 
-    getPeers(id) {
-        let peers = [];
-        if (Nodes.has(id)) {
-            peers = Nodes.get(id).peers;
-        }
-
-        return peers;
-    }
-
-    addPeer(id, peer) {
+    addPeer(id, peer, port) {
         this.addEdge("peer", id, peer);
         if (Nodes.has(id)) {
-            Nodes.get(id).peers.push(peer);
+            Nodes.get(id).peers.push({ id: peer, port: port });
         }
 
         this.updateUI(id);
@@ -283,7 +274,7 @@ class Graph {
         if (Nodes.has(id)) {
             let peers = Nodes.get(id).peers;
             for (let i = 0; i < peers.length; i++) {
-                if (peers[i] === peer) {
+                if (peers[i].id === peer) {
                     peers.splice(i, 1);
                 }
             }
@@ -509,14 +500,14 @@ function handleNodePanelUpdate(nodeID) {
     let node = Nodes.get(nodeID);
     let nodePanel = document.getElementById('currentNodeState');
 
-    let peers = graph.getPeers(nodeID);
+    let peers = node.peers;
     let peerTable = "";
     for (let i = 0; i < peers.length; i++) {
         let root = "";
-        if (Nodes.has(peers[i])) {
-            root = Nodes.get(peers[i]).announcement.root;
+        if (Nodes.has(peers[i].id)) {
+            root = Nodes.get(peers[i].id).announcement.root;
         }
-        peerTable += "<tr><td><code>" + peers[i] + "</code></td><td><code><b>TODO</b></code></td><td><code><b>TODO</b></code></td><td><code>" + root + "</code></td></tr>";
+        peerTable += "<tr><td><code>" + peers[i].id + "</code></td><td><code><b>TODO</b></code></td><td><code>" + peers[i].port + "</code></td><td><code>" + root + "</code></td></tr>";
     }
 
     if (nodePanel) {

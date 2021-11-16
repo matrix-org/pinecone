@@ -13,7 +13,7 @@ function handleSimMessage(msg) {
 
             if (value.Peers) {
                 for (let i = 0; i < value.Peers.length; i++) {
-                    graph.addPeer(key, value.Peers[i]);
+                    graph.addPeer(key, value.Peers[i].ID, value.Peers[i].Port);
                 }
 
             }
@@ -47,7 +47,7 @@ function handleSimMessage(msg) {
             break;
         case 3: // Peer Added
             // console.log("Peer added: Node: " + event.Node + " Peer: " + event.Peer);
-            graph.addPeer(event.Node, event.Peer);
+            graph.addPeer(event.Node, event.Peer, event.Port);
             break;
         case 4: // Peer Removed
             // console.log("Peer removed: Node: " + event.Node + " Peer: " + event.Peer);

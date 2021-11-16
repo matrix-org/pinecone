@@ -218,9 +218,9 @@ func userProxy(conn *websocket.Conn, sim *simulator.Simulator) {
 		}
 
 		// Peer Links
-		var peerConns []string
-		for _, conn := range node.Connections {
-			peerConns = append(peerConns, conn)
+		var peerConns []simulator.PeerInfo
+		for port, conn := range node.Connections {
+			peerConns = append(peerConns, simulator.PeerInfo{ID: conn, Port: port})
 		}
 
 		nodeState[name] = simulator.InitialNodeState{

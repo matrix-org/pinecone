@@ -37,7 +37,7 @@ const (
 
 type InitialNodeState struct {
 	RootState     RootState
-	Peers         []string
+	Peers         []PeerInfo
 	TreeParent    string
 	SnakeAsc      string
 	SnakeAscPath  string
@@ -50,6 +50,11 @@ type RootState struct {
 	AnnSequence uint64
 	AnnTime     uint64
 	Coords      []uint64
+}
+
+type PeerInfo struct {
+	ID   string
+	Port int
 }
 
 type SimEventMsg struct {

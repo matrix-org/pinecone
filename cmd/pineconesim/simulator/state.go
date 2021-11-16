@@ -133,7 +133,7 @@ func (s *StateAccessor) _addPeerConnection(from string, to string, port int) {
 	if _, ok := s._state.Nodes[from]; ok {
 		s._state.Nodes[from].Connections[port] = to
 	}
-	s._publish(PeerAdded{Node: from, Peer: to})
+	s._publish(PeerAdded{Node: from, Peer: to, Port: uint64(port)})
 }
 
 func (s *StateAccessor) _removePeerConnection(from string, to string, port int) {

@@ -37,6 +37,7 @@ func (e NodeRemoved) isEvent() {}
 type PeerAdded struct {
 	Node string
 	Peer string
+	Port uint64
 }
 
 // Tag PeerAdded as an Event
