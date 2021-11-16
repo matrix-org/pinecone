@@ -560,7 +560,7 @@ function handleStatsPanelUpdate() {
 
     if (graph && graph.isStarted()) {
         for (const [key, value] of Nodes.entries()) {
-            nodeTable += "<tr><td><code>" + key + "</code></td><td><code>[" + value.coords + "]</code></td><td><code>" + value.announcement.root + "</code></td><td><code>" + getNodeKey(value.snekAsc).slice(0, 4) + "</code></td><td><code>" + value.key.slice(0, 4) + "</code></td><td><code>" + getNodeKey(value.snekDesc).slice(0, 4) + "</code></td></tr>";
+            nodeTable += "<tr><td><code>" + key + "</code></td><td><code>[" + value.coords + "]</code></td><td><code>" + value.announcement.root + "</code></td><td><code>" + getNodeKey(value.snekDesc).slice(0, 4) + "</code></td><td><code>" + value.key.slice(0, 4) + "</code></td><td><code>" + getNodeKey(value.snekAsc).slice(0, 4) + "</code></td></tr>";
 
             peerLinks += value.peers.length;
             if (rootConvergence.has(value.announcement.root)) {
@@ -578,12 +578,12 @@ function handleStatsPanelUpdate() {
     statsPanel.innerHTML =
         "<div class=\"shift-right\"><h3>Statistics</h3></div>" +
         "<hr><table>" +
-        "<tr><td style=\"text-align: right;\">Total number of nodes:</td><td style=\"text-align: left;\">" + Nodes.size + "</td></tr>" +
-        "<tr><td style=\"text-align: right;\">Total number of paths:</td><td style=\"text-align: left;\">" + peerLinks / 2 + "</td></tr>" +
-        "<tr><td style=\"text-align: right;\">Tree path convergence:</td><td style=\"text-align: left;\"><code><b>N/A</b></code></td></tr>" +
-        "<tr><td style=\"text-align: right;\">SNEK path convergence:</td><td style=\"text-align: left;\"><code><b>N/A</b></code></td></tr>" +
-        "<tr><td style=\"text-align: right;\">Tree average stretch:</td><td><code><b>N/A</b></code></td></tr>" +
-        "<tr><td style=\"text-align: right;\">SNEK average stretch:</td><td><code><b>N/A</b></code></td></tr>" +
+        "<tr><td>Node Count:</td><td style=\"text-align: left;\">" + Nodes.size + "</td></tr>" +
+        "<tr><td>Path Count:</td><td style=\"text-align: left;\">" + peerLinks / 2 + "</td></tr>" +
+        "<tr><td>Tree Path Convergence:</td><td style=\"text-align: left;\"><code><b>N/A</b></code></td></tr>" +
+        "<tr><td>SNEK Path Convergence:</td><td style=\"text-align: left;\"><code><b>N/A</b></code></td></tr>" +
+        "<tr><td>Tree Average Stretch:</td><td><code><b>N/A</b></code></td></tr>" +
+        "<tr><td>SNEK Average Stretch:</td><td><code><b>N/A</b></code></td></tr>" +
         "</table>" +
         "<hr><h4><u>Node Summary</u></h4>" +
         "<table>" +
