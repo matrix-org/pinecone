@@ -19,7 +19,6 @@ body {
     --topnav-height: 0px;
     --toggle-box-size: 40px;
     --toggle-box-margin: 5px;
-    --panel-button-width: 150x;
 }
 
 * {
@@ -105,6 +104,12 @@ body {
 .topRight {
     top: 0;
     right: 0;
+}
+
+.topRightTwo {
+    top: 0;
+    font-size: 30px;
+    right: calc(var(--toggle-box-size) + var(--toggle-box-margin) * 2);
 }
 
 .bottomLeft {

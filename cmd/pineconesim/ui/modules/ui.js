@@ -52,6 +52,14 @@ function toggleRightPanel() {
 }
 document.getElementById("rightToggle").onclick = toggleRightPanel;
 
+function focusSelectedNode() {
+    let button = document.getElementById("focusNode");
+    if (button) {
+        graph.focusSelectedNode();
+    }
+}
+document.getElementById("focusNode").onclick = focusSelectedNode;
+
 function selectNetworkType(networkType) {
     let selectionTabs = document.getElementsByClassName("netselect");
     for (let i = 0; i < selectionTabs.length; i++) {
