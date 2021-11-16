@@ -157,12 +157,16 @@ func (s *state) _setAscendingNode(node *virtualSnakeEntry) {
 	s._ascending = node
 
 	peerID := ""
+	pathID := []byte{}
 	if node != nil {
 		peerID = node.Origin.String()
+		if node.virtualSnakeIndex != nil {
+			pathID, _ = node.PathID.MarshalJSON()
+		}
 	}
 
 	s.r.Act(nil, func() {
-		s.r._publish(events.SnakeAscUpdate{PeerID: peerID})
+		s.r._publish(events.SnakeAscUpdate{PeerID: peerID, PathID: string(pathID)})
 	})
 }
 
@@ -170,12 +174,16 @@ func (s *state) _setDescendingNode(node *virtualSnakeEntry) {
 	s._descending = node
 
 	peerID := ""
+	pathID := []byte{}
 	if node != nil {
 		peerID = node.PublicKey.String()
+		if node.virtualSnakeIndex != nil {
+			pathID, _ = node.PathID.MarshalJSON()
+		}
 	}
 
 	s.r.Act(nil, func() {
-		s.r._publish(events.SnakeDescUpdate{PeerID: peerID})
+		s.r._publish(events.SnakeDescUpdate{PeerID: peerID, PathID: string(pathID)})
 	})
 }
 

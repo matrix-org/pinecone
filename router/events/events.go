@@ -64,6 +64,7 @@ func (e TreeParentUpdate) isEvent() {}
 
 type SnakeAscUpdate struct {
 	PeerID string
+	PathID string
 }
 
 // Tag SnakeAscUpdate as an Event
@@ -71,6 +72,7 @@ func (e SnakeAscUpdate) isEvent() {}
 
 type SnakeDescUpdate struct {
 	PeerID string
+	PathID string
 }
 
 // Tag SnakeDescUpdate as an Event

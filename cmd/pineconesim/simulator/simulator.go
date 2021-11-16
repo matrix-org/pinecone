@@ -139,21 +139,21 @@ func (sim *Simulator) handleTreeParentUpdate(node string, peerID string) {
 	sim.State.Act(nil, func() { sim.State._updateParent(node, peerName) })
 }
 
-func (sim *Simulator) handleSnakeAscUpdate(node string, peerID string) {
+func (sim *Simulator) handleSnakeAscUpdate(node string, peerID string, pathID string) {
 	peerName := ""
 	if peerNode, err := sim.State.GetNodeName(peerID); err == nil {
 		peerName = peerNode
 	}
 
-	sim.State.Act(nil, func() { sim.State._updateAscendingPeer(node, peerName) })
+	sim.State.Act(nil, func() { sim.State._updateAscendingPeer(node, peerName, pathID) })
 }
 
-func (sim *Simulator) handleSnakeDescUpdate(node string, peerID string) {
+func (sim *Simulator) handleSnakeDescUpdate(node string, peerID string, pathID string) {
 	peerName := ""
 	if peerNode, err := sim.State.GetNodeName(peerID); err == nil {
 		peerName = peerNode
 	}
-	sim.State.Act(nil, func() { sim.State._updateDescendingPeer(node, peerName) })
+	sim.State.Act(nil, func() { sim.State._updateDescendingPeer(node, peerName, pathID) })
 }
 
 func (sim *Simulator) handleTreeRootAnnUpdate(node string, root string, sequence uint64, time uint64, coords []uint64) {

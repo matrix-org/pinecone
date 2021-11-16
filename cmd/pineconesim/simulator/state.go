@@ -27,24 +27,28 @@ type RootAnnouncement struct {
 }
 
 type NodeState struct {
-	PeerID         string
-	Connections    map[int]string
-	Parent         string
-	Coords         []uint64
-	Announcement   RootAnnouncement
-	AscendingPeer  string
-	DescendingPeer string
+	PeerID           string
+	Connections      map[int]string
+	Parent           string
+	Coords           []uint64
+	Announcement     RootAnnouncement
+	AscendingPeer    string
+	AscendingPathID  string
+	DescendingPeer   string
+	DescendingPathID string
 }
 
 func NewNodeState(peerID string) *NodeState {
 	node := &NodeState{
-		PeerID:         peerID,
-		Connections:    make(map[int]string),
-		Parent:         "",
-		Announcement:   RootAnnouncement{},
-		Coords:         []uint64{},
-		AscendingPeer:  "",
-		DescendingPeer: "",
+		PeerID:           peerID,
+		Connections:      make(map[int]string),
+		Parent:           "",
+		Announcement:     RootAnnouncement{},
+		Coords:           []uint64{},
+		AscendingPeer:    "",
+		AscendingPathID:  "",
+		DescendingPeer:   "",
+		DescendingPathID: "",
 	}
 	return node
 }
@@ -148,21 +152,23 @@ func (s *StateAccessor) _updateParent(node string, peerID string) {
 	}
 }
 
-func (s *StateAccessor) _updateAscendingPeer(node string, peerID string) {
+func (s *StateAccessor) _updateAscendingPeer(node string, peerID string, pathID string) {
 	if _, ok := s._state.Nodes[node]; ok {
 		prev := s._state.Nodes[node].AscendingPeer
 		s._state.Nodes[node].AscendingPeer = peerID
+		s._state.Nodes[node].AscendingPathID = pathID
 
-		s._publish(SnakeAscUpdate{Node: node, Peer: peerID, Prev: prev})
+		s._publish(SnakeAscUpdate{Node: node, Peer: peerID, Prev: prev, PathID: pathID})
 	}
 }
 
-func (s *StateAccessor) _updateDescendingPeer(node string, peerID string) {
+func (s *StateAccessor) _updateDescendingPeer(node string, peerID string, pathID string) {
 	if _, ok := s._state.Nodes[node]; ok {
 		prev := s._state.Nodes[node].DescendingPeer
 		s._state.Nodes[node].DescendingPeer = peerID
+		s._state.Nodes[node].DescendingPathID = pathID
 
-		s._publish(SnakeDescUpdate{Node: node, Peer: peerID, Prev: prev})
+		s._publish(SnakeDescUpdate{Node: node, Peer: peerID, Prev: prev, PathID: pathID})
 	}
 }
 

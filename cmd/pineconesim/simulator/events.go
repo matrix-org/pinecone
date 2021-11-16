@@ -60,18 +60,20 @@ type TreeParentUpdate struct {
 func (e TreeParentUpdate) isEvent() {}
 
 type SnakeAscUpdate struct {
-	Node string
-	Peer string
-	Prev string
+	Node   string
+	Peer   string
+	Prev   string
+	PathID string
 }
 
 // Tag SnakeAscUpdate as an Event
 func (e SnakeAscUpdate) isEvent() {}
 
 type SnakeDescUpdate struct {
-	Node string
-	Peer string
-	Prev string
+	Node   string
+	Peer   string
+	Prev   string
+	PathID string
 }
 
 // Tag SnakeDescUpdate as an Event
@@ -104,9 +106,9 @@ func (h eventHandler) Run(sim *Simulator) {
 		case events.TreeParentUpdate:
 			sim.handleTreeParentUpdate(h.node, e.PeerID)
 		case events.SnakeAscUpdate:
-			sim.handleSnakeAscUpdate(h.node, e.PeerID)
+			sim.handleSnakeAscUpdate(h.node, e.PeerID, e.PathID)
 		case events.SnakeDescUpdate:
-			sim.handleSnakeDescUpdate(h.node, e.PeerID)
+			sim.handleSnakeDescUpdate(h.node, e.PeerID, e.PathID)
 		case events.TreeRootAnnUpdate:
 			sim.handleTreeRootAnnUpdate(h.node, e.Root, e.Sequence, e.Time, e.Coords)
 		default:

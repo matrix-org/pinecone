@@ -36,10 +36,13 @@ const (
 )
 
 type InitialNodeState struct {
-	RootState       RootState
-	Peers           []string
-	SnakeNeighbours []string
-	TreeParent      string
+	RootState     RootState
+	Peers         []string
+	TreeParent    string
+	SnakeAsc      string
+	SnakeAscPath  string
+	SnakeDesc     string
+	SnakeDescPath string
 }
 
 type RootState struct {

@@ -223,11 +223,6 @@ func userProxy(conn *websocket.Conn, sim *simulator.Simulator) {
 			peerConns = append(peerConns, conn)
 		}
 
-		// Snake Links
-		var snakeConns []string
-		snakeConns = append(snakeConns, node.AscendingPeer)
-		snakeConns = append(snakeConns, node.DescendingPeer)
-
 		nodeState[name] = simulator.InitialNodeState{
 			RootState: simulator.RootState{
 				Root:        node.Announcement.Root,
@@ -235,9 +230,12 @@ func userProxy(conn *websocket.Conn, sim *simulator.Simulator) {
 				AnnTime:     node.Announcement.Time,
 				Coords:      node.Coords,
 			},
-			Peers:           peerConns,
-			SnakeNeighbours: snakeConns,
-			TreeParent:      node.Parent,
+			Peers:         peerConns,
+			TreeParent:    node.Parent,
+			SnakeAsc:      node.AscendingPeer,
+			SnakeAscPath:  node.AscendingPathID,
+			SnakeDesc:     node.DescendingPeer,
+			SnakeDescPath: node.DescendingPathID,
 		}
 
 		if batchSize == int(maxBatchSize) || end {

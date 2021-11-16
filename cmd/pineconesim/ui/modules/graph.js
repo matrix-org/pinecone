@@ -149,6 +149,7 @@ class Graph {
         this.started = true;
         this.network = new vis.Network(this.canvas, this.currentData, this.options);
         this.setupHandlers();
+        this.updateUI();
 
         // HACK : network won't restabilize unless I give a node a kick...
         this.kickNode(this.nodeIDs[0]);
@@ -223,7 +224,9 @@ class Graph {
             peers: [],
             treeParent: "",
             snekAsc: "",
+            snekAscPath: "",
             snekDesc: "",
+            snekDescPath: "",
         });
 
         this.updateUI(id);
@@ -302,27 +305,31 @@ class Graph {
         }
     }
 
-    setSnekAsc(id, asc, prev) {
+    setSnekAsc(id, asc, prev, path) {
         this.removeEdge("snake", id, prev);
         if (asc != "") {
             this.addEdge("snake", id, asc);
         }
 
         if (Nodes.has(id)) {
-            Nodes.get(id).snekAsc = asc;
+            let node = Nodes.get(id);
+            node.snekAsc = asc;
+            node.snekAscPath = path;
 
             this.updateUI(id);
         }
     }
 
-    setSnekDesc(id, desc, prev) {
+    setSnekDesc(id, desc, prev, path) {
         this.removeEdge("snake", id, prev);
         if (desc != "") {
             this.addEdge("snake", id, desc);
         }
 
         if (Nodes.has(id)) {
-            Nodes.get(id).snekDesc = desc;
+            let node = Nodes.get(id);
+            node.snekDesc = desc;
+            node.snekDescPath = path;
 
             this.updateUI(id);
         }
@@ -521,9 +528,9 @@ function handleNodePanelUpdate(nodeID) {
             "<tr><td>Public Key:</td><td><code><b>TODO</b></code></td></tr>" +
             "<tr><td>Tree Parent:</td><td><code>" + node.treeParent + "</code></td></tr>" +
             "<tr><td>Descending Node:</td><td><code>" + node.snekDesc + "</code></td></tr>" +
-            "<tr><td>Descending Path:</td><td><code><b>TODO</b></code></td></tr>" +
+            "<tr><td>Descending Path:</td><td><code>" + node.snekDescPath + "</code></td></tr>" +
             "<tr><td>Ascending Node:</td><td><code>" + node.snekAsc + "</code></td></tr>" +
-            "<tr><td>Ascending Path:</td><td><code><b>TODO</b></code></td></tr>" +
+            "<tr><td>Ascending Path:</td><td><code>" + node.snekAscPath + "</code></td></tr>" +
             "</table>" +
             "<hr><h4><u>Peers</u></h4>" +
             "<table>" +
@@ -585,7 +592,7 @@ function handleStatsPanelUpdate() {
         "</table>" +
         "<hr><h4><u>Tree Building</u></h4>" +
         "<table>" +
-        "<tr><th>Root Key</th><th>Convergence</th></tr>" +
+        "<tr><th>Root Node</th><th>Convergence</th></tr>" +
         rootTable +
         "</table>";
 }
