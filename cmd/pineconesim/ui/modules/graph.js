@@ -314,7 +314,7 @@ class Graph {
         if (Nodes.has(id)) {
             let node = Nodes.get(id);
             node.snekAsc = asc;
-            node.snekAscPath = path;
+            node.snekAscPath = path.replace(/\"/g, "").toUpperCase();
 
             this.updateUI(id);
         }
@@ -329,7 +329,7 @@ class Graph {
         if (Nodes.has(id)) {
             let node = Nodes.get(id);
             node.snekDesc = desc;
-            node.snekDescPath = path;
+            node.snekDescPath = path.replace(/\"/g, "").toUpperCase();
 
             this.updateUI(id);
         }

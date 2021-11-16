@@ -19,10 +19,10 @@ function handleSimMessage(msg) {
             }
 
             if (value.SnakeAsc && value.SnakeAscPath) {
-                graph.setSnekAsc(key, value.SnakeAsc, "", value.SnakeAscPath.replace(/\"/g, ""));
+                graph.setSnekAsc(key, value.SnakeAsc, "", value.SnakeAscPath);
             }
             if (value.SnakeDesc && value.SnakeDescPath) {
-                graph.setSnekDesc(key, value.SnakeDesc, "", value.SnakeDescPath.replace(/\"/g, ""));
+                graph.setSnekDesc(key, value.SnakeDesc, "", value.SnakeDescPath);
             }
 
             if (value.TreeParent) {
@@ -59,11 +59,11 @@ function handleSimMessage(msg) {
             break;
         case 6: // Snake Ascending Updated
             // console.log("Snake Asc Updated: Node: " + event.Node + " Peer: " + event.Peer);
-            graph.setSnekAsc(event.Node, event.Peer, event.Prev, event.PathID.replace(/\"/g, ""));
+            graph.setSnekAsc(event.Node, event.Peer, event.Prev, event.PathID);
             break;
         case 7: // Snake Descending Updated
             // console.log("Snake Desc Updated: Node: " + event.Node + " Peer: " + event.Peer);
-            graph.setSnekDesc(event.Node, event.Peer, event.Prev, event.PathID.replace(/\"/g, ""));
+            graph.setSnekDesc(event.Node, event.Peer, event.Prev, event.PathID);
             break;
         case 8: // Tree Root Announcement Updated
             // console.log("Tree Root Announcement Updated: Node: " + event.Node + " Root: " + event.Root + " Sequence: " + event.Sequence + " Time: " + event.Time + " Coords: " + event.Coords);
