@@ -1,8 +1,7 @@
-import { Graph } from "./modules/graph.js";
+import { graph } from "./modules/graph.js";
 import "./modules/ui.js";
 
 const worker = new Worker("ui/websocket-worker.js");
-export var graph = new Graph(document.getElementById("canvas"));
 
 function handleSimMessage(msg) {
     // console.log(msg.data);
@@ -12,15 +11,25 @@ function handleSimMessage(msg) {
             graph.addNode(key);
             graph.updateRootAnnouncement(key, value.RootState.Root, value.RootState.AnnSequence, value.RootState.AnnTime, value.RootState.Coords);
 
-            for (let i = 0; i < value.Peers.length; i++) {
-                graph.addEdge("peer", key, value.Peers[i]);
+            if (value.Peers) {
+                for (let i = 0; i < value.Peers.length; i++) {
+                    graph.addPeer(key, value.Peers[i]);
+                }
+
             }
 
-            for (let i = 0; i < value.SnakeNeighbours.length; i++) {
-                graph.addEdge("snake", key, value.SnakeNeighbours[i]);
+            if (value.SnakeNeighbours) {
+                if (value.SnakeNeighbours[0]) {
+                    graph.setSnekAsc(key, value.SnakeNeighbours[0], "");
+                }
+                if (value.SnakeNeighbours[1]) {
+                    graph.setSnekDesc(key, value.SnakeNeighbours[1], "");
+                }
             }
 
-            graph.addEdge("tree", key, value.TreeParent);
+            if (value.TreeParent) {
+                graph.setTreeParent(key, value.TreeParent, "");
+            }
         }
 
         if (msg.data.End === true) {
@@ -40,32 +49,23 @@ function handleSimMessage(msg) {
             break;
         case 3: // Peer Added
             // console.log("Peer added: Node: " + event.Node + " Peer: " + event.Peer);
-            graph.addEdge("peer", event.Node, event.Peer);
+            graph.addPeer(event.Node, event.Peer);
             break;
         case 4: // Peer Removed
             // console.log("Peer removed: Node: " + event.Node + " Peer: " + event.Peer);
-            graph.removeEdge("peer", event.Node, event.Peer);
+            graph.removePeer(event.Node, event.Peer);
             break;
         case 5: // Tree Parent Updated
             // console.log("Tree Parent Updated: Node: " + event.Node + " Peer: " + event.Peer);
-            graph.removeEdge("tree", event.Node, event.Prev);
-            if (event.Peer != "") {
-                graph.addEdge("tree", event.Node, event.Peer);
-            }
+            graph.setTreeParent(event.Node, event.Peer, event.Prev);
             break;
         case 6: // Snake Ascending Updated
             // console.log("Snake Asc Updated: Node: " + event.Node + " Peer: " + event.Peer);
-            graph.removeEdge("snake", event.Node, event.Prev);
-            if (event.Peer != "") {
-                graph.addEdge("snake", event.Node, event.Peer);
-            }
+            graph.setSnekAsc(event.Node, event.Peer, event.Prev);
             break;
         case 7: // Snake Descending Updated
             // console.log("Snake Desc Updated: Node: " + event.Node + " Peer: " + event.Peer);
-            graph.removeEdge("snake", event.Node, event.Prev);
-            if (event.Peer != "") {
-                graph.addEdge("snake", event.Node, event.Peer);
-            }
+            graph.setSnekDesc(event.Node, event.Peer, event.Prev);
             break;
         case 8: // Tree Root Announcement Updated
             // console.log("Tree Root Announcement Updated: Node: " + event.Node + " Root: " + event.Root + " Sequence: " + event.Sequence + " Time: " + event.Time + " Coords: " + event.Coords);

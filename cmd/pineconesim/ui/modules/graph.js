@@ -19,50 +19,6 @@ let hoverNode = null;
 
 let Nodes = new Map();
 
-function handleNodeHoverUpdate(nodeID) {
-    let node = Nodes.get(nodeID);
-    let hoverPanel = document.getElementById('nodePopupText');
-    if (hoverPanel) {
-        let time = node.announcement.time.toString();
-        hoverPanel.innerHTML = "<u><b>Node " + nodeID + "</b></u>" +
-            "<br>Coords: [" + node.coords + "]" +
-            "<br><br><u>Announcement</u>" +
-            "<br>Root: Node " + node.announcement.root +
-            "<br>Sequence: " + node.announcement.sequence +
-            "<br>Time: " + time.slice(0, time.length - 3) + " ms";
-    }
-}
-
-function handleNodePanelUpdate(nodeID) {
-    let node = Nodes.get(nodeID);
-    let nodePanel = document.getElementById('currentNodeState');
-    if (nodePanel) {
-        nodePanel.innerHTML =
-            "<h3>Node Details</h3>" +
-            "<hr><table>" +
-            "<tr><td>Name:</td><td>" + nodeID + "</td></tr>" +
-            "<tr><td>Coordinates:</td><td>[" + node.coords + "]</td></tr>" +
-            "<tr><td>Public Key:</td><td><code>TODO</code></td></tr>" +
-            "<tr><td>Descending Key:</td><td><code>TODO</code></td></tr>" +
-            "<tr><td>Descending Path:</td><td><code>TODO</code></td></tr>" +
-            "<tr><td>Ascending Key:</td><td><code>TODO</code></td></tr>" +
-            "<tr><td>Ascending Path:</td><td><code>TODO</code></td></tr>" +
-            "</table>" +
-            "<hr><h4><u>Peers</u></h4>" +
-            "<table>" +
-            "<tr><th>Name</th><th>Public Key</th><th>Port</th><th>Root</th></tr>" +
-            // {{range .NodeInfo.Peers}}
-            "<tr><td><code>TODO</code></td><td><code>TODO</code></td><td><code>TODO</code></td><td><code>TODO</code></td></tr>" +
-            "</table>" +
-            "<hr><h4><u>SNEK Routes</u></h4>" +
-            "<table>" +
-            "<tr><th>Public Key</th><th>Path ID</th><th>Src</th><th>Dst</th><th>Seq</th></tr>" +
-            // {{range .NodeInfo.Entries}}
-            "<tr><td><code>TODO</code></td><td><code>TODO</code></td><td><code>TODO</code></td><td><code>TODO</code></td><td><code>TODO</code></td></tr>" +
-            "</table>";
-    }
-}
-
 class Graph {
     nodeIDs = [];
 
@@ -244,6 +200,10 @@ class Graph {
                 time: 0,
             },
             coords: [],
+            peers: [],
+            treeParent: "",
+            snekAsc: "",
+            snekDesc: "",
         });
     }
 
@@ -278,12 +238,65 @@ class Graph {
         }
     }
 
-    getCoordinates(id) {
-        if (Node.has(id)) {
-            return Nodes.get(id);
+    getPeers(id) {
+        let peers = [];
+        if (Nodes.has(id)) {
+            peers = Nodes.get(id).peers;
         }
 
-        return [];
+        return peers;
+    }
+
+    addPeer(id, peer) {
+        this.addEdge("peer", id, peer);
+        if (Nodes.has(id)) {
+            Nodes.get(id).peers.push(peer);
+        }
+    }
+
+    removePeer(id, peer) {
+        this.removeEdge("peer", id, peer);
+        if (Nodes.has(id)) {
+            let peers = Nodes.get(id).peers;
+            for (let i = 0; i < peers.length; i++) {
+                if (peers[i] === peer) {
+                    peers.splice(i, 1);
+                }
+            }
+        }
+    }
+
+    setTreeParent(id, parent, prev) {
+        this.removeEdge("tree", id, prev);
+        if (parent != "") {
+            this.addEdge("tree", id, parent);
+        }
+
+        if (Nodes.has(id)) {
+            Nodes.get(id).treeParent = parent;
+        }
+    }
+
+    setSnekAsc(id, asc, prev) {
+        this.removeEdge("snake", id, prev);
+        if (asc != "") {
+            this.addEdge("snake", id, asc);
+        }
+
+        if (Nodes.has(id)) {
+            Nodes.get(id).snekAsc = asc;
+        }
+    }
+
+    setSnekDesc(id, desc, prev) {
+        this.removeEdge("snake", id, prev);
+        if (desc != "") {
+            this.addEdge("snake", id, desc);
+        }
+
+        if (Nodes.has(id)) {
+            Nodes.get(id).snekDesc = desc;
+        }
     }
 
     addEdge(dataset, from, to) {
@@ -440,4 +453,54 @@ class Graph {
     }
 }
 
-export { Graph };
+export var graph = new Graph(document.getElementById("canvas"));
+
+function handleNodeHoverUpdate(nodeID) {
+    let node = Nodes.get(nodeID);
+    let hoverPanel = document.getElementById('nodePopupText');
+    if (hoverPanel) {
+        let time = node.announcement.time.toString();
+        hoverPanel.innerHTML = "<u><b>Node " + nodeID + "</b></u>" +
+            "<br>Coords: [" + node.coords + "]" +
+            "<br><br><u>Announcement</u>" +
+            "<br>Root: Node " + node.announcement.root +
+            "<br>Sequence: " + node.announcement.sequence +
+            "<br>Time: " + time.slice(0, time.length - 3) + " ms";
+    }
+}
+
+function handleNodePanelUpdate(nodeID) {
+    let node = Nodes.get(nodeID);
+    let nodePanel = document.getElementById('currentNodeState');
+
+    let peers = graph.getPeers(nodeID);
+    let peerTable = "";
+    for (let i = 0; i < peers.length; i++) {
+        peerTable += "<tr><td><code>" + peers[i] + "</code></td><td><code>TODO</code></td><td><code>TODO</code></td><td><code>TODO</code></td></tr>";
+    }
+
+    if (nodePanel) {
+        nodePanel.innerHTML =
+            "<h3>Node Details</h3>" +
+            "<hr><table>" +
+            "<tr><td>Name:</td><td>" + nodeID + "</td></tr>" +
+            "<tr><td>Coordinates:</td><td>[" + node.coords + "]</td></tr>" +
+            "<tr><td>Public Key:</td><td><code>TODO</code></td></tr>" +
+            "<tr><td>Descending Key:</td><td><code>TODO</code></td></tr>" +
+            "<tr><td>Descending Path:</td><td><code>TODO</code></td></tr>" +
+            "<tr><td>Ascending Key:</td><td><code>TODO</code></td></tr>" +
+            "<tr><td>Ascending Path:</td><td><code>TODO</code></td></tr>" +
+            "</table>" +
+            "<hr><h4><u>Peers</u></h4>" +
+            "<table>" +
+            "<tr><th>Name</th><th>Public Key</th><th>Port</th><th>Root</th></tr>" +
+            peerTable +
+            "</table>" +
+            "<hr><h4><u>SNEK Routes</u></h4>" +
+            "<table>" +
+            "<tr><th>Public Key</th><th>Path ID</th><th>Src</th><th>Dst</th><th>Seq</th></tr>" +
+            // {{range .NodeInfo.Entries}}
+            "<tr><td><code>TODO</code></td><td><code>TODO</code></td><td><code>TODO</code></td><td><code>TODO</code></td><td><code>TODO</code></td></tr>" +
+            "</table>";
+    }
+}

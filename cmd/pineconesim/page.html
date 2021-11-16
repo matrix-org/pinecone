@@ -72,7 +72,6 @@
                         <table>
                             <tr>
                                 <th>Name</th>
-                                <th>Port</th>
                                 <th>Coords</th>
                                 <th>Root</th>
                                 <th>↓</th>
@@ -84,7 +83,6 @@
                             {{range .Nodes}}
                             {{if not .IsExternal}}<tr>
                                 <td><a href="?view=snek&pk={{.Key}}">{{.Name}}</a></td>
-                                <td><code>{{.Port}}</code></td>
                                 <td><code>{{.Coords}}</code></td>
                                 <td><a href="?view=snek&pk={{.Root}}"><code>{{.Root}}</code></a></td>
                                 <td><a href="?view=snek&pk={{.Predecessor}}"><code>{{.Predecessor}}</code></a></td>

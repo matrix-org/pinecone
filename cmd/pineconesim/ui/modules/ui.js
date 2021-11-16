@@ -1,4 +1,4 @@
-import { graph } from "../main.js";
+import { graph } from "./graph.js";
 
 let leftShown = true;
 let rightShown = false;
