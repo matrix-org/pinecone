@@ -28,7 +28,6 @@ body {
 .left {
     background-color: var(--color-dull-grey);
     width: max-content;
-    max-width: 30vw;
     height: calc(100vh - var(--topnav-height));
     overflow: scroll;
     left: 0;
@@ -59,7 +58,6 @@ body {
 .right {
     background-color: var(--color-dull-grey);
     width: 0;
-    max-width: 30vw;
     height: calc(100vh - var(--topnav-height));
     overflow: scroll;
     right: 0;
@@ -128,6 +126,13 @@ body {
 }
 
 .overlay {
+    z-index: 7;
+    position: absolute;
+    border: none;
+    opacity: 1;
+}
+
+.toggle-overlay {
     z-index: 9;
     position: absolute;
     border: none;
