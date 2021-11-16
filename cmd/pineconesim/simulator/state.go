@@ -124,9 +124,20 @@ func (s *StateAccessor) GetNodeName(peerID string) (string, error) {
 	return node, err
 }
 
+func (s *StateAccessor) GetNodeCoords(name string) []uint64 {
+	coords := []uint64{}
+
+	phony.Block(s, func() {
+		if node, ok := s._state.Nodes[name]; ok {
+			coords = node.Coords
+		}
+	})
+	return coords
+}
+
 func (s *StateAccessor) _addNode(name string, peerID string) {
 	s._state.Nodes[name] = NewNodeState(peerID)
-	s._publish(NodeAdded{Node: name})
+	s._publish(NodeAdded{Node: name, PublicKey: peerID})
 }
 
 func (s *StateAccessor) _addPeerConnection(from string, to string, port int) {

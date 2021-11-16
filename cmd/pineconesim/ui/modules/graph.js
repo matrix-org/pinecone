@@ -207,7 +207,7 @@ class Graph {
         handleStatsPanelUpdate();
     }
 
-    addNode(id, coords) {
+    addNode(id, key) {
         this.peerData.nodes.add({ id: id, label: id });
         this.snakeData.nodes.add({ id: id, label: id });
         this.treeData.nodes.add({ id: id, label: id });
@@ -222,6 +222,7 @@ class Graph {
             },
             coords: [],
             peers: [],
+            key: key,
             treeParent: "",
             snekAsc: "",
             snekAscPath: "",
@@ -496,6 +497,15 @@ function handleNodeHoverUpdate(nodeID) {
     }
 }
 
+function getNodeKey(nodeID) {
+    let key = "";
+    if (Nodes.has(nodeID)) {
+        key = Nodes.get(nodeID).key;
+    }
+
+    return key;
+}
+
 function handleNodePanelUpdate(nodeID) {
     let node = Nodes.get(nodeID);
     let nodePanel = document.getElementById('currentNodeState');
@@ -504,10 +514,13 @@ function handleNodePanelUpdate(nodeID) {
     let peerTable = "";
     for (let i = 0; i < peers.length; i++) {
         let root = "";
+        let key = "";
         if (Nodes.has(peers[i].id)) {
-            root = Nodes.get(peers[i].id).announcement.root;
+            let peer = Nodes.get(peers[i].id);
+            root = peer.announcement.root;
+            key = peer.key;
         }
-        peerTable += "<tr><td><code>" + peers[i].id + "</code></td><td><code><b>TODO</b></code></td><td><code>" + peers[i].port + "</code></td><td><code>" + root + "</code></td></tr>";
+        peerTable += "<tr><td><code>" + peers[i].id + "</code></td><td><code>" + key.slice(0, 8) + "</code></td><td><code>" + peers[i].port + "</code></td><td><code>" + root + "</code></td></tr>";
     }
 
     if (nodePanel) {
@@ -516,7 +529,8 @@ function handleNodePanelUpdate(nodeID) {
             "<hr><table>" +
             "<tr><td>Name:</td><td>" + nodeID + "</td></tr>" +
             "<tr><td>Coordinates:</td><td>[" + node.coords + "]</td></tr>" +
-            "<tr><td>Public Key:</td><td><code><b>TODO</b></code></td></tr>" +
+            "<tr><td>Public Key:</td><td><code>" + node.key.slice(0, 8) + "</code></td></tr>" +
+            "<tr><td>Root Key:</td><td><code>" + getNodeKey(node.announcement.root).slice(0, 8) + "</code></td></tr>" +
             "<tr><td>Tree Parent:</td><td><code>" + node.treeParent + "</code></td></tr>" +
             "<tr><td>Descending Node:</td><td><code>" + node.snekDesc + "</code></td></tr>" +
             "<tr><td>Descending Path:</td><td><code>" + node.snekDescPath + "</code></td></tr>" +
@@ -546,7 +560,7 @@ function handleStatsPanelUpdate() {
 
     if (graph && graph.isStarted()) {
         for (const [key, value] of Nodes.entries()) {
-            nodeTable += "<tr><td><code>" + key + "</code></td><td><code>[" + value.coords + "]</code></td><td><code>" + value.announcement.root + "</code></td><td><code><b>TODO</b></code></td><td><code><b>TODO</b></code></td><td><code><b>TODO</b></code></td><td><code><b>TODO</b></code></td><td><code><b>TODO</b></code></td></tr>";
+            nodeTable += "<tr><td><code>" + key + "</code></td><td><code>[" + value.coords + "]</code></td><td><code>" + value.announcement.root + "</code></td><td><code>" + getNodeKey(value.snekAsc).slice(0, 4) + "</code></td><td><code>" + value.key.slice(0, 4) + "</code></td><td><code>" + getNodeKey(value.snekDesc).slice(0, 4) + "</code></td><td><code><b>TODO</b></code></td><td><code><b>TODO</b></code></td></tr>";
             // "<td><a href=\"?view=snek&pk={{.Predecessor}}\"><code>{{.Predecessor}}</code></a></td>" +
             // "<td><a href=\"?view=snek&pk={{.Key}}\"><code>{{.Key}}</code></a></td>" +
             // "<td><a href=\"?view=snek&pk={{.Successor}}\"><code>{{.Successor}}</code></a></td>" +

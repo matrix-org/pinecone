@@ -36,6 +36,7 @@ const (
 )
 
 type InitialNodeState struct {
+	PublicKey     string
 	RootState     RootState
 	Peers         []PeerInfo
 	TreeParent    string

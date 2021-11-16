@@ -224,6 +224,7 @@ func userProxy(conn *websocket.Conn, sim *simulator.Simulator) {
 		}
 
 		nodeState[name] = simulator.InitialNodeState{
+			PublicKey: node.PeerID,
 			RootState: simulator.RootState{
 				Root:        node.Announcement.Root,
 				AnnSequence: node.Announcement.Sequence,
