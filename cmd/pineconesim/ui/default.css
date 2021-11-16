@@ -109,7 +109,7 @@ body {
 .topRightTwo {
     top: 0;
     font-size: 30px;
-    right: calc(var(--toggle-box-size) + var(--toggle-box-margin) * 2);
+    right: calc(var(--toggle-box-size) + var(--toggle-box-margin));
 }
 
 .bottomLeft {
