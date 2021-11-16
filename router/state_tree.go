@@ -167,9 +167,9 @@ func (s *state) _sendTreeAnnouncements() {
 
 		var announcementTime int64
 		if ann.RootPublicKey == s.r.public {
-			announcementTime = time.Now().UnixMilli()
+			announcementTime = time.Now().UnixNano()
 		} else {
-			announcementTime = ann.receiveTime.UnixMilli()
+			announcementTime = ann.receiveTime.UnixNano()
 		}
 
 		s.r._publish(events.TreeRootAnnUpdate{
