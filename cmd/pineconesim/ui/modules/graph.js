@@ -433,6 +433,24 @@ class Graph {
         return this.network.getPositions();
     }
 
+    selectNodes(nodes) {
+        this.network.selectNodes(nodes);
+        selectedNodes = nodes;
+        panelNodes = selectedNodes;
+    }
+
+    focusNode(nodeID) {
+        let options = {
+            scale: 0.5,
+            offset: { x: 0, y: 0 },
+            animation: {
+                duration: 1000,
+                easingFunction: "easeInOutQuad",
+            },
+        };
+        this.network.focus(nodeID, options);
+    }
+
     changeDataSet(dataset) {
         this.saveNodePositions();
 
@@ -525,6 +543,25 @@ function handleNodePanelUpdate(nodeID) {
 
     if (nodePanel) {
         nodePanel.innerHTML =
+            `<style>
+            .panel-button {
+                width: var(--panel-button-width);
+                height: var(--toggle-box-size);
+                color: var(--color-dull-grey);
+                font-size: 20px;
+                background-color: var(--color-logo-green);
+                align-items: center;
+                border: none;
+            }
+            .center {
+                margin: 0;
+                position: relative;
+            }
+            .panel-button:hover {
+                color: var(--color-dark-grey);
+                background-color: var(--color-logo-green);
+            }
+            </style>` +
             "<h3>Node Details</h3>" +
             "<hr><table>" +
             "<tr><td>Name:</td><td>" + nodeID + "</td></tr>" +
@@ -546,7 +583,13 @@ function handleNodePanelUpdate(nodeID) {
             "<table>" +
             "<tr><th>Public Key</th><th>Path ID</th><th>Src</th><th>Dst</th><th>Seq</th></tr>" +
             "<tr><td><code><b>N/A</b></code></td><td><code><b>N/A</b></code></td><td><code><b>N/A</b></code></td><td><code><b>N/A</b></code></td><td><code><b>N/A</b></code></td></tr>" +
-            "</table>";
+            "</table>" +
+            "<hr><button class=\"panel-button center\" id=\"focusNode\">Focus</button>";
+
+        let button = document.getElementById("focusNode");
+        if (button) {
+            button.onclick = function() { graph.selectNodes([nodeID]); graph.focusNode(nodeID); };
+        }
     }
 }
 

@@ -19,6 +19,7 @@ body {
     --topnav-height: 0px;
     --toggle-box-size: 40px;
     --toggle-box-margin: 5px;
+    --panel-button-width: 150x;
 }
 
 * {
