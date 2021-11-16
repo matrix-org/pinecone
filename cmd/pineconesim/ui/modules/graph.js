@@ -476,7 +476,11 @@ function handleNodePanelUpdate(nodeID) {
     let peers = graph.getPeers(nodeID);
     let peerTable = "";
     for (let i = 0; i < peers.length; i++) {
-        peerTable += "<tr><td><code>" + peers[i] + "</code></td><td><code>TODO</code></td><td><code>TODO</code></td><td><code>TODO</code></td></tr>";
+        let root = "";
+        if (Nodes.has(peers[i])) {
+            root = Nodes.get(peers[i]).announcement.root;
+        }
+        peerTable += "<tr><td><code>" + peers[i] + "</code></td><td><code><b>TODO</b></code></td><td><code><b>TODO</b></code></td><td><code>" + root + "</code></td></tr>";
     }
 
     if (nodePanel) {
@@ -485,11 +489,12 @@ function handleNodePanelUpdate(nodeID) {
             "<hr><table>" +
             "<tr><td>Name:</td><td>" + nodeID + "</td></tr>" +
             "<tr><td>Coordinates:</td><td>[" + node.coords + "]</td></tr>" +
-            "<tr><td>Public Key:</td><td><code>TODO</code></td></tr>" +
-            "<tr><td>Descending Key:</td><td><code>TODO</code></td></tr>" +
-            "<tr><td>Descending Path:</td><td><code>TODO</code></td></tr>" +
-            "<tr><td>Ascending Key:</td><td><code>TODO</code></td></tr>" +
-            "<tr><td>Ascending Path:</td><td><code>TODO</code></td></tr>" +
+            "<tr><td>Public Key:</td><td><code><b>TODO</b></code></td></tr>" +
+            "<tr><td>Tree Parent:</td><td><code>" + node.treeParent + "</code></td></tr>" +
+            "<tr><td>Descending Node:</td><td><code>" + node.snekDesc + "</code></td></tr>" +
+            "<tr><td>Descending Path:</td><td><code><b>TODO</b></code></td></tr>" +
+            "<tr><td>Ascending Node:</td><td><code>" + node.snekAsc + "</code></td></tr>" +
+            "<tr><td>Ascending Path:</td><td><code><b>TODO</b></code></td></tr>" +
             "</table>" +
             "<hr><h4><u>Peers</u></h4>" +
             "<table>" +
@@ -500,7 +505,7 @@ function handleNodePanelUpdate(nodeID) {
             "<table>" +
             "<tr><th>Public Key</th><th>Path ID</th><th>Src</th><th>Dst</th><th>Seq</th></tr>" +
             // {{range .NodeInfo.Entries}}
-            "<tr><td><code>TODO</code></td><td><code>TODO</code></td><td><code>TODO</code></td><td><code>TODO</code></td><td><code>TODO</code></td></tr>" +
+            "<tr><td><code><b>TODO</b></code></td><td><code><b>TODO</b></code></td><td><code><b>TODO</b></code></td><td><code><b>TODO</b></code></td><td><code><b>TODO</b></code></td></tr>" +
             "</table>";
     }
 }
