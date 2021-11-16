@@ -545,7 +545,7 @@ function handleNodePanelUpdate(nodeID) {
             "<hr><h4><u>SNEK Routes</u></h4>" +
             "<table>" +
             "<tr><th>Public Key</th><th>Path ID</th><th>Src</th><th>Dst</th><th>Seq</th></tr>" +
-            "<tr><td><code><b>TODO</b></code></td><td><code><b>TODO</b></code></td><td><code><b>TODO</b></code></td><td><code><b>TODO</b></code></td><td><code><b>TODO</b></code></td></tr>" +
+            "<tr><td><code><b>N/A</b></code></td><td><code><b>N/A</b></code></td><td><code><b>N/A</b></code></td><td><code><b>N/A</b></code></td><td><code><b>N/A</b></code></td></tr>" +
             "</table>";
     }
 }
@@ -560,12 +560,7 @@ function handleStatsPanelUpdate() {
 
     if (graph && graph.isStarted()) {
         for (const [key, value] of Nodes.entries()) {
-            nodeTable += "<tr><td><code>" + key + "</code></td><td><code>[" + value.coords + "]</code></td><td><code>" + value.announcement.root + "</code></td><td><code>" + getNodeKey(value.snekAsc).slice(0, 4) + "</code></td><td><code>" + value.key.slice(0, 4) + "</code></td><td><code>" + getNodeKey(value.snekDesc).slice(0, 4) + "</code></td><td><code><b>TODO</b></code></td><td><code><b>TODO</b></code></td></tr>";
-            // "<td><a href=\"?view=snek&pk={{.Predecessor}}\"><code>{{.Predecessor}}</code></a></td>" +
-            // "<td><a href=\"?view=snek&pk={{.Key}}\"><code>{{.Key}}</code></a></td>" +
-            // "<td><a href=\"?view=snek&pk={{.Successor}}\"><code>{{.Successor}}</code></a></td>" +
-            // "<td><code>{{.DHTSize}}</code></td>" +
-            // "<td><code>{{.DHTStalePaths}}</code></td>" +
+            nodeTable += "<tr><td><code>" + key + "</code></td><td><code>[" + value.coords + "]</code></td><td><code>" + value.announcement.root + "</code></td><td><code>" + getNodeKey(value.snekAsc).slice(0, 4) + "</code></td><td><code>" + value.key.slice(0, 4) + "</code></td><td><code>" + getNodeKey(value.snekDesc).slice(0, 4) + "</code></td></tr>";
 
             peerLinks += value.peers.length;
             if (rootConvergence.has(value.announcement.root)) {
@@ -585,14 +580,14 @@ function handleStatsPanelUpdate() {
         "<hr><table>" +
         "<tr><td style=\"text-align: right;\">Total number of nodes:</td><td style=\"text-align: left;\">" + Nodes.size + "</td></tr>" +
         "<tr><td style=\"text-align: right;\">Total number of paths:</td><td style=\"text-align: left;\">" + peerLinks / 2 + "</td></tr>" +
-        "<tr><td style=\"text-align: right;\">Tree path convergence:</td><td style=\"text-align: left;\"><code><b>TODO</b></code></td></tr>" +
-        "<tr><td style=\"text-align: right;\">SNEK path convergence:</td><td style=\"text-align: left;\"><code><b>TODO</b></code></td></tr>" +
-        "<tr><td>Tree average stretch:</td><td><code><b>TODO</b></code></td></tr>" +
-        "<tr><td>SNEK average stretch:</td><td><code><b>TODO</b></code></td></tr>" +
+        "<tr><td style=\"text-align: right;\">Tree path convergence:</td><td style=\"text-align: left;\"><code><b>N/A</b></code></td></tr>" +
+        "<tr><td style=\"text-align: right;\">SNEK path convergence:</td><td style=\"text-align: left;\"><code><b>N/A</b></code></td></tr>" +
+        "<tr><td style=\"text-align: right;\">Tree average stretch:</td><td><code><b>N/A</b></code></td></tr>" +
+        "<tr><td style=\"text-align: right;\">SNEK average stretch:</td><td><code><b>N/A</b></code></td></tr>" +
         "</table>" +
         "<hr><h4><u>Node Summary</u></h4>" +
         "<table>" +
-        "<tr><th>Name</th><th>Coords</th><th>Root</th><th>↓</th><th>Key</th><th>↑</th><th>#</th><th>!</th></tr>" +
+        "<tr><th>Name</th><th>Coords</th><th>Root</th><th>↓</th><th>Key</th><th>↑</th></tr>" +
         nodeTable +
         "</table>" +
         "<hr><h4><u>Tree Building</u></h4>" +
