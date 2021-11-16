@@ -135,18 +135,27 @@ class Graph {
     network = null;
     canvas = null;
     currentData = null;
+    started = false;
 
     constructor(canvas) {
         this.canvas = canvas;
         this.currentData = this.peerData;
+
+        // Initialize Stats Panel
+        handleStatsPanelUpdate();
     }
 
     startGraph() {
+        this.started = true;
         this.network = new vis.Network(this.canvas, this.currentData, this.options);
         this.setupHandlers();
 
         // HACK : network won't restabilize unless I give a node a kick...
         this.kickNode(this.nodeIDs[0]);
+    }
+
+    isStarted() {
+        return this.started;
     }
 
     setupHandlers() {
@@ -193,6 +202,8 @@ class Graph {
         if (hoverNode && hoverNode === node) {
             handleNodeHoverUpdate(node);
         }
+
+        handleStatsPanelUpdate();
     }
 
     addNode(id, coords) {
@@ -525,4 +536,56 @@ function handleNodePanelUpdate(nodeID) {
             "<tr><td><code><b>TODO</b></code></td><td><code><b>TODO</b></code></td><td><code><b>TODO</b></code></td><td><code><b>TODO</b></code></td><td><code><b>TODO</b></code></td></tr>" +
             "</table>";
     }
+}
+
+function handleStatsPanelUpdate() {
+    let statsPanel = document.getElementById('simStatsPanel');
+    let peerLinks = 0;
+    let rootConvergence = new Map();
+
+    let nodeTable = "";
+    let rootTable = "";
+
+    if (graph && graph.isStarted()) {
+        for (const [key, value] of Nodes.entries()) {
+            nodeTable += "<tr><td><code>" + key + "</code></td><td><code>[" + value.coords + "]</code></td><td><code>" + value.announcement.root + "</code></td><td><code><b>TODO</b></code></td><td><code><b>TODO</b></code></td><td><code><b>TODO</b></code></td><td><code><b>TODO</b></code></td><td><code><b>TODO</b></code></td></tr>";
+            // "<td><a href=\"?view=snek&pk={{.Predecessor}}\"><code>{{.Predecessor}}</code></a></td>" +
+            // "<td><a href=\"?view=snek&pk={{.Key}}\"><code>{{.Key}}</code></a></td>" +
+            // "<td><a href=\"?view=snek&pk={{.Successor}}\"><code>{{.Successor}}</code></a></td>" +
+            // "<td><code>{{.DHTSize}}</code></td>" +
+            // "<td><code>{{.DHTStalePaths}}</code></td>" +
+
+            peerLinks += value.peers.length;
+            if (rootConvergence.has(value.announcement.root)) {
+                rootConvergence.set(value.announcement.root, rootConvergence.get(value.announcement.root) + 1);
+            } else {
+                rootConvergence.set(value.announcement.root, 1);
+            }
+        }
+
+        for (const [key, value] of rootConvergence.entries()) {
+            rootTable += "<tr><td><code>" + key + "</code></td><td>" + (value / Nodes.size * 100).toFixed(2) + "%</td></tr>";
+        }
+    }
+
+    statsPanel.innerHTML =
+        "<div class=\"shift-right\"><h3>Statistics</h3></div>" +
+        "<hr><table>" +
+        "<tr><td style=\"text-align: right;\">Total number of nodes:</td><td style=\"text-align: left;\">" + Nodes.size + "</td></tr>" +
+        "<tr><td style=\"text-align: right;\">Total number of paths:</td><td style=\"text-align: left;\">" + peerLinks / 2 + "</td></tr>" +
+        "<tr><td style=\"text-align: right;\">Tree path convergence:</td><td style=\"text-align: left;\"><code><b>TODO</b></code></td></tr>" +
+        "<tr><td style=\"text-align: right;\">SNEK path convergence:</td><td style=\"text-align: left;\"><code><b>TODO</b></code></td></tr>" +
+        "<tr><td>Tree average stretch:</td><td><code><b>TODO</b></code></td></tr>" +
+        "<tr><td>SNEK average stretch:</td><td><code><b>TODO</b></code></td></tr>" +
+        "</table>" +
+        "<hr><h4><u>Node Summary</u></h4>" +
+        "<table>" +
+        "<tr><th>Name</th><th>Coords</th><th>Root</th><th>↓</th><th>Key</th><th>↑</th><th>#</th><th>!</th></tr>" +
+        nodeTable +
+        "</table>" +
+        "<hr><h4><u>Tree Building</u></h4>" +
+        "<table>" +
+        "<tr><th>Root Key</th><th>Convergence</th></tr>" +
+        rootTable +
+        "</table>";
 }

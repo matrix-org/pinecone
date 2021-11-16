@@ -36,81 +36,13 @@
 
                 <div class="left panel-overlay" id="left">
                     <div class="left-padding">
-                        <div class="shift-right">
-                            <h3>Statistics</h3>
-                        </div>
-                        <hr>
-                        <table>
-                            <tr>
-                                <td style="text-align: right;">Total number of nodes:</td>
-                                <td style="text-align: left;">{{.NodeCount}}</td>
-                            </tr>
-                            <tr>
-                                <td style="text-align: right;">Total number of paths:</td>
-                                <td style="text-align: left;">{{.PathCount}}</td>
-                            </tr>
-                            <tr>
-                                <td style="text-align: right;">Tree path convergence:</td>
-                                <td style="text-align: left;">{{.TreePathConvergence}}</td>
-                            </tr>
-                            <tr>
-                                <td style="text-align: right;">SNEK path convergence:</td>
-                                <td style="text-align: left;">{{.SNEKPathConvergence}}</td>
-                            </tr>
-                            <tr>
-                                <td>Tree average stretch:</td>
-                                <td>{{.TreeAvgStretch}}</td>
-                            </tr>
-                            <tr>
-                                <td>SNEK average stretch:</td>
-                                <td>{{.SNEKAvgStretch}}</td>
-                            </tr>
-                        </table>
-
-                        <hr>
-                        <h4><u>Node Summary</u></h4>
-                        <table>
-                            <tr>
-                                <th>Name</th>
-                                <th>Coords</th>
-                                <th>Root</th>
-                                <th>↓</th>
-                                <th>Key</th>
-                                <th>↑</th>
-                                <th>#</th>
-                                <th>!</th>
-                            </tr>
-                            {{range .Nodes}}
-                            {{if not .IsExternal}}<tr>
-                                <td><a href="?view=snek&pk={{.Key}}">{{.Name}}</a></td>
-                                <td><code>{{.Coords}}</code></td>
-                                <td><a href="?view=snek&pk={{.Root}}"><code>{{.Root}}</code></a></td>
-                                <td><a href="?view=snek&pk={{.Predecessor}}"><code>{{.Predecessor}}</code></a></td>
-                                <td><a href="?view=snek&pk={{.Key}}"><code>{{.Key}}</code></a></td>
-                                <td><a href="?view=snek&pk={{.Successor}}"><code>{{.Successor}}</code></a></td>
-                                <td><code>{{.DHTSize}}</code></td>
-                                <td><code>{{.DHTStalePaths}}</code></td>
-                                {{end}}</tr>{{end}}
-                        </table>
-
-                        <hr>
-                        <h4><u>Tree Building</u></h4>
-                        <table>
-                            <tr>
-                                <th>Root Key</th>
-                                <th>Convergence</th>
-                            </tr>
-                            {{range .Roots}}<tr>
-                                <td><code>{{.Name}}</code></td>
-                                <td>{{.References}}%</td>
-                            </tr>{{end}}
-                        </table>
-                    </div>
+                        <div id="simStatsPanel"></div>
+                   </div>
                 </div>
 
                 <div class="right panel-overlay" id="right">
                     <div class="right-padding">
-                        <div id="currentNodeState"/>
+                        <div id="currentNodeState"></div>
                     </div>
                 </div>
             </div>

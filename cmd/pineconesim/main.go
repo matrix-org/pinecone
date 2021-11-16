@@ -16,14 +16,14 @@ package main
 
 import (
 	"bufio"
-	"encoding/hex"
+	// "encoding/hex"
 	"flag"
-	"fmt"
+	// "fmt"
 	"log"
 	"math/rand"
 	"os"
 	"runtime"
-	"sort"
+	// "sort"
 	"strings"
 	"sync"
 	"text/template"
@@ -198,7 +198,7 @@ func main() {
 
 type pair struct{ from, to string }
 
-const maxBatchSize int = 25
+const maxBatchSize int = 50
 
 func userProxy(conn *websocket.Conn, sim *simulator.Simulator) {
 	// Subscribe to sim events and grab snapshot of current state
@@ -307,27 +307,27 @@ func configureHTTPRouting(sim *simulator.Simulator) {
 	})
 	http.DefaultServeMux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		tmpl := template.Must(template.ParseFiles("./cmd/pineconesim/page.html"))
-		nodes := sim.Nodes()
+		// nodes := sim.Nodes()
 
-		totalCount := len(nodes) * len(nodes)
-		dhtConvergence := 0
-		pathConvergence := 0
+		// totalCount := len(nodes) * len(nodes)
+		// dhtConvergence := 0
+		// pathConvergence := 0
 
-		for _, nodes := range sim.TreePathConvergence() {
-			for _, converged := range nodes {
-				if converged {
-					dhtConvergence++
-				}
-			}
-		}
+		// for _, nodes := range sim.TreePathConvergence() {
+		// 	for _, converged := range nodes {
+		// 		if converged {
+		// 			dhtConvergence++
+		// 		}
+		// 	}
+		// }
 
-		for _, paths := range sim.SNEKPathConvergence() {
-			for _, converged := range paths {
-				if converged {
-					pathConvergence++
-				}
-			}
-		}
+		// for _, paths := range sim.SNEKPathConvergence() {
+		// 	for _, converged := range paths {
+		// 		if converged {
+		// 			pathConvergence++
+		// 		}
+		// 	}
+		// }
 
 		data := PageData{
 			TreeAvgStretch:      "Not tested",
@@ -336,153 +336,153 @@ func configureHTTPRouting(sim *simulator.Simulator) {
 			SNEKPathConvergence: "Not tested",
 			Uptime:              sim.Uptime().Round(time.Second),
 		}
-		if sim.PingingEnabled() && totalCount > 0 {
-			data.TreePathConvergence = fmt.Sprintf("%d%%", (dhtConvergence*100)/totalCount)
-			data.SNEKPathConvergence = fmt.Sprintf("%d%%", (pathConvergence*100)/totalCount)
-		}
-		shortcuts := map[string]string{}
-		roots := map[string]int{}
-		nodeids := []string{}
-		for n := range nodes {
-			nodeids = append(nodeids, n)
-		}
-		sort.Strings(nodeids)
-		for _, n := range nodeids {
-			node := nodes[n]
-			public := node.PublicKey()
-			asc, desc, table, stale := node.DHTInfo()
-			entry := Node{
-				Name:          n,
-				Port:          "—",
-				Coords:        fmt.Sprintf("%v", node.Coords()),
-				Key:           hex.EncodeToString(public[:2]),
-				IsRoot:        node.IsRoot(),
-				DHTSize:       len(table),
-				DHTStalePaths: stale,
-			}
-			if node.ListenAddr != nil {
-				entry.Port = fmt.Sprintf("%d", node.ListenAddr.Port)
-			}
-			shortcuts[entry.Key] = n
-			rootkey := node.RootPublicKey()
-			entry.Root = hex.EncodeToString(rootkey[:2])
-			if desc != nil {
-				entry.Predecessor = hex.EncodeToString(desc.PublicKey[:2])
-			}
-			if asc != nil {
-				entry.Successor = hex.EncodeToString(asc.PublicKey[:2])
-			}
-			data.Nodes = append(data.Nodes, entry)
-			data.NodeCount++
-			roots[entry.Root]++
-		}
+		// if sim.PingingEnabled() && totalCount > 0 {
+		// 	data.TreePathConvergence = fmt.Sprintf("%d%%", (dhtConvergence*100)/totalCount)
+		// 	data.SNEKPathConvergence = fmt.Sprintf("%d%%", (pathConvergence*100)/totalCount)
+		// }
+		// shortcuts := map[string]string{}
+		// roots := map[string]int{}
+		// nodeids := []string{}
+		// for n := range nodes {
+		// 	nodeids = append(nodeids, n)
+		// }
+		// sort.Strings(nodeids)
+		// for _, n := range nodeids {
+		// 	node := nodes[n]
+		// 	public := node.PublicKey()
+		// 	asc, desc, table, stale := node.DHTInfo()
+		// 	entry := Node{
+		// 		Name:          n,
+		// 		Port:          "—",
+		// 		Coords:        fmt.Sprintf("%v", node.Coords()),
+		// 		Key:           hex.EncodeToString(public[:2]),
+		// 		IsRoot:        node.IsRoot(),
+		// 		DHTSize:       len(table),
+		// 		DHTStalePaths: stale,
+		// 	}
+		// 	if node.ListenAddr != nil {
+		// 		entry.Port = fmt.Sprintf("%d", node.ListenAddr.Port)
+		// 	}
+		// 	shortcuts[entry.Key] = n
+		// 	rootkey := node.RootPublicKey()
+		// 	entry.Root = hex.EncodeToString(rootkey[:2])
+		// 	if desc != nil {
+		// 		entry.Predecessor = hex.EncodeToString(desc.PublicKey[:2])
+		// 	}
+		// 	if asc != nil {
+		// 		entry.Successor = hex.EncodeToString(asc.PublicKey[:2])
+		// 	}
+		// 	data.Nodes = append(data.Nodes, entry)
+		// 	data.NodeCount++
+		// 	roots[entry.Root]++
+		// }
 
-		if nodeKey := r.URL.Query().Get("pk"); nodeKey != "" {
-			if node, ok := nodes[shortcuts[nodeKey]]; ok {
-				pk := node.Router.PublicKey()
-				asc, desc, dht, _ := node.Router.DHTInfo()
-				pks := hex.EncodeToString(pk[:2])
-				data.NodeInfo = &NodeInfo{
-					Name:      shortcuts[pks],
-					PublicKey: pks,
-				}
-				if asc != nil {
-					data.NodeInfo.Ascending = hex.EncodeToString(asc.PublicKey[:2])
-					data.NodeInfo.AscendingPathID = hex.EncodeToString(asc.PathID[:])
-				}
-				if desc != nil {
-					data.NodeInfo.Descending = hex.EncodeToString(desc.PublicKey[:2])
-					data.NodeInfo.DescendingPathID = hex.EncodeToString(desc.PathID[:])
-				}
-				for k, v := range dht {
-					data.NodeInfo.Entries = append(
-						data.NodeInfo.Entries,
-						DHTEntry{
-							PublicKey:       hex.EncodeToString(k.PublicKey[:2]),
-							PathID:          hex.EncodeToString(k.PathID[:]),
-							DestinationPort: v.Destination,
-							SourcePort:      v.Source,
-							Sequence:        int(v.Root.RootSequence),
-						},
-					)
-				}
-				for _, p := range node.Router.Peers() {
-					data.NodeInfo.Peers = append(
-						data.NodeInfo.Peers,
-						PeerEntry{
-							Name:          shortcuts[p.PublicKey[:4]],
-							PublicKey:     p.PublicKey[:4],
-							Port:          p.Port,
-							RootPublicKey: p.RootPublicKey[:4],
-						},
-					)
-				}
-				sort.Sort(data.NodeInfo.Entries)
-			}
-		}
+		// if nodeKey := r.URL.Query().Get("pk"); nodeKey != "" {
+		// 	if node, ok := nodes[shortcuts[nodeKey]]; ok {
+		// 		pk := node.Router.PublicKey()
+		// 		asc, desc, dht, _ := node.Router.DHTInfo()
+		// 		pks := hex.EncodeToString(pk[:2])
+		// 		data.NodeInfo = &NodeInfo{
+		// 			Name:      shortcuts[pks],
+		// 			PublicKey: pks,
+		// 		}
+		// 		if asc != nil {
+		// 			data.NodeInfo.Ascending = hex.EncodeToString(asc.PublicKey[:2])
+		// 			data.NodeInfo.AscendingPathID = hex.EncodeToString(asc.PathID[:])
+		// 		}
+		// 		if desc != nil {
+		// 			data.NodeInfo.Descending = hex.EncodeToString(desc.PublicKey[:2])
+		// 			data.NodeInfo.DescendingPathID = hex.EncodeToString(desc.PathID[:])
+		// 		}
+		// 		for k, v := range dht {
+		// 			data.NodeInfo.Entries = append(
+		// 				data.NodeInfo.Entries,
+		// 				DHTEntry{
+		// 					PublicKey:       hex.EncodeToString(k.PublicKey[:2]),
+		// 					PathID:          hex.EncodeToString(k.PathID[:]),
+		// 					DestinationPort: v.Destination,
+		// 					SourcePort:      v.Source,
+		// 					Sequence:        int(v.Root.RootSequence),
+		// 				},
+		// 			)
+		// 		}
+		// 		for _, p := range node.Router.Peers() {
+		// 			data.NodeInfo.Peers = append(
+		// 				data.NodeInfo.Peers,
+		// 				PeerEntry{
+		// 					Name:          shortcuts[p.PublicKey[:4]],
+		// 					PublicKey:     p.PublicKey[:4],
+		// 					Port:          p.Port,
+		// 					RootPublicKey: p.RootPublicKey[:4],
+		// 				},
+		// 			)
+		// 		}
+		// 		sort.Sort(data.NodeInfo.Entries)
+		// 	}
+		// }
 
-		data.PathCount = int(sim.State.GetLinkCount())
+		// data.PathCount = int(sim.State.GetLinkCount())
 
-		for n, r := range roots {
-			data.Roots = append(data.Roots, Root{
-				Name:       n,
-				References: r * 100 / len(data.Nodes),
-			})
-		}
-		var stretchT float64
-		var stretchS float64
-		var stretchTC int
-		var stretchSC int
-		for a, aa := range sim.Distances() {
-			for b, d := range aa {
-				if a == b {
-					continue
-				}
-				/*
-					dist := Dist{
-						From:         a,
-						To:           b,
-						Real:         "TBD",
-						TreeObserved: "TBD",
-						SNEKObserved: "TBD",
-						TreeStretch:  "TBD",
-						SNEKStretch:  "TBD",
-					}
-					dist.Real = fmt.Sprintf("%d", d.Real)
-					if d.ObservedTree >= d.Real {
-						dist.TreeObserved = fmt.Sprintf("%d", d.ObservedTree)
-					}
-					if d.ObservedSNEK >= d.Real {
-						dist.SNEKObserved = fmt.Sprintf("%d", d.ObservedSNEK)
-					}
-				*/
-				if d.ObservedTree >= d.Real {
-					stretch := float64(1)
-					if d.Real > 0 && d.ObservedTree > 0 {
-						stretch = float64(1) / float64(d.Real) * float64(d.ObservedTree)
-					}
-					//dist.TreeStretch = fmt.Sprintf("%.2f", stretch)
-					stretchT += stretch
-					stretchTC++
-				}
-				if d.ObservedSNEK >= d.Real {
-					stretch := float64(1)
-					if d.Real > 0 && d.ObservedSNEK > 0 {
-						stretch = float64(1) / float64(d.Real) * float64(d.ObservedSNEK)
-					}
-					//dist.SNEKStretch = fmt.Sprintf("%.2f", stretch)
-					stretchS += stretch
-					stretchSC++
-				}
-				// data.Dists = append(data.Dists, dist)
-			}
-		}
-		if stretch := stretchT / float64(stretchTC); stretch >= 1 {
-			data.TreeAvgStretch = fmt.Sprintf("%.2f", stretch)
-		}
-		if stretch := stretchS / float64(stretchSC); stretch >= 1 {
-			data.SNEKAvgStretch = fmt.Sprintf("%.2f", stretch)
-		}
+		// for n, r := range roots {
+		// 	data.Roots = append(data.Roots, Root{
+		// 		Name:       n,
+		// 		References: r * 100 / len(data.Nodes),
+		// 	})
+		// }
+		// var stretchT float64
+		// var stretchS float64
+		// var stretchTC int
+		// var stretchSC int
+		// for a, aa := range sim.Distances() {
+		// 	for b, d := range aa {
+		// 		if a == b {
+		// 			continue
+		// 		}
+		// 		/*
+		// 			dist := Dist{
+		// 				From:         a,
+		// 				To:           b,
+		// 				Real:         "TBD",
+		// 				TreeObserved: "TBD",
+		// 				SNEKObserved: "TBD",
+		// 				TreeStretch:  "TBD",
+		// 				SNEKStretch:  "TBD",
+		// 			}
+		// 			dist.Real = fmt.Sprintf("%d", d.Real)
+		// 			if d.ObservedTree >= d.Real {
+		// 				dist.TreeObserved = fmt.Sprintf("%d", d.ObservedTree)
+		// 			}
+		// 			if d.ObservedSNEK >= d.Real {
+		// 				dist.SNEKObserved = fmt.Sprintf("%d", d.ObservedSNEK)
+		// 			}
+		// 		*/
+		// 		if d.ObservedTree >= d.Real {
+		// 			stretch := float64(1)
+		// 			if d.Real > 0 && d.ObservedTree > 0 {
+		// 				stretch = float64(1) / float64(d.Real) * float64(d.ObservedTree)
+		// 			}
+		// 			//dist.TreeStretch = fmt.Sprintf("%.2f", stretch)
+		// 			stretchT += stretch
+		// 			stretchTC++
+		// 		}
+		// 		if d.ObservedSNEK >= d.Real {
+		// 			stretch := float64(1)
+		// 			if d.Real > 0 && d.ObservedSNEK > 0 {
+		// 				stretch = float64(1) / float64(d.Real) * float64(d.ObservedSNEK)
+		// 			}
+		// 			//dist.SNEKStretch = fmt.Sprintf("%.2f", stretch)
+		// 			stretchS += stretch
+		// 			stretchSC++
+		// 		}
+		// 		// data.Dists = append(data.Dists, dist)
+		// 	}
+		// }
+		// if stretch := stretchT / float64(stretchTC); stretch >= 1 {
+		// 	data.TreeAvgStretch = fmt.Sprintf("%.2f", stretch)
+		// }
+		// if stretch := stretchS / float64(stretchSC); stretch >= 1 {
+		// 	data.SNEKAvgStretch = fmt.Sprintf("%.2f", stretch)
+		// }
 		_ = tmpl.Execute(w, data)
 	})
 }
