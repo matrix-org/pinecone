@@ -186,6 +186,15 @@ class Graph {
         });
     }
 
+    updateUI(node) {
+        if (panelNodes && panelNodes.indexOf(node) > -1) {
+            handleNodePanelUpdate(node);
+        }
+        if (hoverNode && hoverNode === node) {
+            handleNodeHoverUpdate(node);
+        }
+    }
+
     addNode(id, coords) {
         this.peerData.nodes.add({ id: id, label: id });
         this.snakeData.nodes.add({ id: id, label: id });
@@ -205,6 +214,8 @@ class Graph {
             snekAsc: "",
             snekDesc: "",
         });
+
+        this.updateUI(id);
     }
 
     removeNode(id) {
@@ -219,6 +230,8 @@ class Graph {
         }
 
         Nodes.delete(id);
+
+        this.updateUI(id);
     }
 
     updateRootAnnouncement(id, root, sequence, time, coords) {
@@ -229,12 +242,7 @@ class Graph {
             node.announcement.time = time;
             node.coords = coords;
 
-            if (panelNodes && panelNodes.indexOf(id) > -1) {
-                handleNodePanelUpdate(id);
-            }
-            if (hoverNode && hoverNode === id) {
-                handleNodeHoverUpdate(id);
-            }
+            this.updateUI(id);
         }
     }
 
@@ -252,6 +260,8 @@ class Graph {
         if (Nodes.has(id)) {
             Nodes.get(id).peers.push(peer);
         }
+
+        this.updateUI(id);
     }
 
     removePeer(id, peer) {
@@ -263,6 +273,8 @@ class Graph {
                     peers.splice(i, 1);
                 }
             }
+
+            this.updateUI(id);
         }
     }
 
@@ -274,6 +286,8 @@ class Graph {
 
         if (Nodes.has(id)) {
             Nodes.get(id).treeParent = parent;
+
+            this.updateUI(id);
         }
     }
 
@@ -285,6 +299,8 @@ class Graph {
 
         if (Nodes.has(id)) {
             Nodes.get(id).snekAsc = asc;
+
+            this.updateUI(id);
         }
     }
 
@@ -296,6 +312,8 @@ class Graph {
 
         if (Nodes.has(id)) {
             Nodes.get(id).snekDesc = desc;
+
+            this.updateUI(id);
         }
     }
 
@@ -504,7 +522,6 @@ function handleNodePanelUpdate(nodeID) {
             "<hr><h4><u>SNEK Routes</u></h4>" +
             "<table>" +
             "<tr><th>Public Key</th><th>Path ID</th><th>Src</th><th>Dst</th><th>Seq</th></tr>" +
-            // {{range .NodeInfo.Entries}}
             "<tr><td><code><b>TODO</b></code></td><td><code><b>TODO</b></code></td><td><code><b>TODO</b></code></td><td><code><b>TODO</b></code></td><td><code><b>TODO</b></code></td></tr>" +
             "</table>";
     }
