@@ -106,6 +106,7 @@ func (s *state) _addPeer(conn net.Conn, public types.PublicKey, uri, zone string
 			port:       types.SwitchPortID(i),
 			conn:       conn,
 			public:     public,
+			uri:        uri,
 			zone:       zone,
 			peertype:   peertype,
 			keepalives: keepalives,
