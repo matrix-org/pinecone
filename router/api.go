@@ -19,6 +19,7 @@ package router
 
 import (
 	"context"
+	"encoding/hex"
 	"fmt"
 	"net"
 	"time"
@@ -34,11 +35,11 @@ type NeighbourInfo struct {
 }
 
 type PeerInfo struct {
-	Port          int
-	PublicKey     string
-	RootPublicKey string
-	PeerType      int
-	Zone          string
+	URI       string
+	Port      int
+	PublicKey string
+	PeerType  int
+	Zone      string
 }
 
 // Subscribe registers a subscriber to this node's events
@@ -50,6 +51,22 @@ func (r *Router) Subscribe(ch chan<- events.Event) {
 
 func (r *Router) Coords() types.Coordinates {
 	return r.state.coords()
+}
+
+func (r *Router) Peers() []PeerInfo {
+	var infos []PeerInfo
+	phony.Block(r.state, func() {
+		for _, p := range r.state._peers {
+			infos = append(infos, PeerInfo{
+				URI:       p.uri,
+				Port:      int(p.port),
+				PublicKey: hex.EncodeToString(p.public[:]),
+				PeerType:  p.peertype,
+				Zone:      p.zone,
+			})
+		}
+	})
+	return infos
 }
 
 func (r *Router) Ping(ctx context.Context, a net.Addr) (uint16, time.Duration, error) {

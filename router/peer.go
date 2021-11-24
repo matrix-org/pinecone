@@ -36,7 +36,7 @@ const peerKeepaliveInterval = time.Second * 3
 const peerKeepaliveTimeout = time.Second * 5
 
 const (
-	PeerTypeMulticast int = iota
+	PeerTypeMulticast ConnectionPeerType = iota
 	PeerTypeBluetooth
 	PeerTypeRemote
 )
@@ -54,6 +54,7 @@ type peer struct {
 	context    context.Context    // Not mutated after peer setup.
 	cancel     context.CancelFunc // Not mutated after peer setup.
 	conn       net.Conn           // Not mutated after peer setup.
+	uri        string             // Not mutated after peer setup.
 	zone       string             // Not mutated after peer setup.
 	peertype   int                // Not mutated after peer setup.
 	public     types.PublicKey    // Not mutated after peer setup.

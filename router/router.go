@@ -128,74 +128,103 @@ func (r *Router) Addr() net.Addr {
 	return r.PublicKey()
 }
 
+type ConnectionOption interface {
+	isConnectionOption()
+}
+
+type ConnectionPublicKey types.PublicKey
+type ConnectionURI string
+type ConnectionZone string
+type ConnectionPeerType int
+type ConnectionKeepalives bool
+
+func (w ConnectionPublicKey) isConnectionOption()  {}
+func (w ConnectionURI) isConnectionOption()        {}
+func (w ConnectionZone) isConnectionOption()       {}
+func (w ConnectionPeerType) isConnectionOption()   {}
+func (w ConnectionKeepalives) isConnectionOption() {}
+
 // Connect takes a connection and attaches it to the switch as a peering. This
-// function assumes that you already know the public key of the remote node. If
-// this is not true, then AuthenticatedConnect should be used instead.
-func (r *Router) Connect(conn net.Conn, public types.PublicKey, zone string, peertype int, keepalives bool) (types.SwitchPortID, error) {
+// function takes one or more ConnectionOptions to configure the peer. If no
+// ConnectionPublicKey is specified, the connection will autonegotiate with the
+// remote peer to exchange public keys and version/capability information.
+func (r *Router) Connect(conn net.Conn, options ...ConnectionOption) (types.SwitchPortID, error) {
+	var public types.PublicKey
+	var uri string
+	var zone string
+	var peertype int
+	keepalives := true
+	for _, option := range options {
+		switch v := option.(type) {
+		case ConnectionPublicKey:
+			public = types.PublicKey(v)
+		case ConnectionURI:
+			uri = string(v)
+		case ConnectionZone:
+			zone = string(v)
+		case ConnectionPeerType:
+			peertype = int(v)
+		case ConnectionKeepalives:
+			keepalives = bool(v)
+		}
+	}
+
+	var empty types.PublicKey
+	if public == empty {
+		handshake := []byte{
+			ourVersion,
+			0, // unused
+			0, // unused
+			0, // unused
+			0, // capabilities
+			0, // capabilities
+			0, // capabilities
+			0, // capabilities
+		}
+		binary.BigEndian.PutUint32(handshake[4:8], ourCapabilities)
+		handshake = append(handshake, r.public[:ed25519.PublicKeySize]...)
+		handshake = append(handshake, ed25519.Sign(r.private[:], handshake)...)
+		if err := conn.SetDeadline(time.Now().Add(peerKeepaliveInterval)); err != nil {
+			return 0, fmt.Errorf("conn.SetDeadline: %w", err)
+		}
+		if _, err := conn.Write(handshake); err != nil {
+			conn.Close()
+			return 0, fmt.Errorf("conn.Write: %w", err)
+		}
+		if _, err := io.ReadFull(conn, handshake); err != nil {
+			conn.Close()
+			return 0, fmt.Errorf("io.ReadFull: %w", err)
+		}
+		if err := conn.SetDeadline(time.Time{}); err != nil {
+			return 0, fmt.Errorf("conn.SetDeadline: %w", err)
+		}
+		if theirVersion := handshake[0]; theirVersion != ourVersion {
+			conn.Close()
+			return 0, fmt.Errorf("mismatched node version")
+		}
+		if theirCapabilities := binary.BigEndian.Uint32(handshake[4:8]); theirCapabilities&ourCapabilities != ourCapabilities {
+			conn.Close()
+			return 0, fmt.Errorf("mismatched node capabilities")
+		}
+		var signature types.Signature
+		offset := 8
+		offset += copy(public[:], handshake[offset:offset+ed25519.PublicKeySize])
+		copy(signature[:], handshake[offset:offset+ed25519.SignatureSize])
+		if !ed25519.Verify(public[:], handshake[:offset], signature[:]) {
+			conn.Close()
+			return 0, fmt.Errorf("peer sent invalid signature")
+		}
+	}
+
 	port := types.SwitchPortID(0)
 	var err error
 	phony.Block(r.state, func() {
-		port, err = r.state._addPeer(conn, public, zone, peertype, keepalives)
+		port, err = r.state._addPeer(conn, public, uri, zone, peertype, keepalives)
 	})
 	if err != nil {
 		return types.SwitchPortID(0), err
 	}
 	return port, nil
-}
-
-// AuthenticatedConnect takes a connection and exchanges a handshake containing
-// node capabilities and public keys. If the handshake succeeds then the connection
-// will be connected to the Pinecone switch.
-func (r *Router) AuthenticatedConnect(conn net.Conn, zone string, peertype int, keepalives bool) (types.SwitchPortID, error) {
-	handshake := []byte{
-		ourVersion,
-		0, // unused
-		0, // unused
-		0, // unused
-		0, // capabilities
-		0, // capabilities
-		0, // capabilities
-		0, // capabilities
-	}
-	binary.BigEndian.PutUint32(handshake[4:8], ourCapabilities)
-	handshake = append(handshake, r.public[:ed25519.PublicKeySize]...)
-	handshake = append(handshake, ed25519.Sign(r.private[:], handshake)...)
-	if err := conn.SetDeadline(time.Now().Add(peerKeepaliveInterval)); err != nil {
-		return 0, fmt.Errorf("conn.SetDeadline: %w", err)
-	}
-	if _, err := conn.Write(handshake); err != nil {
-		conn.Close()
-		return 0, fmt.Errorf("conn.Write: %w", err)
-	}
-	if _, err := io.ReadFull(conn, handshake); err != nil {
-		conn.Close()
-		return 0, fmt.Errorf("io.ReadFull: %w", err)
-	}
-	if err := conn.SetDeadline(time.Time{}); err != nil {
-		return 0, fmt.Errorf("conn.SetDeadline: %w", err)
-	}
-	if theirVersion := handshake[0]; theirVersion != ourVersion {
-		conn.Close()
-		return 0, fmt.Errorf("mismatched node version")
-	}
-	if theirCapabilities := binary.BigEndian.Uint32(handshake[4:8]); theirCapabilities&ourCapabilities != ourCapabilities {
-		conn.Close()
-		return 0, fmt.Errorf("mismatched node capabilities")
-	}
-	var public types.PublicKey
-	var signature types.Signature
-	offset := 8
-	offset += copy(public[:], handshake[offset:offset+ed25519.PublicKeySize])
-	copy(signature[:], handshake[offset:offset+ed25519.SignatureSize])
-	if !ed25519.Verify(public[:], handshake[:offset], signature[:]) {
-		conn.Close()
-		return 0, fmt.Errorf("peer sent invalid signature")
-	}
-	port, err := r.Connect(conn, public, zone, peertype, keepalives)
-	if err != nil {
-		return 0, fmt.Errorf("r.Connect failed: %w (close: %s)", err, conn.Close())
-	}
-	return port, err
 }
 
 // Disconnect will disconnect whatever is connected to the
