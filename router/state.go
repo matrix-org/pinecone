@@ -92,7 +92,7 @@ func (s *state) _maintainSnakeIn(d time.Duration) {
 }
 
 // _addPeer creates a new Peer and adds it to the switch in the next available port
-func (s *state) _addPeer(conn net.Conn, public types.PublicKey, uri, zone string, peertype int, keepalives bool) (types.SwitchPortID, error) {
+func (s *state) _addPeer(conn net.Conn, public types.PublicKey, uri ConnectionURI, zone ConnectionZone, peertype ConnectionPeerType, keepalives bool) (types.SwitchPortID, error) {
 	var new *peer
 	for i, p := range s._peers {
 		if i == 0 || p != nil {
@@ -117,7 +117,7 @@ func (s *state) _addPeer(conn net.Conn, public types.PublicKey, uri, zone string
 		}
 		s._peers[i] = new
 		s.r.log.Println("Connected to peer", new.public.String(), "on port", new.port)
-		v, _ := s.r.active.LoadOrStore(hex.EncodeToString(new.public[:])+zone, atomic.NewUint64(0))
+		v, _ := s.r.active.LoadOrStore(hex.EncodeToString(new.public[:])+string(zone), atomic.NewUint64(0))
 		v.(*atomic.Uint64).Inc()
 		new.proto.push(s.r.state._rootAnnouncement().forPeer(new))
 		new.started.Store(true)

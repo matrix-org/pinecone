@@ -54,9 +54,9 @@ type peer struct {
 	context    context.Context    // Not mutated after peer setup.
 	cancel     context.CancelFunc // Not mutated after peer setup.
 	conn       net.Conn           // Not mutated after peer setup.
-	uri        string             // Not mutated after peer setup.
-	zone       string             // Not mutated after peer setup.
-	peertype   int                // Not mutated after peer setup.
+	uri        ConnectionURI      // Not mutated after peer setup.
+	zone       ConnectionZone     // Not mutated after peer setup.
+	peertype   ConnectionPeerType // Not mutated after peer setup.
 	public     types.PublicKey    // Not mutated after peer setup.
 	keepalives bool               // Not mutated after peer setup.
 	started    atomic.Bool        // Thread-safe toggle for marking a peer as down.
@@ -133,7 +133,7 @@ func (p *peer) stop(err error) {
 	// Decrease the connection count for this peer in this zone. The multicast
 	// code uses this to determine whether we are already connected to a peer in
 	// a given zone and to ignore beacons from them if we are.
-	index := hex.EncodeToString(p.public[:]) + p.zone
+	index := hex.EncodeToString(p.public[:]) + string(p.zone)
 	if v, ok := p.router.active.Load(index); ok && v.(*atomic.Uint64).Dec() == 0 {
 		p.router.active.Delete(index)
 	}

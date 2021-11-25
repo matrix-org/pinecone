@@ -150,20 +150,20 @@ func (w ConnectionKeepalives) isConnectionOption() {}
 // remote peer to exchange public keys and version/capability information.
 func (r *Router) Connect(conn net.Conn, options ...ConnectionOption) (types.SwitchPortID, error) {
 	var public types.PublicKey
-	var uri string
-	var zone string
-	var peertype int
+	var uri ConnectionURI
+	var zone ConnectionZone
+	var peertype ConnectionPeerType
 	keepalives := true
 	for _, option := range options {
 		switch v := option.(type) {
 		case ConnectionPublicKey:
 			public = types.PublicKey(v)
 		case ConnectionURI:
-			uri = string(v)
+			uri = v
 		case ConnectionZone:
-			zone = string(v)
+			zone = v
 		case ConnectionPeerType:
-			peertype = int(v)
+			peertype = v
 		case ConnectionKeepalives:
 			keepalives = bool(v)
 		}
@@ -244,7 +244,7 @@ func (r *Router) Disconnect(i types.SwitchPortID, err error) {
 
 // PeerCount returns the number of nodes that are directly
 // connected to this Pinecone node.
-func (r *Router) PeerCount(peertype int) (count int) {
+func (r *Router) PeerCount(peertype ConnectionPeerType) (count int) {
 	phony.Block(r.state, func() {
 		seen := map[types.PublicKey]struct{}{}
 		for _, p := range r.state._peers {

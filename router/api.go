@@ -58,11 +58,11 @@ func (r *Router) Peers() []PeerInfo {
 	phony.Block(r.state, func() {
 		for _, p := range r.state._peers {
 			infos = append(infos, PeerInfo{
-				URI:       p.uri,
+				URI:       string(p.uri),
 				Port:      int(p.port),
 				PublicKey: hex.EncodeToString(p.public[:]),
-				PeerType:  p.peertype,
-				Zone:      p.zone,
+				PeerType:  int(p.peertype),
+				Zone:      string(p.zone),
 			})
 		}
 	})
