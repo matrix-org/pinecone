@@ -57,6 +57,9 @@ func (r *Router) Peers() []PeerInfo {
 	var infos []PeerInfo
 	phony.Block(r.state, func() {
 		for _, p := range r.state._peers {
+			if p == nil {
+				continue
+			}
 			infos = append(infos, PeerInfo{
 				URI:       string(p.uri),
 				Port:      int(p.port),
