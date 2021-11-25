@@ -92,7 +92,7 @@ func (s *state) _maintainSnakeIn(d time.Duration) {
 }
 
 // _addPeer creates a new Peer and adds it to the switch in the next available port
-func (s *state) _addPeer(conn net.Conn, public types.PublicKey, zone string, peertype int, keepalives bool) (types.SwitchPortID, error) {
+func (s *state) _addPeer(conn net.Conn, public types.PublicKey, uri, zone string, peertype int, keepalives bool) (types.SwitchPortID, error) {
 	var new *peer
 	for i, p := range s._peers {
 		if i == 0 || p != nil {
@@ -106,6 +106,7 @@ func (s *state) _addPeer(conn net.Conn, public types.PublicKey, zone string, pee
 			port:       types.SwitchPortID(i),
 			conn:       conn,
 			public:     public,
+			uri:        uri,
 			zone:       zone,
 			peertype:   peertype,
 			keepalives: keepalives,
