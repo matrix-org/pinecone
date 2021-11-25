@@ -244,14 +244,14 @@ func (r *Router) Disconnect(i types.SwitchPortID, err error) {
 
 // PeerCount returns the number of nodes that are directly
 // connected to this Pinecone node.
-func (r *Router) PeerCount(peertype ConnectionPeerType) (count int) {
+func (r *Router) PeerCount(peertype int) (count int) {
 	phony.Block(r.state, func() {
 		seen := map[types.PublicKey]struct{}{}
 		for _, p := range r.state._peers {
 			if p == nil || p.port == 0 || !p.started.Load() {
 				continue
 			}
-			if p.peertype == peertype || peertype < 0 {
+			if int(p.peertype) == peertype || peertype < 0 {
 				if _, ok := seen[p.public]; !ok {
 					count++
 				}

@@ -61,7 +61,7 @@ func (sim *Simulator) ConnectNodes(a, b string) error {
 		if _, err := nb.Connect(
 			sc,
 			router.ConnectionKeepalives(false),
-			router.PeerTypeRemote,
+			router.ConnectionPeerType(router.PeerTypeRemote),
 		); err != nil {
 			return fmt.Errorf("nb.AuthenticatedConnect: %w", err)
 		}
@@ -75,7 +75,7 @@ func (sim *Simulator) ConnectNodes(a, b string) error {
 				pa,
 				router.ConnectionPublicKey(nb.PublicKey()),
 				router.ConnectionKeepalives(false),
-				router.PeerTypeRemote,
+				router.ConnectionPeerType(router.PeerTypeRemote),
 			); err != nil {
 				return
 			}
@@ -85,7 +85,7 @@ func (sim *Simulator) ConnectNodes(a, b string) error {
 				pb,
 				router.ConnectionPublicKey(na.PublicKey()),
 				router.ConnectionKeepalives(false),
-				router.PeerTypeRemote,
+				router.ConnectionPeerType(router.PeerTypeRemote),
 			); err != nil {
 				return
 			}

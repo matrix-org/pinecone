@@ -175,7 +175,7 @@ func (m *Multicast) accept(listener net.Listener) {
 			if _, err := m.r.Connect(
 				tcpconn,
 				router.ConnectionZone(tcpaddr.Zone),
-				router.PeerTypeMulticast,
+				router.ConnectionPeerType(router.PeerTypeMulticast),
 			); err != nil {
 				//m.log.Println("m.s.AuthenticatedConnect:", err)
 				_ = conn.Close()
@@ -339,7 +339,7 @@ func (m *Multicast) listen(intf *multicastInterface, conn net.PacketConn, srcadd
 			if _, err := m.r.Connect(
 				tcpconn,
 				router.ConnectionZone(udpaddr.Zone),
-				router.PeerTypeMulticast,
+				router.ConnectionPeerType(router.PeerTypeMulticast),
 			); err != nil {
 				m.log.Println("m.s.AuthenticatedConnect:", err)
 				_ = conn.Close()
