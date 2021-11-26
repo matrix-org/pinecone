@@ -44,6 +44,7 @@ type virtualSnakeEntry struct {
 	Destination *peer
 	LastSeen    time.Time
 	Root        types.Root
+	Active      bool
 }
 
 // valid returns true if the update hasn't expired, or false if it has. It is
@@ -97,6 +98,14 @@ func (s *state) _maintainSnake() {
 		// prompt the remote side into sending a new bootstrap to set up a new
 		// path, if they are still alive.
 		s._sendTeardownForExistingPath(s.r.local, desc.PublicKey, desc.PathID)
+	}
+
+	// Clean up any paths that were installed more than 5 seconds ago but haven't
+	// been activated by a setup ACK.
+	for k, v := range s._table {
+		if !v.Active && time.Since(v.LastSeen) > time.Second*5 {
+			s._sendTeardownForExistingPath(s.r.local, k.PublicKey, k.PathID)
+		}
 	}
 
 	// If one of the previous conditions means that we need to bootstrap, then
@@ -252,6 +261,9 @@ func (s *state) _nextHopsSNEK(rx *types.Frame, bootstrap bool) *peer {
 	// keyspace toward lower keys rather than ascend toward higher ones.
 	for _, entry := range s._table {
 		if !entry.Source.started.Load() || !entry.valid() || entry.Source == s.r.local {
+			continue
+		}
+		if !bootstrap && !entry.Active {
 			continue
 		}
 		newCheckedCandidate(entry.PublicKey, entry.Source)
@@ -577,6 +589,24 @@ func (s *state) _handleSetup(from *peer, rx *types.Frame, nexthop *peer) error {
 		}
 		s._table[index] = entry
 		s._setDescendingNode(entry)
+		// Send back a setup ACK to the remote side.
+		setupACK := types.VirtualSnakeSetupACK{
+			PathID: setup.PathID,
+			Root:   setup.Root,
+		}
+		b := frameBufferPool.Get().(*[types.MaxFrameSize]byte)
+		defer frameBufferPool.Put(b)
+		n, err := setupACK.MarshalBinary(b[:])
+		if err != nil {
+			return fmt.Errorf("setupACK.MarshalBinary: %w", err)
+		}
+		send := getFrame()
+		send.Type = types.TypeVirtualSnakeSetupACK
+		send.DestinationKey = rx.SourceKey
+		send.Payload = append(send.Payload[:0], b[:n]...)
+		if entry.Source.send(send) {
+			entry.Active = true
+		}
 		return nil
 	}
 	// Try to forward the setup onto the next node first. If we
@@ -603,6 +633,33 @@ func (s *state) _handleSetup(from *peer, rx *types.Frame, nexthop *peer) error {
 		Root:              setup.Root,
 		Source:            from,    // node with lower of the two keys
 		Destination:       nexthop, // node with higher of the two keys
+	}
+	return nil
+}
+
+// _handleSetupACK is called in response to receiving a setup ACK packet from the
+// network.
+func (s *state) _handleSetupACK(from *peer, rx *types.Frame, nexthop *peer) error {
+	// Unmarshal the setup.
+	var setup types.VirtualSnakeSetupACK
+	if _, err := setup.UnmarshalBinary(rx.Payload); err != nil {
+		return fmt.Errorf("setup.UnmarshalBinary: %w", err)
+	}
+	// Look up to see if we have a matching route. The route must be not active
+	// (i.e. we haven't received a setup ACK for it yet) and must have arrived
+	// from the port that the entry was populated with.
+	for k, v := range s._table {
+		if v.Active || k.PublicKey != rx.DestinationKey || k.PathID != setup.PathID {
+			continue
+		}
+		switch {
+		case from.local():
+			fallthrough
+		case from == v.Destination:
+			if v.Source.local() || v.Source.send(rx) {
+				v.Active = true
+			}
+		}
 	}
 	return nil
 }

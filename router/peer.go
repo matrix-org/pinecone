@@ -93,7 +93,7 @@ func (p *peer) send(f *types.Frame) bool {
 		fallthrough
 	case types.TypeVirtualSnakeBootstrap, types.TypeVirtualSnakeBootstrapACK:
 		fallthrough
-	case types.TypeVirtualSnakeSetup, types.TypeVirtualSnakeTeardown:
+	case types.TypeVirtualSnakeSetup, types.TypeVirtualSnakeSetupACK, types.TypeVirtualSnakeTeardown:
 		if p.proto == nil {
 			// The local peer doesn't have a protocol queue so we should check
 			// for nils to prevent panics.
