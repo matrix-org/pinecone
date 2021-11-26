@@ -137,7 +137,7 @@ func (v *VirtualSnakeSetup) UnmarshalBinary(buf []byte) (int, error) {
 
 type VirtualSnakeSetupACK struct {
 	PathID    VirtualSnakePathID
-	SourceSig VirtualSnakePathSig
+	TargetSig VirtualSnakePathSig
 	Root
 }
 
@@ -153,7 +153,7 @@ func (v *VirtualSnakeSetupACK) MarshalBinary(buf []byte) (int, error) {
 		return 0, fmt.Errorf("v.RootSequence.MarshalBinary: %w", err)
 	}
 	offset += n
-	offset += copy(buf[offset:], v.SourceSig[:])
+	offset += copy(buf[offset:], v.TargetSig[:])
 	return offset, nil
 }
 
@@ -169,7 +169,7 @@ func (v *VirtualSnakeSetupACK) UnmarshalBinary(buf []byte) (int, error) {
 		return 0, fmt.Errorf("v.RootSequence.UnmarshalBinary: %w", err)
 	}
 	offset += l
-	offset += copy(v.SourceSig[:], buf[offset:])
+	offset += copy(v.TargetSig[:], buf[offset:])
 	return offset, nil
 }
 

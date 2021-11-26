@@ -40,6 +40,7 @@ type virtualSnakeIndex struct {
 type virtualSnakeEntry struct {
 	*virtualSnakeIndex
 	Origin      types.PublicKey
+	Target      types.PublicKey
 	Source      *peer
 	Destination *peer
 	LastSeen    time.Time
@@ -465,6 +466,7 @@ func (s *state) _handleBootstrapACK(from *peer, rx *types.Frame) error {
 	entry := &virtualSnakeEntry{
 		virtualSnakeIndex: &index,
 		Origin:            rx.SourceKey,
+		Target:            rx.SourceKey,
 		Source:            s.r.local,
 		Destination:       nexthop,
 		LastSeen:          time.Now(),
@@ -582,6 +584,7 @@ func (s *state) _handleSetup(from *peer, rx *types.Frame, nexthop *peer) error {
 		entry := &virtualSnakeEntry{
 			virtualSnakeIndex: &index,
 			Origin:            rx.SourceKey,
+			Target:            rx.DestinationKey,
 			Source:            from,
 			Destination:       s.r.local,
 			LastSeen:          time.Now(),
@@ -593,6 +596,14 @@ func (s *state) _handleSetup(from *peer, rx *types.Frame, nexthop *peer) error {
 		setupACK := types.VirtualSnakeSetupACK{
 			PathID: setup.PathID,
 			Root:   setup.Root,
+		}
+		if s.r.secure {
+			// Sign the path key and path ID with our own key. This forms the "target
+			// signature", which anyone can use to verify that we sent the setup ACK.
+			copy(
+				setupACK.TargetSig[:],
+				ed25519.Sign(s.r.private[:], append(index.PublicKey[:], index.PathID[:]...)),
+			)
 		}
 		b := frameBufferPool.Get().(*[types.MaxFrameSize]byte)
 		defer frameBufferPool.Put(b)
@@ -629,6 +640,7 @@ func (s *state) _handleSetup(from *peer, rx *types.Frame, nexthop *peer) error {
 	s._table[index] = &virtualSnakeEntry{
 		virtualSnakeIndex: &index,
 		Origin:            rx.SourceKey,
+		Target:            rx.DestinationKey,
 		LastSeen:          time.Now(),
 		Root:              setup.Root,
 		Source:            from,    // node with lower of the two keys
@@ -656,6 +668,9 @@ func (s *state) _handleSetupACK(from *peer, rx *types.Frame, nexthop *peer) erro
 		case from.local():
 			fallthrough
 		case from == v.Destination:
+			if s.r.secure && !ed25519.Verify(v.Target[:], append(k.PublicKey[:], k.PathID[:]...), setup.TargetSig[:]) {
+				continue
+			}
 			if v.Source.local() || v.Source.send(rx) {
 				v.Active = true
 			}
