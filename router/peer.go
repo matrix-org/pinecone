@@ -145,6 +145,13 @@ func (p *peer) stop(err error) {
 
 		// Drop all of the frames that are sitting in this peer's queues, since there
 		// is no way to send them at this point.
+		for {
+			if frame, ok := p.traffic.pop(); !ok {
+				break
+			} else if err := p.router.state._forward(p, frame); err != nil {
+				continue
+			}
+		}
 		p.proto.reset()
 		p.traffic.reset()
 
