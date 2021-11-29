@@ -106,6 +106,9 @@ func (s *state) _maintainSnake() {
 	for k, v := range s._table {
 		if !v.Active && time.Since(v.LastSeen) > time.Second*5 {
 			s._sendTeardownForExistingPath(s.r.local, k.PublicKey, k.PathID)
+			if s._candidate == v {
+				s._candidate = nil
+			}
 		}
 	}
 
@@ -483,7 +486,7 @@ func (s *state) _handleBootstrapACK(from *peer, rx *types.Frame) error {
 	}
 	// Install the new route into the DHT.
 	s._table[index] = entry
-	s._setAscendingNode(entry)
+	s._candidate = entry
 	return nil
 }
 
@@ -673,6 +676,10 @@ func (s *state) _handleSetupACK(from *peer, rx *types.Frame, nexthop *peer) erro
 			}
 			if v.Source.local() || v.Source.send(rx) {
 				v.Active = true
+				if v == s._candidate {
+					s._setAscendingNode(v)
+					s._candidate = nil
+				}
 			}
 		}
 	}
