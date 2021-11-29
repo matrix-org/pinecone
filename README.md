@@ -16,11 +16,7 @@ Go 1.14 or later.
 
 ### Is there any documentation?
 
-Aside from this readme and the comments in the code, not yet. There will be soon!
-
-### Is there a protocol specification?
-
-Not yet. We'll write one eventually, but in the meantime it is quite likely we will make a number of breaking protocol changes so it doesn't make sense to document the protocol itself too deeply yet.
+The best documentation today is the code itself, which is reasonably well commented. There is also some documentation on how the protocol works in the [Pinecone Wiki on GitHub](https://github.com/matrix-org/pinecone/wiki). 
 
 ### Does Pinecone perform well?
 
