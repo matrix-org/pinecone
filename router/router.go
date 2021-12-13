@@ -109,7 +109,11 @@ func (r *Router) IsConnected(key types.PublicKey, zone string) bool {
 // Close will stop the Pinecone node. Once this has been called, the node cannot
 // be restarted or reused.
 func (r *Router) Close() error {
-	phony.Block(nil, r.cancel)
+	phony.Block(r, func() {
+		if r.cancel != nil {
+			r.cancel()
+		}
+	})
 	return nil
 }
 
