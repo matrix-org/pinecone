@@ -135,6 +135,44 @@ func (v *VirtualSnakeSetup) UnmarshalBinary(buf []byte) (int, error) {
 	return offset, nil
 }
 
+type VirtualSnakeSetupACK struct {
+	PathID    VirtualSnakePathID
+	TargetSig VirtualSnakePathSig
+	Root
+}
+
+func (v *VirtualSnakeSetupACK) MarshalBinary(buf []byte) (int, error) {
+	if len(buf) < VirtualSnakePathIDLength+ed25519.PublicKeySize+v.RootSequence.Length()+ed25519.SignatureSize {
+		return 0, fmt.Errorf("buffer too small")
+	}
+	offset := 0
+	offset += copy(buf[offset:], v.PathID[:])
+	offset += copy(buf[offset:], v.RootPublicKey[:])
+	n, err := v.RootSequence.MarshalBinary(buf[offset:])
+	if err != nil {
+		return 0, fmt.Errorf("v.RootSequence.MarshalBinary: %w", err)
+	}
+	offset += n
+	offset += copy(buf[offset:], v.TargetSig[:])
+	return offset, nil
+}
+
+func (v *VirtualSnakeSetupACK) UnmarshalBinary(buf []byte) (int, error) {
+	if len(buf) < VirtualSnakePathIDLength+ed25519.PublicKeySize+1+ed25519.SignatureSize {
+		return 0, fmt.Errorf("buffer too small")
+	}
+	offset := 0
+	offset += copy(v.PathID[:], buf[offset:])
+	offset += copy(v.RootPublicKey[:], buf[offset:])
+	l, err := v.RootSequence.UnmarshalBinary(buf[offset:])
+	if err != nil {
+		return 0, fmt.Errorf("v.RootSequence.UnmarshalBinary: %w", err)
+	}
+	offset += l
+	offset += copy(v.TargetSig[:], buf[offset:])
+	return offset, nil
+}
+
 type VirtualSnakeTeardown struct {
 	PathID VirtualSnakePathID
 }

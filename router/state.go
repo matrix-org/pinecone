@@ -37,6 +37,7 @@ type state struct {
 	_peers         []*peer            // All switch ports, connected and disconnected
 	_ascending     *virtualSnakeEntry // Next ascending node in keyspace
 	_descending    *virtualSnakeEntry // Next descending node in keyspace
+	_candidate     *virtualSnakeEntry // Candidate to replace the ascending node
 	_parent        *peer              // Our chosen parent in the tree
 	_announcements announcementTable  // Announcements received from our peers
 	_table         virtualSnakeTable  // Virtual snake DHT entries
@@ -52,6 +53,7 @@ func (s *state) _start() {
 	s._setParent(nil)
 	s._setAscendingNode(nil)
 	s._setDescendingNode(nil)
+	s._candidate = nil
 	s._announcements = make(announcementTable, portCount)
 	s._table = virtualSnakeTable{}
 	s._ordering = 0
@@ -145,11 +147,12 @@ func (s *state) _removePeer(port types.SwitchPortID) {
 func (s *state) _setParent(peer *peer) {
 	s._parent = peer
 
-	peerID := ""
-	if peer != nil {
-		peerID = peer.public.String()
-	}
 	s.r.Act(nil, func() {
+		peerID := ""
+		if peer != nil {
+			peerID = peer.public.String()
+		}
+
 		s.r._publish(events.TreeParentUpdate{PeerID: peerID})
 	})
 }
@@ -157,16 +160,16 @@ func (s *state) _setParent(peer *peer) {
 func (s *state) _setAscendingNode(node *virtualSnakeEntry) {
 	s._ascending = node
 
-	peerID := ""
-	pathID := []byte{}
-	if node != nil {
-		peerID = node.Origin.String()
-		if node.virtualSnakeIndex != nil {
-			pathID, _ = node.PathID.MarshalJSON()
-		}
-	}
-
 	s.r.Act(nil, func() {
+		peerID := ""
+		pathID := []byte{}
+		if node != nil {
+			peerID = node.Origin.String()
+			if node.virtualSnakeIndex != nil {
+				pathID, _ = node.PathID.MarshalJSON()
+			}
+		}
+
 		s.r._publish(events.SnakeAscUpdate{PeerID: peerID, PathID: string(pathID)})
 	})
 }
@@ -174,16 +177,16 @@ func (s *state) _setAscendingNode(node *virtualSnakeEntry) {
 func (s *state) _setDescendingNode(node *virtualSnakeEntry) {
 	s._descending = node
 
-	peerID := ""
-	pathID := []byte{}
-	if node != nil {
-		peerID = node.PublicKey.String()
-		if node.virtualSnakeIndex != nil {
-			pathID, _ = node.PathID.MarshalJSON()
-		}
-	}
-
 	s.r.Act(nil, func() {
+		peerID := ""
+		pathID := []byte{}
+		if node != nil {
+			peerID = node.PublicKey.String()
+			if node.virtualSnakeIndex != nil {
+				pathID, _ = node.PathID.MarshalJSON()
+			}
+		}
+
 		s.r._publish(events.SnakeDescUpdate{PeerID: peerID, PathID: string(pathID)})
 	})
 }

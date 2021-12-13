@@ -31,6 +31,10 @@ func (s *state) _nextHopsFor(from *peer, frame *types.Frame) *peer {
 		// Teardowns have their own logic so we do nothing with them
 		return nil
 
+	case types.TypeVirtualSnakeSetupACK:
+		// Setup ACKs have their own logic so we do nothing with them
+		return nil
+
 	// SNEK routing
 	case types.TypeVirtualSnakeRouted, types.TypeVirtualSnakeBootstrap, types.TypeSNEKPing, types.TypeSNEKPong:
 		nexthop = s._nextHopsSNEK(frame, frame.Type == types.TypeVirtualSnakeBootstrap)
@@ -55,7 +59,7 @@ func (s *state) _forward(p *peer, f *types.Frame) error {
 		// Tree announcements are a special case. The _handleTreeAnnouncement function
 		// will generate new tree announcements and send them to peers if needed.
 		if err := s._handleTreeAnnouncement(p, f); err != nil {
-			return fmt.Errorf("s._handleTreeAnnouncement (port %d): %s", p.port, err)
+			return fmt.Errorf("s._handleTreeAnnouncement (port %d): %w", p.port, err)
 		}
 		return nil
 
@@ -68,7 +72,7 @@ func (s *state) _forward(p *peer, f *types.Frame) error {
 		// Otherwise they are forwarded normally by falling through.
 		if deadend {
 			if err := s._handleBootstrap(p, f); err != nil {
-				return fmt.Errorf("s._handleBootstrap (port %d): %s", p.port, err)
+				return fmt.Errorf("s._handleBootstrap (port %d): %w", p.port, err)
 			}
 			return nil
 		}
@@ -78,7 +82,7 @@ func (s *state) _forward(p *peer, f *types.Frame) error {
 		// Otherwise they are forwarded normally by falling through.
 		if deadend {
 			if err := s._handleBootstrapACK(p, f); err != nil {
-				return fmt.Errorf("s._handleBootstrapACK (port %d): %s", p.port, err)
+				return fmt.Errorf("s._handleBootstrapACK (port %d): %w", p.port, err)
 			}
 			return nil
 		}
@@ -88,7 +92,16 @@ func (s *state) _forward(p *peer, f *types.Frame) error {
 		// function needs to be sure that the setup message was queued to the next-hop
 		// before installing the route, we do not need to forward the packet here.
 		if err := s._handleSetup(p, f, nexthop); err != nil {
-			return fmt.Errorf("s._handleSetup (port %d): %s", p.port, err)
+			return fmt.Errorf("s._handleSetup (port %d): %w", p.port, err)
+		}
+		return nil
+
+	case types.TypeVirtualSnakeSetupACK:
+		// Setup ACK messages are handled at each node on the path. Since the _handleSetupACK
+		// function needs to be sure that the setup ACK message was queued to the next-hop
+		// before activating the route, we do not need to forward the packet here.
+		if err := s._handleSetupACK(p, f, nexthop); err != nil {
+			return fmt.Errorf("s._handleSetupACK (port %d): %w", p.port, err)
 		}
 		return nil
 
@@ -96,7 +109,7 @@ func (s *state) _forward(p *peer, f *types.Frame) error {
 		// Teardown messages are a special case where there might be more than one
 		// next-hop, so this is handled specifically.
 		if nexthops, err := s._handleTeardown(p, f); err != nil {
-			return fmt.Errorf("s._handleTeardown (port %d): %s", p.port, err)
+			return fmt.Errorf("s._handleTeardown (port %d): %w", p.port, err)
 		} else {
 			for _, nexthop := range nexthops {
 				if nexthop != nil && nexthop.proto != nil {

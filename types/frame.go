@@ -40,6 +40,7 @@ const (
 	TypeVirtualSnakeBootstrap                           // protocol frame, forwarded using SNEK
 	TypeVirtualSnakeBootstrapACK                        // protocol frame, forwarded using tree routing
 	TypeVirtualSnakeSetup                               // protocol frame, forwarded using tree routing
+	TypeVirtualSnakeSetupACK                            // protocol frame, forwarded using special rules
 	TypeVirtualSnakeTeardown                            // protocol frame, forwarded using special rules
 	TypeVirtualSnakeRouted                              // traffic frame, forwarded using SNEK
 	TypeSNEKPing                 FrameType = iota + 200 // traffic frame, forwarded using SNEK
@@ -131,6 +132,16 @@ func (f *Frame) MarshalBinary(buffer []byte) (int, error) {
 		}
 		offset += 2 + dn
 		offset += copy(buffer[offset:], f.SourceKey[:ed25519.PublicKeySize])
+		offset += copy(buffer[offset:], f.DestinationKey[:ed25519.PublicKeySize])
+		if f.Payload != nil {
+			f.Payload = f.Payload[:payloadLen]
+			offset += copy(buffer[offset:], f.Payload[:payloadLen])
+		}
+
+	case TypeVirtualSnakeSetupACK: // detination = key
+		payloadLen := len(f.Payload)
+		binary.BigEndian.PutUint16(buffer[offset+0:offset+2], uint16(payloadLen))
+		offset += 2
 		offset += copy(buffer[offset:], f.DestinationKey[:ed25519.PublicKeySize])
 		if f.Payload != nil {
 			f.Payload = f.Payload[:payloadLen]
@@ -252,6 +263,17 @@ func (f *Frame) UnmarshalBinary(data []byte) (int, error) {
 		}
 		offset += 4 + dstLen
 		offset += copy(f.SourceKey[:], data[offset:])
+		offset += copy(f.DestinationKey[:], data[offset:])
+		f.Payload = f.Payload[:payloadLen]
+		offset += copy(f.Payload, data[offset:])
+		return offset, nil
+
+	case TypeVirtualSnakeSetupACK: // destination = key
+		payloadLen := int(binary.BigEndian.Uint16(data[offset+0 : offset+2]))
+		if payloadLen > cap(f.Payload) {
+			return 0, fmt.Errorf("payload length exceeds frame capacity")
+		}
+		offset += 2
 		offset += copy(f.DestinationKey[:], data[offset:])
 		f.Payload = f.Payload[:payloadLen]
 		offset += copy(f.Payload, data[offset:])
