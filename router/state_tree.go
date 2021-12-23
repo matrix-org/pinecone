@@ -437,45 +437,13 @@ func (s *state) _selectNewParent() bool {
 			// timeout or other protocol handling error.
 			continue
 		}
-		if ann == nil || time.Since(ann.receiveTime) >= announcementTimeout {
-			// If the announcement has expired then don't consider this peer
-			// as a possible candidate.
-			continue
-		}
-		accept := func() {
-			bestRoot = ann.Root
-			bestPeer = peer
-			bestOrder = ann.receiveOrder
-		}
-		// Work out if the parent's announcement contains a stronger root
-		// key than our current best candidate.
-		keyDelta := ann.RootPublicKey.CompareTo(bestRoot.RootPublicKey)
-		switch {
-		case ann.IsLoopOrChildOf(s.r.public):
-			// The announcement from this peer contains our own public key in
-			// the signatures, which implies they are a child of ours in the
-			// tree. We therefore can't use this peer as a parent as this would
-			// create a loop in the tree.
-		case keyDelta > 0:
-			// The peer has a stronger root key, so they are a better candidate.
-			accept()
-		case keyDelta < 0:
-			// The peer has a weaker root key than our current best candidate,
-			// so ignore this peer.
-		case ann.RootSequence > bestRoot.RootSequence:
-			// The peer has the same root key as our current candidate but the
-			// sequence number is higher, so they have sent us a newer tree
-			// announcement. They are a better candidate as a result.
-			accept()
-		case ann.RootSequence < bestRoot.RootSequence:
-			// The peer has the same root key as our current candidate but a
-			// worse sequence number, so their announcement is out of date.
-		case ann.receiveOrder < bestOrder:
-			// The peer has the same root key and update sequence number as our
-			// current best candidate, but the update from this peer was received
-			// first. This condition is a tie-break that helps us to pick a parent
-			// which will have the lowest latency path to the root, all else equal.
-			accept()
+
+		if ann != nil {
+			if isBetterParentCandidate(*ann, bestRoot, bestOrder, ann.IsLoopOrChildOf(s.r.public)) {
+				bestRoot = ann.Root
+				bestPeer = peer
+				bestOrder = ann.receiveOrder
+			}
 		}
 	}
 
@@ -499,4 +467,48 @@ func (s *state) _selectNewParent() bool {
 	// for one of our peers corrects us with future updates.
 	s._becomeRoot()
 	return false
+}
+
+func isBetterParentCandidate(ann rootAnnouncementWithTime, bestRoot types.Root,
+	bestOrder uint64, containsLoop bool) bool {
+	isBetterCandidate := false
+
+	if time.Since(ann.receiveTime) >= announcementTimeout {
+		// If the announcement has expired then don't consider this peer
+		// as a possible candidate.
+		return false
+	}
+
+	// Work out if the parent's announcement contains a stronger root
+	// key than our current best candidate.
+	keyDelta := ann.RootPublicKey.CompareTo(bestRoot.RootPublicKey)
+	switch {
+	case containsLoop:
+		// The announcement from this peer contains our own public key in
+		// the signatures, which implies they are a child of ours in the
+		// tree. We therefore can't use this peer as a parent as this would
+		// create a loop in the tree.
+	case keyDelta > 0:
+		// The peer has a stronger root key, so they are a better candidate.
+		isBetterCandidate = true
+	case keyDelta < 0:
+		// The peer has a weaker root key than our current best candidate,
+		// so ignore this peer.
+	case ann.RootSequence > bestRoot.RootSequence:
+		// The peer has the same root key as our current candidate but the
+		// sequence number is higher, so they have sent us a newer tree
+		// announcement. They are a better candidate as a result.
+		isBetterCandidate = true
+	case ann.RootSequence < bestRoot.RootSequence:
+		// The peer has the same root key as our current candidate but a
+		// worse sequence number, so their announcement is out of date.
+	case ann.receiveOrder < bestOrder:
+		// The peer has the same root key and update sequence number as our
+		// current best candidate, but the update from this peer was received
+		// first. This condition is a tie-break that helps us to pick a parent
+		// which will have the lowest latency path to the root, all else equal.
+		isBetterCandidate = true
+	}
+
+	return isBetterCandidate
 }

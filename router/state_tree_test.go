@@ -2,6 +2,7 @@ package router
 
 import (
 	"testing"
+	"time"
 
 	"github.com/matrix-org/pinecone/types"
 )
@@ -61,6 +62,462 @@ func TestHandleTreeAnnouncement(t *testing.T) {
 				tc.rootDelta, tc.newRootSequence, tc.lastRootSequence)
 			if actual != tc.expected {
 				t.Fatalf("expected: %d got: %d", tc.expected, actual)
+			}
+		})
+	}
+}
+
+func TestNewParentSelection(t *testing.T) {
+	cases := []struct {
+		desc         string
+		announcement rootAnnouncementWithTime
+		bestRoot     types.Root
+		bestOrder    uint64
+		containsLoop bool
+		expected     bool
+	}{
+		{desc: "TestAnnouncementTooOld",
+			announcement: rootAnnouncementWithTime{
+				receiveTime:  time.Now().Add(-announcementTimeout * 2),
+				receiveOrder: 0,
+				SwitchAnnouncement: types.SwitchAnnouncement{
+					Root: types.Root{
+						RootPublicKey: types.PublicKey{6}, RootSequence: 1,
+					}}},
+			bestRoot: types.Root{
+				RootPublicKey: types.PublicKey{5}, RootSequence: 1,
+			},
+			bestOrder:    0,
+			containsLoop: false,
+			expected:     false,
+		},
+		{desc: "TestContainsLoop",
+			announcement: rootAnnouncementWithTime{
+				receiveTime:  time.Now(),
+				receiveOrder: 0,
+				SwitchAnnouncement: types.SwitchAnnouncement{
+					Root: types.Root{
+						RootPublicKey: types.PublicKey{6},
+					}}},
+			bestRoot: types.Root{
+				RootPublicKey: types.PublicKey{5}, RootSequence: 1,
+			},
+			bestOrder:    0,
+			containsLoop: true,
+			expected:     false,
+		},
+		{desc: "TestLowerRoot1",
+			announcement: rootAnnouncementWithTime{
+				receiveTime:  time.Now(),
+				receiveOrder: 0,
+				SwitchAnnouncement: types.SwitchAnnouncement{
+					Root: types.Root{
+						RootPublicKey: types.PublicKey{4},
+					}}},
+			bestRoot: types.Root{
+				RootPublicKey: types.PublicKey{5}, RootSequence: 1,
+			},
+			bestOrder:    0,
+			containsLoop: false,
+			expected:     false,
+		},
+		{desc: "TestLowerRoot2",
+			announcement: rootAnnouncementWithTime{
+				receiveTime:  time.Now(),
+				receiveOrder: 0,
+				SwitchAnnouncement: types.SwitchAnnouncement{
+					Root: types.Root{
+						RootPublicKey: types.PublicKey{4}, RootSequence: 2,
+					}}},
+			bestRoot: types.Root{
+				RootPublicKey: types.PublicKey{5}, RootSequence: 1,
+			},
+			bestOrder:    0,
+			containsLoop: false,
+			expected:     false,
+		},
+		{desc: "TestLowerRoot3",
+			announcement: rootAnnouncementWithTime{
+				receiveTime:  time.Now(),
+				receiveOrder: 0,
+				SwitchAnnouncement: types.SwitchAnnouncement{
+					Root: types.Root{
+						RootPublicKey: types.PublicKey{4}, RootSequence: 1,
+					}}},
+			bestRoot: types.Root{
+				RootPublicKey: types.PublicKey{5}, RootSequence: 2,
+			},
+			bestOrder:    0,
+			containsLoop: false,
+			expected:     false,
+		},
+		{desc: "TestLowerRoot4",
+			announcement: rootAnnouncementWithTime{
+				receiveTime:  time.Now(),
+				receiveOrder: 1,
+				SwitchAnnouncement: types.SwitchAnnouncement{
+					Root: types.Root{
+						RootPublicKey: types.PublicKey{4}, RootSequence: 1,
+					}}},
+			bestRoot: types.Root{
+				RootPublicKey: types.PublicKey{5}, RootSequence: 1,
+			},
+			bestOrder:    0,
+			containsLoop: false,
+			expected:     false,
+		},
+		{desc: "TestLowerRoot5",
+			announcement: rootAnnouncementWithTime{
+				receiveTime:  time.Now(),
+				receiveOrder: 1,
+				SwitchAnnouncement: types.SwitchAnnouncement{
+					Root: types.Root{
+						RootPublicKey: types.PublicKey{4}, RootSequence: 2,
+					}}},
+			bestRoot: types.Root{
+				RootPublicKey: types.PublicKey{5}, RootSequence: 1,
+			},
+			bestOrder:    0,
+			containsLoop: false,
+			expected:     false,
+		},
+		{desc: "TestLowerRoot6",
+			announcement: rootAnnouncementWithTime{
+				receiveTime:  time.Now(),
+				receiveOrder: 1,
+				SwitchAnnouncement: types.SwitchAnnouncement{
+					Root: types.Root{
+						RootPublicKey: types.PublicKey{4}, RootSequence: 1,
+					}}},
+			bestRoot: types.Root{
+				RootPublicKey: types.PublicKey{5}, RootSequence: 2,
+			},
+			bestOrder:    0,
+			containsLoop: false,
+			expected:     false,
+		},
+		{desc: "TestLowerRoot7",
+			announcement: rootAnnouncementWithTime{
+				receiveTime:  time.Now(),
+				receiveOrder: 0,
+				SwitchAnnouncement: types.SwitchAnnouncement{
+					Root: types.Root{
+						RootPublicKey: types.PublicKey{4}, RootSequence: 1,
+					}}},
+			bestRoot: types.Root{
+				RootPublicKey: types.PublicKey{5}, RootSequence: 1,
+			},
+			bestOrder:    1,
+			containsLoop: false,
+			expected:     false,
+		},
+		{desc: "TestLowerRoot8",
+			announcement: rootAnnouncementWithTime{
+				receiveTime:  time.Now(),
+				receiveOrder: 0,
+				SwitchAnnouncement: types.SwitchAnnouncement{
+					Root: types.Root{
+						RootPublicKey: types.PublicKey{4}, RootSequence: 2,
+					}}},
+			bestRoot: types.Root{
+				RootPublicKey: types.PublicKey{5}, RootSequence: 1,
+			},
+			bestOrder:    1,
+			containsLoop: false,
+			expected:     false,
+		},
+		{desc: "TestLowerRoot9",
+			announcement: rootAnnouncementWithTime{
+				receiveTime:  time.Now(),
+				receiveOrder: 0,
+				SwitchAnnouncement: types.SwitchAnnouncement{
+					Root: types.Root{
+						RootPublicKey: types.PublicKey{4}, RootSequence: 1,
+					}}},
+			bestRoot: types.Root{
+				RootPublicKey: types.PublicKey{5}, RootSequence: 2,
+			},
+			bestOrder:    1,
+			containsLoop: false,
+			expected:     false,
+		},
+		{desc: "TestHigherRoot1",
+			announcement: rootAnnouncementWithTime{
+				receiveTime:  time.Now(),
+				receiveOrder: 0,
+				SwitchAnnouncement: types.SwitchAnnouncement{
+					Root: types.Root{
+						RootPublicKey: types.PublicKey{6},
+					}}},
+			bestRoot: types.Root{
+				RootPublicKey: types.PublicKey{5}, RootSequence: 1,
+			},
+			bestOrder:    0,
+			containsLoop: false,
+			expected:     true,
+		},
+		{desc: "TestHigherRoot2",
+			announcement: rootAnnouncementWithTime{
+				receiveTime:  time.Now(),
+				receiveOrder: 0,
+				SwitchAnnouncement: types.SwitchAnnouncement{
+					Root: types.Root{
+						RootPublicKey: types.PublicKey{6}, RootSequence: 2,
+					}}},
+			bestRoot: types.Root{
+				RootPublicKey: types.PublicKey{5}, RootSequence: 1,
+			},
+			bestOrder:    0,
+			containsLoop: false,
+			expected:     true,
+		},
+		{desc: "TestHigherRoot3",
+			announcement: rootAnnouncementWithTime{
+				receiveTime:  time.Now(),
+				receiveOrder: 0,
+				SwitchAnnouncement: types.SwitchAnnouncement{
+					Root: types.Root{
+						RootPublicKey: types.PublicKey{6}, RootSequence: 1,
+					}}},
+			bestRoot: types.Root{
+				RootPublicKey: types.PublicKey{5}, RootSequence: 2,
+			},
+			bestOrder:    0,
+			containsLoop: false,
+			expected:     true,
+		},
+		{desc: "TestHigherRoot4",
+			announcement: rootAnnouncementWithTime{
+				receiveTime:  time.Now(),
+				receiveOrder: 1,
+				SwitchAnnouncement: types.SwitchAnnouncement{
+					Root: types.Root{
+						RootPublicKey: types.PublicKey{6}, RootSequence: 1,
+					}}},
+			bestRoot: types.Root{
+				RootPublicKey: types.PublicKey{5}, RootSequence: 1,
+			},
+			bestOrder:    0,
+			containsLoop: false,
+			expected:     true,
+		},
+		{desc: "TestHigherRoot5",
+			announcement: rootAnnouncementWithTime{
+				receiveTime:  time.Now(),
+				receiveOrder: 1,
+				SwitchAnnouncement: types.SwitchAnnouncement{
+					Root: types.Root{
+						RootPublicKey: types.PublicKey{6}, RootSequence: 2,
+					}}},
+			bestRoot: types.Root{
+				RootPublicKey: types.PublicKey{5}, RootSequence: 1,
+			},
+			bestOrder:    0,
+			containsLoop: false,
+			expected:     true,
+		},
+		{desc: "TestHigherRoot6",
+			announcement: rootAnnouncementWithTime{
+				receiveTime:  time.Now(),
+				receiveOrder: 1,
+				SwitchAnnouncement: types.SwitchAnnouncement{
+					Root: types.Root{
+						RootPublicKey: types.PublicKey{6}, RootSequence: 1,
+					}}},
+			bestRoot: types.Root{
+				RootPublicKey: types.PublicKey{5}, RootSequence: 2,
+			},
+			bestOrder:    0,
+			containsLoop: false,
+			expected:     true,
+		},
+		{desc: "TestHigherRoot7",
+			announcement: rootAnnouncementWithTime{
+				receiveTime:  time.Now(),
+				receiveOrder: 0,
+				SwitchAnnouncement: types.SwitchAnnouncement{
+					Root: types.Root{
+						RootPublicKey: types.PublicKey{6}, RootSequence: 1,
+					}}},
+			bestRoot: types.Root{
+				RootPublicKey: types.PublicKey{5}, RootSequence: 1,
+			},
+			bestOrder:    1,
+			containsLoop: false,
+			expected:     true,
+		},
+		{desc: "TestHigherRoot8",
+			announcement: rootAnnouncementWithTime{
+				receiveTime:  time.Now(),
+				receiveOrder: 0,
+				SwitchAnnouncement: types.SwitchAnnouncement{
+					Root: types.Root{
+						RootPublicKey: types.PublicKey{6}, RootSequence: 2,
+					}}},
+			bestRoot: types.Root{
+				RootPublicKey: types.PublicKey{5}, RootSequence: 1,
+			},
+			bestOrder:    1,
+			containsLoop: false,
+			expected:     true,
+		},
+		{desc: "TestHigherRoot9",
+			announcement: rootAnnouncementWithTime{
+				receiveTime:  time.Now(),
+				receiveOrder: 0,
+				SwitchAnnouncement: types.SwitchAnnouncement{
+					Root: types.Root{
+						RootPublicKey: types.PublicKey{6}, RootSequence: 1,
+					}}},
+			bestRoot: types.Root{
+				RootPublicKey: types.PublicKey{5}, RootSequence: 2,
+			},
+			bestOrder:    1,
+			containsLoop: false,
+			expected:     true,
+		},
+		{desc: "TestSameRootHigherSequenceHigherOrder",
+			announcement: rootAnnouncementWithTime{
+				receiveTime:  time.Now(),
+				receiveOrder: 1,
+				SwitchAnnouncement: types.SwitchAnnouncement{
+					Root: types.Root{
+						RootPublicKey: types.PublicKey{5}, RootSequence: 2,
+					}}},
+			bestRoot: types.Root{
+				RootPublicKey: types.PublicKey{5}, RootSequence: 1,
+			},
+			bestOrder:    0,
+			containsLoop: false,
+			expected:     true,
+		},
+		{desc: "TestSameRootHigherSequenceLowerOrder",
+			announcement: rootAnnouncementWithTime{
+				receiveTime:  time.Now(),
+				receiveOrder: 0,
+				SwitchAnnouncement: types.SwitchAnnouncement{
+					Root: types.Root{
+						RootPublicKey: types.PublicKey{5}, RootSequence: 2,
+					}}},
+			bestRoot: types.Root{
+				RootPublicKey: types.PublicKey{5}, RootSequence: 1,
+			},
+			bestOrder:    1,
+			containsLoop: false,
+			expected:     true,
+		},
+		{desc: "TestSameRootHigherSequenceSameOrder",
+			announcement: rootAnnouncementWithTime{
+				receiveTime:  time.Now(),
+				receiveOrder: 0,
+				SwitchAnnouncement: types.SwitchAnnouncement{
+					Root: types.Root{
+						RootPublicKey: types.PublicKey{5}, RootSequence: 2,
+					}}},
+			bestRoot: types.Root{
+				RootPublicKey: types.PublicKey{5}, RootSequence: 1,
+			},
+			bestOrder:    0,
+			containsLoop: false,
+			expected:     true,
+		},
+		{desc: "TestSameRootLowerSequenceHigherOrder",
+			announcement: rootAnnouncementWithTime{
+				receiveTime:  time.Now(),
+				receiveOrder: 1,
+				SwitchAnnouncement: types.SwitchAnnouncement{
+					Root: types.Root{
+						RootPublicKey: types.PublicKey{5}, RootSequence: 1,
+					}}},
+			bestRoot: types.Root{
+				RootPublicKey: types.PublicKey{5}, RootSequence: 2,
+			},
+			bestOrder:    0,
+			containsLoop: false,
+			expected:     false,
+		},
+		{desc: "TestSameRootLowerSequenceLowerOrder",
+			announcement: rootAnnouncementWithTime{
+				receiveTime:  time.Now(),
+				receiveOrder: 0,
+				SwitchAnnouncement: types.SwitchAnnouncement{
+					Root: types.Root{
+						RootPublicKey: types.PublicKey{5}, RootSequence: 1,
+					}}},
+			bestRoot: types.Root{
+				RootPublicKey: types.PublicKey{5}, RootSequence: 2,
+			},
+			bestOrder:    1,
+			containsLoop: false,
+			expected:     false,
+		},
+		{desc: "TestSameRootLowerSequenceSameOrder",
+			announcement: rootAnnouncementWithTime{
+				receiveTime:  time.Now(),
+				receiveOrder: 0,
+				SwitchAnnouncement: types.SwitchAnnouncement{
+					Root: types.Root{
+						RootPublicKey: types.PublicKey{5}, RootSequence: 1,
+					}}},
+			bestRoot: types.Root{
+				RootPublicKey: types.PublicKey{5}, RootSequence: 2,
+			},
+			bestOrder:    0,
+			containsLoop: false,
+			expected:     false,
+		},
+		{desc: "TestSameRootSameSequenceHigherOrder",
+			announcement: rootAnnouncementWithTime{
+				receiveTime:  time.Now(),
+				receiveOrder: 1,
+				SwitchAnnouncement: types.SwitchAnnouncement{
+					Root: types.Root{
+						RootPublicKey: types.PublicKey{5}, RootSequence: 1,
+					}}},
+			bestRoot: types.Root{
+				RootPublicKey: types.PublicKey{5}, RootSequence: 1,
+			},
+			bestOrder:    0,
+			containsLoop: false,
+			expected:     false,
+		},
+		{desc: "TestSameRootSameSequenceLowerOrder",
+			announcement: rootAnnouncementWithTime{
+				receiveTime:  time.Now(),
+				receiveOrder: 0,
+				SwitchAnnouncement: types.SwitchAnnouncement{
+					Root: types.Root{
+						RootPublicKey: types.PublicKey{5}, RootSequence: 1,
+					}}},
+			bestRoot: types.Root{
+				RootPublicKey: types.PublicKey{5}, RootSequence: 1,
+			},
+			bestOrder:    1,
+			containsLoop: false,
+			expected:     true,
+		},
+		{desc: "TestSameRootSameSequenceSameOrder",
+			announcement: rootAnnouncementWithTime{
+				receiveTime:  time.Now(),
+				receiveOrder: 0,
+				SwitchAnnouncement: types.SwitchAnnouncement{
+					Root: types.Root{
+						RootPublicKey: types.PublicKey{5}, RootSequence: 1,
+					}}},
+			bestRoot: types.Root{
+				RootPublicKey: types.PublicKey{5}, RootSequence: 1,
+			},
+			bestOrder:    0,
+			containsLoop: false,
+			expected:     false,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.desc, func(t *testing.T) {
+			actual := isBetterParentCandidate(tc.announcement, tc.bestRoot, tc.bestOrder, tc.containsLoop)
+			if actual != tc.expected {
+				t.Fatalf("expected: %t got: %t", tc.expected, actual)
 			}
 		})
 	}
