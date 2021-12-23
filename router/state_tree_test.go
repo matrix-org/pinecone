@@ -67,7 +67,7 @@ func TestHandleTreeAnnouncement(t *testing.T) {
 	}
 }
 
-func TestNewParentSelection(t *testing.T) {
+func TestTreeParentSelection(t *testing.T) {
 	cases := []struct {
 		desc         string
 		announcement rootAnnouncementWithTime
@@ -516,6 +516,46 @@ func TestNewParentSelection(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.desc, func(t *testing.T) {
 			actual := isBetterParentCandidate(tc.announcement, tc.bestRoot, tc.bestOrder, tc.containsLoop)
+			if actual != tc.expected {
+				t.Fatalf("expected: %t got: %t", tc.expected, actual)
+			}
+		})
+	}
+}
+
+func TestTreeNextHopCandidate(t *testing.T) {
+	cases := []struct {
+		desc            string
+		peerDist        int64
+		bestDist        int64
+		peerOrder       uint64
+		bestOrder       uint64
+		candidateExists bool
+		expected        bool
+	}{
+		{"TestCloserHigherOrderCandidate", 1, 2, 2, 1, true, true},
+		{"TestCloserHigherOrderNoCandidate", 1, 2, 2, 1, false, true},
+		{"TestCloserLowerOrderCandidate", 1, 2, 1, 2, true, true},
+		{"TestCloserLowerOrderNoCandidate", 1, 2, 1, 2, false, true},
+		{"TestCloserSameOrderCandidate", 1, 2, 1, 1, true, true},
+		{"TestCloserSameOrderNoCandidate", 1, 2, 1, 1, false, true},
+		{"TestFurtherHigherOrderCandidate", 2, 1, 2, 1, true, false},
+		{"TestFurtherHigherOrderNoCandidate", 2, 1, 2, 1, false, false},
+		{"TestFurtherLowerOrderCandidate", 2, 1, 1, 2, true, false},
+		{"TestFurtherLowerOrderNoCandidate", 2, 1, 1, 2, false, false},
+		{"TestFurtherSameOrderCandidate", 2, 1, 1, 1, true, false},
+		{"TestFurtherSameOrderNoCandidate", 2, 1, 1, 1, false, false},
+		{"TestEquidistantHigherOrderCandidate", 1, 1, 2, 1, true, false},
+		{"TestEquidistantHigherOrderNoCandidate", 1, 1, 2, 1, false, false},
+		{"TestEquidistantLowerOrderCandidate", 1, 1, 1, 2, true, true},
+		{"TestEquidistantLowerOrderNoCandidate", 1, 1, 1, 2, false, false},
+		{"TestEquidistantSameOrderCandidate", 1, 1, 1, 1, true, false},
+		{"TestEquidistantSameOrderNoCandidate", 1, 1, 1, 1, false, false},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.desc, func(t *testing.T) {
+			actual := isBetterNextHopCandidate(tc.peerDist, tc.bestDist, tc.peerOrder, tc.bestOrder, tc.candidateExists)
 			if actual != tc.expected {
 				t.Fatalf("expected: %t got: %t", tc.expected, actual)
 			}

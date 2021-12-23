@@ -224,22 +224,32 @@ func (s *state) _nextHopsTree(from *peer, f *types.Frame) *peer {
 		// across the tree to those coordinates.
 		peerCoords := ann.PeerCoords()
 		peerDist := int64(peerCoords.DistanceTo(f.Destination))
-		switch {
-		case peerDist < bestDist:
-			// The peer is closer to the destination.
-			bestPeer, bestDist, bestOrdering = p, peerDist, ann.receiveOrder
-
-		case peerDist > bestDist:
-			// The peer is further away from the destination.
-
-		case bestPeer != nil && ann.receiveOrder < bestOrdering:
-			// The peer has a lower latency path to the root as a
-			// last-resort tiebreak.
+		if isBetterNextHopCandidate(peerDist, bestDist, ann.receiveOrder, bestOrdering,
+			bestPeer != nil) {
 			bestPeer, bestDist, bestOrdering = p, peerDist, ann.receiveOrder
 		}
 	}
 
 	return bestPeer
+}
+
+func isBetterNextHopCandidate(peerDistance int64, bestDistance int64,
+	peerOrder uint64, bestOrder uint64, candidateExists bool) bool {
+	betterCandidate := false
+
+	switch {
+	case peerDistance < bestDistance:
+		// The peer is closer to the destination.
+		betterCandidate = true
+	case peerDistance > bestDistance:
+		// The peer is further away from the destination.
+	case candidateExists && peerOrder < bestOrder:
+		// The peer has a lower latency path to the root as a
+		// last-resort tiebreak.
+		betterCandidate = true
+	}
+
+	return betterCandidate
 }
 
 type TreeAnnouncementAction int64
