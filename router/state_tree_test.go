@@ -1,10 +1,12 @@
 package router
 
 import (
+	"strconv"
 	"testing"
 	"time"
 
 	"github.com/matrix-org/pinecone/types"
+	"go.uber.org/atomic"
 )
 
 func TestHandleTreeAnnouncement(t *testing.T) {
@@ -561,4 +563,188 @@ func TestTreeNextHopCandidate(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestTreeNextHopSelection(t *testing.T) {
+	peers := []*peer{
+		// self
+		&peer{started: *atomic.NewBool(true)},
+		// from
+		&peer{started: *atomic.NewBool(true)},
+		// assorted peers
+		&peer{started: *atomic.NewBool(true)},
+		&peer{started: *atomic.NewBool(true)},
+	}
+
+	destCoords := types.Coordinates{1, 1, 1}
+
+	selfRoot := types.Root{
+		RootPublicKey: types.PublicKey{5}, RootSequence: 1,
+	}
+	otherRoot := types.Root{
+		RootPublicKey: types.PublicKey{4}, RootSequence: 1,
+	}
+
+	destSignatures := []types.SignatureWithHop{
+		types.SignatureWithHop{Hop: 1},
+		types.SignatureWithHop{Hop: 1},
+		types.SignatureWithHop{Hop: 1},
+		types.SignatureWithHop{Hop: 1},
+	}
+
+	selfAnn := rootAnnouncementWithTime{
+		receiveTime:  time.Now(),
+		receiveOrder: 1,
+		SwitchAnnouncement: types.SwitchAnnouncement{
+			Root: selfRoot,
+			Signatures: []types.SignatureWithHop{
+				types.SignatureWithHop{Hop: 2},
+				types.SignatureWithHop{Hop: 2},
+			},
+		},
+	}
+	validAnn := rootAnnouncementWithTime{
+		receiveTime:  time.Now(),
+		receiveOrder: 1,
+		SwitchAnnouncement: types.SwitchAnnouncement{
+			Root: selfRoot,
+			Signatures: []types.SignatureWithHop{
+				types.SignatureWithHop{Hop: 3},
+				types.SignatureWithHop{Hop: 3},
+			},
+		},
+	}
+	destAnn := rootAnnouncementWithTime{
+		receiveTime:  time.Now(),
+		receiveOrder: 1,
+		SwitchAnnouncement: types.SwitchAnnouncement{
+			Root:       selfRoot,
+			Signatures: destSignatures,
+		},
+	}
+	closerAnn := rootAnnouncementWithTime{
+		receiveTime:  time.Now(),
+		receiveOrder: 1,
+		SwitchAnnouncement: types.SwitchAnnouncement{
+			Root: selfRoot,
+			Signatures: []types.SignatureWithHop{
+				types.SignatureWithHop{Hop: 1},
+				types.SignatureWithHop{Hop: 1},
+			},
+		},
+	}
+	differentRootDestAnn := rootAnnouncementWithTime{
+		receiveTime:  time.Now(),
+		receiveOrder: 1,
+		SwitchAnnouncement: types.SwitchAnnouncement{
+			Root:       otherRoot,
+			Signatures: destSignatures,
+		},
+	}
+
+	cases := []struct {
+		desc     string
+		input    treeNextHopParams
+		expected *peer // index into peer list
+	}{
+		{"TestNoValidNextHop", treeNextHopParams{
+			destCoords,
+			types.Coordinates{2},
+			peers[1],
+			peers[0],
+			&selfAnn,
+			&announcementTable{peers[1]: &validAnn},
+		}, nil},
+		{"TestDestIsSelf", treeNextHopParams{
+			destCoords,
+			destCoords,
+			peers[1],
+			peers[0],
+			&selfAnn,
+			&announcementTable{peers[1]: &validAnn},
+		}, peers[0]},
+		{"TestPeerIsDestination", treeNextHopParams{
+			destCoords,
+			types.Coordinates{2},
+			peers[1],
+			peers[0],
+			&selfAnn,
+			&announcementTable{
+				peers[1]: &validAnn,
+				peers[2]: &destAnn,
+				peers[3]: &closerAnn,
+			},
+		}, peers[2]},
+		{"TestDontCreateLoops", treeNextHopParams{
+			destCoords,
+			types.Coordinates{2},
+			peers[1],
+			peers[0],
+			&selfAnn,
+			&announcementTable{
+				// Even if from peer is the dest, don't loop back to from peer
+				peers[1]: &destAnn,
+			},
+		}, nil},
+		{"TestDifferentRootIsIgnored", treeNextHopParams{
+			destCoords,
+			types.Coordinates{2},
+			peers[1],
+			peers[0],
+			&selfAnn,
+			&announcementTable{
+				peers[1]: &validAnn,
+				peers[2]: &differentRootDestAnn,
+			},
+		}, nil},
+		{"TestPeerIsBetterCandidate", treeNextHopParams{
+			destCoords,
+			types.Coordinates{2},
+			peers[1],
+			peers[0],
+			&selfAnn,
+			&announcementTable{
+				peers[1]: &validAnn,
+				peers[2]: &validAnn,
+				peers[3]: &closerAnn,
+			},
+		}, peers[3]},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.desc, func(t *testing.T) {
+			actual := getNextHopTree(tc.input)
+			actualString, expectedString := convertToString(actual, tc.expected, peers)
+
+			if actual != tc.expected {
+				t.Fatalf("expected: %s got: %s", expectedString, actualString)
+			}
+		})
+	}
+}
+
+func convertToString(actual *peer, expected *peer, peers []*peer) (string, string) {
+	actualIndex, expectedIndex := 0, 0
+	for i := range peers {
+		if peers[i] == actual {
+			actualIndex = i
+		}
+		if peers[i] == expected {
+			expectedIndex = i
+		}
+	}
+
+	actualString, expectedString := "", ""
+	if actual == nil {
+		actualString = "nil"
+	} else {
+		actualString = strconv.Itoa(actualIndex)
+	}
+	if expected == nil {
+		expectedString = "nil"
+	} else {
+		expectedString = strconv.Itoa(expectedIndex)
+	}
+
+	return actualString, expectedString
 }

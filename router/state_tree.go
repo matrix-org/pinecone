@@ -181,40 +181,61 @@ func (s *state) _sendTreeAnnouncements() {
 	})
 }
 
+type treeNextHopParams struct {
+	destinationCoords types.Coordinates
+	ourCoords         types.Coordinates
+	fromPeer          *peer
+	selfPeer          *peer
+	lastAnnouncement  *rootAnnouncementWithTime
+	peerAnnouncements *announcementTable
+}
+
 // _nextHopsTree returns the best next-hop candidate for a given frame. The
 // "from" peer must be supplied in order to prevent routing loops. It is
 // possible for this function to return nil if no next best-hop is available.
 func (s *state) _nextHopsTree(from *peer, f *types.Frame) *peer {
+	nextHopParams := treeNextHopParams{
+		f.Destination,
+		s._coords(),
+		from,
+		s.r.local,
+		s._rootAnnouncement(),
+		&s._announcements,
+	}
+
+	return getNextHopTree(nextHopParams)
+}
+
+func getNextHopTree(params treeNextHopParams) *peer {
 	// If it's loopback then don't bother doing anything else.
-	ourCoords := s._coords()
-	if f.Destination.EqualTo(ourCoords) {
-		return s.r.local
+	if params.destinationCoords.EqualTo(params.ourCoords) {
+		return params.selfPeer
 	}
 
 	// Work out how close our own coordinates are to the destination
 	// message. This is important because we'll only forward a frame
 	// to a peer that takes the message closer to the destination than
 	// we are.
-	ourDist := int64(ourCoords.DistanceTo(f.Destination))
+	ourDist := int64(params.ourCoords.DistanceTo(params.destinationCoords))
 	if ourDist == 0 {
 		// It's impossible to get closer so there's a pretty good
 		// chance at this point that the traffic is destined for us.
 		// Pass it up to the router.
-		return s.r.local
+		return params.selfPeer
 	}
 
 	// Now work out which of our peers takes the message closer.
 	var bestPeer *peer
 	bestDist := ourDist
 	bestOrdering := uint64(math.MaxUint64)
-	ourRoot := s._rootAnnouncement()
-	for p, ann := range s._announcements {
+	ourRoot := params.lastAnnouncement
+	for p, ann := range *params.peerAnnouncements {
 		switch {
 		case !p.started.Load():
 			continue // ignore peers that have stopped
 		case ann == nil:
 			continue // ignore peers that haven't sent us announcements
-		case p == from:
+		case p == params.fromPeer:
 			continue // don't route back where the packet came from
 		case !ourRoot.Root.EqualTo(&ann.Root):
 			continue // ignore peers that are following a different root or seq
@@ -223,7 +244,7 @@ func (s *state) _nextHopsTree(from *peer, f *types.Frame) *peer {
 		// Look up the coordinates of the peer, and the distance
 		// across the tree to those coordinates.
 		peerCoords := ann.PeerCoords()
-		peerDist := int64(peerCoords.DistanceTo(f.Destination))
+		peerDist := int64(peerCoords.DistanceTo(params.destinationCoords))
 		if isBetterNextHopCandidate(peerDist, bestDist, ann.receiveOrder, bestOrdering,
 			bestPeer != nil) {
 			bestPeer, bestDist, bestOrdering = p, peerDist, ann.receiveOrder
