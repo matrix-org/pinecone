@@ -177,22 +177,49 @@ func (s *state) _bootstrapNow() {
 	}
 }
 
+type snekNextHopParams struct {
+	isBootstrap       bool
+	destinationKey    *types.PublicKey
+	publicKey         *types.PublicKey
+	parentPeer        *peer
+	selfPeer          *peer
+	lastAnnouncement  *rootAnnouncementWithTime
+	peerAnnouncements *announcementTable
+	snakeRoutes       *virtualSnakeTable
+}
+
 // _nextHopsSNEK locates the best next-hop for a given SNEK-routed frame. The
 // bootstrap flag determines whether the frame should be routed using bootstrap
 // specific rules — this should only be used for VirtualSnakeBootstrap frames.
 func (s *state) _nextHopsSNEK(rx *types.Frame, bootstrap bool) *peer {
-	destKey := rx.DestinationKey
+	nextHopParams := snekNextHopParams{
+		bootstrap,
+		&rx.DestinationKey,
+		&s.r.public,
+		s._parent,
+		s.r.local,
+		s._rootAnnouncement(),
+		&s._announcements,
+		&s._table,
+	}
+
+	return getNextHopSNEK(nextHopParams)
+}
+
+func getNextHopSNEK(params snekNextHopParams) *peer {
 	// If the message isn't a bootstrap message and the destination is for our
 	// own public key, handle the frame locally — it's basically loopback.
-	if !bootstrap && s.r.public == destKey {
-		return s.r.local
+	if !params.isBootstrap && params.publicKey == params.destinationKey {
+		return params.selfPeer
 	}
-	rootAnn := s._rootAnnouncement()
+
+	destKey := *params.destinationKey
+
 	// We start off with our own key as the best key. Any suitable next-hop
 	// candidate has to improve on our own key in order to forward the frame,
 	// otherwise we'll return the local router port instead.
-	bestKey := s.r.public
-	bestPeer := s.r.local
+	bestKey := *params.publicKey
+	bestPeer := params.selfPeer
 	// newCandidate updates the best key and best peer with new candidates.
 	newCandidate := func(key types.PublicKey, p *peer) {
 		bestKey, bestPeer = key, p
@@ -201,9 +228,9 @@ func (s *state) _nextHopsSNEK(rx *types.Frame, bootstrap bool) *peer {
 	// passing it to newCandidate.
 	newCheckedCandidate := func(candidate types.PublicKey, p *peer) {
 		switch {
-		case !bootstrap && candidate == destKey && bestKey != destKey:
+		case !params.isBootstrap && candidate == destKey && bestKey != destKey:
 			newCandidate(candidate, p)
-		case util.DHTOrdered(destKey, candidate, bestKey):
+		case util.DHTOrdered(*params.destinationKey, candidate, bestKey):
 			newCandidate(candidate, p)
 		}
 	}
@@ -211,30 +238,30 @@ func (s *state) _nextHopsSNEK(rx *types.Frame, bootstrap bool) *peer {
 	// Check if we can use the path to the root via our parent as a starting
 	// point. We can't do this if we are the root node as there would be no
 	// parent or ascending paths.
-	if s._parent != nil && s._parent.started.Load() {
+	if params.parentPeer != nil && params.parentPeer.started.Load() {
 		switch {
-		case bootstrap && bestKey == destKey:
-			// Bootstraps always start working towards the root so that they
+		case params.isBootstrap && bestKey == destKey:
+			// Bootstraps always start working towards thear root so that they
 			// go somewhere rather than getting stuck.
 			fallthrough
-		case util.DHTOrdered(bestKey, destKey, rootAnn.RootPublicKey):
+		case util.DHTOrdered(bestKey, destKey, params.lastAnnouncement.RootPublicKey):
 			// The destination key is higher than our own key, so start using
 			// the path to the root as the first candidate.
-			newCandidate(rootAnn.RootPublicKey, s._parent)
+			newCandidate(params.lastAnnouncement.RootPublicKey, params.parentPeer)
 		}
 
 		// Check our direct ancestors in the tree, that is, all nodes between
 		// ourselves and the root node via the parent port.
-		if ann := s._announcements[s._parent]; ann != nil {
+		if ann := (*params.peerAnnouncements)[params.parentPeer]; ann != nil {
 			for _, ancestor := range ann.Signatures {
-				newCheckedCandidate(ancestor.PublicKey, s._parent)
+				newCheckedCandidate(ancestor.PublicKey, params.parentPeer)
 			}
 		}
 	}
 
 	// Check all of the ancestors of our direct peers too, that is, all nodes
 	// between our direct peer and the root node.
-	for p, ann := range s._announcements {
+	for p, ann := range *params.peerAnnouncements {
 		if !p.started.Load() {
 			continue
 		}
@@ -248,7 +275,7 @@ func (s *state) _nextHopsSNEK(rx *types.Frame, bootstrap bool) *peer {
 	// example, only in this case it would make more sense to route directly
 	// to the peer via our peering with them as opposed to routing via our
 	// parent port.
-	for p := range s._announcements {
+	for p := range *params.peerAnnouncements {
 		if !p.started.Load() {
 			continue
 		}
@@ -263,11 +290,11 @@ func (s *state) _nextHopsSNEK(rx *types.Frame, bootstrap bool) *peer {
 	// side of the DHT paths. Since setups travel from the lower key to the
 	// higher one, this is effectively looking for paths that descend through
 	// keyspace toward lower keys rather than ascend toward higher ones.
-	for _, entry := range s._table {
-		if !entry.Source.started.Load() || !entry.valid() || entry.Source == s.r.local {
+	for _, entry := range *params.snakeRoutes {
+		if !entry.Source.started.Load() || !entry.valid() || entry.Source == params.selfPeer {
 			continue
 		}
-		if !bootstrap && !entry.Active {
+		if !params.isBootstrap && !entry.Active {
 			continue
 		}
 		newCheckedCandidate(entry.PublicKey, entry.Source)
