@@ -542,8 +542,8 @@ function handleNodePanelUpdate(nodeID) {
         let key = "";
         if (Nodes.has(peers[i].id)) {
             let peer = Nodes.get(peers[i].id);
-            root = peer.announcement.root;
-            key = peer.key;
+            root = peer.announcement.root.replace(/\"/g, "").toUpperCase();
+            key = peer.key.replace(/\"/g, "").toUpperCase();
         }
         peerTable += "<tr><td><code>" + peers[i].id + "</code></td><td><code>" + key.slice(0, 8) + "</code></td><td><code>" + peers[i].port + "</code></td><td><code>" + root + "</code></td></tr>";
     }
@@ -554,8 +554,8 @@ function handleNodePanelUpdate(nodeID) {
             "<hr><table>" +
             "<tr><td>Name:</td><td>" + nodeID + "</td></tr>" +
             "<tr><td>Coordinates:</td><td>[" + node.coords + "]</td></tr>" +
-            "<tr><td>Public Key:</td><td><code>" + node.key.slice(0, 8) + "</code></td></tr>" +
-            "<tr><td>Root Key:</td><td><code>" + getNodeKey(node.announcement.root).slice(0, 8) + "</code></td></tr>" +
+            "<tr><td>Public Key:</td><td><code>" + node.key.slice(0, 8).replace(/\"/g, "").toUpperCase() + "</code></td></tr>" +
+            "<tr><td>Root Key:</td><td><code>" + getNodeKey(node.announcement.root).slice(0, 8).replace(/\"/g, "").toUpperCase() + "</code></td></tr>" +
             "<tr><td>Tree Parent:</td><td><code>" + node.treeParent + "</code></td></tr>" +
             "<tr><td>Descending Node:</td><td><code>" + node.snekDesc + "</code></td></tr>" +
             "<tr><td>Descending Path:</td><td><code>" + node.snekDescPath + "</code></td></tr>" +
@@ -585,7 +585,7 @@ function handleStatsPanelUpdate() {
 
     if (graph && graph.isStarted()) {
         for (const [key, value] of Nodes.entries()) {
-            nodeTable += "<tr><td><code>" + key + "</code></td><td><code>[" + value.coords + "]</code></td><td><code>" + value.announcement.root + "</code></td><td><code>" + getNodeKey(value.snekDesc).slice(0, 4) + "</code></td><td><code>" + value.key.slice(0, 4) + "</code></td><td><code>" + getNodeKey(value.snekAsc).slice(0, 4) + "</code></td></tr>";
+            nodeTable += "<tr><td><code>" + key + "</code></td><td><code>[" + value.coords + "]</code></td><td><code>" + value.announcement.root + "</code></td><td><code>" + getNodeKey(value.snekDesc).slice(0, 4).replace(/\"/g, "").toUpperCase() + "</code></td><td><code>" + value.key.slice(0, 4).replace(/\"/g, "").toUpperCase() + "</code></td><td><code>" + getNodeKey(value.snekAsc).slice(0, 4).replace(/\"/g, "").toUpperCase() + "</code></td></tr>";
 
             peerLinks += value.peers.length;
             if (rootConvergence.has(value.announcement.root)) {
