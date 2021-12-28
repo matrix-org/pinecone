@@ -2,7 +2,7 @@ import { openRightPanel, closeRightPanel } from "./ui.js";
 
 // You can supply an element as your title.
 var titleElement = document.createElement("div");
-titleElement.style.height = "10em";
+titleElement.style.height = "14em";
 // titleElement.style.minWidth = "10em";
 titleElement.style.width = "max-content";
 titleElement.style.color = getComputedStyle(document.documentElement)
@@ -514,7 +514,11 @@ function handleNodeHoverUpdate(nodeID) {
     if (hoverPanel) {
         let time = node.announcement.time.toString();
         hoverPanel.innerHTML = "<u><b>Node " + nodeID + "</b></u>" +
+            "<br>Key: " + node.key.slice(0, 16).replace(/\"/g, "").toUpperCase() +
             "<br>Coords: [" + node.coords + "]" +
+            "<br>Tree Parent: " + node.treeParent +
+            "<br>SNEK Desc: " + node.snekDesc +
+            "<br>SNEK Asc: " + node.snekAsc +
             "<br><br><u>Announcement</u>" +
             "<br>Root: Node " + node.announcement.root +
             "<br>Sequence: " + node.announcement.sequence +
@@ -554,8 +558,8 @@ function handleNodePanelUpdate(nodeID) {
             "<hr><table>" +
             "<tr><td>Name:</td><td>" + nodeID + "</td></tr>" +
             "<tr><td>Coordinates:</td><td>[" + node.coords + "]</td></tr>" +
-            "<tr><td>Public Key:</td><td><code>" + node.key.slice(0, 8).replace(/\"/g, "").toUpperCase() + "</code></td></tr>" +
-            "<tr><td>Root Key:</td><td><code>" + getNodeKey(node.announcement.root).slice(0, 8).replace(/\"/g, "").toUpperCase() + "</code></td></tr>" +
+            "<tr><td>Public Key:</td><td><code>" + node.key.slice(0, 16).replace(/\"/g, "").toUpperCase() + "</code></td></tr>" +
+            "<tr><td>Root Key:</td><td><code>" + getNodeKey(node.announcement.root).slice(0, 16).replace(/\"/g, "").toUpperCase() + "</code></td></tr>" +
             "<tr><td>Tree Parent:</td><td><code>" + node.treeParent + "</code></td></tr>" +
             "<tr><td>Descending Node:</td><td><code>" + node.snekDesc + "</code></td></tr>" +
             "<tr><td>Descending Path:</td><td><code>" + node.snekDescPath + "</code></td></tr>" +
