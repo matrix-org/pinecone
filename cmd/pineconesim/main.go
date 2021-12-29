@@ -17,6 +17,7 @@ package main
 import (
 	"bufio"
 	"flag"
+	"fmt"
 	"log"
 	"math/rand"
 	"os"
@@ -40,15 +41,18 @@ type pair struct{ from, to string }
 
 const maxBatchSize int = 50
 
+var ConnUID atomic.Uint64 = atomic.Uint64{}
+
 func main() {
 	go func() {
 		panic(http.ListenAndServe(":65432", nil))
 	}()
 
-	filename := flag.String("filename", "cmd/pineconesim/graphs/sim.txt", "the file that describes the simulated topology")
+	filename := flag.String("filename", "cmd/pineconesim/graphs/empty.txt", "the file that describes the simulated topology")
 	sockets := flag.Bool("sockets", false, "use real TCP sockets to connect simulated nodes")
 	chaos := flag.Int("chaos", 0, "randomly connect and disconnect a certain number of links")
 	ping := flag.Bool("ping", false, "test end-to-end reachability between all nodes")
+	acceptCommands := flag.Bool("acceptCommands", true, "whether the sim can be commanded from the ui")
 	flag.Parse()
 
 	file, err := os.Open(*filename)
@@ -80,8 +84,8 @@ func main() {
 	}
 
 	log := log.New(os.Stdout, "\u001b[36m***\u001b[0m ", 0)
-	sim := simulator.NewSimulator(log, *sockets, *ping)
-	configureHTTPRouting(sim)
+	sim := simulator.NewSimulator(log, *sockets, *ping, *acceptCommands)
+	configureHTTPRouting(log, sim)
 	sim.CalculateShortestPaths(nodes, wires)
 
 	for n := range nodes {
@@ -199,7 +203,7 @@ func main() {
 	select {}
 }
 
-func configureHTTPRouting(sim *simulator.Simulator) {
+func configureHTTPRouting(log *log.Logger, sim *simulator.Simulator) {
 	var upgrader = websocket.Upgrader{}
 	http.Handle("/ui/", http.StripPrefix("/ui/", http.FileServer(http.Dir("./cmd/pineconesim/ui"))))
 
@@ -209,7 +213,14 @@ func configureHTTPRouting(sim *simulator.Simulator) {
 			log.Println(err)
 			return
 		}
-		go userProxy(conn, sim)
+
+		log.Println("New websocket connection established")
+
+		connID := ConnUID.Inc()
+		go userProxyReporter(conn, connID, sim)
+		if sim.AcceptCommands {
+			go userProxyCommander(conn, connID, sim)
+		}
 	})
 
 	http.DefaultServeMux.HandleFunc("/simws", func(w http.ResponseWriter, r *http.Request) {
@@ -249,7 +260,10 @@ func configureHTTPRouting(sim *simulator.Simulator) {
 	})
 }
 
-func userProxy(conn *websocket.Conn, sim *simulator.Simulator) {
+func userProxyReporter(conn *websocket.Conn, connID uint64, sim *simulator.Simulator) {
+	log := log.New(os.Stdout, fmt.Sprintf("\u001b[38;5;93mWsSimReporter::%d ***\u001b[0m ", connID), 0)
+	log.Println("Listening to sim for updates...")
+
 	// Subscribe to sim events and grab snapshot of current state
 	ch := make(chan simulator.SimEvent)
 	state := sim.State.Subscribe(ch)
@@ -306,10 +320,10 @@ func userProxy(conn *websocket.Conn, sim *simulator.Simulator) {
 	}
 
 	// Start event handler for future sim events
-	handleSimEvents(conn, ch)
+	handleSimEvents(log, conn, ch)
 }
 
-func handleSimEvents(conn *websocket.Conn, ch <-chan simulator.SimEvent) {
+func handleSimEvents(log *log.Logger, conn *websocket.Conn, ch <-chan simulator.SimEvent) {
 	for {
 		event := <-ch
 		eventType := simulator.UnknownUpdate
@@ -332,11 +346,46 @@ func handleSimEvents(conn *websocket.Conn, ch <-chan simulator.SimEvent) {
 			eventType = simulator.SimTreeRootAnnUpdated
 		}
 
-		conn.WriteJSON(simulator.StateUpdateMsg{
+		if err := conn.WriteJSON(simulator.StateUpdateMsg{
 			MsgID: simulator.SimUpdate,
 			Event: simulator.SimEventMsg{
 				UpdateID: eventType,
 				Event:    event,
-			}})
+			}}); err != nil {
+			log.Println(err)
+			return
+		}
+	}
+}
+
+func userProxyCommander(conn *websocket.Conn, connID uint64, sim *simulator.Simulator) {
+	log := log.New(os.Stdout, fmt.Sprintf("\u001b[38;5;220mWsSimCommander::%d ***\u001b[0m ", connID), 0)
+	log.Println("Listening to ui for commands...")
+
+	for {
+		var eventSequence simulator.SimCommandSequenceMsg
+		if err := conn.ReadJSON(&eventSequence); err != nil {
+			log.Println(err)
+			return
+		}
+		log.Printf("Received commands :: %v", eventSequence)
+
+		// Unmarshall the events into meaningful structs
+		var commands []simulator.SimCommand
+		for i, event := range eventSequence.Events {
+			command, err := simulator.UnmarshalJSON(&event)
+
+			if err != nil {
+				log.Printf("Index %d: %v", i, err)
+				continue
+			}
+
+			commands = append(commands, command)
+		}
+
+		// TODO : Move this to a sim sequence player actor or something
+		for _, cmd := range commands {
+			cmd.Run(log, sim)
+		}
 	}
 }

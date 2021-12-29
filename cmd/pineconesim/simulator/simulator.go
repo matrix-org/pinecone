@@ -27,6 +27,7 @@ type Simulator struct {
 	log                      *log.Logger
 	sockets                  bool
 	ping                     bool
+	AcceptCommands           bool
 	nodes                    map[string]*Node
 	nodesMutex               sync.RWMutex
 	graph                    *dijkstra.Graph
@@ -43,11 +44,12 @@ type Simulator struct {
 	State                    *StateAccessor
 }
 
-func NewSimulator(log *log.Logger, sockets, ping bool) *Simulator {
+func NewSimulator(log *log.Logger, sockets, ping bool, acceptCommands bool) *Simulator {
 	sim := &Simulator{
 		log:                 log,
 		sockets:             sockets,
 		ping:                ping,
+		AcceptCommands:      acceptCommands,
 		nodes:               make(map[string]*Node),
 		wires:               make(map[string]map[string]net.Conn),
 		dists:               make(map[string]map[string]*Distance),

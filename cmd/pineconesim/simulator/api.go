@@ -14,13 +14,19 @@
 
 package simulator
 
-type APIMessageID int
+type APIEventMessageID int
+type APICommandMessageID int
 type APIUpdateID int
 
 const (
-	UnknownMessage APIMessageID = iota
+	UnknownEventMsg APIEventMessageID = iota
 	SimInitialState
 	SimUpdate
+)
+
+const (
+	UnknownCommandMsg APICommandMessageID = iota
+	SimPlaySequence
 )
 
 const (
@@ -64,12 +70,22 @@ type SimEventMsg struct {
 }
 
 type InitialStateMsg struct {
-	MsgID APIMessageID
+	MsgID APIEventMessageID
 	Nodes map[string]InitialNodeState
 	End   bool
 }
 
 type StateUpdateMsg struct {
-	MsgID APIMessageID
+	MsgID APIEventMessageID
 	Event SimEventMsg
+}
+
+type SimCommandSequenceMsg struct {
+	MsgID  APICommandMessageID
+	Events []SimCommandMsg
+}
+
+type SimCommandMsg struct {
+	MsgID APICommandID
+	Event interface{}
 }

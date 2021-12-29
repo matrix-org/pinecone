@@ -40,10 +40,19 @@ class WebsocketWorker {
             this.state.socket.onerror = this.socketErrorListener;
         }
     }
+
+    SendCommandSequence(data) {
+        if (this.state.socket) {
+            console.log("Sending commands to sim: " + JSON.stringify(data));
+            this.state.socket.send(JSON.stringify(data));
+        }
+    }
 }
 
 onmessage = e => {
     if (e.data.hasOwnProperty('url')){
         websocketWorker = new WebsocketWorker(e.data.url);
+    } else if (e.data.hasOwnProperty('Events')){
+        websocketWorker.SendCommandSequence(e.data);
     }
 };
