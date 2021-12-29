@@ -33,6 +33,10 @@ func (sim *Simulator) Node(t string) *Node {
 }
 
 func (sim *Simulator) CreateNode(t string) error {
+	if _, ok := sim.nodes[t]; ok {
+		return fmt.Errorf("%s already exists!", t)
+	}
+
 	var l *net.TCPListener
 	var tcpaddr *net.TCPAddr
 	if sim.sockets {

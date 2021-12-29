@@ -381,7 +381,7 @@ func userProxyCommander(conn *websocket.Conn, connID uint64, sim *simulator.Simu
 			log.Println(err)
 			return
 		}
-		log.Printf("Received commands :: %v", eventSequence)
+		log.Printf("Received command sequence :: %v", eventSequence)
 
 		// Unmarshall the events into meaningful structs
 		var commands []simulator.SimCommand
@@ -396,8 +396,10 @@ func userProxyCommander(conn *websocket.Conn, connID uint64, sim *simulator.Simu
 			commands = append(commands, command)
 		}
 
-		log.Printf("Adding the following commands to be played: %v", commands)
-		sim.AddToPlaylist(commands)
-		sim.Play()
+		if len(commands) > 0 {
+			log.Printf("Adding the following commands to be played: %v", commands)
+			sim.AddToPlaylist(commands)
+			sim.Play()
+		}
 	}
 }

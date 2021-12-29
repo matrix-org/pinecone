@@ -127,16 +127,12 @@ type AddNode struct {
 // Tag AddNode as a Command
 func (c AddNode) Run(log *log.Logger, sim *Simulator) {
 	log.Printf("Executing command %s", c)
-	if _, ok := sim.nodes[c.Node]; ok {
-		log.Printf("Node %s already exists!", c.Node)
-	} else {
-		if err := sim.CreateNode(c.Node); err != nil {
-			log.Printf("Failed creating new node %s", c.Node)
-			return
-		}
-
-		sim.StartNodeEventHandler(c.Node)
+	if err := sim.CreateNode(c.Node); err != nil {
+		log.Printf("Failed creating new node %s: %s", c.Node, err)
+		return
 	}
+
+	sim.StartNodeEventHandler(c.Node)
 }
 
 func (c AddNode) String() string {
@@ -165,7 +161,9 @@ type AddPeer struct {
 // Tag AddPeer as a Command
 func (c AddPeer) Run(log *log.Logger, sim *Simulator) {
 	log.Printf("Executing command %s", c)
-	// TODO
+	if err := sim.ConnectNodes(c.Node, c.Peer); err != nil {
+		log.Printf("Failed connecting node %s to node %s: %s", c.Node, c.Peer, err)
+	}
 }
 
 func (c AddPeer) String() string {
@@ -180,7 +178,9 @@ type RemovePeer struct {
 // Tag RemovePeer as an Command
 func (c RemovePeer) Run(log *log.Logger, sim *Simulator) {
 	log.Printf("Executing command %s", c)
-	// TODO
+	if err := sim.DisconnectNodes(c.Node, c.Peer); err != nil {
+		log.Printf("Failed disconnecting node %s and node %s: %s", c.Node, c.Peer, err)
+	}
 }
 
 func (c RemovePeer) String() string {

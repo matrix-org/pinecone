@@ -29,7 +29,7 @@ func (sim *Simulator) ConnectNodes(a, b string) error {
 	nb := sim.nodes[b]
 	sim.nodesMutex.RUnlock()
 	if na == nil || nb == nil {
-		return fmt.Errorf("invalid node pair")
+		return fmt.Errorf("invalid node pair, one or both of the nodes don't exist")
 	}
 
 	sim.wiresMutex.RLock()
@@ -105,7 +105,7 @@ func (sim *Simulator) DisconnectNodes(a, b string) error {
 	}
 	sim.wiresMutex.RUnlock()
 	if wire == nil {
-		return fmt.Errorf("no wire found")
+		return fmt.Errorf("nodes not connected")
 	}
 	sim.wiresMutex.Lock()
 	sim.wires[a][b] = nil
