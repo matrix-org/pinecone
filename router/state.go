@@ -54,9 +54,18 @@ func (s *state) _start() {
 	s._setAscendingNode(nil)
 	s._setDescendingNode(nil)
 	s._candidate = nil
-	s._announcements = make(announcementTable, portCount)
-	s._table = virtualSnakeTable{}
 	s._ordering = 0
+	s._waiting = false
+
+	for k := range s._announcements {
+		delete(s._announcements, k)
+	}
+	s._announcements = make(announcementTable, portCount)
+
+	for k := range s._table {
+		delete(s._table, k)
+	}
+	s._table = virtualSnakeTable{}
 
 	s._treetimer = time.AfterFunc(announcementInterval, func() {
 		s.Act(nil, s._maintainTree)
@@ -208,16 +217,7 @@ func (s *state) _portDisconnected(peer *peer) {
 	// snake state. When we connect to a peer in the future, we will do so
 	// with a blank slate.
 	if peercount == 0 {
-		s._setParent(nil)
-		s._setAscendingNode(nil)
-		s._setDescendingNode(nil)
-		for k := range s._announcements {
-			delete(s._announcements, k)
-		}
-		for k := range s._table {
-			delete(s._table, k)
-		}
-		s._ordering = 0
+		s._start()
 		return
 	}
 
