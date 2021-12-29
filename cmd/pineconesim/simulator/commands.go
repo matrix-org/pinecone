@@ -127,6 +127,16 @@ type AddNode struct {
 // Tag AddNode as a Command
 func (c AddNode) Run(log *log.Logger, sim *Simulator) {
 	log.Printf("Executing command %s", c)
+	if _, ok := sim.nodes[c.Node]; ok {
+		log.Printf("Node %s already exists!", c.Node)
+	} else {
+		if err := sim.CreateNode(c.Node); err != nil {
+			log.Printf("Failed creating new node %s", c.Node)
+			return
+		}
+
+		sim.StartNodeEventHandler(c.Node)
+	}
 }
 
 func (c AddNode) String() string {
@@ -140,6 +150,7 @@ type RemoveNode struct {
 // Tag RemoveNode as an Command
 func (c RemoveNode) Run(log *log.Logger, sim *Simulator) {
 	log.Printf("Executing command %s", c)
+	// TODO
 }
 
 func (c RemoveNode) String() string {
@@ -154,6 +165,7 @@ type AddPeer struct {
 // Tag AddPeer as a Command
 func (c AddPeer) Run(log *log.Logger, sim *Simulator) {
 	log.Printf("Executing command %s", c)
+	// TODO
 }
 
 func (c AddPeer) String() string {
@@ -168,6 +180,7 @@ type RemovePeer struct {
 // Tag RemovePeer as an Command
 func (c RemovePeer) Run(log *log.Logger, sim *Simulator) {
 	log.Printf("Executing command %s", c)
+	// TODO
 }
 
 func (c RemovePeer) String() string {

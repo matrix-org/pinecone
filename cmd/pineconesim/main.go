@@ -319,6 +319,19 @@ func userProxyReporter(conn *websocket.Conn, connID uint64, sim *simulator.Simul
 		}
 	}
 
+	// In the case the sim starts with an empty graph, send an empty initial state message
+	// to let the UI know it can begin processing updates.
+	if len(state.Nodes) == 0 {
+		if err := conn.WriteJSON(simulator.InitialStateMsg{
+			MsgID: simulator.SimInitialState,
+			Nodes: map[string]simulator.InitialNodeState{},
+			End:   true,
+		}); err != nil {
+			log.Println(err)
+			return
+		}
+	}
+
 	// Start event handler for future sim events
 	handleSimEvents(log, conn, ch)
 }
