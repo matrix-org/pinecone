@@ -17,6 +17,7 @@ package simulator
 import (
 	"fmt"
 	"log"
+	"time"
 )
 
 type APICommandID int
@@ -32,7 +33,7 @@ const (
 
 const FAILURE_PREAMBLE = "Failed unmarshalling event: "
 
-func UnmarshalJSON(command *SimCommandMsg) (SimCommand, error) {
+func UnmarshalCommandJSON(command *SimCommandMsg) (SimCommand, error) {
 	var msg SimCommand
 	var err error = nil
 	switch command.MsgID {
@@ -111,7 +112,12 @@ type Delay struct {
 
 // Tag Delay as a Command
 func (c Delay) Run(log *log.Logger, sim *Simulator) {
-	log.Printf("Executing command (Delay :: Length=%v)...", c.Length)
+	log.Printf("Executing command %s", c)
+	time.Sleep(time.Duration(c.Length) * time.Millisecond)
+}
+
+func (c Delay) String() string {
+	return fmt.Sprintf("Delay{Length:%d}", c.Length)
 }
 
 type AddNode struct {
@@ -120,7 +126,11 @@ type AddNode struct {
 
 // Tag AddNode as a Command
 func (c AddNode) Run(log *log.Logger, sim *Simulator) {
-	log.Printf("Executing command (AddNode :: Name=%s)...", c.Node)
+	log.Printf("Executing command %s", c)
+}
+
+func (c AddNode) String() string {
+	return fmt.Sprintf("AddNode{Name:%s}", c.Node)
 }
 
 type RemoveNode struct {
@@ -129,7 +139,11 @@ type RemoveNode struct {
 
 // Tag RemoveNode as an Command
 func (c RemoveNode) Run(log *log.Logger, sim *Simulator) {
-	log.Printf("Executing command (RemoveNode :: Name=%s)...", c.Node)
+	log.Printf("Executing command %s", c)
+}
+
+func (c RemoveNode) String() string {
+	return fmt.Sprintf("RemoveNode{Name:%s}", c.Node)
 }
 
 type AddPeer struct {
@@ -139,7 +153,11 @@ type AddPeer struct {
 
 // Tag AddPeer as a Command
 func (c AddPeer) Run(log *log.Logger, sim *Simulator) {
-	log.Printf("Executing command (AddPeer :: Node=%s, Peer=%s)...", c.Node, c.Peer)
+	log.Printf("Executing command %s", c)
+}
+
+func (c AddPeer) String() string {
+	return fmt.Sprintf("AddPeer{Node:%s, Peer:%s}", c.Node, c.Peer)
 }
 
 type RemovePeer struct {
@@ -149,5 +167,9 @@ type RemovePeer struct {
 
 // Tag RemovePeer as an Command
 func (c RemovePeer) Run(log *log.Logger, sim *Simulator) {
-	log.Printf("Executing command (RemovePeer :: Node=%s, Peer=%s)...", c.Node, c.Peer)
+	log.Printf("Executing command %s", c)
+}
+
+func (c RemovePeer) String() string {
+	return fmt.Sprintf("RemovePeer{Node:%s, Peer:%s}", c.Node, c.Peer)
 }

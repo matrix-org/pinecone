@@ -373,7 +373,7 @@ func userProxyCommander(conn *websocket.Conn, connID uint64, sim *simulator.Simu
 		// Unmarshall the events into meaningful structs
 		var commands []simulator.SimCommand
 		for i, event := range eventSequence.Events {
-			command, err := simulator.UnmarshalJSON(&event)
+			command, err := simulator.UnmarshalCommandJSON(&event)
 
 			if err != nil {
 				log.Printf("Index %d: %v", i, err)
@@ -383,9 +383,8 @@ func userProxyCommander(conn *websocket.Conn, connID uint64, sim *simulator.Simu
 			commands = append(commands, command)
 		}
 
-		// TODO : Move this to a sim sequence player actor or something
-		for _, cmd := range commands {
-			cmd.Run(log, sim)
-		}
+		log.Printf("Adding the following commands to be played: %v", commands)
+		sim.AddToPlaylist(commands)
+		sim.Play()
 	}
 }
