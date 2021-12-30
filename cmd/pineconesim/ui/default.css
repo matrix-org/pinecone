@@ -19,7 +19,7 @@ body {
     --tool-panel-width: 187.5px;
     --topnav-height: 0px;
     --toggle-box-size: 35px;
-    --toggle-box-margin: 5px;
+    --toggle-box-margin: 10px;
 }
 
 * {
@@ -150,13 +150,13 @@ body {
 .icon-bar {
     width: var(--topo-panel-width); /* Set a specific width */
     background-color: var(--color-dark-grey); /* Dark-grey background */
-    margin: 5px;
+    margin: 10px;
 }
 
 .tool-bar {
     width: var(--tool-panel-width); /* Set a specific width */
     background-color: var(--color-dark-grey); /* Dark-grey background */
-    margin: 5px;
+    margin: 10px;
 }
 
 .top {
