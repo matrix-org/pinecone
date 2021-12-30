@@ -112,3 +112,26 @@ func (sim *Simulator) DisconnectNodes(a, b string) error {
 	sim.wiresMutex.Unlock()
 	return wire.Close()
 }
+
+func (sim *Simulator) DisconnectAllPeers(disconnectNode string) {
+	sim.wiresMutex.Lock()
+	nodeWires := sim.wires[disconnectNode]
+	for i, conn := range nodeWires {
+		if conn != nil {
+			_ = conn.Close()
+			sim.wires[disconnectNode][i] = nil
+		}
+	}
+
+	for node, peers := range sim.wires {
+		for peer, conn := range peers {
+			if peer == disconnectNode {
+				if conn != nil {
+					_ = conn.Close()
+					sim.wires[node][peer] = nil
+				}
+			}
+		}
+	}
+	sim.wiresMutex.Unlock()
+}

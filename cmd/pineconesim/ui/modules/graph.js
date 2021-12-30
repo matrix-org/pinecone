@@ -244,6 +244,11 @@ class Graph {
             this.nodeIDs.splice(index, 1);
         }
 
+        this.removeAllEdges("peer", id);
+        this.removeAllEdges("tree", id);
+        this.removeAllEdges("snake", id);
+        this.removeAllEdges("geographic", id);
+
         Nodes.delete(id);
 
         this.updateUI(id);
@@ -400,6 +405,56 @@ class Graph {
 
             if (matchingEdges.length >= 1) {
                 this.geoData.edges.remove(matchingEdges[0]);
+            }
+            break;
+        }
+    }
+
+    removeAllEdges(dataset, id) {
+        let matchingEdges = [];
+        switch(dataset) {
+        case "peer":
+            matchingEdges = this.peerData.edges.get({
+                filter: function (item) {
+                    return (item.from === id || item.to === id);
+                }
+            });
+
+            for (let i = 0; i < matchingEdges.length; i++) {
+                this.peerData.edges.remove(matchingEdges[i]);
+            }
+            break;
+        case "snake":
+            matchingEdges = this.snakeData.edges.get({
+                filter: function (item) {
+                    return (item.from === id || item.to === id);
+                }
+            });
+
+            for (let i = 0; i < matchingEdges.length; i++) {
+                this.snakeData.edges.remove(matchingEdges[i]);
+            }
+            break;
+        case "tree":
+            matchingEdges = this.treeData.edges.get({
+                filter: function (item) {
+                    return (item.from === id || item.to === id);
+                }
+            });
+
+            for (let i = 0; i < matchingEdges.length; i++) {
+                this.treeData.edges.remove(matchingEdges[i]);
+            }
+            break;
+        case "geographic":
+            matchingEdges = this.geoData.edges.get({
+                filter: function (item) {
+                    return (item.from === id || item.to === id);
+                }
+            });
+
+            for (let i = 0; i < matchingEdges.length; i++) {
+                this.geoData.edges.remove(matchingEdges[i]);
             }
             break;
         }

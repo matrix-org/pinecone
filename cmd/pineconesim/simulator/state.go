@@ -172,6 +172,11 @@ func (s *StateAccessor) _addNode(name string, peerID string) {
 	s._publish(NodeAdded{Node: name, PublicKey: peerID})
 }
 
+func (s *StateAccessor) _removeNode(name string) {
+	delete(s._state.Nodes, name)
+	s._publish(NodeRemoved{Node: name})
+}
+
 func (s *StateAccessor) _addPeerConnection(from string, to string, port int) {
 	if _, ok := s._state.Nodes[from]; ok {
 		s._state.Nodes[from].Connections[port] = to

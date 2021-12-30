@@ -20,6 +20,7 @@ import (
 	"hash/crc32"
 	"log"
 	"net"
+	"time"
 
 	"github.com/Arceliar/phony"
 	"github.com/matrix-org/pinecone/router"
@@ -71,27 +72,39 @@ func (sim *Simulator) CreateNode(t string) error {
 	sim.nodesMutex.Unlock()
 
 	if sim.sockets {
-		go func(n *Node) {
+		quit := make(chan bool)
+		go func(quit <-chan bool, n *Node) {
 			for {
-				c, err := n.l.AcceptTCP()
-				if err != nil {
-					continue
-				}
-				if err := c.SetNoDelay(true); err != nil {
-					panic(err)
-				}
-				if err := c.SetLinger(0); err != nil {
-					panic(err)
-				}
-				if _, err = n.Connect(
-					c,
-					router.ConnectionPeerType(router.PeerTypeRemote),
-					router.ConnectionKeepalives(true),
-				); err != nil {
-					continue
+				select {
+				case <-quit:
+					return
+				default:
+					n.l.SetDeadline(time.Now().Add(time.Duration(500) * time.Millisecond))
+					c, err := n.l.AcceptTCP()
+					if err != nil {
+						continue
+					}
+					if err := c.SetNoDelay(true); err != nil {
+						panic(err)
+					}
+					if err := c.SetLinger(0); err != nil {
+						panic(err)
+					}
+					if _, err = n.Connect(
+						c,
+						router.ConnectionPeerType(router.PeerTypeRemote),
+						router.ConnectionKeepalives(true),
+					); err != nil {
+						continue
+					}
 				}
 			}
-		}(n)
+		}(quit, n)
+
+		sim.nodeRunnerChannelsMutex.Lock()
+		sim.nodeRunnerChannels[t] = append(sim.nodeRunnerChannels[t], quit)
+		sim.nodeRunnerChannelsMutex.Unlock()
+
 		sim.log.Printf("Created node %q (listening on %s)\n", t, l.Addr())
 	} else {
 		sim.log.Printf("Created node %q\n", t)
@@ -102,8 +115,32 @@ func (sim *Simulator) CreateNode(t string) error {
 func (sim *Simulator) StartNodeEventHandler(t string) {
 	ch := make(chan events.Event)
 	handler := eventHandler{node: t, ch: ch}
-	go handler.Run(sim)
+	quit := make(chan bool)
+	go handler.Run(quit, sim)
 	sim.nodes[t].Subscribe(ch)
 
+	sim.nodeRunnerChannelsMutex.Lock()
+	sim.nodeRunnerChannels[t] = append(sim.nodeRunnerChannels[t], quit)
+	sim.nodeRunnerChannelsMutex.Unlock()
+
 	phony.Block(sim.State, func() { sim.State._addNode(t, sim.nodes[t].PublicKey().String()) })
+}
+
+func (sim *Simulator) RemoveNode(node string) {
+	// Stop all the goroutines running for this node
+	sim.nodeRunnerChannelsMutex.Lock()
+	for _, quitChan := range sim.nodeRunnerChannels[node] {
+		quitChan <- true
+	}
+	delete(sim.nodeRunnerChannels, node)
+	sim.nodeRunnerChannelsMutex.Unlock()
+
+	sim.DisconnectAllPeers(node)
+
+	// Remove the node from the simulators list of nodes
+	sim.nodesMutex.Lock()
+	delete(sim.nodes, node)
+	sim.nodesMutex.Unlock()
+
+	phony.Block(sim.State, func() { sim.State._removeNode(node) })
 }

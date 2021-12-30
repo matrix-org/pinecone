@@ -66,6 +66,8 @@ type Simulator struct {
 	AcceptCommands           bool
 	nodes                    map[string]*Node
 	nodesMutex               sync.RWMutex
+	nodeRunnerChannels       map[string][]chan<- bool
+	nodeRunnerChannelsMutex  sync.RWMutex
 	graph                    *dijkstra.Graph
 	maps                     map[string]int
 	wires                    map[string]map[string]net.Conn
@@ -89,6 +91,7 @@ func NewSimulator(log *log.Logger, sockets, ping bool, acceptCommands bool) *Sim
 		ping:                ping,
 		AcceptCommands:      acceptCommands,
 		nodes:               make(map[string]*Node),
+		nodeRunnerChannels:  make(map[string][]chan<- bool),
 		wires:               make(map[string]map[string]net.Conn),
 		dists:               make(map[string]map[string]*Distance),
 		snekPathConvergence: make(map[string]map[string]bool),

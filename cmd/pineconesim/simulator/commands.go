@@ -161,7 +161,7 @@ type RemoveNode struct {
 // Tag RemoveNode as an Command
 func (c RemoveNode) Run(log *log.Logger, sim *Simulator) {
 	log.Printf("Executing command %s", c)
-	// TODO
+	sim.RemoveNode(c.Node)
 }
 
 func (c RemoveNode) String() string {
