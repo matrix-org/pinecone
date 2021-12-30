@@ -175,54 +175,52 @@ body {
     left: calc(50% - var(--tool-panel-width) / 2);
 }
 
-.icon-bar a:hover {
+.netselect:hover {
     background-color: var(--color-dull-grey);
     color: var(--color-dark-grey);
 }
 
-.icon-bar a.active {
+.netselect.active {
     background-color: var(--color-logo-green); /* Add an active/current color */
     color: var(--color-dull-grey);
 }
 
-.icon-bar a {
+.netselect {
     float: left; /* Float links side by side */
     text-align: center; /* Center-align text */
     width: 25%; /* Equal width (4 icons with 25% width each = 100%) */
     padding: 12px 0; /* Some top and bottom padding */
     transition: all 0.3s ease; /* Add transition for hover effects */
+    background-color: var(--color-dark-grey);
     color: var(--color-dull-grey); /* White text color */
     font-size: 18px; /* Increased font size */
     text-decoration: none;
+    position: relative;
+    border: none;
 }
 
-.tool-bar a:hover {
+.toolselect:hover {
     background-color: var(--color-dull-grey);
     color: var(--color-dark-grey);
 }
 
-.tool-bar a.active {
+.toolselect.active {
     background-color: var(--color-logo-green); /* Add an active/current color */
     color: var(--color-dull-grey);
 }
 
-.tool-bar a {
+.toolselect {
     float: left; /* Float links side by side */
     text-align: center; /* Center-align text */
     width: 20%; /* Equal width (5 icons with 20% width each = 100%) */
     padding: 12px 0; /* Some top and bottom padding */
     transition: all 0.3s ease; /* Add transition for hover effects */
+    background-color: var(--color-dark-grey);
     color: var(--color-dull-grey); /* White text color */
     font-size: 18px; /* Increased font size */
     text-decoration: none;
-}
-
-.netselect {
     position: relative;
-}
-
-.toolselect {
-    position: relative;
+    border: none;
 }
 
 /* Tooltip container */
