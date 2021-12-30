@@ -490,19 +490,36 @@ class Graph {
     }
 
     focusSelectedNode() {
-        if (selectedNodes) {
+        if (selectedNodes && panelNodes.length > 0) {
             this.selectNodes(panelNodes);
-            this.focusNode(panelNodes);
+            if (selectedNodes.length > 0) {
+                this.focusNode(selectedNodes[selectedNodes.length - 1]);
+            }
+        }
+    }
+
+    deselectRemovedNodes() {
+        let nodes = selectedNodes;
+        for (let i = nodes.length - 1; i >= 0; --i) {
+            if (!Nodes.has(nodes[i])) {
+                console.log("Node gone: " + nodes[i]);
+                nodes.splice(i, 1);
+            }
         }
     }
 
     selectNodes(nodes) {
-        this.network.selectNodes(nodes);
+        this.deselectRemovedNodes();
+
+        if (nodes.length > 0) {
+            this.network.selectNodes(nodes);
+        }
         selectedNodes = nodes;
         panelNodes = selectedNodes;
     }
 
     GetSelectedNodes() {
+        this.deselectRemovedNodes();
         return selectedNodes;
     }
 
@@ -549,9 +566,7 @@ class Graph {
         }
 
         if (selectedNodes) {
-            if (this.network) {
-                this.network.selectNodes(selectedNodes);
-            }
+            this.selectNodes(selectedNodes);
         }
 
         // HACK : network won't restabilize unless I give a node a kick...

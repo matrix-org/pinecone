@@ -113,12 +113,15 @@ function selectTool(toolType) {
     case "remove":
         console.log(this.id);
         // TODO : do peer connections as well (but not tree or snake)
+        let commands = [];
         let nodes = graph.GetSelectedNodes();
         if (nodes) {
-            let commands = [];
             for (let i = 0; i < nodes.length; i++) {
                 commands.push({"MsgID": APICommandID.RemoveNode, "Event": {"Name": nodes[i]}});
             }
+        }
+
+        if (commands.length > 0) {
             SendToServer({"MsgID": APICommandMessageID.PlaySequence, "Events": commands});
         }
         // TODO : the remove button should probably flash temporarily to active
