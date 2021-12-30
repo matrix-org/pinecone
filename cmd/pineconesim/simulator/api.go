@@ -17,11 +17,12 @@ package simulator
 type APIEventMessageID int
 type APICommandMessageID int
 type APIUpdateID int
+type APICommandID int
 
 const (
 	UnknownEventMsg APIEventMessageID = iota
 	SimInitialState
-	SimUpdate
+	SimStateUpdate
 )
 
 const (
@@ -39,6 +40,16 @@ const (
 	SimSnakeAscUpdated
 	SimSnakeDescUpdated
 	SimTreeRootAnnUpdated
+)
+
+const (
+	UnknownCommand APICommandID = iota
+	SimDebug
+	SimDelay
+	SimAddNode
+	SimRemoveNode
+	SimAddPeer
+	SimRemovePeer
 )
 
 type InitialNodeState struct {

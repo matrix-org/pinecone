@@ -360,7 +360,7 @@ func handleSimEvents(log *log.Logger, conn *websocket.Conn, ch <-chan simulator.
 		}
 
 		if err := conn.WriteJSON(simulator.StateUpdateMsg{
-			MsgID: simulator.SimUpdate,
+			MsgID: simulator.SimStateUpdate,
 			Event: simulator.SimEventMsg{
 				UpdateID: eventType,
 				Event:    event,

@@ -20,18 +20,6 @@ import (
 	"time"
 )
 
-type APICommandID int
-
-const (
-	UnknownCommand APICommandID = iota
-	SimDebug
-	SimDelay
-	SimAddNode
-	SimRemoveNode
-	SimAddPeer
-	SimRemovePeer
-)
-
 const FAILURE_PREAMBLE = "Failed unmarshalling event: "
 
 func UnmarshalCommandJSON(command *SimCommandMsg) (SimCommand, error) {

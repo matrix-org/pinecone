@@ -3,10 +3,43 @@ import "./modules/ui.js";
 
 const worker = new Worker("ui/websocket-worker.js");
 
+const APIEventMessageID = {
+    Unknown: 0,
+    InitialState: 1,
+    StateUpdate: 2,
+};
+
+const APICommandMessageID = {
+    Unknown: 0,
+    PlaySequence: 1,
+};
+
+const APIUpdateID = {
+    Unknown: 0,
+    NodeAdded: 1,
+    NodeRemoved: 2,
+    PeerAdded: 3,
+    PeerRemoved: 4,
+    TreeParentUpdated: 5,
+    SnakeAscUpdated: 6,
+    SnakeDescUpdated: 7,
+    TreeRootAnnUpdated: 8,
+};
+
+const APICommandID = {
+    Unknown: 0,
+    Debug: 1,
+    Delay: 2,
+    AddNode: 3,
+    RemoveNode: 4,
+    AddPeer: 5,
+    RemovePeer: 6,
+};
+
 function handleSimMessage(msg) {
     // console.log(msg.data);
     switch(msg.data.MsgID) {
-    case 1: // Initial State
+    case APIEventMessageID.InitialState:
         for (let [key, value] of Object.entries(msg.data.Nodes)) {
             graph.addNode(key, value.PublicKey);
             graph.updateRootAnnouncement(key, value.RootState.Root, value.RootState.AnnSequence, value.RootState.AnnTime, value.RootState.Coords);
@@ -15,7 +48,6 @@ function handleSimMessage(msg) {
                 for (let i = 0; i < value.Peers.length; i++) {
                     graph.addPeer(key, value.Peers[i].ID, value.Peers[i].Port);
                 }
-
             }
 
             if (value.SnakeAsc && value.SnakeAscPath) {
@@ -34,31 +66,31 @@ function handleSimMessage(msg) {
             graph.startGraph();
         }
         break;
-    case 2: // State Update
+    case APIEventMessageID.StateUpdate:
         let event = msg.data.Event.Event;
         switch(msg.data.Event.UpdateID) {
-        case 1: // Node Added
+        case APIUpdateID.NodeAdded:
             graph.addNode(event.Node, event.PublicKey);
             break;
-        case 2: // Node Removed
+        case APIUpdateID.NodeRemoved:
             graph.removeNode(event.Node);
             break;
-        case 3: // Peer Added
+        case APIUpdateID.PeerAdded:
             graph.addPeer(event.Node, event.Peer, event.Port);
             break;
-        case 4: // Peer Removed
+        case APIUpdateID.PeerRemoved:
             graph.removePeer(event.Node, event.Peer);
             break;
-        case 5: // Tree Parent Updated
+        case APIUpdateID.TreeParentUpdated:
             graph.setTreeParent(event.Node, event.Peer, event.Prev);
             break;
-        case 6: // Snake Ascending Updated
+        case APIUpdateID.SnakeAscUpdated:
             graph.setSnekAsc(event.Node, event.Peer, event.Prev, event.PathID);
             break;
-        case 7: // Snake Descending Updated
+        case APIUpdateID.SnakeDescUpdated:
             graph.setSnekDesc(event.Node, event.Peer, event.Prev, event.PathID);
             break;
-        case 8: // Tree Root Announcement Updated
+        case APIUpdateID.TreeRootAnnUpdated:
             graph.updateRootAnnouncement(event.Node, event.Root, event.Sequence, event.Time, event.Coords);
         }
         break;
