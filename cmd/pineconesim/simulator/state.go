@@ -16,6 +16,7 @@ package simulator
 
 import (
 	"fmt"
+	"reflect"
 
 	"github.com/Arceliar/phony"
 )
@@ -53,6 +54,19 @@ func NewNodeState(peerID string) *NodeState {
 	return node
 }
 
+func (n NodeState) String() string {
+	s := reflect.ValueOf(&n).Elem()
+	typeOfT := s.Type()
+
+	output := ""
+	for i := 0; i < s.NumField(); i++ {
+		f := s.Field(i)
+		output += fmt.Sprintf("      %s: %v\n", typeOfT.Field(i).Name, f.Interface())
+	}
+
+	return output
+}
+
 type State struct {
 	Nodes map[string]*NodeState
 }
@@ -62,6 +76,14 @@ func NewState() *State {
 		Nodes: make(map[string]*NodeState),
 	}
 	return state
+}
+
+func (s State) String() string {
+	output := ""
+	for name, node := range s.Nodes {
+		output += fmt.Sprintf("    Node %s: {\n%+v    }\n", name, node)
+	}
+	return output
 }
 
 type StateAccessor struct {
@@ -76,6 +98,16 @@ func NewStateAccessor() *StateAccessor {
 		_subscribers: make(map[chan<- SimEvent]*phony.Inbox),
 	}
 	return sa
+}
+
+func (s *StateAccessor) DebugLog() string {
+	output := "{\n"
+	output += fmt.Sprintf("  subscribers: %d\n", len(s._subscribers))
+	output += "  state: {\n"
+	output += fmt.Sprintf("%+v", s._state)
+	output += "  }\n"
+	output += "}\n"
+	return output
 }
 
 func (s *StateAccessor) Subscribe(ch chan<- SimEvent) State {

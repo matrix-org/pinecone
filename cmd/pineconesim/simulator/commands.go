@@ -24,6 +24,7 @@ type APICommandID int
 
 const (
 	UnknownCommand APICommandID = iota
+	SimDebug
 	SimDelay
 	SimAddNode
 	SimRemoveNode
@@ -37,6 +38,8 @@ func UnmarshalCommandJSON(command *SimCommandMsg) (SimCommand, error) {
 	var msg SimCommand
 	var err error = nil
 	switch command.MsgID {
+	case SimDebug:
+		msg = StateDebug{}
 	case SimDelay:
 		length := uint64(0)
 		if val, ok := command.Event.(map[string]interface{})["Length"]; ok {
@@ -104,6 +107,18 @@ func UnmarshalCommandJSON(command *SimCommandMsg) (SimCommand, error) {
 
 type SimCommand interface {
 	Run(log *log.Logger, sim *Simulator)
+}
+
+type StateDebug struct{}
+
+// Tag StateDebug as a Command
+func (c StateDebug) Run(log *log.Logger, sim *Simulator) {
+	log.Printf("Executing command %s", c)
+	log.Printf("Debug State: %s", sim.State.DebugLog())
+}
+
+func (c StateDebug) String() string {
+	return "StateDebug{}"
 }
 
 type Delay struct {
