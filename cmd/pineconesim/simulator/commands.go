@@ -52,7 +52,6 @@ func UnmarshalCommandJSON(command *SimCommandMsg) (SimCommand, error) {
 			err = fmt.Errorf("%sRemoveNode.Name field doesn't exist", FAILURE_PREAMBLE)
 		}
 		msg = RemoveNode{name}
-
 	case SimAddPeer:
 		node := ""
 		peer := ""
@@ -67,7 +66,6 @@ func UnmarshalCommandJSON(command *SimCommandMsg) (SimCommand, error) {
 		} else {
 			err = fmt.Errorf("%sAddPeer.Peer field doesn't exist", FAILURE_PREAMBLE)
 		}
-
 		msg = AddPeer{node, peer}
 	case SimRemovePeer:
 		node := ""
@@ -83,9 +81,7 @@ func UnmarshalCommandJSON(command *SimCommandMsg) (SimCommand, error) {
 		} else {
 			err = fmt.Errorf("%sRemoveNode.Peer field doesn't exist", FAILURE_PREAMBLE)
 		}
-
 		msg = RemovePeer{node, peer}
-
 	default:
 		err = fmt.Errorf("%sUnknown Event ID=%v", FAILURE_PREAMBLE, command.MsgID)
 	}

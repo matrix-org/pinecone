@@ -57,6 +57,7 @@ class Graph {
             zoomView: true,
             hover: true,
             tooltipDelay: 100,
+            multiselect: true,
         },
         physics: {
             enabled: true,
@@ -501,6 +502,10 @@ class Graph {
         panelNodes = selectedNodes;
     }
 
+    GetSelectedNodes() {
+        return selectedNodes;
+    }
+
     focusNode(nodeID) {
         let options = {
             scale: 0.5,
@@ -593,6 +598,10 @@ function getNodeKey(nodeID) {
 function handleNodePanelUpdate(nodeID) {
     let node = Nodes.get(nodeID);
     let nodePanel = document.getElementById('currentNodeState');
+
+    if (!node) {
+        return;
+    }
 
     let peers = node.peers;
     let peerTable = "";

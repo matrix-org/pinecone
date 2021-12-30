@@ -112,7 +112,17 @@ function selectTool(toolType) {
         break;
     case "remove":
         console.log(this.id);
-        // TODO
+        // TODO : do peer connections as well (but not tree or snake)
+        let nodes = graph.GetSelectedNodes();
+        if (nodes) {
+            let commands = [];
+            for (let i = 0; i < nodes.length; i++) {
+                commands.push({"MsgID": APICommandID.RemoveNode, "Event": {"Name": nodes[i]}});
+            }
+            SendToServer({"MsgID": APICommandMessageID.PlaySequence, "Events": commands});
+        }
+        // TODO : the remove button should probably flash temporarily to active
+        this.className = this.className.replace(" active", "");
         break;
     case "capture":
         console.log(this.id);
@@ -123,10 +133,6 @@ function selectTool(toolType) {
         // TODO
         break;
     }
-
-    SendToServer({"MsgID": APICommandMessageID.PlaySequence, "Events": [
-        {"MsgID": APICommandID.Debug, "Event": {}},
-    ]});
 }
 
 function setupToolSelection() {
