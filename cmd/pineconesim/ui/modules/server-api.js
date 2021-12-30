@@ -30,3 +30,20 @@ export const APICommandID = {
     AddPeer: 5,
     RemovePeer: 6,
 };
+
+var serverWorker;
+
+export function ConnectToServer(url, handler) {
+    if (!serverWorker) {
+        console.log("Connecting to server at: " + url.url);
+        serverWorker = new Worker("ui/websocket-worker.js");
+        serverWorker.onmessage = handler;
+        serverWorker.postMessage(url);
+    }
+}
+
+export function SendToServer(msg) {
+    if (serverWorker) {
+        serverWorker.postMessage(msg);
+    }
+}

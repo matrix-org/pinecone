@@ -1,8 +1,7 @@
 import { graph } from "./modules/graph.js";
-import { APIEventMessageID, APICommandMessageID, APIUpdateID, APICommandID } from "./api.js";
+import { APIEventMessageID, APICommandMessageID, APIUpdateID, APICommandID,
+         ConnectToServer, SendToServer } from "./modules/server-api.js";
 import "./modules/ui.js";
-
-const worker = new Worker("ui/websocket-worker.js");
 
 function handleSimMessage(msg) {
     // console.log(msg.data);
@@ -31,6 +30,10 @@ function handleSimMessage(msg) {
         }
 
         if (msg.data.End === true) {
+            console.log("Finished receiving initial state from server. Listening for further updates...");
+            SendToServer({"MsgID": 1, "Events": [
+                {"MsgID": APICommandID.Debug, "Event": {}},
+            ]});
             graph.startGraph();
         }
         break;
@@ -68,7 +71,4 @@ function handleSimMessage(msg) {
     }
 };
 
-worker.onmessage = handleSimMessage;
-
-// Start the websocket worker with the current url
-worker.postMessage({url: window.origin.replace("http", "ws") + '/ws'});
+ConnectToServer({url: window.origin.replace("http", "ws") + '/ws'}, handleSimMessage);

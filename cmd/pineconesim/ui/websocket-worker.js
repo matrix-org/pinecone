@@ -1,17 +1,33 @@
 var websocketWorker;
+var serverUrl;
+var connectedToServer = false;
 
 class WebsocketWorker {
     state = {
-        url: "",
         socket: null,
     };
 
     constructor(url) {
         this.state = {
-            url: url,
+            socket: null,
         };
 
-        this.socketCloseListener();
+        serverUrl = url;
+        connectedToServer = false;
+    }
+
+    Connect() {
+        this.socketConnect();
+    }
+
+    socketConnect() {
+        if (this.state) {
+            this.state.socket = new WebSocket(serverUrl);
+            this.state.socket.onopen = this.socketOpenListener;
+            this.state.socket.onmessage = this.socketMessageListener;
+            this.state.socket.onclose = this.socketCloseListener;
+            this.state.socket.onerror = this.socketErrorListener;
+        }
     }
 
     socketMessageListener(e) {
@@ -20,31 +36,28 @@ class WebsocketWorker {
     }
 
     socketOpenListener(e) {
-        console.log('Connected');
+        console.log('Connected to server');
+        connectedToServer = true;
     }
 
     socketErrorListener(e) {
         console.error(e);
+        connectedToServer = false;
     }
 
     socketCloseListener(e) {
-        if (this.state && this.state.socket) {
-            console.log('Disconnected.');
-        }
-
-        if (this.state) {
-            this.state.socket = new WebSocket(this.state.url);
-            this.state.socket.onopen = this.socketOpenListener;
-            this.state.socket.onmessage = this.socketMessageListener;
-            this.state.socket.onclose = this.socketCloseListener;
-            this.state.socket.onerror = this.socketErrorListener;
+        if (connectedToServer) {
+            console.log('Disconnected from server');
+            connectedToServer = false;
         }
     }
 
     SendCommandSequence(data) {
-        if (this.state.socket) {
-            console.log("Sending commands to sim: " + JSON.stringify(data));
+        if (this.state.socket && connectedToServer) {
+            console.log("Sending commands to server: " + JSON.stringify(data));
             this.state.socket.send(JSON.stringify(data));
+        } else {
+            console.error("Failed sending command to server: Not connected");
         }
     }
 }
@@ -52,7 +65,10 @@ class WebsocketWorker {
 onmessage = e => {
     if (e.data.hasOwnProperty('url')){
         websocketWorker = new WebsocketWorker(e.data.url);
+        websocketWorker.Connect();
     } else if (e.data.hasOwnProperty('Events')){
         websocketWorker.SendCommandSequence(e.data);
+    } else {
+        console.error('Received unhandled message: ' + e);
     }
 };
