@@ -16,8 +16,9 @@ body {
     --color-switch-blue: #6d8bac;
     --color-ems-purple: #7e69ff;
     --topo-panel-width: 150px;
+    --tool-panel-width: 187.5px;
     --topnav-height: 0px;
-    --toggle-box-size: 40px;
+    --toggle-box-size: 35px;
     --toggle-box-margin: 5px;
 }
 
@@ -77,7 +78,7 @@ body {
     width: var(--toggle-box-size);
     height: var(--toggle-box-size);
     color: var(--color-dull-grey);
-    font-size: 20px;
+    font-size: 18px;
     background-color: var(--color-logo-green);
     align-items: center;
     border-radius: 10%;
@@ -152,9 +153,26 @@ body {
     margin: 5px;
 }
 
-.icon-bar-center {
+.tool-bar {
+    width: var(--tool-panel-width); /* Set a specific width */
+    background-color: var(--color-dark-grey); /* Dark-grey background */
+    margin: 5px;
+}
+
+.top {
     top: 0;
+}
+
+.bottom {
+    bottom: 0;
+}
+
+.icon-bar-center {
     left: calc(50% - var(--topo-panel-width) / 2);
+}
+
+.tool-bar-center {
+    left: calc(50% - var(--tool-panel-width) / 2);
 }
 
 .icon-bar a:hover {
@@ -178,7 +196,32 @@ body {
     text-decoration: none;
 }
 
+.tool-bar a:hover {
+    background-color: var(--color-dull-grey);
+    color: var(--color-dark-grey);
+}
+
+.tool-bar a.active {
+    background-color: var(--color-logo-green); /* Add an active/current color */
+    color: var(--color-dull-grey);
+}
+
+.tool-bar a {
+    float: left; /* Float links side by side */
+    text-align: center; /* Center-align text */
+    width: 20%; /* Equal width (5 icons with 20% width each = 100%) */
+    padding: 12px 0; /* Some top and bottom padding */
+    transition: all 0.3s ease; /* Add transition for hover effects */
+    color: var(--color-dull-grey); /* White text color */
+    font-size: 18px; /* Increased font size */
+    text-decoration: none;
+}
+
 .netselect {
+    position: relative;
+}
+
+.toolselect {
     position: relative;
 }
 

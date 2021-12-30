@@ -1,4 +1,5 @@
 import { graph } from "./graph.js";
+import { APICommandMessageID, APICommandID, SendToServer } from "./server-api.js";
 
 let leftShown = true;
 let rightShown = false;
@@ -80,6 +81,7 @@ function selectNetworkType(networkType) {
         break;
     case "geographicTopo":
         graph.changeDataSet("geographic");
+        break;
     }
 }
 
@@ -91,20 +93,46 @@ function setupNetworkSelection() {
 }
 setupNetworkSelection();
 
-
-function selectNavTab() {
-    let selectionTabs = document.getElementsByClassName("navselect");
+function selectTool(toolType) {
+    let selectionTabs = document.getElementsByClassName("toolselect");
     for (let i = 0; i < selectionTabs.length; i++) {
         selectionTabs[i].className = selectionTabs[i].className.replace(" active", "");
     }
 
     this.className += " active";
+
+    switch(this.id) {
+    case "scenarioSelect":
+        console.log(this.id);
+        // TODO
+        break;
+    case "create":
+        console.log(this.id);
+        // TODO
+        break;
+    case "remove":
+        console.log(this.id);
+        // TODO
+        break;
+    case "capture":
+        console.log(this.id);
+        // TODO
+        break;
+    case "replay":
+        console.log(this.id);
+        // TODO
+        break;
+    }
+
+    SendToServer({"MsgID": APICommandMessageID.PlaySequence, "Events": [
+        {"MsgID": APICommandID.Debug, "Event": {}},
+    ]});
 }
 
-function setupTopnavSelection() {
-    let selectionTabs = document.getElementsByClassName("navselect");
+function setupToolSelection() {
+    let selectionTabs = document.getElementsByClassName("toolselect");
     for (let i = 0; i < selectionTabs.length; i++) {
-        selectionTabs[i].onclick = selectNavTab;
+        selectionTabs[i].onclick = selectTool;
     }
 }
-setupTopnavSelection();
+setupToolSelection();

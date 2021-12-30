@@ -1,6 +1,6 @@
-var websocketWorker;
-var serverUrl;
-var connectedToServer = false;
+let websocketWorker;
+let serverUrl;
+let connectedToServer = false;
 
 class WebsocketWorker {
     state = {

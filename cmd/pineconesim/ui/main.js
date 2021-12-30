@@ -31,9 +31,6 @@ function handleSimMessage(msg) {
 
         if (msg.data.End === true) {
             console.log("Finished receiving initial state from server. Listening for further updates...");
-            SendToServer({"MsgID": 1, "Events": [
-                {"MsgID": APICommandID.Debug, "Event": {}},
-            ]});
             graph.startGraph();
         }
         break;
