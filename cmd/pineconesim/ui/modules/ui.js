@@ -119,11 +119,7 @@ function selectTool(toolType) {
         break;
     case "replay-play-pause":
         if (this.className.includes("active")) {
-            this.className = this.className.replace(" active", "");
-            let tooltip = this.getElementsByClassName("tooltiptext")[0];
-            tooltip.textContent = "Resume Replay";
-            let icon = this.getElementsByClassName("fa")[0];
-            icon.className = icon.className.replace(" fa-pause", " fa-repeat");
+            ResetReplayUI(this);
             // TODO : pause replay
             console.log("pause replay");
         } else {
@@ -172,3 +168,11 @@ function setupToolSelection() {
     }
 }
 setupToolSelection();
+
+export function ResetReplayUI(element) {
+    element.className = element.className.replace(" active", "");
+    let tooltip = element.getElementsByClassName("tooltiptext")[0];
+    tooltip.textContent = "Resume Replay";
+    let icon = element.getElementsByClassName("fa")[0];
+    icon.className = icon.className.replace(" fa-pause", " fa-repeat");
+}
