@@ -24,35 +24,74 @@
                 </button>
 
                 <div class="icon-bar icon-bar-center top overlay">
-                    <button class="netselect tooltip active" id="peerTopo"><i class="fa fa-plug"></i>
+                    <button class="netselect tooltip active" id="peerTopo">
+                        <i class="fa fa-plug"></i>
                         <span class="tooltiptext tooltip-bottom">Peer Topology</span>
                     </button>
-                    <button class="netselect tooltip" id="treeTopo"><i class="fa fa-sitemap"></i>
+                    <button class="netselect tooltip" id="treeTopo">
+                        <i class="fa fa-sitemap"></i>
                         <span class="tooltiptext tooltip-bottom">Tree Topology</span>
                     </button>
-                    <button class="netselect tooltip" id="snakeTopo"><i class="fa fa-link"></i>
+                    <button class="netselect tooltip" id="snakeTopo">
+                        <i class="fa fa-link"></i>
                         <span class="tooltiptext tooltip-bottom">Snake Topology</span>
                     </button>
-                    <button class="netselect tooltip" id="geographicTopo"><i class="fa fa-map"></i>
+                    <button class="netselect tooltip" id="geographicTopo">
+                        <i class="fa fa-map"></i>
                         <span class="tooltiptext tooltip-bottom">Geographic Topology</span>
                     </button>
                 </div>
 
                 <div class="tool-bar icon-bar-center bottom overlay">
-                    <button class="toolselect tooltip" id="scenarioSelect"><i class="fa fa-folder"></i>
-                        <span class="tooltiptext tooltip-top">Scenario Select</span>
+                    <div class="dropup" >
+                        <button class="dropup-button" id="scenario">
+                            <i class="fa fa-image"></i></button>
+                        <div class="dropup-content" >
+                            <button class="subtoolselect tooltip" id="scenario-new">
+                                <i class="fa fa-file-image-o"></i>
+                                <span class="tooltiptext tooltip-right">New Scenario</span>
+                            </button>
+                            <button class="subtoolselect tooltip" id="scenario-load">
+                                <i class="fa fa-folder-open"></i>
+                                <span class="tooltiptext tooltip-right">Load Scenario</span>
+                            </button>
+                        </div>
+                    </div>
+                    <button class="toolselect tooltip" id="capture-start-stop">
+                        <i class="fa fa-video-camera"></i>
+                        <span class="tooltiptext tooltip-top">Start Capture</span>
                     </button>
-                    <button class="toolselect tooltip" id="create"><i class="fa fa-plus"></i>
-                        <span class="tooltiptext tooltip-top">Create</span>
-                    </button>
-                    <button class="toolselect tooltip" id="remove"><i class="fa fa-trash"></i>
+                    <div class="dropup" >
+                        <button class="dropup-button" id="replay">
+                            <i class="fa fa-film"></i></button>
+                        <div class="dropup-content" >
+                            <button class="subtoolselect tooltip" id="replay-upload">
+                                <i class="fa fa-upload"></i>
+                                <span class="tooltiptext tooltip-right">Upload Replay</span>
+                            </button>
+                            <button class="subtoolselect tooltip" id="replay-play-pause">
+                                <i class="fa fa-repeat"></i>
+                                <span class="tooltiptext tooltip-right">Resume Replay</span>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="dropup" >
+                        <button class="dropup-button" id="create">
+                            <i class="fa fa-plus"></i></button>
+                        <div class="dropup-content" >
+                            <button class="subtoolselect tooltip" id="add-nodes">
+                                <i class="fa fa-user-plus"></i>
+                                <span class="tooltiptext tooltip-right">Add Nodes</span>
+                            </button>
+                            <button class="subtoolselect tooltip" id="add-peerings">
+                                <i class="fa fa-plug"></i>
+                                <span class="tooltiptext tooltip-right">Add Peerings</span>
+                            </button>
+                        </div>
+                    </div>
+                    <button class="toolselect tooltip" id="remove">
+                        <i class="fa fa-trash"></i>
                         <span class="tooltiptext tooltip-top">Remove Selected</span>
-                    </button>
-                    <button class="toolselect tooltip" id="capture"><i class="fa fa-video-camera"></i>
-                        <span class="tooltiptext tooltip-top">Capture</span>
-                    </button>
-                    <button class="toolselect tooltip" id="replay"><i class="fa fa-film"></i>
-                        <span class="tooltiptext tooltip-top">Replay</span>
                     </button>
                 </div>
 

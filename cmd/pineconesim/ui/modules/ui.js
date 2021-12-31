@@ -94,24 +94,55 @@ function setupNetworkSelection() {
 setupNetworkSelection();
 
 function selectTool(toolType) {
-    let selectionTabs = document.getElementsByClassName("toolselect");
-    for (let i = 0; i < selectionTabs.length; i++) {
-        selectionTabs[i].className = selectionTabs[i].className.replace(" active", "");
-    }
-
-    this.className += " active";
-
     switch(this.id) {
-    case "scenarioSelect":
-        console.log(this.id);
+    case "scenario-new":
         // TODO
         break;
-    case "create":
-        console.log(this.id);
+    case "scenario-load":
+        // TODO
+        break;
+    case "capture-start-stop":
+        if (this.className.includes("active")) {
+            this.className = this.className.replace(" active", "");
+            let tooltip = this.getElementsByClassName("tooltiptext")[0];
+            tooltip.textContent = "Start Capture";
+            // TODO : stop capture
+        } else {
+            this.className += " active";
+            let tooltip = this.getElementsByClassName("tooltiptext")[0];
+            tooltip.textContent = "Stop Capture";
+            // TODO : start capture
+        }
+        break;
+    case "replay-upload":
+        // TODO
+        break;
+    case "replay-play-pause":
+        if (this.className.includes("active")) {
+            this.className = this.className.replace(" active", "");
+            let tooltip = this.getElementsByClassName("tooltiptext")[0];
+            tooltip.textContent = "Resume Replay";
+            let icon = this.getElementsByClassName("fa")[0];
+            icon.className = icon.className.replace(" fa-pause", " fa-repeat");
+            // TODO : pause replay
+            console.log("pause replay");
+        } else {
+            this.className += " active";
+            let tooltip = this.getElementsByClassName("tooltiptext")[0];
+            tooltip.textContent = "Pause Replay";
+            let icon = this.getElementsByClassName("fa")[0];
+            icon.className = icon.className.replace(" fa-repeat", " fa-pause");
+            // TODO : resume replay
+            console.log("resume replay");
+        }
+        break;
+    case "add-nodes":
+        // TODO
+        break;
+    case "add-peerings":
         // TODO
         break;
     case "remove":
-        console.log(this.id);
         // TODO : do peer connections as well (but not tree or snake)
         let commands = [];
         let nodes = graph.GetSelectedNodes();
@@ -124,24 +155,20 @@ function selectTool(toolType) {
         if (commands.length > 0) {
             SendToServer({"MsgID": APICommandMessageID.PlaySequence, "Events": commands});
         }
-        // TODO : the remove button should probably flash temporarily to active
-        this.className = this.className.replace(" active", "");
-        break;
-    case "capture":
-        console.log(this.id);
-        // TODO
-        break;
-    case "replay":
-        console.log(this.id);
-        // TODO
         break;
     }
 }
 
 function setupToolSelection() {
-    let selectionTabs = document.getElementsByClassName("toolselect");
-    for (let i = 0; i < selectionTabs.length; i++) {
-        selectionTabs[i].onclick = selectTool;
+    let tools = document.getElementsByClassName("toolselect");
+    for (let i = 0; i < tools.length; i++) {
+        tools[i].onclick = selectTool;
+    }
+
+    let subtools = document.getElementsByClassName("subtoolselect");
+    for (let i = 0; i < subtools.length; i++) {
+        console.log("sadf");
+        subtools[i].onclick = selectTool;
     }
 }
 setupToolSelection();

@@ -20,6 +20,10 @@ body {
     --topnav-height: 0px;
     --toggle-box-size: 35px;
     --toggle-box-margin: 10px;
+    --tool-panel-count: 5;
+    --topo-panel-count: 4;
+    --tool-icon-size: calc(var(--tool-panel-width) / var(--tool-panel-count));
+    --topo-icon-size: calc(var(--topo-panel-width) / var(--topo-panel-count));
 }
 
 * {
@@ -90,6 +94,11 @@ body {
     background-color: var(--color-logo-green);
 }
 
+.toggle:active {
+    color: var(--color-dark-grey);
+    background-color: var(--color-dull-grey);
+}
+
 .topLeft {
     top: 0;
     left: 0;
@@ -149,6 +158,7 @@ body {
 
 .icon-bar {
     width: var(--topo-panel-width); /* Set a specific width */
+    height: var(--topo-panel-height);
     background-color: var(--color-dark-grey); /* Dark-grey background */
     margin: 10px;
 }
@@ -175,52 +185,68 @@ body {
     left: calc(50% - var(--tool-panel-width) / 2);
 }
 
-.netselect:hover {
-    background-color: var(--color-dull-grey);
-    color: var(--color-dark-grey);
-}
-
-.netselect.active {
-    background-color: var(--color-logo-green); /* Add an active/current color */
-    color: var(--color-dull-grey);
+.netselect, .toolselect, .dropup .dropup-button, .dropup-content button {
+    float: left; /* Float links side by side */
+    text-align: center; /* Center-align text */
+    padding: 12px 0; /* Some top and bottom padding */
+    background-color: var(--color-dark-grey);
+    color: var(--color-dull-grey); /* White text color */
+    font-size: 18px; /* Increased font size */
+    text-decoration: none;
+    position: relative;
+    border: none;
 }
 
 .netselect {
-    float: left; /* Float links side by side */
-    text-align: center; /* Center-align text */
-    width: 25%; /* Equal width (4 icons with 25% width each = 100%) */
-    padding: 12px 0; /* Some top and bottom padding */
-    transition: all 0.3s ease; /* Add transition for hover effects */
-    background-color: var(--color-dark-grey);
-    color: var(--color-dull-grey); /* White text color */
-    font-size: 18px; /* Increased font size */
-    text-decoration: none;
-    position: relative;
-    border: none;
+    width: var(--topo-icon-size);
 }
 
-.toolselect:hover {
+.toolselect {
+    width: var(--tool-icon-size);
+}
+
+.toolselect:hover, .netselect:hover, .dropup-content button:hover, .netselect.active:hover, .toolselect.active:hover {
+    background-color: var(--color-logo-green); /* Add an active/current color */
+    color: var(--color-dark-grey);
+}
+
+.netselect.active, .toolselect.active, .dropup:hover .dropup-button {
+    color: var(--color-dull-grey);
+    background-color: var(--color-logo-green); /* Add an active/current color */
+}
+
+.toolselect:active, .netselect:active, .netselect.active:active, .toolselect.active:active, .dropup-content:active, .dropup-content button:active {
     background-color: var(--color-dull-grey);
     color: var(--color-dark-grey);
 }
 
-.toolselect.active {
-    background-color: var(--color-logo-green); /* Add an active/current color */
-    color: var(--color-dull-grey);
+.dropup {
+    float: left;
+    overflow: hidden;
 }
 
-.toolselect {
-    float: left; /* Float links side by side */
-    text-align: center; /* Center-align text */
-    width: 20%; /* Equal width (5 icons with 20% width each = 100%) */
-    padding: 12px 0; /* Some top and bottom padding */
-    transition: all 0.3s ease; /* Add transition for hover effects */
-    background-color: var(--color-dark-grey);
-    color: var(--color-dull-grey); /* White text color */
-    font-size: 18px; /* Increased font size */
-    text-decoration: none;
-    position: relative;
-    border: none;
+.dropup .dropup-button {
+    width: var(--tool-icon-size);
+}
+
+/* dropup content (hidden by default) */
+.dropup-content {
+    display: none;
+    position: absolute;
+    bottom: 100%;
+    z-index: 1;
+}
+
+/* Buttons inside the dropup */
+.dropup-content button {
+    float: none;
+    display: block;
+    width: var(--tool-icon-size);
+}
+
+/* Show the dropup menu on hover */
+.dropup:hover .dropup-content {
+    display: block;
 }
 
 /* Tooltip container */
