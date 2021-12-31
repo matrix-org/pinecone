@@ -121,7 +121,6 @@ function selectTool(toolType) {
         if (this.className.includes("active")) {
             ResetReplayUI(this);
             // TODO : pause replay
-            console.log("pause replay");
         } else {
             this.className += " active";
             let tooltip = this.getElementsByClassName("tooltiptext")[0];
@@ -129,7 +128,6 @@ function selectTool(toolType) {
             let icon = this.getElementsByClassName("fa")[0];
             icon.className = icon.className.replace(" fa-repeat", " fa-pause");
             // TODO : resume replay
-            console.log("resume replay");
         }
         break;
     case "add-nodes":
@@ -163,7 +161,6 @@ function setupToolSelection() {
 
     let subtools = document.getElementsByClassName("subtoolselect");
     for (let i = 0; i < subtools.length; i++) {
-        console.log("sadf");
         subtools[i].onclick = selectTool;
     }
 }
