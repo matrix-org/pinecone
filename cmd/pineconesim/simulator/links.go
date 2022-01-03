@@ -24,6 +24,9 @@ import (
 )
 
 func (sim *Simulator) ConnectNodes(a, b string) error {
+	if a == b {
+		return fmt.Errorf("invalid node pair, a node cannot peer with iself")
+	}
 	sim.nodesMutex.RLock()
 	na := sim.nodes[a]
 	nb := sim.nodes[b]

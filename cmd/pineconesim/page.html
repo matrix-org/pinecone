@@ -42,7 +42,7 @@
                     </button>
                 </div>
 
-                <div class="tool-bar icon-bar-center bottom overlay">
+                <div class="tool-bar tool-bar-center bottom overlay">
                     <div class="dropup" >
                         <button class="dropup-button" id="scenario">
                             <i class="fa fa-image"></i></button>
@@ -104,6 +104,30 @@
                 <div class="right panel-overlay" id="right">
                     <div class="right-padding">
                         <div id="currentNodeState"></div>
+                    </div>
+                </div>
+
+                <div id="add-nodes-modal" class="modal">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <span class="close">&times;</span>
+                            <h2>Add Nodes</h2>
+                        </div>
+                        <div class="modal-body">
+                            <form id="add-nodes-form" action="javascript:;"></form>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="add-peerings-modal" class="modal">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <span class="close">&times;</span>
+                            <h2>Add Peerings</h2>
+                        </div>
+                        <div class="modal-body">
+                            <form id="add-peerings-form" action="javascript:;"></form>
+                        </div>
                     </div>
                 </div>
             </div>

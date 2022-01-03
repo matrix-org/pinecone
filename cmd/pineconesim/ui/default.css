@@ -32,7 +32,7 @@ body {
 
 .left {
     background-color: var(--color-dull-grey);
-    width: max-content;
+    width: 0;
     height: calc(100vh - var(--topnav-height));
     overflow: scroll;
     left: 0;
@@ -87,16 +87,18 @@ body {
     align-items: center;
     border-radius: 10%;
     margin: var(--toggle-box-margin);
+    border: none;
 }
 
 .toggle:hover {
     color: var(--color-dark-grey);
     background-color: var(--color-logo-green);
+    cursor: pointer;
 }
 
 .toggle:active {
-    color: var(--color-dark-grey);
-    background-color: var(--color-dull-grey);
+    color: var(--color-dull-grey);
+    background-color: var(--color-dark-grey);
 }
 
 .topLeft {
@@ -145,7 +147,6 @@ body {
 .toggle-overlay {
     z-index: 9;
     position: absolute;
-    border: none;
     opacity: 1;
 }
 
@@ -208,6 +209,7 @@ body {
 .toolselect:hover, .netselect:hover, .dropup-content button:hover, .netselect.active:hover, .toolselect.active:hover {
     background-color: var(--color-logo-green); /* Add an active/current color */
     color: var(--color-dark-grey);
+    cursor: pointer;
 }
 
 .netselect.active, .toolselect.active, .dropup:hover .dropup-button {
@@ -345,4 +347,184 @@ body {
     border-width: 5px;
     border-style: solid;
     border-color: var(--color-dark-grey) transparent transparent transparent;
+}
+
+/* The Modal (background) */
+.modal {
+    display: none; /* Hidden by default */
+    position: fixed; /* Stay in place */
+    z-index: 10; /* Sit on top */
+    left: 0;
+    top: 0;
+    width: 100%; /* Full width */
+    height: 100%; /* Full height */
+    overflow: auto; /* Enable scroll if needed */
+    background-color: rgb(0,0,0); /* Fallback color */
+    background-color: rgba(0,0,0,0.4); /* Black w/ opacity */
+}
+
+/* Modal Header */
+.modal-header {
+    padding: 2px 16px;
+    background-color: var(--color-ems-purple);
+    color: var(--color-dull-grey);
+}
+
+/* Modal Body */
+.modal-body {padding: 2px 16px;}
+
+/* Modal Content */
+.modal-content {
+    position: relative;
+    background-color: var(--color-dull-grey);
+    margin: auto;
+    padding: 0;
+    margin-top: 5%;
+    margin-bottom: 5%;
+    width: 60%;
+    min-width: 540px; /* 600 * 90% */
+    box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2),0 6px 20px 0 rgba(0,0,0,0.19);
+    animation-name: animatemodal;
+    animation-duration: 0.4s
+}
+
+@media screen and (max-width: 600px) {
+    .modal-content {
+        width: 90%;
+        min-width: 0;
+    }
+}
+
+@keyframes animatemodal {
+    from {opacity: 0}
+    to {opacity: 1}
+}
+
+/* The Close Button */
+.close {
+    color: var(--color-dark-grey);
+    float: right;
+    margin-top: 10px;
+    font-size: 28px;
+    font-weight: bold;
+}
+
+.close:hover,
+.close:focus {
+    color: black;
+    text-decoration: none;
+    cursor: pointer;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+ /* Style inputs, select elements and textareas */
+input[type=text], select, textarea{
+    width: 100%;
+    padding: 12px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    box-sizing: border-box;
+    resize: vertical;
+}
+
+.focus-error {
+    outline: 1px solid var(--color-dark-red);
+    border: 1px solid var(--color-dark-red);
+    box-shadow: 0 0 3px var(--color-dark-red);
+    -moz-box-shadow: 0 0 3px var(--color-dark-red);
+    -webkit-box-shadow: 0 0 3px var(--color-dark-red);
+}
+
+input[type=text]:focus {
+    outline: none;
+    border: 1px solid var(--color-ems-purple);
+    box-shadow: 0 0 3px var(--color-ems-purple);
+    -moz-box-shadow: 0 0 3px var(--color-ems-purple);
+    -webkit-box-shadow: 0 0 3px var(--color-ems-purple);
+}
+
+/* Style the label to display next to the inputs */
+label {
+    padding: 12px 12px 12px 0;
+    display: inline-block;
+}
+
+/* Style the submit button */
+input[type=submit] {
+    background-color: var(--color-logo-green);
+    color: var(--color-dull-grey);
+    padding: 12px 20px;
+    margin-top: 10px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    float: right;
+}
+
+input[type=submit]:hover {
+    color: var(--color-dark-grey);
+    background-color: var(--color-logo-green);
+}
+
+input[type=submit]:active {
+    color: var(--color-dull-grey);
+    background-color: var(--color-dark-grey);
+}
+
+/* Style the container */
+.container {
+    border-radius: 5px;
+    background-color: var(--color-dull-grey);
+    padding: 20px;
+}
+
+.extend-form-button {
+    float: right;
+    margin: 0;
+    margin-top: -10px;
+}
+
+/* Floating column for labels: 25% width */
+.col-25 {
+    float: left;
+    width: 25%;
+    min-width: max-content;
+    margin-top: 6px;
+}
+
+/* Floating column for inputs: 75% width */
+.col-75 {
+    float: left;
+    width: 75%;
+    margin-top: 6px;
+}
+
+/* Clear floats after the columns */
+.row:after {
+    content: "";
+    display: table;
+    clear: both;
+}
+
+@media screen and (max-width: 600px) {
+    .col-25, .col-75 {
+        width: 100%;
+        margin-top: 0;
+    }
+}
+
+@media screen and (max-width: 600px) {
+    input[type=submit] {
+        width: 100%;
+    }
 }
