@@ -334,6 +334,7 @@ func userProxyReporter(conn *websocket.Conn, connID uint64, sim *simulator.Simul
 
 	// Start event handler for future sim events
 	handleSimEvents(log, conn, ch)
+	log.Printf("Closing WsSimReporter::%d\n", connID)
 }
 
 func handleSimEvents(log *log.Logger, conn *websocket.Conn, ch <-chan simulator.SimEvent) {
