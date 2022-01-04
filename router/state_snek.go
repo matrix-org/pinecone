@@ -179,8 +179,8 @@ func (s *state) _bootstrapNow() {
 
 type snekNextHopParams struct {
 	isBootstrap       bool
-	destinationKey    *types.PublicKey
-	publicKey         *types.PublicKey
+	destinationKey    types.PublicKey
+	publicKey         types.PublicKey
 	parentPeer        *peer
 	selfPeer          *peer
 	lastAnnouncement  *rootAnnouncementWithTime
@@ -194,8 +194,8 @@ type snekNextHopParams struct {
 func (s *state) _nextHopsSNEK(rx *types.Frame, bootstrap bool) *peer {
 	nextHopParams := snekNextHopParams{
 		bootstrap,
-		&rx.DestinationKey,
-		&s.r.public,
+		rx.DestinationKey,
+		s.r.public,
 		s._parent,
 		s.r.local,
 		s._rootAnnouncement(),
@@ -213,12 +213,12 @@ func getNextHopSNEK(params snekNextHopParams) *peer {
 		return params.selfPeer
 	}
 
-	destKey := *params.destinationKey
+	destKey := params.destinationKey
 
 	// We start off with our own key as the best key. Any suitable next-hop
 	// candidate has to improve on our own key in order to forward the frame,
 	// otherwise we'll return the local router port instead.
-	bestKey := *params.publicKey
+	bestKey := params.publicKey
 	bestPeer := params.selfPeer
 	// newCandidate updates the best key and best peer with new candidates.
 	newCandidate := func(key types.PublicKey, p *peer) {
@@ -230,7 +230,7 @@ func getNextHopSNEK(params snekNextHopParams) *peer {
 		switch {
 		case !params.isBootstrap && candidate == destKey && bestKey != destKey:
 			newCandidate(candidate, p)
-		case util.DHTOrdered(*params.destinationKey, candidate, bestKey):
+		case util.DHTOrdered(params.destinationKey, candidate, bestKey):
 			newCandidate(candidate, p)
 		}
 	}
