@@ -114,7 +114,7 @@ type Play struct{}
 // Tag Play as a Command
 func (c Play) Run(log *log.Logger, sim *Simulator) {
 	log.Printf("Executing command %s", c)
-	// TODO
+	sim.Play()
 }
 
 func (c Play) String() string {
@@ -126,7 +126,7 @@ type Pause struct{}
 // Tag Pause as a Command
 func (c Pause) Run(log *log.Logger, sim *Simulator) {
 	log.Printf("Executing command %s", c)
-	// TODO
+	sim.Pause()
 }
 
 func (c Pause) String() string {

@@ -183,14 +183,22 @@ function handleToolReplayUpload(subtool) {
                         if (sequence[i].hasOwnProperty("Command") && validSimCommands.has(sequence[i].Command)) {
                             let command = sequence[i].Command;
                             let requiredDataFields = validSimCommands.get(command);
+                            let shouldSend = false;
+                            if (sequence[i].hasOwnProperty("Data") && requiredDataFields.length === 0) {
+                                shouldSend = true;
+                            }
                             for (let j = 0; j < requiredDataFields.length; j++) {
                                 if (sequence[i].hasOwnProperty("Data") && sequence[i].Data.hasOwnProperty(requiredDataFields[j])) {
-                                    let id = convertCommandToID(command);
-                                    msgs.push({"MsgID": id, "Event": sequence[i].Data});
+                                    shouldSend = true;
                                 } else {
                                     // TODO : Handle invalid sim command field
                                     console.log("Import error: " + JSON.stringify(sequence[i]) + " does not contain \"Data\" field \"" + requiredDataFields[j] + "\"");
                                 }
+                            }
+
+                            if (shouldSend) {
+                                let id = convertCommandToID(command);
+                                msgs.push({"MsgID": id, "Event": sequence[i].Data});
                             }
                         } else {
                             // TODO : Handle invalid sim command
@@ -216,15 +224,15 @@ function handleToolReplayPlayPause(subtool) {
     if (subtool.className.includes("active")) {
         ResetReplayUI(subtool);
 
-        command.MsgID = APICommandID.Pause;
+        command.MsgID = APICommandID.Play;
     } else {
         subtool.className += " active";
         let tooltip = subtool.getElementsByClassName("tooltiptext")[0];
-        tooltip.textContent = "Pause Replay";
+        tooltip.textContent = "Play Events";
         let icon = subtool.getElementsByClassName("fa")[0];
-        icon.className = icon.className.replace(" fa-repeat", " fa-pause");
+        icon.className = icon.className.replace(" fa-pause", " fa-play");
 
-        command.MsgID = APICommandID.Play;
+        command.MsgID = APICommandID.Pause;
     }
 
     SendToServer({"MsgID": APICommandMessageID.PlaySequence, "Events": [command]});
@@ -372,9 +380,9 @@ function convertCommandToID(command) {
 export function ResetReplayUI(element) {
     element.className = element.className.replace(" active", "");
     let tooltip = element.getElementsByClassName("tooltiptext")[0];
-    tooltip.textContent = "Resume Replay";
+    tooltip.textContent = "Pause Events";
     let icon = element.getElementsByClassName("fa")[0];
-    icon.className = icon.className.replace(" fa-pause", " fa-repeat");
+    icon.className = icon.className.replace(" fa-play", " fa-pause");
 }
 
 function submitAddNodesForm(form) {

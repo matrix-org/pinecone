@@ -402,9 +402,38 @@ func userProxyCommander(conn *websocket.Conn, connID uint64, sim *simulator.Simu
 		}
 
 		if len(commands) > 0 {
-			log.Printf("Adding the following commands to be played: %v", commands)
-			sim.AddToPlaylist(commands)
-			sim.Play()
+			k := 0
+			keepCommand := func(i int, cmd simulator.SimCommand) {
+				if i != k {
+					commands[k] = cmd
+				}
+				k++
+			}
+			for i, cmd := range commands {
+				switch cmd.(type) {
+				case simulator.Play:
+					if len(commands) > 1 {
+						log.Println("Play removed from sequence")
+					} else {
+						cmd.Run(log, sim)
+					}
+				case simulator.Pause:
+					if len(commands) > 1 {
+						log.Println("Pause removed from sequence")
+					} else {
+						cmd.Run(log, sim)
+					}
+				default:
+					keepCommand(i, cmd)
+				}
+			}
+
+			commands = commands[:k]
+
+			if len(commands) > 0 {
+				log.Printf("Adding the following commands to be played: %v", commands)
+				sim.AddToPlaylist(commands)
+			}
 		}
 	}
 }
