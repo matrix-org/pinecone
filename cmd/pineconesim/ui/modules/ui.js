@@ -145,7 +145,70 @@ function handleToolCaptureStartStop(subtool) {
 }
 
 function handleToolReplayUpload(subtool) {
-    // TODO
+    // Pop open a new file selection dialog
+    let input = document.createElement('input');
+    input.type = 'file';
+
+    input.onchange = e => {
+        let file = e.target.files[0];
+        let reader = new FileReader();
+        reader.readAsText(file,'UTF-8');
+
+        reader.onload = readerEvent => {
+            let content;
+            try {
+                content = JSON.parse(readerEvent.target.result);
+            }
+            catch(err) {
+                // TODO : Handle json parse failure
+                console.log(err);
+            }
+
+            if (content) {
+                if (content.hasOwnProperty("EventSequence")) {
+                    let validSimCommands = new Map();
+                    validSimCommands.set("Debug", []);
+                    validSimCommands.set("Play", []);
+                    validSimCommands.set("Pause", []);
+                    validSimCommands.set("Delay", ["Length"]);
+                    validSimCommands.set("AddNode", ["Name"]);
+                    validSimCommands.set("RemoveNode", ["Name"]);
+                    validSimCommands.set("AddPeer", ["Node", "Peer"]);
+                    validSimCommands.set("RemovePeer", ["Node", "Peer"]);
+
+                    let msgs = [];
+
+                    for (let i = 0; i < content.EventSequence.length; i++) {
+                        let sequence = content.EventSequence;
+                        if (sequence[i].hasOwnProperty("Command") && validSimCommands.has(sequence[i].Command)) {
+                            let command = sequence[i].Command;
+                            let requiredDataFields = validSimCommands.get(command);
+                            for (let j = 0; j < requiredDataFields.length; j++) {
+                                if (sequence[i].hasOwnProperty("Data") && sequence[i].Data.hasOwnProperty(requiredDataFields[j])) {
+                                    let id = convertCommandToID(command);
+                                    msgs.push({"MsgID": id, "Event": sequence[i].Data});
+                                } else {
+                                    // TODO : Handle invalid sim command field
+                                    console.log("Import error: " + JSON.stringify(sequence[i]) + " does not contain \"Data\" field \"" + requiredDataFields[j] + "\"");
+                                }
+                            }
+                        } else {
+                            // TODO : Handle invalid sim command
+                            console.log("Import error: " + JSON.stringify(sequence[i]) + " is not a valid sim command");
+                        }
+                    }
+
+                    SendToServer({"MsgID": APICommandMessageID.PlaySequence, "Events": msgs});
+                }
+                else {
+                    // TODO : Handle json not having right fields
+                    console.log("Import error: JSON does not include EventSequence field");
+                }
+            }
+        };
+    };
+
+    input.click();
 }
 
 function handleToolReplayPlayPause(subtool) {
@@ -271,6 +334,40 @@ function setupFormSubmission() {
     }
 }
 setupFormSubmission();
+
+function convertCommandToID(command) {
+    let id = APICommandID.Unknown;
+    switch (command) {
+    case "Debug":
+        id = APICommandID.Debug;
+        break;
+    case "Play":
+        id = APICommandID.Play;
+        break;
+    case "Pause":
+        id = APICommandID.Pause;
+        break;
+    case "Delay":
+        id = APICommandID.Delay;
+        break;
+    case "AddNode":
+        id = APICommandID.AddNode;
+        break;
+    case "RemoveNode":
+        id = APICommandID.RemoveNode;
+        break;
+    case "AddPeer":
+        id = APICommandID.AddPeer;
+        break;
+    case "RemovePeer":
+        id = APICommandID.RemovePeer;
+        break;
+    default:
+        break;
+    }
+
+    return id;
+}
 
 export function ResetReplayUI(element) {
     element.className = element.className.replace(" active", "");

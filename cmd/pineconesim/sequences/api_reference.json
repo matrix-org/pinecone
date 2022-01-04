@@ -1,0 +1,48 @@
+{
+    "EventSequence": [
+        {
+            "Command": "Debug",
+            "Data": {}
+        },
+        {
+            "Command": "Play",
+            "Data": {}
+        },
+        {
+            "Command": "Pause",
+            "Data": {}
+        },
+        {
+            "Command": "Delay",
+            "Data": {
+                "Length": 100
+            }
+        },
+        {
+            "Command": "AddNode",
+            "Data": {
+                "Name": "Alice"
+            }
+        },
+        {
+            "Command": "RemoveNode",
+            "Data": {
+                "Name": "Alice"
+            }
+        },
+        {
+            "Command": "AddPeer",
+            "Data": {
+                "Node": "Alice",
+                "Peer": "Bob"
+            }
+        },
+        {
+            "Command": "RemovePeer",
+            "Data": {
+                "Node": "Alice",
+                "Peer": "Bob"
+            }
+        }
+    ]
+}
