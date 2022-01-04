@@ -150,7 +150,7 @@ class Graph {
         this.started = true;
         this.network = new vis.Network(this.canvas, this.currentData, this.options);
         this.setupHandlers();
-        this.updateUI();
+        this.updateUI("");
 
         // HACK : network won't restabilize unless I give a node a kick...
         this.kickNode(this.nodeIDs[0]);
@@ -234,6 +234,7 @@ class Graph {
         Nodes.delete(id);
 
         this.deselectRemovedNodes();
+        this.updateUI(id);
     }
 
     updateRootAnnouncement(id, root, sequence, time, coords) {
