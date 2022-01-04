@@ -28,6 +28,10 @@ func UnmarshalCommandJSON(command *SimCommandMsg) (SimCommand, error) {
 	switch command.MsgID {
 	case SimDebug:
 		msg = StateDebug{}
+	case SimPlay:
+		msg = Play{}
+	case SimPause:
+		msg = Pause{}
 	case SimDelay:
 		length := uint64(0)
 		if val, ok := command.Event.(map[string]interface{})["Length"]; ok {
@@ -103,6 +107,30 @@ func (c StateDebug) Run(log *log.Logger, sim *Simulator) {
 
 func (c StateDebug) String() string {
 	return "StateDebug{}"
+}
+
+type Play struct{}
+
+// Tag Play as a Command
+func (c Play) Run(log *log.Logger, sim *Simulator) {
+	log.Printf("Executing command %s", c)
+	// TODO
+}
+
+func (c Play) String() string {
+	return "Play{}"
+}
+
+type Pause struct{}
+
+// Tag Pause as a Command
+func (c Pause) Run(log *log.Logger, sim *Simulator) {
+	log.Printf("Executing command %s", c)
+	// TODO
+}
+
+func (c Pause) String() string {
+	return "Pause{}"
 }
 
 type Delay struct {

@@ -96,89 +96,126 @@ setupNetworkSelection();
 function selectTool(toolType) {
     switch(this.id) {
     case "scenario-new":
-        // TODO
+        handleToolScenarioNew(this);
         break;
     case "scenario-load":
-        // TODO
+        handleToolScenarioLoad(this);
         break;
     case "capture-start-stop":
-        if (this.className.includes("active")) {
-            this.className = this.className.replace(" active", "");
-            let tooltip = this.getElementsByClassName("tooltiptext")[0];
-            tooltip.textContent = "Start Capture";
-            // TODO : stop capture
-        } else {
-            this.className += " active";
-            let tooltip = this.getElementsByClassName("tooltiptext")[0];
-            tooltip.textContent = "Stop Capture";
-            // TODO : start capture
-        }
+        handleToolCaptureStartStop(this);
         break;
     case "replay-upload":
-        // TODO
+        handleToolReplayUpload(this);
         break;
     case "replay-play-pause":
-        if (this.className.includes("active")) {
-            ResetReplayUI(this);
-            // TODO : pause replay
-        } else {
-            this.className += " active";
-            let tooltip = this.getElementsByClassName("tooltiptext")[0];
-            tooltip.textContent = "Pause Replay";
-            let icon = this.getElementsByClassName("fa")[0];
-            icon.className = icon.className.replace(" fa-repeat", " fa-pause");
-            // TODO : resume replay
-        }
+        handleToolReplayPlayPause(this);
         break;
     case "add-nodes":
-        setupBaseModal("add-nodes-modal");
-
-        let nodesForm = document.getElementById("add-nodes-form");
-        nodesForm.innerHTML = '<span><button id="extend-nodes" type="button" class="toggle extend-form-button">+</button></span><h4>New Nodes</h4>';
-
-        addSubmitButton(nodesForm);
-        extendNodesForm();
-
-        let extendNodesButton = document.getElementById("extend-nodes");
-        extendNodesButton.onclick = extendNodesForm;
+        handleToolAddNodes(this);
         break;
     case "add-peerings":
-        setupBaseModal("add-peerings-modal");
-
-        let peeringsForm = document.getElementById("add-peerings-form");
-        peeringsForm.innerHTML = '<span><button id="extend-peerings" type="button" class="toggle extend-form-button">+</button></span><h4>New Peer Connections</h4>';
-
-        addSubmitButton(peeringsForm);
-        extendPeeringsForm();
-
-        let extendPeeringsButton = document.getElementById("extend-peerings");
-        extendPeeringsButton.onclick = extendPeeringsForm;
+        handleToolAddPeerings(this);
         break;
     case "remove":
-        let commands = [];
-        let nodes = graph.GetSelectedNodes();
-        let peerings = graph.GetSelectedPeerings();
-
-        if (nodes) {
-            for (let i = 0; i < nodes.length; i++) {
-                commands.push({"MsgID": APICommandID.RemoveNode, "Event": {"Name": nodes[i]}});
-            }
-        }
-
-        if (peerings) {
-            for (let i = 0; i < peerings.length; i++) {
-                if (nodes && (nodes.includes(peerings[i].from) || nodes.includes(peerings[i].to))) {
-                    // Don't send redundant commands if a node is already being removed.
-                    continue;
-                }
-                commands.push({"MsgID": APICommandID.RemovePeer, "Event": {"Node": peerings[i].from, "Peer": peerings[i].to}});
-            }
-        }
-
-        if (commands.length > 0) {
-            SendToServer({"MsgID": APICommandMessageID.PlaySequence, "Events": commands});
-        }
+        handleToolRemove(this);
         break;
+    }
+}
+
+function handleToolScenarioNew(subtool) {
+    // TODO
+}
+
+function handleToolScenarioLoad(subtool) {
+    // TODO
+}
+
+function handleToolCaptureStartStop(subtool) {
+    if (subtool.className.includes("active")) {
+        subtool.className = subtool.className.replace(" active", "");
+        let tooltip = subtool.getElementsByClassName("tooltiptext")[0];
+        tooltip.textContent = "Start Capture";
+        // TODO : stop capture
+    } else {
+        subtool.className += " active";
+        let tooltip = subtool.getElementsByClassName("tooltiptext")[0];
+        tooltip.textContent = "Stop Capture";
+        // TODO : start capture
+    }
+}
+
+function handleToolReplayUpload(subtool) {
+    // TODO
+}
+
+function handleToolReplayPlayPause(subtool) {
+    let command = {"MsgID": APICommandID.Unknown, "Event": {}};
+    if (subtool.className.includes("active")) {
+        ResetReplayUI(subtool);
+
+        command.MsgID = APICommandID.Pause;
+    } else {
+        subtool.className += " active";
+        let tooltip = subtool.getElementsByClassName("tooltiptext")[0];
+        tooltip.textContent = "Pause Replay";
+        let icon = subtool.getElementsByClassName("fa")[0];
+        icon.className = icon.className.replace(" fa-repeat", " fa-pause");
+
+        command.MsgID = APICommandID.Play;
+    }
+
+    SendToServer({"MsgID": APICommandMessageID.PlaySequence, "Events": [command]});
+}
+
+function handleToolAddNodes(subtool) {
+    setupBaseModal("add-nodes-modal");
+
+    let nodesForm = document.getElementById("add-nodes-form");
+    nodesForm.innerHTML = '<span><button id="extend-nodes" type="button" class="toggle extend-form-button">+</button></span><h4>New Nodes</h4>';
+
+    addSubmitButton(nodesForm);
+    extendNodesForm();
+
+    let extendNodesButton = document.getElementById("extend-nodes");
+    extendNodesButton.onclick = extendNodesForm;
+}
+
+function handleToolAddPeerings(subtool) {
+    setupBaseModal("add-peerings-modal");
+
+    let peeringsForm = document.getElementById("add-peerings-form");
+    peeringsForm.innerHTML = '<span><button id="extend-peerings" type="button" class="toggle extend-form-button">+</button></span><h4>New Peer Connections</h4>';
+
+    addSubmitButton(peeringsForm);
+    extendPeeringsForm();
+
+    let extendPeeringsButton = document.getElementById("extend-peerings");
+    extendPeeringsButton.onclick = extendPeeringsForm;
+}
+
+function handleToolRemove(subtool) {
+    let commands = [];
+    let nodes = graph.GetSelectedNodes();
+    let peerings = graph.GetSelectedPeerings();
+
+    if (nodes) {
+        for (let i = 0; i < nodes.length; i++) {
+            commands.push({"MsgID": APICommandID.RemoveNode, "Event": {"Name": nodes[i]}});
+        }
+    }
+
+    if (peerings) {
+        for (let i = 0; i < peerings.length; i++) {
+            if (nodes && (nodes.includes(peerings[i].from) || nodes.includes(peerings[i].to))) {
+                // Don't send redundant commands if a node is already being removed.
+                continue;
+            }
+            commands.push({"MsgID": APICommandID.RemovePeer, "Event": {"Node": peerings[i].from, "Peer": peerings[i].to}});
+        }
+    }
+
+    if (commands.length > 0) {
+        SendToServer({"MsgID": APICommandMessageID.PlaySequence, "Events": commands});
     }
 }
 

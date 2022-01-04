@@ -24,11 +24,13 @@ export const APIUpdateID = {
 export const APICommandID = {
     Unknown: 0,
     Debug: 1,
-    Delay: 2,
-    AddNode: 3,
-    RemoveNode: 4,
-    AddPeer: 5,
-    RemovePeer: 6,
+    Play: 2,
+    Pause: 3,
+    Delay: 4,
+    AddNode: 5,
+    RemoveNode: 6,
+    AddPeer: 7,
+    RemovePeer: 8,
 };
 
 var serverWorker;

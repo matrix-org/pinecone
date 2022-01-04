@@ -45,6 +45,8 @@ const (
 const (
 	UnknownCommand APICommandID = iota
 	SimDebug
+	SimPlay
+	SimPause
 	SimDelay
 	SimAddNode
 	SimRemoveNode

@@ -379,7 +379,12 @@ func userProxyCommander(conn *websocket.Conn, connID uint64, sim *simulator.Simu
 		var eventSequence simulator.SimCommandSequenceMsg
 		if err := conn.ReadJSON(&eventSequence); err != nil {
 			log.Println(err)
-			return
+			if strings.Contains(err.Error(), "unmarshal") {
+				continue
+			} else {
+				log.Printf("Unhandled websocket failure, closing WsSimCommander::%d\n", connID)
+				return
+			}
 		}
 		log.Printf("Received command sequence :: %v", eventSequence)
 
