@@ -77,10 +77,10 @@ func TestSNEKNextHopSelection(t *testing.T) {
 
 	cases := []struct {
 		desc     string
-		input    snekNextHopParams
+		input    virtualSnakeNextHopParams
 		expected *peer // index into peer list
 	}{
-		{"TestNotBootstrapNoValidNextHop", snekNextHopParams{
+		{"TestNotBootstrapNoValidNextHop", virtualSnakeNextHopParams{
 			false,
 			destUpKey,
 			selfKey,
@@ -92,7 +92,7 @@ func TestSNEKNextHopSelection(t *testing.T) {
 			},
 			virtualSnakeTable{},
 		}, peers[1]}, // default peer with no next hop is parent
-		{"TestBootstrapNoValidNextHop", snekNextHopParams{
+		{"TestBootstrapNoValidNextHop", virtualSnakeNextHopParams{
 			true,
 			destUpKey,
 			selfKey,
@@ -104,7 +104,7 @@ func TestSNEKNextHopSelection(t *testing.T) {
 			},
 			virtualSnakeTable{},
 		}, peers[1]}, // default bootstrap peer with no next hop is parent
-		{"TestNotBootstrapDestIsSelf", snekNextHopParams{
+		{"TestNotBootstrapDestIsSelf", virtualSnakeNextHopParams{
 			false,
 			destUpKey,
 			destUpKey,
@@ -117,7 +117,7 @@ func TestSNEKNextHopSelection(t *testing.T) {
 			},
 			virtualSnakeTable{},
 		}, peers[0]},
-		{"TestBootstrapDestIsSelf", snekNextHopParams{
+		{"TestBootstrapDestIsSelf", virtualSnakeNextHopParams{
 			true,
 			destUpKey,
 			destUpKey,
@@ -129,7 +129,7 @@ func TestSNEKNextHopSelection(t *testing.T) {
 			},
 			virtualSnakeTable{},
 		}, peers[1]}, // bootstraps always start working towards root via parent
-		{"TestNotBootstrapPeerIsDestination", snekNextHopParams{
+		{"TestNotBootstrapPeerIsDestination", virtualSnakeNextHopParams{
 			false,
 			destUpKey,
 			selfKey,
@@ -142,7 +142,7 @@ func TestSNEKNextHopSelection(t *testing.T) {
 			},
 			virtualSnakeTable{},
 		}, peers[2]},
-		{"TestBootstrapPeerIsDestination", snekNextHopParams{
+		{"TestBootstrapPeerIsDestination", virtualSnakeNextHopParams{
 			true,
 			destUpKey,
 			selfKey,
@@ -155,7 +155,7 @@ func TestSNEKNextHopSelection(t *testing.T) {
 			},
 			virtualSnakeTable{},
 		}, peers[1]}, // bootstraps work their way toward the root
-		{"TestNotBootstrapParentKnowsDestination", snekNextHopParams{
+		{"TestNotBootstrapParentKnowsDestination", virtualSnakeNextHopParams{
 			false,
 			destUpKey,
 			selfKey,
@@ -167,7 +167,7 @@ func TestSNEKNextHopSelection(t *testing.T) {
 			},
 			virtualSnakeTable{},
 		}, peers[1]},
-		{"TestNotBootstrapPeerKnowsDestination", snekNextHopParams{
+		{"TestNotBootstrapPeerKnowsDestination", virtualSnakeNextHopParams{
 			false,
 			destUpKey,
 			selfKey,
@@ -180,7 +180,7 @@ func TestSNEKNextHopSelection(t *testing.T) {
 			},
 			virtualSnakeTable{},
 		}, peers[2]},
-		{"TestBootstrapPeerKnowsDestination", snekNextHopParams{
+		{"TestBootstrapPeerKnowsDestination", virtualSnakeNextHopParams{
 			true,
 			destUpKey,
 			selfKey,
@@ -193,7 +193,7 @@ func TestSNEKNextHopSelection(t *testing.T) {
 			},
 			virtualSnakeTable{},
 		}, peers[1]}, // bootstraps work their way toward the root
-		{"TestNotBootstrapParentKnowsCloser", snekNextHopParams{
+		{"TestNotBootstrapParentKnowsCloser", virtualSnakeNextHopParams{
 			false,
 			destUpKey,
 			selfKey,
@@ -205,7 +205,7 @@ func TestSNEKNextHopSelection(t *testing.T) {
 			},
 			virtualSnakeTable{},
 		}, peers[1]},
-		{"TestBootstrapParentKnowsCloser", snekNextHopParams{
+		{"TestBootstrapParentKnowsCloser", virtualSnakeNextHopParams{
 			true,
 			destUpKey,
 			selfKey,
@@ -217,7 +217,7 @@ func TestSNEKNextHopSelection(t *testing.T) {
 			},
 			virtualSnakeTable{},
 		}, peers[1]},
-		{"TestNotBootstrapSnakeEntryIsDest", snekNextHopParams{
+		{"TestNotBootstrapSnakeEntryIsDest", virtualSnakeNextHopParams{
 			false,
 			destDownKey,
 			selfKey,
@@ -235,7 +235,7 @@ func TestSNEKNextHopSelection(t *testing.T) {
 					virtualSnakeIndex: &virtualSnakeIndex{PublicKey: destDownKey},
 				}},
 		}, peers[3]},
-		{"TestBootstrapSnakeEntryIsDest", snekNextHopParams{
+		{"TestBootstrapSnakeEntryIsDest", virtualSnakeNextHopParams{
 			true,
 			destDownKey,
 			selfKey,

@@ -177,7 +177,7 @@ func (s *state) _bootstrapNow() {
 	}
 }
 
-type snekNextHopParams struct {
+type virtualSnakeNextHopParams struct {
 	isBootstrap       bool
 	destinationKey    types.PublicKey
 	publicKey         types.PublicKey
@@ -192,7 +192,7 @@ type snekNextHopParams struct {
 // bootstrap flag determines whether the frame should be routed using bootstrap
 // specific rules — this should only be used for VirtualSnakeBootstrap frames.
 func (s *state) _nextHopsSNEK(rx *types.Frame, bootstrap bool) *peer {
-	nextHopParams := snekNextHopParams{
+	return getNextHopSNEK(virtualSnakeNextHopParams{
 		bootstrap,
 		rx.DestinationKey,
 		s.r.public,
@@ -201,12 +201,10 @@ func (s *state) _nextHopsSNEK(rx *types.Frame, bootstrap bool) *peer {
 		s._rootAnnouncement(),
 		s._announcements,
 		s._table,
-	}
-
-	return getNextHopSNEK(nextHopParams)
+	})
 }
 
-func getNextHopSNEK(params snekNextHopParams) *peer {
+func getNextHopSNEK(params virtualSnakeNextHopParams) *peer {
 	// If the message isn't a bootstrap message and the destination is for our
 	// own public key, handle the frame locally — it's basically loopback.
 	if !params.isBootstrap && params.publicKey == params.destinationKey {
