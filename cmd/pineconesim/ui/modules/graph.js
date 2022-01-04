@@ -182,14 +182,12 @@ class Graph {
 
         this.network.on("selectNode", function (params) {
             selectedNodes = params.nodes;
-            selectedNodes = selectedNodes;
             handleNodePanelUpdate();
             openRightPanel();
         });
 
         this.network.on("deselectNode", function (params) {
             selectedNodes = params.nodes;
-            selectedNodes = selectedNodes;
             handleNodePanelUpdate();
         });
     }
@@ -507,12 +505,23 @@ class Graph {
             this.network.selectNodes(nodes);
         }
         selectedNodes = nodes;
-        selectedNodes = selectedNodes;
     }
 
     GetSelectedNodes() {
         this.deselectRemovedNodes();
         return selectedNodes;
+    }
+
+    GetSelectedPeerings() {
+        let peerings = [];
+        if (this.network && this.currentData === this.peerData) {
+            let edgeIDs = this.network.getSelectedEdges();
+            for (let i = 0; i < edgeIDs.length; i++) {
+                peerings.push(this.currentData.edges.get(edgeIDs[i]));
+            }
+        }
+
+        return peerings;
     }
 
     focusNode(nodeID) {

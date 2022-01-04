@@ -155,12 +155,24 @@ function selectTool(toolType) {
         extendPeeringsButton.onclick = extendPeeringsForm;
         break;
     case "remove":
-        // TODO : do peer connections as well (but not tree or snake)
         let commands = [];
         let nodes = graph.GetSelectedNodes();
+        let peerings = graph.GetSelectedPeerings();
+
         if (nodes) {
             for (let i = 0; i < nodes.length; i++) {
                 commands.push({"MsgID": APICommandID.RemoveNode, "Event": {"Name": nodes[i]}});
+            }
+        }
+
+        if (peerings) {
+            for (let i = 0; i < peerings.length; i++) {
+                console.log(peerings[i]);
+                if (nodes && (nodes.includes(peerings[i].from) || nodes.includes(peerings[i].to))) {
+                    // Don't send redundant commands if a node is already being removed.
+                    continue;
+                }
+                commands.push({"MsgID": APICommandID.RemovePeer, "Event": {"Node": peerings[i].from, "Peer": peerings[i].to}});
             }
         }
 
