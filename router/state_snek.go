@@ -213,13 +213,13 @@ func getNextHopSNEK(params snekNextHopParams) *peer {
 		return params.selfPeer
 	}
 
-	destKey := params.destinationKey
-
 	// We start off with our own key as the best key. Any suitable next-hop
 	// candidate has to improve on our own key in order to forward the frame,
 	// otherwise we'll return the local router port instead.
 	bestKey := params.publicKey
 	bestPeer := params.selfPeer
+	destKey := params.destinationKey
+
 	// newCandidate updates the best key and best peer with new candidates.
 	newCandidate := func(key types.PublicKey, p *peer) {
 		bestKey, bestPeer = key, p
@@ -230,7 +230,7 @@ func getNextHopSNEK(params snekNextHopParams) *peer {
 		switch {
 		case !params.isBootstrap && candidate == destKey && bestKey != destKey:
 			newCandidate(candidate, p)
-		case util.DHTOrdered(params.destinationKey, candidate, bestKey):
+		case util.DHTOrdered(destKey, candidate, bestKey):
 			newCandidate(candidate, p)
 		}
 	}
