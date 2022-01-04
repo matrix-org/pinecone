@@ -517,7 +517,10 @@ class Graph {
         if (this.network && this.currentData === this.peerData) {
             let edgeIDs = this.network.getSelectedEdges();
             for (let i = 0; i < edgeIDs.length; i++) {
-                peerings.push(this.currentData.edges.get(edgeIDs[i]));
+                let edge = this.currentData.edges.get(edgeIDs[i]);
+                if (edge) {
+                    peerings.push(this.currentData.edges.get(edgeIDs[i]));
+                }
             }
         }
 

@@ -167,7 +167,6 @@ function selectTool(toolType) {
 
         if (peerings) {
             for (let i = 0; i < peerings.length; i++) {
-                console.log(peerings[i]);
                 if (nodes && (nodes.includes(peerings[i].from) || nodes.includes(peerings[i].to))) {
                     // Don't send redundant commands if a node is already being removed.
                     continue;
