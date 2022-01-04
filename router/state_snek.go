@@ -184,8 +184,8 @@ type snekNextHopParams struct {
 	parentPeer        *peer
 	selfPeer          *peer
 	lastAnnouncement  *rootAnnouncementWithTime
-	peerAnnouncements *announcementTable
-	snakeRoutes       *virtualSnakeTable
+	peerAnnouncements announcementTable
+	snakeRoutes       virtualSnakeTable
 }
 
 // _nextHopsSNEK locates the best next-hop for a given SNEK-routed frame. The
@@ -199,8 +199,8 @@ func (s *state) _nextHopsSNEK(rx *types.Frame, bootstrap bool) *peer {
 		s._parent,
 		s.r.local,
 		s._rootAnnouncement(),
-		&s._announcements,
-		&s._table,
+		s._announcements,
+		s._table,
 	}
 
 	return getNextHopSNEK(nextHopParams)
@@ -252,7 +252,7 @@ func getNextHopSNEK(params snekNextHopParams) *peer {
 
 		// Check our direct ancestors in the tree, that is, all nodes between
 		// ourselves and the root node via the parent port.
-		if ann := (*params.peerAnnouncements)[params.parentPeer]; ann != nil {
+		if ann := params.peerAnnouncements[params.parentPeer]; ann != nil {
 			for _, ancestor := range ann.Signatures {
 				newCheckedCandidate(ancestor.PublicKey, params.parentPeer)
 			}
@@ -261,7 +261,7 @@ func getNextHopSNEK(params snekNextHopParams) *peer {
 
 	// Check all of the ancestors of our direct peers too, that is, all nodes
 	// between our direct peer and the root node.
-	for p, ann := range *params.peerAnnouncements {
+	for p, ann := range params.peerAnnouncements {
 		if !p.started.Load() {
 			continue
 		}
@@ -275,7 +275,7 @@ func getNextHopSNEK(params snekNextHopParams) *peer {
 	// example, only in this case it would make more sense to route directly
 	// to the peer via our peering with them as opposed to routing via our
 	// parent port.
-	for p := range *params.peerAnnouncements {
+	for p := range params.peerAnnouncements {
 		if !p.started.Load() {
 			continue
 		}
@@ -290,7 +290,7 @@ func getNextHopSNEK(params snekNextHopParams) *peer {
 	// side of the DHT paths. Since setups travel from the lower key to the
 	// higher one, this is effectively looking for paths that descend through
 	// keyspace toward lower keys rather than ascend toward higher ones.
-	for _, entry := range *params.snakeRoutes {
+	for _, entry := range params.snakeRoutes {
 		if !entry.Source.started.Load() || !entry.valid() || entry.Source == params.selfPeer {
 			continue
 		}

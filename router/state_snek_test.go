@@ -87,10 +87,10 @@ func TestSNEKNextHopSelection(t *testing.T) {
 			peers[1],
 			peers[0],
 			&selfAnn,
-			&announcementTable{
+			announcementTable{
 				peers[1]: &parentAnn,
 			},
-			&virtualSnakeTable{},
+			virtualSnakeTable{},
 		}, peers[1]}, // default peer with no next hop is parent
 		{"TestBootstrapNoValidNextHop", snekNextHopParams{
 			true,
@@ -99,10 +99,10 @@ func TestSNEKNextHopSelection(t *testing.T) {
 			peers[1],
 			peers[0],
 			&selfAnn,
-			&announcementTable{
+			announcementTable{
 				peers[1]: &parentAnn,
 			},
-			&virtualSnakeTable{},
+			virtualSnakeTable{},
 		}, peers[1]}, // default bootstrap peer with no next hop is parent
 		{"TestNotBootstrapDestIsSelf", snekNextHopParams{
 			false,
@@ -111,11 +111,11 @@ func TestSNEKNextHopSelection(t *testing.T) {
 			peers[1],
 			peers[0],
 			&selfAnn,
-			&announcementTable{
+			announcementTable{
 				peers[1]: &parentAnn,
 				peers[2]: &knowsDestUpAnn,
 			},
-			&virtualSnakeTable{},
+			virtualSnakeTable{},
 		}, peers[0]},
 		{"TestBootstrapDestIsSelf", snekNextHopParams{
 			true,
@@ -124,10 +124,10 @@ func TestSNEKNextHopSelection(t *testing.T) {
 			peers[1],
 			peers[0],
 			&selfAnn,
-			&announcementTable{
+			announcementTable{
 				peers[1]: &parentAnn,
 			},
-			&virtualSnakeTable{},
+			virtualSnakeTable{},
 		}, peers[1]}, // bootstraps always start working towards root via parent
 		{"TestNotBootstrapPeerIsDestination", snekNextHopParams{
 			false,
@@ -136,11 +136,11 @@ func TestSNEKNextHopSelection(t *testing.T) {
 			peers[1],
 			peers[0],
 			&selfAnn,
-			&announcementTable{
+			announcementTable{
 				peers[1]: &parentAnn,
 				peers[2]: &knowsDestUpAnn,
 			},
-			&virtualSnakeTable{},
+			virtualSnakeTable{},
 		}, peers[2]},
 		{"TestBootstrapPeerIsDestination", snekNextHopParams{
 			true,
@@ -149,11 +149,11 @@ func TestSNEKNextHopSelection(t *testing.T) {
 			peers[1],
 			peers[0],
 			&selfAnn,
-			&announcementTable{
+			announcementTable{
 				peers[1]: &parentAnn,
 				peers[2]: &knowsDestUpAnn,
 			},
-			&virtualSnakeTable{},
+			virtualSnakeTable{},
 		}, peers[1]}, // bootstraps work their way toward the root
 		{"TestNotBootstrapParentKnowsDestination", snekNextHopParams{
 			false,
@@ -162,10 +162,10 @@ func TestSNEKNextHopSelection(t *testing.T) {
 			peers[1],
 			peers[0],
 			&selfAnn,
-			&announcementTable{
+			announcementTable{
 				peers[1]: &knowsDestUpAnn,
 			},
-			&virtualSnakeTable{},
+			virtualSnakeTable{},
 		}, peers[1]},
 		{"TestNotBootstrapPeerKnowsDestination", snekNextHopParams{
 			false,
@@ -174,11 +174,11 @@ func TestSNEKNextHopSelection(t *testing.T) {
 			peers[1],
 			peers[0],
 			&selfAnn,
-			&announcementTable{
+			announcementTable{
 				peers[1]: &parentAnn,
 				peers[2]: &knowsDestUpAnn,
 			},
-			&virtualSnakeTable{},
+			virtualSnakeTable{},
 		}, peers[2]},
 		{"TestBootstrapPeerKnowsDestination", snekNextHopParams{
 			true,
@@ -187,11 +187,11 @@ func TestSNEKNextHopSelection(t *testing.T) {
 			peers[1],
 			peers[0],
 			&selfAnn,
-			&announcementTable{
+			announcementTable{
 				peers[1]: &parentAnn,
 				peers[2]: &knowsDestUpAnn,
 			},
-			&virtualSnakeTable{},
+			virtualSnakeTable{},
 		}, peers[1]}, // bootstraps work their way toward the root
 		{"TestNotBootstrapParentKnowsCloser", snekNextHopParams{
 			false,
@@ -200,10 +200,10 @@ func TestSNEKNextHopSelection(t *testing.T) {
 			peers[1],
 			peers[0],
 			&selfAnn,
-			&announcementTable{
+			announcementTable{
 				peers[1]: &knowsHigherAnn,
 			},
-			&virtualSnakeTable{},
+			virtualSnakeTable{},
 		}, peers[1]},
 		{"TestBootstrapParentKnowsCloser", snekNextHopParams{
 			true,
@@ -212,10 +212,10 @@ func TestSNEKNextHopSelection(t *testing.T) {
 			peers[1],
 			peers[0],
 			&selfAnn,
-			&announcementTable{
+			announcementTable{
 				peers[1]: &knowsHigherAnn,
 			},
-			&virtualSnakeTable{},
+			virtualSnakeTable{},
 		}, peers[1]},
 		{"TestNotBootstrapSnakeEntryIsDest", snekNextHopParams{
 			false,
@@ -224,10 +224,10 @@ func TestSNEKNextHopSelection(t *testing.T) {
 			peers[1],
 			peers[0],
 			&selfAnn,
-			&announcementTable{
+			announcementTable{
 				peers[1]: &parentAnn,
 			},
-			&virtualSnakeTable{
+			virtualSnakeTable{
 				virtualSnakeIndex{}: &virtualSnakeEntry{
 					Source:            peers[3],
 					LastSeen:          time.Now(),
@@ -242,10 +242,10 @@ func TestSNEKNextHopSelection(t *testing.T) {
 			peers[1],
 			peers[0],
 			&selfAnn,
-			&announcementTable{
+			announcementTable{
 				peers[1]: &parentAnn,
 			},
-			&virtualSnakeTable{
+			virtualSnakeTable{
 				virtualSnakeIndex{}: &virtualSnakeEntry{
 					Source:            peers[3],
 					LastSeen:          time.Now(),
