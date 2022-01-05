@@ -181,40 +181,61 @@ func (s *state) _sendTreeAnnouncements() {
 	})
 }
 
+type treeNextHopParams struct {
+	destinationCoords types.Coordinates
+	ourCoords         types.Coordinates
+	fromPeer          *peer
+	selfPeer          *peer
+	lastAnnouncement  *rootAnnouncementWithTime
+	peerAnnouncements *announcementTable
+}
+
 // _nextHopsTree returns the best next-hop candidate for a given frame. The
 // "from" peer must be supplied in order to prevent routing loops. It is
 // possible for this function to return nil if no next best-hop is available.
 func (s *state) _nextHopsTree(from *peer, f *types.Frame) *peer {
+	nextHopParams := treeNextHopParams{
+		f.Destination,
+		s._coords(),
+		from,
+		s.r.local,
+		s._rootAnnouncement(),
+		&s._announcements,
+	}
+
+	return getNextHopTree(nextHopParams)
+}
+
+func getNextHopTree(params treeNextHopParams) *peer {
 	// If it's loopback then don't bother doing anything else.
-	ourCoords := s._coords()
-	if f.Destination.EqualTo(ourCoords) {
-		return s.r.local
+	if params.destinationCoords.EqualTo(params.ourCoords) {
+		return params.selfPeer
 	}
 
 	// Work out how close our own coordinates are to the destination
 	// message. This is important because we'll only forward a frame
 	// to a peer that takes the message closer to the destination than
 	// we are.
-	ourDist := int64(ourCoords.DistanceTo(f.Destination))
+	ourDist := int64(params.ourCoords.DistanceTo(params.destinationCoords))
 	if ourDist == 0 {
 		// It's impossible to get closer so there's a pretty good
 		// chance at this point that the traffic is destined for us.
 		// Pass it up to the router.
-		return s.r.local
+		return params.selfPeer
 	}
 
 	// Now work out which of our peers takes the message closer.
 	var bestPeer *peer
 	bestDist := ourDist
 	bestOrdering := uint64(math.MaxUint64)
-	ourRoot := s._rootAnnouncement()
-	for p, ann := range s._announcements {
+	ourRoot := params.lastAnnouncement
+	for p, ann := range *params.peerAnnouncements {
 		switch {
 		case !p.started.Load():
 			continue // ignore peers that have stopped
 		case ann == nil:
 			continue // ignore peers that haven't sent us announcements
-		case p == from:
+		case p == params.fromPeer:
 			continue // don't route back where the packet came from
 		case !ourRoot.Root.EqualTo(&ann.Root):
 			continue // ignore peers that are following a different root or seq
@@ -223,24 +244,45 @@ func (s *state) _nextHopsTree(from *peer, f *types.Frame) *peer {
 		// Look up the coordinates of the peer, and the distance
 		// across the tree to those coordinates.
 		peerCoords := ann.PeerCoords()
-		peerDist := int64(peerCoords.DistanceTo(f.Destination))
-		switch {
-		case peerDist < bestDist:
-			// The peer is closer to the destination.
-			bestPeer, bestDist, bestOrdering = p, peerDist, ann.receiveOrder
-
-		case peerDist > bestDist:
-			// The peer is further away from the destination.
-
-		case bestPeer != nil && ann.receiveOrder < bestOrdering:
-			// The peer has a lower latency path to the root as a
-			// last-resort tiebreak.
+		peerDist := int64(peerCoords.DistanceTo(params.destinationCoords))
+		if isBetterNextHopCandidate(peerDist, bestDist, ann.receiveOrder, bestOrdering,
+			bestPeer != nil) {
 			bestPeer, bestDist, bestOrdering = p, peerDist, ann.receiveOrder
 		}
 	}
 
 	return bestPeer
 }
+
+func isBetterNextHopCandidate(peerDistance int64, bestDistance int64,
+	peerOrder uint64, bestOrder uint64, candidateExists bool) bool {
+	betterCandidate := false
+
+	switch {
+	case peerDistance < bestDistance:
+		// The peer is closer to the destination.
+		betterCandidate = true
+	case peerDistance > bestDistance:
+		// The peer is further away from the destination.
+	case candidateExists && peerOrder < bestOrder:
+		// The peer has a lower latency path to the root as a
+		// last-resort tiebreak.
+		betterCandidate = true
+	}
+
+	return betterCandidate
+}
+
+type TreeAnnouncementAction int64
+
+const (
+	DropFrame TreeAnnouncementAction = iota // Default value
+	AcceptUpdate
+	AcceptNewParent
+	SelectNewParent
+	SelectNewParentWithWait
+	InformPeerOfStrongerRoot
+)
 
 // _handleTreeAnnouncement is called whenever a tree announcement is
 // received from a direct peer. It stores the update and then works out
@@ -284,33 +326,26 @@ func (s *state) _handleTreeAnnouncement(p *peer, f *types.Frame) error {
 		receiveOrder:       s._ordering,
 	}
 
-	if p == s._parent { // The update came from our current parent.
-		switch {
-		case s._waiting:
-			// If we're currently waiting to reparent then we shouldn't
-			// receive further updates from our parent, so do nothing.
-		case newUpdate.IsLoopOrChildOf(s.r.public):
-			// The update seems to contain our own key already, so it
-			// would appear that our chosen parent has suddenly decided
-			// to start replaying our own updates back to us. This is
-			// bad news.
-			fallthrough
-		case rootDelta < 0:
-			// The update contains a weaker root key, which is also bad
-			// news.
-			fallthrough
-		case rootDelta == 0 && newUpdate.RootSequence == lastParentUpdate.RootSequence:
-			// The update contains the same root key, but the sequence
-			// number is being replayed. This usually happens when the
-			// parent has chosen a new parent and is re-signing the last
-			// update to notify their peers of their new coordinates.
-			// In this case, we consider this also to be bad news. We
-			// will switch to being the root, which notifies our peers
-			// of the bad news (since the update will be coming from a
-			// weaker key) and then we start a 1 second timer, after
-			// which we will re-run the parent selection. During that 1
-			// second period, we will not act on root updates apart from
-			// saving them.
+	// If we're currently waiting to re-parent then there is no
+	// further action
+	if !s._waiting {
+		announcementAction := determineAnnouncementAction(p == s._parent,
+			newUpdate.IsLoopOrChildOf(s.r.public), rootDelta,
+			newUpdate.RootSequence, lastParentUpdate.RootSequence)
+
+		switch announcementAction {
+		case DropFrame:
+			// Do nothing
+		case AcceptUpdate:
+			s._sendTreeAnnouncements()
+		case AcceptNewParent:
+			s._setParent(p)
+			s._sendTreeAnnouncements()
+		case SelectNewParent:
+			if s._selectNewParent() {
+				s._bootstrapNow()
+			}
+		case SelectNewParentWithWait:
 			s._waiting = true
 			s._becomeRoot()
 			// Start the 1 second timer to re-run parent selection.
@@ -322,49 +357,85 @@ func (s *state) _handleTreeAnnouncement(p *peer, f *types.Frame) error {
 					}
 				})
 			})
+		case InformPeerOfStrongerRoot:
+			s.sendTreeAnnouncementToPeer(lastParentUpdate, p)
+		}
+	}
+
+	return nil
+}
+
+// determineAnnouncementAction performs the algorithm used to decide how to react
+// when a new tree announcement is received.
+func determineAnnouncementAction(senderIsParent bool, updateContainsLoop bool,
+	rootDelta int, newRootSequence types.Varu64, lastRootSequence types.Varu64) TreeAnnouncementAction {
+	action := DropFrame
+	if senderIsParent { // The update came from our current parent.
+		switch {
+		case updateContainsLoop:
+			// The update seems to contain our own key already, so it
+			// would appear that our chosen parent has suddenly decided
+			// to start replaying our own updates back to us. This is
+			// bad news.
+			action = SelectNewParentWithWait
+		case rootDelta < 0:
+			// The update contains a weaker root key, which is also bad
+			// news.
+			action = SelectNewParentWithWait
+		case rootDelta == 0 && newRootSequence == lastRootSequence:
+			// The update contains the same root key, but the sequence
+			// number is being replayed. This usually happens when the
+			// parent has chosen a new parent and is re-signing the last
+			// update to notify their peers of their new coordinates.
+			// In this case, we consider this also to be bad news. We
+			// will switch to being the root, which notifies our peers
+			// of the bad news (since the update will be coming from a
+			// weaker key) and then we start a 1 second timer, after
+			// which we will re-run the parent selection. During that 1
+			// second period, we will not act on root updates apart from
+			// saving them.
+			action = SelectNewParentWithWait
 		case rootDelta > 0:
 			// The root update contains a stronger key than before.
 			// Since this node is already our parent, we can just send out
 			// the update as normal.
-			fallthrough
-		case rootDelta == 0 && newUpdate.RootSequence > lastParentUpdate.RootSequence:
+			action = AcceptUpdate
+		case rootDelta == 0 && newRootSequence > lastRootSequence:
 			// The root update contains the same key as before but it has
 			// a new sequence number, so the parent is repeating a new
 			// update to us. We will repeat that update to our peers.
-			s._sendTreeAnnouncements()
+			action = AcceptUpdate
 		}
-	} else if !s._waiting { // Update came from another peer and we're not waiting to re-parent
+	} else { // Update came from another peer
 		switch {
-		case newUpdate.IsLoopOrChildOf(s.r.public):
+		case updateContainsLoop:
 			// The update seems to be signed to us already. This happens
 			// because one of our peers has chosen us as their parent, but
 			// they still have to send an update back to us so that we know
 			// their coordinates. In this case, we will not do anything more
 			// with the update since it would create a loop otherwise.
+			action = DropFrame
 		case rootDelta > 0:
 			// The update seems to contain a stronger root than our existing
 			// root. In that case, we will switch to this node as our parent
 			// and then send out tree announcements to our peers, notifying
 			// them of the change.
-			s._setParent(p)
-			s._sendTreeAnnouncements()
+			action = AcceptNewParent
 		case rootDelta < 0:
 			// The update seems to contain a weaker root key than our existing
 			// root. In this case the best thing to do is to send an update
 			// back to this specific peer containing our stronger key in the
 			// hope that they will accept the update and re-parent.
-			s.sendTreeAnnouncementToPeer(lastParentUpdate, p)
+			action = InformPeerOfStrongerRoot
 		default:
 			// The update contains the same root key so we will check if it
 			// still makes sense to keep our current parent. We will reparent
 			// if not, sending out a new SNEK bootstrap into the network.
-			if s._selectNewParent() {
-				s._bootstrapNow()
-			}
+			action = SelectNewParent
 		}
 	}
 
-	return nil
+	return action
 }
 
 // _selectNewParent will examine the root updates from all of our peers
@@ -397,45 +468,13 @@ func (s *state) _selectNewParent() bool {
 			// timeout or other protocol handling error.
 			continue
 		}
-		if ann == nil || time.Since(ann.receiveTime) >= announcementTimeout {
-			// If the announcement has expired then don't consider this peer
-			// as a possible candidate.
-			continue
-		}
-		accept := func() {
-			bestRoot = ann.Root
-			bestPeer = peer
-			bestOrder = ann.receiveOrder
-		}
-		// Work out if the parent's announcement contains a stronger root
-		// key than our current best candidate.
-		keyDelta := ann.RootPublicKey.CompareTo(bestRoot.RootPublicKey)
-		switch {
-		case ann.IsLoopOrChildOf(s.r.public):
-			// The announcement from this peer contains our own public key in
-			// the signatures, which implies they are a child of ours in the
-			// tree. We therefore can't use this peer as a parent as this would
-			// create a loop in the tree.
-		case keyDelta > 0:
-			// The peer has a stronger root key, so they are a better candidate.
-			accept()
-		case keyDelta < 0:
-			// The peer has a weaker root key than our current best candidate,
-			// so ignore this peer.
-		case ann.RootSequence > bestRoot.RootSequence:
-			// The peer has the same root key as our current candidate but the
-			// sequence number is higher, so they have sent us a newer tree
-			// announcement. They are a better candidate as a result.
-			accept()
-		case ann.RootSequence < bestRoot.RootSequence:
-			// The peer has the same root key as our current candidate but a
-			// worse sequence number, so their announcement is out of date.
-		case ann.receiveOrder < bestOrder:
-			// The peer has the same root key and update sequence number as our
-			// current best candidate, but the update from this peer was received
-			// first. This condition is a tie-break that helps us to pick a parent
-			// which will have the lowest latency path to the root, all else equal.
-			accept()
+
+		if ann != nil {
+			if isBetterParentCandidate(*ann, bestRoot, bestOrder, ann.IsLoopOrChildOf(s.r.public)) {
+				bestRoot = ann.Root
+				bestPeer = peer
+				bestOrder = ann.receiveOrder
+			}
 		}
 	}
 
@@ -459,4 +498,48 @@ func (s *state) _selectNewParent() bool {
 	// for one of our peers corrects us with future updates.
 	s._becomeRoot()
 	return false
+}
+
+func isBetterParentCandidate(ann rootAnnouncementWithTime, bestRoot types.Root,
+	bestOrder uint64, containsLoop bool) bool {
+	isBetterCandidate := false
+
+	if time.Since(ann.receiveTime) >= announcementTimeout {
+		// If the announcement has expired then don't consider this peer
+		// as a possible candidate.
+		return false
+	}
+
+	// Work out if the parent's announcement contains a stronger root
+	// key than our current best candidate.
+	keyDelta := ann.RootPublicKey.CompareTo(bestRoot.RootPublicKey)
+	switch {
+	case containsLoop:
+		// The announcement from this peer contains our own public key in
+		// the signatures, which implies they are a child of ours in the
+		// tree. We therefore can't use this peer as a parent as this would
+		// create a loop in the tree.
+	case keyDelta > 0:
+		// The peer has a stronger root key, so they are a better candidate.
+		isBetterCandidate = true
+	case keyDelta < 0:
+		// The peer has a weaker root key than our current best candidate,
+		// so ignore this peer.
+	case ann.RootSequence > bestRoot.RootSequence:
+		// The peer has the same root key as our current candidate but the
+		// sequence number is higher, so they have sent us a newer tree
+		// announcement. They are a better candidate as a result.
+		isBetterCandidate = true
+	case ann.RootSequence < bestRoot.RootSequence:
+		// The peer has the same root key as our current candidate but a
+		// worse sequence number, so their announcement is out of date.
+	case ann.receiveOrder < bestOrder:
+		// The peer has the same root key and update sequence number as our
+		// current best candidate, but the update from this peer was received
+		// first. This condition is a tie-break that helps us to pick a parent
+		// which will have the lowest latency path to the root, all else equal.
+		isBetterCandidate = true
+	}
+
+	return isBetterCandidate
 }
