@@ -18,6 +18,7 @@ type APIEventMessageID int
 type APICommandMessageID int
 type APIUpdateID int
 type APICommandID int
+type APINodeType int
 
 const (
 	UnknownEventMsg APIEventMessageID = iota
@@ -52,6 +53,14 @@ const (
 	SimRemoveNode
 	SimAddPeer
 	SimRemovePeer
+	SimConfigureAdversaryDefaults
+	SimConfigureAdversaryPeer
+)
+
+const (
+	UnknownType APINodeType = iota
+	DefaultNode
+	AdversaryNode
 )
 
 type InitialNodeState struct {

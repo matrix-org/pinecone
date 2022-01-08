@@ -31,6 +31,8 @@ export const APICommandID = {
     RemoveNode: 6,
     AddPeer: 7,
     RemovePeer: 8,
+    ConfigureAdversaryDefaults: 9,
+    ConfigureAdversaryPeer: 10,
 };
 
 var serverWorker;

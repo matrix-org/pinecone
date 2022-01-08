@@ -21,7 +21,8 @@
         {
             "Command": "AddNode",
             "Data": {
-                "Name": "Alice"
+                "Name": "Alice",
+                "NodeType": "Default"
             }
         },
         {
@@ -42,6 +43,41 @@
             "Data": {
                 "Node": "Alice",
                 "Peer": "Bob"
+            }
+        },
+        {
+            "Command": "ConfigureAdversaryDefaults",
+            "Data": {
+                "Node": "Alice",
+                "DropRates": {
+                    "Keepalive": 0,
+	                  "TreeAnnouncement": 0,
+	                  "TreeRouted": 0,
+	                  "VirtualSnakeBootstrap": 0,
+	                  "VirtualSnakeBootstrapACK": 0,
+	                  "VirtualSnakeSetup": 0,
+	                  "VirtualSnakeSetupACK": 0,
+	                  "VirtualSnakeTeardown": 0,
+	                  "VirtualSnakeRouted": 0
+                }
+            }
+        },
+        {
+            "Command": "ConfigureAdversaryPeer",
+            "Data": {
+                "Node": "Alice",
+                "Peer": "Bob",
+                "DropRates": {
+                    "Keepalive": 0,
+	                  "TreeAnnouncement": 0,
+	                  "TreeRouted": 0,
+	                  "VirtualSnakeBootstrap": 0,
+	                  "VirtualSnakeBootstrapACK": 0,
+	                  "VirtualSnakeSetup": 0,
+	                  "VirtualSnakeSetupACK": 0,
+	                  "VirtualSnakeTeardown": 0,
+	                  "VirtualSnakeRouted": 0
+                }
             }
         }
     ]

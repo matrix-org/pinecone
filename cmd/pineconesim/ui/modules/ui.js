@@ -169,6 +169,19 @@ function handleToolReplayUpload(subtool) {
                     let msgs = [];
                     for (let i = 0; i < content.EventSequence.length; i++) {
                         let id = convertCommandToID(content.EventSequence[i].Command);
+                        if (id === APICommandID.AddNode) {
+                            let nodeType = 0;
+                            // TODO : this is hacky
+                            switch(content.EventSequence[i].Data.NodeType) {
+                            case "Default":
+                                nodeType = 1;
+                                break;
+                            case "Adversary":
+                                nodeType = 2;
+                                break;
+                            }
+                            content.EventSequence[i].Data.NodeType = nodeType;
+                        }
                         msgs.push({"MsgID": id, "Event": content.EventSequence[i].Data});
                     }
 
@@ -190,10 +203,15 @@ function validateEventSequence(content) {
         validSimCommands.set("Play", []);
         validSimCommands.set("Pause", []);
         validSimCommands.set("Delay", ["Length"]);
-        validSimCommands.set("AddNode", ["Name"]);
+        validSimCommands.set("AddNode", ["Name", "NodeType"]);
         validSimCommands.set("RemoveNode", ["Name"]);
         validSimCommands.set("AddPeer", ["Node", "Peer"]);
         validSimCommands.set("RemovePeer", ["Node", "Peer"]);
+        validSimCommands.set("ConfigureAdversaryDefaults", ["Node", "DropRates"]);
+        validSimCommands.set("ConfigureAdversaryPeer", ["Node", "Peer", "DropRates"]);
+
+        let validSubcommands = new Map();
+        validSubcommands.set("DropRates", ["Keepalive", "TreeAnnouncement", "TreeRouted", "VirtualSnakeBootstrap", "VirtualSnakeBootstrapACK", "VirtualSnakeSetup", "VirtualSnakeSetupACK", "VirtualSnakeTeardown", "VirtualSnakeRouted"]);
 
         for (let i = 0; i < content.EventSequence.length; i++) {
             let sequence = content.EventSequence;
@@ -204,7 +222,39 @@ function validateEventSequence(content) {
                 if (sequence[i].hasOwnProperty("Data")) {
                     for (let j = 0; j < requiredDataFields.length; j++) {
                         if (sequence[i].Data.hasOwnProperty(requiredDataFields[j])) {
-                            validFieldCount++;
+                            if (validSubcommands.has(requiredDataFields[j])) {
+                                let requiredSubcommands = validSubcommands.get(requiredDataFields[j]);
+                                let cmdField = sequence[i].Data[requiredDataFields[j]];
+                                let validSubcommandCount = 0;
+                                for (let k = 0; k < requiredSubcommands.length; k++) {
+                                    if (cmdField.hasOwnProperty(requiredSubcommands[k])) {
+                                        if (validateField(requiredSubcommands[k], cmdField[requiredSubcommands[k]])) {
+                                            validSubcommandCount++;
+                                        } else {
+                                            // TODO : Handle invalid sim command field
+                                            console.log("Import error: " + JSON.stringify(sequence[i]) + " has an invalid value for \"" + requiredSubcommands[k] + "\"");
+                                        }
+                                    } else {
+                                        // TODO : Handle invalid sim command field
+                                        console.log("Import error: " + JSON.stringify(sequence[i]) + " does not contain required subcommand \"" + requiredSubcommands[k] + "\"");
+                                    }
+                                }
+
+                                if (validSubcommandCount === requiredSubcommands.length && validSubcommandCount === Object.keys(cmdField).length) {
+                                    validFieldCount++;
+                                } else {
+                                    // TODO : Handle invalid sim command field
+                                    console.log("Import error: " + JSON.stringify(sequence[i]) + " has the wrong number of fields for " + requiredDataFields[j]);
+                                }
+                            } else {
+                                let cmdField = sequence[i].Data[requiredDataFields[j]];
+                                if (validateField(requiredDataFields[j], cmdField)) {
+                                    validFieldCount++;
+                                } else {
+                                    // TODO : Handle invalid sim command field
+                                    console.log("Import error: " + JSON.stringify(sequence[i]) + " has an invalid value for \"" + requiredDataFields[j] + "\"");
+                                }
+                            }
                         } else {
                             // TODO : Handle invalid sim command field
                             console.log("Import error: " + JSON.stringify(sequence[i]) + " does not contain required \"Data\" field \"" + requiredDataFields[j] + "\"");
@@ -238,6 +288,22 @@ function validateEventSequence(content) {
     }
 
     return validSequence;
+}
+
+function validateField(field, value) {
+    let validFieldValues = new Map();
+    validFieldValues.set("NodeType", ["Default", "Adversary"]);
+    let isValid = false;
+
+    if (validFieldValues.has(field)) {
+        if (validFieldValues.get(field).includes(value)) {
+            isValid = true;
+        }
+    } else {
+        isValid = true;
+    }
+
+    return isValid;
 }
 
 function handleToolReplayPlayPause(subtool) {
@@ -390,6 +456,12 @@ function convertCommandToID(command) {
         break;
     case "RemovePeer":
         id = APICommandID.RemovePeer;
+        break;
+    case "ConfigureAdversaryDefaults":
+        id = APICommandID.ConfigureAdversaryDefaults;
+        break;
+    case "ConfigureAdversaryPeer":
+        id = APICommandID.ConfigureAdversaryPeer;
         break;
     default:
         break;

@@ -3,13 +3,15 @@
         {
             "Command": "AddNode",
             "Data": {
-                "Name": "Alice"
+                "Name": "Alice",
+                "NodeType": "Default"
             }
         },
         {
             "Command": "AddNode",
             "Data": {
-                "Name": "Bob"
+                "Name": "Bob",
+                "NodeType": "Default"
             }
         },
         {
@@ -28,13 +30,15 @@
         {
             "Command": "AddNode",
             "Data": {
-                "Name": "Charlie"
+                "Name": "Charlie",
+                "NodeType": "Default"
             }
         },
         {
             "Command": "AddNode",
             "Data": {
-                "Name": "Dan"
+                "Name": "Dan",
+                "NodeType": "Default"
             }
         },
         {
@@ -85,6 +89,23 @@
             "Command": "RemoveNode",
             "Data": {
                 "Name": "Dan"
+            }
+        },
+        {
+            "Command": "ConfigureAdversaryDefaults",
+            "Data": {
+                "Node": "Dan",
+                "DropRates": {
+                    "Keepalive": 0,
+	                  "TreeAnnouncement": 0,
+	                  "TreeRouted": 0,
+	                  "VirtualSnakeBootstrap": 0,
+	                  "VirtualSnakeBootstrapACK": 0,
+	                  "VirtualSnakeSetup": 0,
+	                  "VirtualSnakeSetupACK": 0,
+	                  "VirtualSnakeTeardown": 0,
+	                  "VirtualSnakeRouted": 0
+                }
             }
         }
     ]
