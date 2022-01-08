@@ -165,64 +165,79 @@ function handleToolReplayUpload(subtool) {
             }
 
             if (content) {
-                if (content.hasOwnProperty("EventSequence")) {
-                    let validSimCommands = new Map();
-                    validSimCommands.set("Debug", []);
-                    validSimCommands.set("Play", []);
-                    validSimCommands.set("Pause", []);
-                    validSimCommands.set("Delay", ["Length"]);
-                    validSimCommands.set("AddNode", ["Name"]);
-                    validSimCommands.set("RemoveNode", ["Name"]);
-                    validSimCommands.set("AddPeer", ["Node", "Peer"]);
-                    validSimCommands.set("RemovePeer", ["Node", "Peer"]);
-
+                if (validateEventSequence(content)) {
                     let msgs = [];
-
                     for (let i = 0; i < content.EventSequence.length; i++) {
-                        let sequence = content.EventSequence;
-                        if (sequence[i].hasOwnProperty("Command") && validSimCommands.has(sequence[i].Command)) {
-                            let command = sequence[i].Command;
-                            let requiredDataFields = validSimCommands.get(command);
-                            let validFieldCount = 0;
-                            if (sequence[i].hasOwnProperty("Data")) {
-                                for (let j = 0; j < requiredDataFields.length; j++) {
-                                    if (sequence[i].Data.hasOwnProperty(requiredDataFields[j])) {
-                                        validFieldCount++;
-                                    } else {
-                                        // TODO : Handle invalid sim command field
-                                        console.log("Import error: " + JSON.stringify(sequence[i]) + " does not contain required \"Data\" field \"" + requiredDataFields[j] + "\"");
-                                    }
-                                }
-
-                                // Check that there are only valid fields, and the right amount of fields
-                                if (validFieldCount === requiredDataFields.length && validFieldCount === Object.keys(sequence[i].Data).length) {
-                                    let id = convertCommandToID(command);
-                                    msgs.push({"MsgID": id, "Event": sequence[i].Data});
-                                } else {
-                                    // TODO : Handle invalid sim command
-                                    console.log("Import error: " + JSON.stringify(sequence[i]) + " has the wrong number of Data fields");
-                                }
-                            } else {
-                                // TODO : Handle invalid sim command
-                                console.log("Import error: " + JSON.stringify(sequence[i]) + " is missing the Data field");
-                            }
-                        } else {
-                            // TODO : Handle invalid sim command
-                            console.log("Import error: " + JSON.stringify(sequence[i]) + " is not a valid sim command");
-                        }
+                        let id = convertCommandToID(content.EventSequence[i].Command);
+                        msgs.push({"MsgID": id, "Event": content.EventSequence[i].Data});
                     }
 
                     SendToServer({"MsgID": APICommandMessageID.PlaySequence, "Events": msgs});
-                }
-                else {
-                    // TODO : Handle json not having right fields
-                    console.log("Import error: JSON does not include EventSequence field");
                 }
             }
         };
     };
 
     input.click();
+}
+
+function validateEventSequence(content) {
+    let validSequence = false;
+    if (content.hasOwnProperty("EventSequence")) {
+        let validCommandCount = 0;
+        let validSimCommands = new Map();
+        validSimCommands.set("Debug", []);
+        validSimCommands.set("Play", []);
+        validSimCommands.set("Pause", []);
+        validSimCommands.set("Delay", ["Length"]);
+        validSimCommands.set("AddNode", ["Name"]);
+        validSimCommands.set("RemoveNode", ["Name"]);
+        validSimCommands.set("AddPeer", ["Node", "Peer"]);
+        validSimCommands.set("RemovePeer", ["Node", "Peer"]);
+
+        for (let i = 0; i < content.EventSequence.length; i++) {
+            let sequence = content.EventSequence;
+            if (sequence[i].hasOwnProperty("Command") && validSimCommands.has(sequence[i].Command)) {
+                let command = sequence[i].Command;
+                let requiredDataFields = validSimCommands.get(command);
+                let validFieldCount = 0;
+                if (sequence[i].hasOwnProperty("Data")) {
+                    for (let j = 0; j < requiredDataFields.length; j++) {
+                        if (sequence[i].Data.hasOwnProperty(requiredDataFields[j])) {
+                            validFieldCount++;
+                        } else {
+                            // TODO : Handle invalid sim command field
+                            console.log("Import error: " + JSON.stringify(sequence[i]) + " does not contain required \"Data\" field \"" + requiredDataFields[j] + "\"");
+                        }
+                    }
+
+                    // Check that there are only valid fields, and the right amount of fields
+                    if (validFieldCount === requiredDataFields.length && validFieldCount === Object.keys(sequence[i].Data).length) {
+                        validCommandCount++;
+                    } else {
+                        // TODO : Handle invalid sim command
+                        console.log("Import error: " + JSON.stringify(sequence[i]) + " has the wrong number of Data fields");
+                    }
+                } else {
+                    // TODO : Handle invalid sim command
+                    console.log("Import error: " + JSON.stringify(sequence[i]) + " is missing the Data field");
+                }
+            } else {
+                // TODO : Handle invalid sim command
+                console.log("Import error: " + JSON.stringify(sequence[i]) + " is not a valid sim command");
+            }
+        }
+
+        if (validCommandCount === content.EventSequence.length) {
+            validSequence = true;
+        }
+    }
+    else {
+        // TODO : Handle json not having right fields
+        console.log("Import error: JSON does not include EventSequence field");
+    }
+
+    return validSequence;
 }
 
 function handleToolReplayPlayPause(subtool) {
