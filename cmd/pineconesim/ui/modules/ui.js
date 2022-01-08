@@ -183,22 +183,28 @@ function handleToolReplayUpload(subtool) {
                         if (sequence[i].hasOwnProperty("Command") && validSimCommands.has(sequence[i].Command)) {
                             let command = sequence[i].Command;
                             let requiredDataFields = validSimCommands.get(command);
-                            let shouldSend = false;
-                            if (sequence[i].hasOwnProperty("Data") && requiredDataFields.length === 0) {
-                                shouldSend = true;
-                            }
-                            for (let j = 0; j < requiredDataFields.length; j++) {
-                                if (sequence[i].hasOwnProperty("Data") && sequence[i].Data.hasOwnProperty(requiredDataFields[j])) {
-                                    shouldSend = true;
-                                } else {
-                                    // TODO : Handle invalid sim command field
-                                    console.log("Import error: " + JSON.stringify(sequence[i]) + " does not contain \"Data\" field \"" + requiredDataFields[j] + "\"");
+                            let validFieldCount = 0;
+                            if (sequence[i].hasOwnProperty("Data")) {
+                                for (let j = 0; j < requiredDataFields.length; j++) {
+                                    if (sequence[i].Data.hasOwnProperty(requiredDataFields[j])) {
+                                        validFieldCount++;
+                                    } else {
+                                        // TODO : Handle invalid sim command field
+                                        console.log("Import error: " + JSON.stringify(sequence[i]) + " does not contain required \"Data\" field \"" + requiredDataFields[j] + "\"");
+                                    }
                                 }
-                            }
 
-                            if (shouldSend) {
-                                let id = convertCommandToID(command);
-                                msgs.push({"MsgID": id, "Event": sequence[i].Data});
+                                // Check that there are only valid fields, and the right amount of fields
+                                if (validFieldCount === requiredDataFields.length && validFieldCount === Object.keys(sequence[i].Data).length) {
+                                    let id = convertCommandToID(command);
+                                    msgs.push({"MsgID": id, "Event": sequence[i].Data});
+                                } else {
+                                    // TODO : Handle invalid sim command
+                                    console.log("Import error: " + JSON.stringify(sequence[i]) + " has the wrong number of Data fields");
+                                }
+                            } else {
+                                // TODO : Handle invalid sim command
+                                console.log("Import error: " + JSON.stringify(sequence[i]) + " is missing the Data field");
                             }
                         } else {
                             // TODO : Handle invalid sim command
