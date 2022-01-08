@@ -170,16 +170,7 @@ function handleToolReplayUpload(subtool) {
                     for (let i = 0; i < content.EventSequence.length; i++) {
                         let id = convertCommandToID(content.EventSequence[i].Command);
                         if (id === APICommandID.AddNode) {
-                            let nodeType = 0;
-                            // TODO : this is hacky
-                            switch(content.EventSequence[i].Data.NodeType) {
-                            case "Default":
-                                nodeType = 1;
-                                break;
-                            case "Adversary":
-                                nodeType = 2;
-                                break;
-                            }
+                            let nodeType = convertNodeTypeToID(content.EventSequence[i].Data.NodeType);
                             content.EventSequence[i].Data.NodeType = nodeType;
                         }
                         msgs.push({"MsgID": id, "Event": content.EventSequence[i].Data});
@@ -430,6 +421,20 @@ function setupFormSubmission() {
 }
 setupFormSubmission();
 
+function convertNodeTypeToID(nodeType) {
+    let typeID = 0;
+    switch(nodeType) {
+    case "Default":
+        typeID = 1;
+        break;
+    case "Adversary":
+        typeID = 2;
+        break;
+    }
+
+    return typeID;
+}
+
 function convertCommandToID(command) {
     let id = APICommandID.Unknown;
     switch (command) {
@@ -483,6 +488,8 @@ function submitAddNodesForm(form) {
     let commands = [];
     let submitForm = true;
     let processedNodes = [];
+    let nodeName = "";
+    let nodeType = "";
     for (let i = 0; i < form.target.length; i++) {
         if (form.target[i].name === "nodename") {
             if (form.target[i].value === "") {
@@ -506,10 +513,21 @@ function submitAddNodesForm(form) {
                 submitForm = false;
             } else {
                 form.target[i].className = form.target[i].className.replace(" focus-error", "");
-                commands.push({"MsgID": APICommandID.AddNode, "Event": {"Name": form.target[i].value}});
+                nodeName = form.target[i].value;
             }
 
             processedNodes.push(form.target[i].value);
+        } else if (form.target[i].name === "nodetype") {
+            nodeType = form.target[i].value;
+            if (nodeName != "") {
+                let nodeID = convertNodeTypeToID(nodeType);
+                commands.push({"MsgID": APICommandID.AddNode, "Event": {"Name": nodeName, "NodeType": nodeID}});
+                nodeName = "";
+                nodeType = "";
+            } else {
+                console.log("Error parsing add nodes form. Items out of order.");
+                submitForm = false;
+            }
         }
     }
 
@@ -617,16 +635,56 @@ function extendNodesForm() {
     let nodesForm = document.getElementById("add-nodes-form");
     // Remove the submit button from the bottom
     nodesForm.removeChild(nodesForm.lastChild);
+    let typeSelect = document.createElement('select');
+    typeSelect.name = "nodetype";
+    typeSelect.onchange = e => {
+        console.log(e.target.value);
+    };
+
+    let options = ["Default", "Adversary"];
+    for (let i = 0; i < options.length; i++) {
+        let option = document.createElement("option");
+        option.value = options[i];
+        option.text = options[i];
+        typeSelect.appendChild(option);
+    }
+
     let peeringTable = document.createElement('div');
-    peeringTable.innerHTML += '<hr>' +
-        '<div class="row">' +
-        '<div class="col-25">' +
-        '<label for="node">Name</label>' +
-        '</div>' +
-        '<div class="col-75">' +
-        '<input type="text" name="nodename" placeholder="Node name...">' +
-        '</div>' +
-        '</div>';
+    let hRule = document.createElement("hr");
+    peeringTable.appendChild(hRule);
+    let nodeName = document.createElement("div");
+    nodeName.className = "row";
+    let nodeNameCol = document.createElement("div");
+    nodeNameCol.className = "col-25";
+    let nodeNameLabel = document.createElement("label");
+    nodeNameLabel.innerHTML = "Name";
+    let nodeNameColTwo = document.createElement("div");
+    nodeNameColTwo.className = "col-75";
+    let nodeNameInput = document.createElement("input");
+    nodeNameInput.type = "text";
+    nodeNameInput.name = "nodename";
+    nodeNameInput.placeholder = "Node name...";
+
+    nodeNameCol.appendChild(nodeNameLabel);
+    nodeNameColTwo.appendChild(nodeNameInput);
+    nodeName.appendChild(nodeNameCol);
+    nodeName.appendChild(nodeNameColTwo);
+    peeringTable.appendChild(nodeName);
+
+    let nodeType = document.createElement("div");
+    nodeType.className = "row";
+    let nodeCol = document.createElement("div");
+    nodeCol.className = "col-25";
+    let nodeLabel = document.createElement("label");
+    nodeLabel.innerHTML = "Node Type";
+    let nodeColTwo = document.createElement("div");
+    nodeColTwo.className = "col-75";
+
+    nodeCol.appendChild(nodeLabel);
+    nodeColTwo.appendChild(typeSelect);
+    nodeType.appendChild(nodeCol);
+    nodeType.appendChild(nodeColTwo);
+    peeringTable.append(nodeType);
 
     nodesForm.appendChild(peeringTable);
     addSubmitButton(nodesForm);
