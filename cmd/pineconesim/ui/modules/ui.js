@@ -758,14 +758,66 @@ function createNodeOptionsGeneralAdversary() {
     let advColTwo = document.createElement("div");
     advColTwo.className = "col-two-right";
 
-    let templateSelect = document.createElement('select');
-    templateSelect.onchange = e => {
-        console.log(e.target.value);
-        // TODO : me!!!
-        // need to update node option slider values
+    let settingsMap = {
+        "None": {
+            "Keepalive": 0,
+            "TreeAnnouncement": 0,
+            "TreeRouted": 0,
+            "VirtualSnakeBootstrap": 0,
+            "VirtualSnakeBootstrapACK": 0,
+            "VirtualSnakeSetup": 0,
+            "VirtualSnakeSetupACK": 0,
+            "VirtualSnakeTeardown": 0,
+            "VirtualSnakeRouted": 0,
+        },
+        "BlockTreeProtoTraffic": {
+            "Keepalive": 0,
+            "TreeAnnouncement": 100,
+            "TreeRouted": 0,
+            "VirtualSnakeBootstrap": 0,
+            "VirtualSnakeBootstrapACK": 0,
+            "VirtualSnakeSetup": 0,
+            "VirtualSnakeSetupACK": 0,
+            "VirtualSnakeTeardown": 0,
+            "VirtualSnakeRouted": 0,
+        },
+        "BlockSNEKProtoTraffic": {
+            "Keepalive": 0,
+            "TreeAnnouncement": 0,
+            "TreeRouted": 0,
+            "VirtualSnakeBootstrap": 100,
+            "VirtualSnakeBootstrapACK": 100,
+            "VirtualSnakeSetup": 100,
+            "VirtualSnakeSetupACK": 100,
+            "VirtualSnakeTeardown": 100,
+            "VirtualSnakeRouted": 0,
+        },
+        "BlockOverlayTraffic": {
+            "Keepalive": 0,
+            "TreeAnnouncement": 0,
+            "TreeRouted": 0,
+            "VirtualSnakeBootstrap": 0,
+            "VirtualSnakeBootstrapACK": 0,
+            "VirtualSnakeSetup": 0,
+            "VirtualSnakeSetupACK": 0,
+            "VirtualSnakeTeardown": 0,
+            "VirtualSnakeRouted": 100,
+        },
     };
 
-    let templates = ["None", "BlockTreeProtoTraffic", "BlockSNEKProtoTraffic"];
+    let templateSelect = document.createElement('select');
+    templateSelect.onchange = e => {
+        let settings = settingsMap[e.target.value];
+        for (const key in settings) {
+            let slider = nodeOptions.querySelector("input[name='" + key + "']");
+            slider.value = settings[key];
+
+            let label = nodeOptions.querySelector("label[class='" + key + "-label']");
+            label.innerHTML = settings[key] + "%";
+        }
+    };
+
+    let templates = Array.from(Object.keys(settingsMap));
     for (let i = 0; i < templates.length; i++) {
         let template = document.createElement("option");
         template.value = templates[i];
@@ -818,6 +870,7 @@ function generateSliderRow(label, name) {
     let sliderColThree = document.createElement("div");
     sliderColThree.className = "col-three-right";
     let myLabel = document.createElement("label");
+    myLabel.className = name + "-label";
     myLabel.style.position = "absolute";
     myLabel.style.marginRight = "6px";
     myLabel.style.right = "0";
@@ -833,9 +886,10 @@ function generateSliderRow(label, name) {
     slider.name = name;
 
     myLabel.innerHTML = slider.value + "%";
-    slider.oninput = function() {
+    let sliderLabelUpdate = function() {
         myLabel.innerHTML = this.value + "%";
     };
+    slider.oninput = sliderLabelUpdate;
     sliderCol.appendChild(sliderLabel);
     sliderContainer.appendChild(slider);
     sliderColTwo.appendChild(sliderContainer);
