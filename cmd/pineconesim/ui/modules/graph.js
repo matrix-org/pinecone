@@ -1,5 +1,5 @@
 import { openRightPanel, closeRightPanel } from "./ui.js";
-import { ConvertNodeTypeToString } from "./server-api.js";
+import { ConvertNodeTypeToString, APINodeType } from "./server-api.js";
 
 // You can supply an element as your title.
 var titleElement = document.createElement("div");
@@ -205,10 +205,23 @@ class Graph {
     }
 
     addNode(id, key, type) {
-        this.peerData.nodes.add({ id: id, label: id });
-        this.snakeData.nodes.add({ id: id, label: id });
-        this.treeData.nodes.add({ id: id, label: id });
-        this.geoData.nodes.add({ id: id, label: id });
+        let colour = getComputedStyle(document.documentElement).getPropertyValue('--color-router-blue');
+        if (type === APINodeType.GeneralAdversary) {
+            console.log("here!");
+            colour = getComputedStyle(document.documentElement).getPropertyValue('--color-dark-red');
+        }
+        this.peerData.nodes.add({ id: id, label: id, color: {
+            background: colour, border: colour, hover: {
+                background: colour, border: colour } } });
+        this.snakeData.nodes.add({ id: id, label: id, color: {
+            background: colour, border: colour, hover: {
+                background: colour, border: colour } } });
+        this.treeData.nodes.add({ id: id, label: id, color: {
+            background: colour, border: colour, hover: {
+                background: colour, border: colour } }});
+        this.geoData.nodes.add({ id: id, label: id, color: {
+            background: colour, border: colour, hover: {
+                background: colour, border: colour } } });
         this.nodeIDs.push(id);
 
         Nodes.set(id, newNode(key, type));
