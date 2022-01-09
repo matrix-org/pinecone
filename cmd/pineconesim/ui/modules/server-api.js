@@ -35,6 +35,12 @@ export const APICommandID = {
     ConfigureAdversaryPeer: 10,
 };
 
+export const APINodeType = {
+    Unknown: 0,
+    Default: 1,
+    GeneralAdversary: 2,
+};
+
 var serverWorker;
 
 export function ConnectToServer(url, handler) {
@@ -50,4 +56,18 @@ export function SendToServer(msg) {
     if (serverWorker) {
         serverWorker.postMessage(msg);
     }
+}
+
+export function ConvertNodeTypeToString(nodeType) {
+    let val = "Unknown";
+    switch(nodeType) {
+    case APINodeType.Default:
+        val = "Default";
+        break;
+    case APINodeType.GeneralAdversary:
+        val = "General Adversary";
+        break;
+    }
+
+    return val;
 }

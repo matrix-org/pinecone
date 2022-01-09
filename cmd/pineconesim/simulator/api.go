@@ -60,11 +60,12 @@ const (
 const (
 	UnknownType APINodeType = iota
 	DefaultNode
-	AdversaryNode
+	GeneralAdversaryNode
 )
 
 type InitialNodeState struct {
 	PublicKey     string
+	NodeType      APINodeType
 	RootState     RootState
 	Peers         []PeerInfo
 	TreeParent    string

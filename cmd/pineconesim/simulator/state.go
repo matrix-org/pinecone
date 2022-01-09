@@ -29,6 +29,7 @@ type RootAnnouncement struct {
 
 type NodeState struct {
 	PeerID           string
+	NodeType         APINodeType
 	Connections      map[int]string
 	Parent           string
 	Coords           []uint64
@@ -39,9 +40,10 @@ type NodeState struct {
 	DescendingPathID string
 }
 
-func NewNodeState(peerID string) *NodeState {
+func NewNodeState(peerID string, nodeType APINodeType) *NodeState {
 	node := &NodeState{
 		PeerID:           peerID,
+		NodeType:         nodeType,
 		Connections:      make(map[int]string),
 		Parent:           "",
 		Announcement:     RootAnnouncement{},
@@ -167,9 +169,9 @@ func (s *StateAccessor) GetNodeCoords(name string) []uint64 {
 	return coords
 }
 
-func (s *StateAccessor) _addNode(name string, peerID string) {
-	s._state.Nodes[name] = NewNodeState(peerID)
-	s._publish(NodeAdded{Node: name, PublicKey: peerID})
+func (s *StateAccessor) _addNode(name string, peerID string, nodeType APINodeType) {
+	s._state.Nodes[name] = NewNodeState(peerID, nodeType)
+	s._publish(NodeAdded{Node: name, PublicKey: peerID, NodeType: int(nodeType)})
 }
 
 func (s *StateAccessor) _removeNode(name string) {

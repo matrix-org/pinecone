@@ -1,8 +1,9 @@
 import { openRightPanel, closeRightPanel } from "./ui.js";
+import { ConvertNodeTypeToString } from "./server-api.js";
 
 // You can supply an element as your title.
 var titleElement = document.createElement("div");
-titleElement.style.height = "14em";
+titleElement.style.height = "15em";
 // titleElement.style.minWidth = "10em";
 titleElement.style.width = "max-content";
 titleElement.style.color = getComputedStyle(document.documentElement)
@@ -203,14 +204,14 @@ class Graph {
         handleStatsPanelUpdate();
     }
 
-    addNode(id, key) {
+    addNode(id, key, type) {
         this.peerData.nodes.add({ id: id, label: id });
         this.snakeData.nodes.add({ id: id, label: id });
         this.treeData.nodes.add({ id: id, label: id });
         this.geoData.nodes.add({ id: id, label: id });
         this.nodeIDs.push(id);
 
-        Nodes.set(id, newNode(key));
+        Nodes.set(id, newNode(key, type));
 
         this.updateUI(id);
     }
@@ -588,8 +589,9 @@ class Graph {
 
 export var graph = new Graph(document.getElementById("canvas"));
 
-function newNode(key) {
+function newNode(key, type) {
     return {
+        nodeType: type,
         announcement: {
             root: "",
             sequence: 0,
@@ -632,6 +634,7 @@ function handleNodeHoverUpdate() {
         let time = node.announcement.time.toString();
         hoverPanel.innerHTML = "<u><b>Node " + hoverNode + "</b></u>" +
             "<br>Key: " + node.key.slice(0, 16).replace(/\"/g, "").toUpperCase() +
+            "<br>Type: " + ConvertNodeTypeToString(node.nodeType) +
             "<br>Coords: [" + node.coords + "]" +
             "<br>Tree Parent: " + node.treeParent +
             "<br>SNEK Desc: " + node.snekDesc +
@@ -667,7 +670,7 @@ function handleNodePanelUpdate() {
 
     if (nodes.length === 0) {
         closeRightPanel();
-        nodes.push({id: "", node: newNode("")});
+        nodes.push({id: "", node: newNode("", "")});
     }
 
     for (let i = 0; i < nodes.length; i++) {
@@ -692,6 +695,7 @@ function handleNodePanelUpdate() {
                 "<h3>Node " + nodeID + "</h3>" +
                 "<hr><table>" +
                 "<tr><td>Name:</td><td>" + nodeID + "</td></tr>" +
+                "<tr><td>Type:</td><td>" + ConvertNodeTypeToString(node.nodeType) + "</td></tr>" +
                 "<tr><td>Coordinates:</td><td>[" + node.coords + "]</td></tr>" +
                 "<tr><td>Public Key:</td><td><code>" + node.key.slice(0, 16).replace(/\"/g, "").toUpperCase() + "</code></td></tr>" +
                 "<tr><td>Root Key:</td><td><code>" + getNodeKey(node.announcement.root).slice(0, 16).replace(/\"/g, "").toUpperCase() + "</code></td></tr>" +

@@ -92,7 +92,7 @@ func main() {
 		if err := sim.CreateNode(n); err != nil {
 			panic(err)
 		}
-		sim.StartNodeEventHandler(n)
+		sim.StartNodeEventHandler(n, simulator.DefaultNode)
 	}
 
 	for a, w := range wires {
@@ -288,6 +288,7 @@ func userProxyReporter(conn *websocket.Conn, connID uint64, sim *simulator.Simul
 
 		nodeState[name] = simulator.InitialNodeState{
 			PublicKey: node.PeerID,
+			NodeType:  node.NodeType,
 			RootState: simulator.RootState{
 				Root:        node.Announcement.Root,
 				AnnSequence: node.Announcement.Sequence,

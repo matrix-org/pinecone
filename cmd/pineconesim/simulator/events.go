@@ -23,6 +23,7 @@ type SimEvent interface {
 type NodeAdded struct {
 	Node      string
 	PublicKey string
+	NodeType  int
 }
 
 // Tag NodeAdded as an Event

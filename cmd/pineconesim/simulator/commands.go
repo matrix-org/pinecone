@@ -292,7 +292,7 @@ func (c AddNode) Run(log *log.Logger, sim *Simulator) {
 		return
 	}
 
-	sim.StartNodeEventHandler(c.Node)
+	sim.StartNodeEventHandler(c.Node, c.NodeType)
 }
 
 func (c AddNode) String() string {

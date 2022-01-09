@@ -8,7 +8,7 @@ function handleSimMessage(msg) {
     switch(msg.data.MsgID) {
     case APIEventMessageID.InitialState:
         for (let [key, value] of Object.entries(msg.data.Nodes)) {
-            graph.addNode(key, value.PublicKey);
+            graph.addNode(key, value.PublicKey, value.NodeType);
             graph.updateRootAnnouncement(key, value.RootState.Root, value.RootState.AnnSequence, value.RootState.AnnTime, value.RootState.Coords);
 
             if (value.Peers) {
@@ -38,7 +38,7 @@ function handleSimMessage(msg) {
         let event = msg.data.Event.Event;
         switch(msg.data.Event.UpdateID) {
         case APIUpdateID.NodeAdded:
-            graph.addNode(event.Node, event.PublicKey);
+            graph.addNode(event.Node, event.PublicKey, event.NodeType);
             break;
         case APIUpdateID.NodeRemoved:
             graph.removeNode(event.Node);

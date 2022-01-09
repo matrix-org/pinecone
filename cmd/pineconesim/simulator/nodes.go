@@ -112,7 +112,7 @@ func (sim *Simulator) CreateNode(t string) error {
 	return nil
 }
 
-func (sim *Simulator) StartNodeEventHandler(t string) {
+func (sim *Simulator) StartNodeEventHandler(t string, nodeType APINodeType) {
 	ch := make(chan events.Event)
 	handler := eventHandler{node: t, ch: ch}
 	quit := make(chan bool)
@@ -123,7 +123,7 @@ func (sim *Simulator) StartNodeEventHandler(t string) {
 	sim.nodeRunnerChannels[t] = append(sim.nodeRunnerChannels[t], quit)
 	sim.nodeRunnerChannelsMutex.Unlock()
 
-	phony.Block(sim.State, func() { sim.State._addNode(t, sim.nodes[t].PublicKey().String()) })
+	phony.Block(sim.State, func() { sim.State._addNode(t, sim.nodes[t].PublicKey().String(), nodeType) })
 }
 
 func (sim *Simulator) RemoveNode(node string) {
