@@ -7,8 +7,8 @@ let rightShown = false;
 let nodesFormNodeCount = 0;
 
 let nodeTypeToOptions = new Map();
-nodeTypeToOptions.set("default", createNodeOptionsDefault);
-nodeTypeToOptions.set("general-adversary", createNodeOptionsGeneralAdversary);
+nodeTypeToOptions.set("Default", createNodeOptionsDefault);
+nodeTypeToOptions.set("GeneralAdversary", createNodeOptionsGeneralAdversary);
 
 export function openRightPanel() {
     if (!rightShown) {
@@ -431,10 +431,10 @@ setupFormSubmission();
 function convertNodeTypeToID(nodeType) {
     let typeID = 0;
     switch(nodeType) {
-    case "default":
+    case "Default":
         typeID = 1;
         break;
-    case "general-adversary":
+    case "GeneralAdversary":
         typeID = 2;
         break;
     }
@@ -541,7 +541,7 @@ function submitAddNodesForm(form) {
             let nodeID = convertNodeTypeToID(nodeType);
             commands.push({"MsgID": APICommandID.AddNode, "Event": {"Name": nodeName, "NodeType": nodeID}});
             switch(nodeType) {
-            case "general-adversary":
+            case "GeneralAdversary":
                 commands.push({"MsgID": APICommandID.ConfigureAdversaryDefaults, "Event": {
                     "Node": nodeName,
                     "DropRates": Object.fromEntries(nodeOptions)

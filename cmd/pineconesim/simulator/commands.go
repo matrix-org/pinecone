@@ -170,47 +170,47 @@ func UnmarshalCommandJSON(command *SimCommandMsg) (SimCommand, error) {
 
 		if val, ok := command.Event.(map[string]interface{})["DropRates"]; ok {
 			if subVal, subOk := val.(map[string]interface{})["Keepalive"]; subOk {
-				dropRates.KeepAlive = int(subVal.(float64))
+				dropRates.KeepAlive, _ = strconv.Atoi(subVal.(string))
 			} else {
 				err = fmt.Errorf("%sConfigureAdversaryDefaults.DropRates.Keepalive field doesn't exist", FAILURE_PREAMBLE)
 			}
 			if subVal, subOk := val.(map[string]interface{})["TreeAnnouncement"]; subOk {
-				dropRates.TreeAnnouncement = int(subVal.(float64))
+				dropRates.TreeAnnouncement, _ = strconv.Atoi(subVal.(string))
 			} else {
 				err = fmt.Errorf("%sConfigureAdversaryDefaults.DropRates.TreeAnnouncement field doesn't exist", FAILURE_PREAMBLE)
 			}
 			if subVal, subOk := val.(map[string]interface{})["TreeRouted"]; subOk {
-				dropRates.TreeRouted = int(subVal.(float64))
+				dropRates.TreeRouted, _ = strconv.Atoi(subVal.(string))
 			} else {
 				err = fmt.Errorf("%sConfigureAdversaryDefaults.DropRates.TreeRouted field doesn't exist", FAILURE_PREAMBLE)
 			}
 			if subVal, subOk := val.(map[string]interface{})["VirtualSnakeBootstrap"]; subOk {
-				dropRates.VirtualSnakeBootstrap = int(subVal.(float64))
+				dropRates.VirtualSnakeBootstrap, _ = strconv.Atoi(subVal.(string))
 			} else {
 				err = fmt.Errorf("%sConfigureAdversaryDefaults.DropRates.VirtualSnakeBootstrap field doesn't exist", FAILURE_PREAMBLE)
 			}
 			if subVal, subOk := val.(map[string]interface{})["VirtualSnakeBootstrapACK"]; subOk {
-				dropRates.VirtualSnakeBootstrapACK = int(subVal.(float64))
+				dropRates.VirtualSnakeBootstrapACK, _ = strconv.Atoi(subVal.(string))
 			} else {
 				err = fmt.Errorf("%sConfigureAdversaryDefaults.DropRates.VirtualSnakeBootstrapACK field doesn't exist", FAILURE_PREAMBLE)
 			}
 			if subVal, subOk := val.(map[string]interface{})["VirtualSnakeSetup"]; subOk {
-				dropRates.VirtualSnakeSetup = int(subVal.(float64))
+				dropRates.VirtualSnakeSetup, _ = strconv.Atoi(subVal.(string))
 			} else {
 				err = fmt.Errorf("%sConfigureAdversaryDefaults.DropRates.VirtualSnakeSetup field doesn't exist", FAILURE_PREAMBLE)
 			}
 			if subVal, subOk := val.(map[string]interface{})["VirtualSnakeSetupACK"]; subOk {
-				dropRates.VirtualSnakeSetupACK = int(subVal.(float64))
+				dropRates.VirtualSnakeSetupACK, _ = strconv.Atoi(subVal.(string))
 			} else {
 				err = fmt.Errorf("%sConfigureAdversaryDefaults.DropRates.VirtualSnakeSetupACK field doesn't exist", FAILURE_PREAMBLE)
 			}
 			if subVal, subOk := val.(map[string]interface{})["VirtualSnakeTeardown"]; subOk {
-				dropRates.VirtualSnakeTeardown = int(subVal.(float64))
+				dropRates.VirtualSnakeTeardown, _ = strconv.Atoi(subVal.(string))
 			} else {
 				err = fmt.Errorf("%sConfigureAdversaryDefaults.DropRates.VirtualSnakeTeardown field doesn't exist", FAILURE_PREAMBLE)
 			}
 			if subVal, subOk := val.(map[string]interface{})["VirtualSnakeRouted"]; subOk {
-				dropRates.VirtualSnakeRouted = int(subVal.(float64))
+				dropRates.VirtualSnakeRouted, _ = strconv.Atoi(subVal.(string))
 			} else {
 				err = fmt.Errorf("%sConfigureAdversaryDefaults.DropRates.VirtualSnakeRouted field doesn't exist", FAILURE_PREAMBLE)
 			}
