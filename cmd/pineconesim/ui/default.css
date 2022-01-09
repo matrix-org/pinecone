@@ -416,18 +416,7 @@ body {
     cursor: pointer;
 }
 
-
-
-
-
-
-
-
-
-
-
-
- /* Style inputs, select elements and textareas */
+/* Style inputs, select elements and textareas */
 input[type=text], select, textarea{
     width: 100%;
     padding: 12px;
@@ -494,19 +483,30 @@ input[type=submit]:active {
     margin-top: -10px;
 }
 
-/* Floating column for labels: 25% width */
-.col-25 {
+.col-two-left {
     float: left;
-    width: 25%;
+    width: 35%;
     min-width: max-content;
     margin-top: 6px;
 }
 
-/* Floating column for inputs: 75% width */
-.col-75 {
+.col-two-right {
     float: left;
-    width: 75%;
+    width: 65%;
     margin-top: 6px;
+}
+
+.col-three-middle {
+    float: left;
+    width: 55%;
+    margin-top: 6px;
+}
+
+.col-three-right {
+    float: left;
+    width: 10%;
+    margin-top: 6px;
+    padding-left: 6px;
 }
 
 /* Clear floats after the columns */
@@ -517,14 +517,64 @@ input[type=submit]:active {
 }
 
 @media screen and (max-width: 600px) {
-    .col-25, .col-75 {
+    .col-two-left, .col-two-right {
         width: 100%;
         margin-top: 0;
     }
-}
 
-@media screen and (max-width: 600px) {
+    .col-three-middle {
+        width: 85%;
+    }
+
     input[type=submit] {
         width: 100%;
     }
+
+    .col-three-middle, .col-three-right {
+        margin-top: -10px;
+        margin-bottom: 20px;
+    }
+}
+
+.slidecontainer {
+    width: 100%; /* Width of the outside container */
+    transform: translateY(100%);
+}
+
+/* The slider itself */
+.slider {
+    -webkit-appearance: none;  /* Override default CSS styles */
+    appearance: none;
+    width: 100%; /* Full-width */
+    height: 10px; /* Specified height */
+    border-radius: 5px;
+    background: #d3d3d3; /* Grey background */
+    outline: none; /* Remove outline */
+    opacity: 0.7; /* Set transparency (for mouse-over effects on hover) */
+    -webkit-transition: .2s; /* 0.2 seconds transition on hover */
+    transition: opacity .2s;
+}
+
+/* Mouse-over effects */
+.slider:hover {
+    opacity: 1; /* Fully shown on mouse-over */
+}
+
+/* The slider handle (use -webkit- (Chrome, Opera, Safari, Edge) and -moz- (Firefox) to override default look) */
+.slider::-webkit-slider-thumb {
+    -webkit-appearance: none; /* Override default look */
+    appearance: none;
+    width: 15px; /* Set a specific slider handle width */
+    height: 15px; /* Slider handle height */
+    border-radius: 50%;
+    background: var(--color-logo-green); /* Green background */
+    cursor: pointer; /* Cursor on hover */
+}
+
+.slider::-moz-range-thumb {
+    width: 15px; /* Set a specific slider handle width */
+    height: 15px; /* Slider handle height */
+    border-radius: 50%;
+    background: var(--color-logo-green); /* Green background */
+    cursor: pointer; /* Cursor on hover */
 }

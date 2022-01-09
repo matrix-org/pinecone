@@ -4,6 +4,12 @@ import { APICommandMessageID, APICommandID, SendToServer } from "./server-api.js
 let leftShown = false;
 let rightShown = false;
 
+let nodesFormNodeCount = 0;
+
+let nodeTypeToOptions = new Map();
+nodeTypeToOptions.set("default", createNodeOptionsDefault);
+nodeTypeToOptions.set("general-adversary", createNodeOptionsGeneralAdversary);
+
 export function openRightPanel() {
     if (!rightShown) {
         toggleRightPanel();
@@ -283,7 +289,7 @@ function validateEventSequence(content) {
 
 function validateField(field, value) {
     let validFieldValues = new Map();
-    validFieldValues.set("NodeType", ["Default", "Adversary"]);
+    validFieldValues.set("NodeType", Array.from(nodeTypeToOptions.keys()));
     let isValid = false;
 
     if (validFieldValues.has(field)) {
@@ -318,6 +324,7 @@ function handleToolReplayPlayPause(subtool) {
 
 function handleToolAddNodes(subtool) {
     setupBaseModal("add-nodes-modal");
+    nodesFormNodeCount = 0;
 
     let nodesForm = document.getElementById("add-nodes-form");
     nodesForm.innerHTML = '<span><button id="extend-nodes" type="button" class="toggle extend-form-button">+</button></span><h4>New Nodes</h4>';
@@ -424,10 +431,10 @@ setupFormSubmission();
 function convertNodeTypeToID(nodeType) {
     let typeID = 0;
     switch(nodeType) {
-    case "Default":
+    case "default":
         typeID = 1;
         break;
-    case "Adversary":
+    case "general-adversary":
         typeID = 2;
         break;
     }
@@ -490,44 +497,60 @@ function submitAddNodesForm(form) {
     let processedNodes = [];
     let nodeName = "";
     let nodeType = "";
-    for (let i = 0; i < form.target.length; i++) {
-        if (form.target[i].name === "nodename") {
-            if (form.target[i].value === "") {
-                if (!form.target[i].className.includes(" focus-error")) {
-                    form.target[i].className += " focus-error";
-                }
-                // TODO : form feedback about empty node name/s
-                submitForm = false;
-            } else if (graph.nodeIDs.includes(form.target[i].value)) {
-                if (!form.target[i].className.includes(" focus-error")) {
-                    form.target[i].className += " focus-error";
-                }
-                // TODO : form feedback about which node/s already exist
-                exists = true;
-                submitForm = false;
-            } else if (processedNodes.includes(form.target[i].value)) {
-                if (!form.target[i].className.includes(" focus-error")) {
-                    form.target[i].className += " focus-error";
-                }
-                // TODO : form feedback about duplicate nodes
-                submitForm = false;
-            } else {
-                form.target[i].className = form.target[i].className.replace(" focus-error", "");
-                nodeName = form.target[i].value;
-            }
 
-            processedNodes.push(form.target[i].value);
-        } else if (form.target[i].name === "nodetype") {
-            nodeType = form.target[i].value;
-            if (nodeName != "") {
-                let nodeID = convertNodeTypeToID(nodeType);
-                commands.push({"MsgID": APICommandID.AddNode, "Event": {"Name": nodeName, "NodeType": nodeID}});
-                nodeName = "";
-                nodeType = "";
-            } else {
-                console.log("Error parsing add nodes form. Items out of order.");
-                submitForm = false;
+    for (let z = 0; z < nodesFormNodeCount; z++) {
+        let newNode = document.getElementById("new-node-" + z);
+        let node = newNode.querySelector(".node-options");
+        let options = node.querySelectorAll(".node-option");
+        let nodeOptions = new Map();
+        options.forEach(function(item) {
+            nodeOptions.set(item.name, item.value);
+        });
+
+        let nodeNameEle = newNode.querySelector("input[name='nodename']");
+        let nodeTypeEle = newNode.querySelector("select[name='nodetype']");
+
+        if (nodeNameEle.value === "") {
+            if (!nodeNameEle.className.includes(" focus-error")) {
+                nodeNameEle.className += " focus-error";
             }
+            // TODO : form feedback about empty node name/s
+            submitForm = false;
+        } else if (graph.nodeIDs.includes(nodeNameEle.value)) {
+            if (!nodeNameEle.className.includes(" focus-error")) {
+                nodeNameEle.className += " focus-error";
+            }
+            // TODO : form feedback about which node/s already exist
+            exists = true;
+            submitForm = false;
+        } else if (processedNodes.includes(nodeNameEle.value)) {
+            if (!nodeNameEle.className.includes(" focus-error")) {
+                nodeNameEle.className += " focus-error";
+            }
+            // TODO : form feedback about duplicate nodes
+            submitForm = false;
+        } else {
+            nodeNameEle.className = nodeNameEle.className.replace(" focus-error", "");
+            nodeName = nodeNameEle.value;
+        }
+
+        processedNodes.push(nodeNameEle.value);
+        nodeType = nodeTypeEle.value;
+
+        if (nodeName != "" && nodeType != "") {
+            let nodeID = convertNodeTypeToID(nodeType);
+            commands.push({"MsgID": APICommandID.AddNode, "Event": {"Name": nodeName, "NodeType": nodeID}});
+            switch(nodeType) {
+            case "general-adversary":
+                commands.push({"MsgID": APICommandID.ConfigureAdversaryDefaults, "Event": {
+                    "Node": nodeName,
+                    "DropRates": Object.fromEntries(nodeOptions)
+                }});
+                break;
+            }
+        } else {
+            console.log("Error parsing add nodes form.");
+            submitForm = false;
         }
     }
 
@@ -599,18 +622,18 @@ function extendPeeringsForm() {
 
     peeringTable.innerHTML += '<hr>' +
         '<div class="row">' +
-        '<div class="col-25">' +
+        '<div class="col-two-left">' +
         '<label for="from">From</label>' +
         '</div>' +
-        '<div class="col-75">' +
+        '<div class="col-two-right">' +
         availablePeers +
         '</div>' +
         '</div>' +
         '<div class="row">' +
-        '<div class="col-25">' +
+        '<div class="col-two-left">' +
         '<label for="to">To</label>' +
         '</div>' +
-        '<div class="col-75">' +
+        '<div class="col-two-right">' +
         availablePeers +
         '</div>' +
         '</div>';
@@ -632,34 +655,25 @@ function addSubmitButton(form) {
 }
 
 function extendNodesForm() {
+    let newNodeID = "new-node-" + nodesFormNodeCount;
+    nodesFormNodeCount++;
+
     let nodesForm = document.getElementById("add-nodes-form");
     // Remove the submit button from the bottom
     nodesForm.removeChild(nodesForm.lastChild);
-    let typeSelect = document.createElement('select');
-    typeSelect.name = "nodetype";
-    typeSelect.onchange = e => {
-        console.log(e.target.value);
-    };
-
-    let options = ["Default", "Adversary"];
-    for (let i = 0; i < options.length; i++) {
-        let option = document.createElement("option");
-        option.value = options[i];
-        option.text = options[i];
-        typeSelect.appendChild(option);
-    }
 
     let peeringTable = document.createElement('div');
+    peeringTable.id = newNodeID;
     let hRule = document.createElement("hr");
     peeringTable.appendChild(hRule);
     let nodeName = document.createElement("div");
     nodeName.className = "row";
     let nodeNameCol = document.createElement("div");
-    nodeNameCol.className = "col-25";
+    nodeNameCol.className = "col-two-left";
     let nodeNameLabel = document.createElement("label");
     nodeNameLabel.innerHTML = "Name";
     let nodeNameColTwo = document.createElement("div");
-    nodeNameColTwo.className = "col-75";
+    nodeNameColTwo.className = "col-two-right";
     let nodeNameInput = document.createElement("input");
     nodeNameInput.type = "text";
     nodeNameInput.name = "nodename";
@@ -674,11 +688,34 @@ function extendNodesForm() {
     let nodeType = document.createElement("div");
     nodeType.className = "row";
     let nodeCol = document.createElement("div");
-    nodeCol.className = "col-25";
+    nodeCol.className = "col-two-left";
     let nodeLabel = document.createElement("label");
     nodeLabel.innerHTML = "Node Type";
     let nodeColTwo = document.createElement("div");
-    nodeColTwo.className = "col-75";
+    nodeColTwo.className = "col-two-right";
+
+    let typeSelect = document.createElement('select');
+    typeSelect.name = "nodetype";
+    typeSelect.onchange = e => {
+        let node = document.getElementById(newNodeID);
+        for (let i = 0; i < node.childNodes.length; i++) {
+            if (node.childNodes[i].className.includes("node-options")) {
+                node.removeChild(node.childNodes[i]);
+                break;
+            }
+        }
+
+        let options = nodeTypeToOptions.get(e.target.value)();
+        node.appendChild(options);
+    };
+
+    let options = Array.from(nodeTypeToOptions.keys());
+    for (let i = 0; i < options.length; i++) {
+        let option = document.createElement("option");
+        option.value = options[i];
+        option.text = options[i];
+        typeSelect.appendChild(option);
+    }
 
     nodeCol.appendChild(nodeLabel);
     nodeColTwo.appendChild(typeSelect);
@@ -686,9 +723,126 @@ function extendNodesForm() {
     nodeType.appendChild(nodeColTwo);
     peeringTable.append(nodeType);
 
+    let nodeOptions = nodeTypeToOptions.get(nodeTypeToOptions.keys().next().value)();
+    peeringTable.appendChild(nodeOptions);
+
     nodesForm.appendChild(peeringTable);
     addSubmitButton(nodesForm);
 
     let extendButton = document.getElementById("extend-nodes");
     extendButton.onclick = extendNodesForm;
+}
+
+function createNodeOptionsDefault() {
+    let nodeOptions = document.createElement("div");
+    nodeOptions.className += " node-options";
+    return nodeOptions;
+}
+
+function createNodeOptionsGeneralAdversary() {
+    let nodeOptions = document.createElement("div");
+    nodeOptions.className += " node-options";
+    let drop = document.createElement("div");
+    drop.className = "row";
+    let dropLabel = document.createElement("label");
+    dropLabel.innerHTML = "<b>Drop Rates:";
+    drop.appendChild(dropLabel);
+    nodeOptions.appendChild(drop);
+
+    let advType = document.createElement("div");
+    advType.className = "row";
+    let advCol = document.createElement("div");
+    advCol.className = "col-two-left";
+    let advLabel = document.createElement("label");
+    advLabel.innerHTML = "Template";
+    let advColTwo = document.createElement("div");
+    advColTwo.className = "col-two-right";
+
+    let templateSelect = document.createElement('select');
+    templateSelect.onchange = e => {
+        console.log(e.target.value);
+        // TODO : me!!!
+        // need to update node option slider values
+    };
+
+    let templates = ["None", "BlockTreeProtoTraffic", "BlockSNEKProtoTraffic"];
+    for (let i = 0; i < templates.length; i++) {
+        let template = document.createElement("option");
+        template.value = templates[i];
+        template.text = templates[i];
+        templateSelect.appendChild(template);
+    }
+
+    advCol.appendChild(advLabel);
+    advColTwo.appendChild(templateSelect);
+    advType.appendChild(advCol);
+    advType.appendChild(advColTwo);
+    nodeOptions.append(advType);
+
+    let allTraffic = generateSliderRow("Keepalive", "Keepalive");
+    nodeOptions.appendChild(allTraffic);
+
+    let tree1 = generateSliderRow("Tree Announcement", "TreeAnnouncement");
+    nodeOptions.appendChild(tree1);
+    let tree2 = generateSliderRow("Tree Routed", "TreeRouted");
+    nodeOptions.appendChild(tree2);
+
+    let snek1 = generateSliderRow("SNEK Bootstrap", "VirtualSnakeBootstrap");
+    nodeOptions.appendChild(snek1);
+    let snek3 = generateSliderRow("SNEK Bootstrap ACK", "VirtualSnakeBootstrapACK");
+    nodeOptions.appendChild(snek3);
+
+    let snek4 = generateSliderRow("SNEK Setup", "VirtualSnakeSetup");
+    nodeOptions.appendChild(snek4);
+    let snek5 = generateSliderRow("SNEK Setup ACK", "VirtualSnakeSetupACK");
+    nodeOptions.appendChild(snek5);
+
+    let snek6 = generateSliderRow("SNEK Teardown", "VirtualSnakeTeardown");
+    nodeOptions.appendChild(snek6);
+
+    let snek2 = generateSliderRow("SNEK Routed", "VirtualSnakeRouted");
+    nodeOptions.appendChild(snek2);
+
+    return nodeOptions;
+}
+
+function generateSliderRow(label, name) {
+    let sliderDiv = document.createElement("div");
+    sliderDiv.className = "row";
+    let sliderCol = document.createElement("div");
+    sliderCol.className = "col-two-left";
+    let sliderLabel = document.createElement("label");
+    sliderLabel.innerHTML = label;
+    let sliderColTwo = document.createElement("div");
+    sliderColTwo.className = "col-three-middle";
+    let sliderColThree = document.createElement("div");
+    sliderColThree.className = "col-three-right";
+    let myLabel = document.createElement("label");
+    myLabel.style.position = "absolute";
+    myLabel.style.marginRight = "6px";
+    myLabel.style.right = "0";
+
+    let sliderContainer = document.createElement("div");
+    sliderContainer.className = "slidecontainer";
+    let slider = document.createElement("input");
+    slider.className = "slider node-option";
+    slider.type = "range";
+    slider.min = 0;
+    slider.max = 100;
+    slider.value = 0;
+    slider.name = name;
+
+    myLabel.innerHTML = slider.value + "%";
+    slider.oninput = function() {
+        myLabel.innerHTML = this.value + "%";
+    };
+    sliderCol.appendChild(sliderLabel);
+    sliderContainer.appendChild(slider);
+    sliderColTwo.appendChild(sliderContainer);
+    sliderColThree.appendChild(myLabel);
+    sliderDiv.appendChild(sliderCol);
+    sliderDiv.appendChild(sliderColTwo);
+    sliderDiv.appendChild(sliderColThree);
+
+    return sliderDiv;
 }
