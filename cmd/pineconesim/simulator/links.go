@@ -103,15 +103,18 @@ func (sim *Simulator) ConnectNodes(a, b string) error {
 func (sim *Simulator) DisconnectNodes(a, b string) error {
 	sim.wiresMutex.RLock()
 	wire := sim.wires[a][b]
+	firstIndex, secondIndex := a, b
 	if wire == nil {
 		wire = sim.wires[b][a]
+		firstIndex, secondIndex = b, a
 	}
 	sim.wiresMutex.RUnlock()
 	if wire == nil {
 		return fmt.Errorf("nodes not connected")
 	}
+
 	sim.wiresMutex.Lock()
-	sim.wires[a][b] = nil
+	sim.wires[firstIndex][secondIndex] = nil
 	sim.wiresMutex.Unlock()
 	return wire.Close()
 }

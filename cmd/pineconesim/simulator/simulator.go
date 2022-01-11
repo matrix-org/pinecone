@@ -183,6 +183,7 @@ func (sim *Simulator) handlePeerAdded(node string, peerID string, port int) {
 
 func (sim *Simulator) handlePeerRemoved(node string, peerID string, port int) {
 	if peerNode, err := sim.State.GetNodeName(peerID); err == nil {
+		sim.DisconnectNodes(node, peerNode)
 		sim.State.Act(nil, func() { sim.State._removePeerConnection(node, peerNode, port) })
 	}
 }
