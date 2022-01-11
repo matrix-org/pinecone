@@ -96,6 +96,7 @@
             "Data": {
                 "Node": "Dan",
                 "DropRates": {
+                    "Overall": "0",
                     "Keepalive": "0",
 	                  "TreeAnnouncement": "0",
 	                  "TreeRouted": "0",

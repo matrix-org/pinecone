@@ -208,7 +208,7 @@ function validateEventSequence(content) {
         validSimCommands.set("ConfigureAdversaryPeer", ["Node", "Peer", "DropRates"]);
 
         let validSubcommands = new Map();
-        validSubcommands.set("DropRates", ["Keepalive", "TreeAnnouncement", "TreeRouted", "VirtualSnakeBootstrap", "VirtualSnakeBootstrapACK", "VirtualSnakeSetup", "VirtualSnakeSetupACK", "VirtualSnakeTeardown", "VirtualSnakeRouted"]);
+        validSubcommands.set("DropRates", ["Overall", "Keepalive", "TreeAnnouncement", "TreeRouted", "VirtualSnakeBootstrap", "VirtualSnakeBootstrapACK", "VirtualSnakeSetup", "VirtualSnakeSetupACK", "VirtualSnakeTeardown", "VirtualSnakeRouted"]);
 
         for (let i = 0; i < content.EventSequence.length; i++) {
             let sequence = content.EventSequence;
@@ -760,6 +760,7 @@ function createNodeOptionsGeneralAdversary() {
 
     let settingsMap = {
         "None": {
+            "Overall": 0,
             "Keepalive": 0,
             "TreeAnnouncement": 0,
             "TreeRouted": 0,
@@ -771,6 +772,7 @@ function createNodeOptionsGeneralAdversary() {
             "VirtualSnakeRouted": 0,
         },
         "BlockTreeProtoTraffic": {
+            "Overall": 0,
             "Keepalive": 0,
             "TreeAnnouncement": 100,
             "TreeRouted": 0,
@@ -782,6 +784,7 @@ function createNodeOptionsGeneralAdversary() {
             "VirtualSnakeRouted": 0,
         },
         "BlockSNEKProtoTraffic": {
+            "Overall": 0,
             "Keepalive": 0,
             "TreeAnnouncement": 0,
             "TreeRouted": 0,
@@ -831,8 +834,12 @@ function createNodeOptionsGeneralAdversary() {
     advType.appendChild(advColTwo);
     nodeOptions.append(advType);
 
-    let allTraffic = generateSliderRow("Keepalive", "Keepalive");
+
+    let allTraffic = generateSliderRow("Overall", "Overall");
     nodeOptions.appendChild(allTraffic);
+
+    let keepalive = generateSliderRow("Keepalive", "Keepalive");
+    nodeOptions.appendChild(keepalive);
 
     let tree1 = generateSliderRow("Tree Announcement", "TreeAnnouncement");
     nodeOptions.appendChild(tree1);

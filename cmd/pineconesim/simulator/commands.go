@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/matrix-org/pinecone/cmd/pineconesim/simulator/adversary"
+	"github.com/matrix-org/pinecone/types"
 )
 
 const FAILURE_PREAMBLE = "Failed unmarshalling event: "
@@ -98,7 +99,7 @@ func UnmarshalCommandJSON(command *SimCommandMsg) (SimCommand, error) {
 		msg = RemovePeer{node, peer}
 	case SimConfigureAdversaryDefaults:
 		node := ""
-		dropRates := adversary.DropRates{}
+		dropRates := adversary.NewDropRates()
 		if val, ok := command.Event.(map[string]interface{})["Node"]; ok {
 			node = val.(string)
 		} else {
@@ -106,48 +107,63 @@ func UnmarshalCommandJSON(command *SimCommandMsg) (SimCommand, error) {
 		}
 
 		if val, ok := command.Event.(map[string]interface{})["DropRates"]; ok {
+			if subVal, subOk := val.(map[string]interface{})["Overall"]; subOk {
+				intVal, _ := strconv.Atoi(subVal.(string))
+				dropRates.Overall = uint64(intVal)
+			} else {
+				err = fmt.Errorf("%sConfigureAdversaryDefaults.DropRates.Overall field doesn't exist", FAILURE_PREAMBLE)
+			}
 			if subVal, subOk := val.(map[string]interface{})["Keepalive"]; subOk {
-				dropRates.KeepAlive, _ = strconv.Atoi(subVal.(string))
+				intVal, _ := strconv.Atoi(subVal.(string))
+				dropRates.Frames[types.TypeKeepalive] = uint64(intVal)
 			} else {
 				err = fmt.Errorf("%sConfigureAdversaryDefaults.DropRates.Keepalive field doesn't exist", FAILURE_PREAMBLE)
 			}
 			if subVal, subOk := val.(map[string]interface{})["TreeAnnouncement"]; subOk {
-				dropRates.TreeAnnouncement, _ = strconv.Atoi(subVal.(string))
+				intVal, _ := strconv.Atoi(subVal.(string))
+				dropRates.Frames[types.TypeTreeAnnouncement] = uint64(intVal)
 			} else {
 				err = fmt.Errorf("%sConfigureAdversaryDefaults.DropRates.TreeAnnouncement field doesn't exist", FAILURE_PREAMBLE)
 			}
 			if subVal, subOk := val.(map[string]interface{})["TreeRouted"]; subOk {
-				dropRates.TreeRouted, _ = strconv.Atoi(subVal.(string))
+				intVal, _ := strconv.Atoi(subVal.(string))
+				dropRates.Frames[types.TypeTreeRouted] = uint64(intVal)
 			} else {
 				err = fmt.Errorf("%sConfigureAdversaryDefaults.DropRates.TreeRouted field doesn't exist", FAILURE_PREAMBLE)
 			}
 			if subVal, subOk := val.(map[string]interface{})["VirtualSnakeBootstrap"]; subOk {
-				dropRates.VirtualSnakeBootstrap, _ = strconv.Atoi(subVal.(string))
+				intVal, _ := strconv.Atoi(subVal.(string))
+				dropRates.Frames[types.TypeVirtualSnakeBootstrap] = uint64(intVal)
 			} else {
 				err = fmt.Errorf("%sConfigureAdversaryDefaults.DropRates.VirtualSnakeBootstrap field doesn't exist", FAILURE_PREAMBLE)
 			}
 			if subVal, subOk := val.(map[string]interface{})["VirtualSnakeBootstrapACK"]; subOk {
-				dropRates.VirtualSnakeBootstrapACK, _ = strconv.Atoi(subVal.(string))
+				intVal, _ := strconv.Atoi(subVal.(string))
+				dropRates.Frames[types.TypeVirtualSnakeBootstrapACK] = uint64(intVal)
 			} else {
 				err = fmt.Errorf("%sConfigureAdversaryDefaults.DropRates.VirtualSnakeBootstrapACK field doesn't exist", FAILURE_PREAMBLE)
 			}
 			if subVal, subOk := val.(map[string]interface{})["VirtualSnakeSetup"]; subOk {
-				dropRates.VirtualSnakeSetup, _ = strconv.Atoi(subVal.(string))
+				intVal, _ := strconv.Atoi(subVal.(string))
+				dropRates.Frames[types.TypeVirtualSnakeSetup] = uint64(intVal)
 			} else {
 				err = fmt.Errorf("%sConfigureAdversaryDefaults.DropRates.VirtualSnakeSetup field doesn't exist", FAILURE_PREAMBLE)
 			}
 			if subVal, subOk := val.(map[string]interface{})["VirtualSnakeSetupACK"]; subOk {
-				dropRates.VirtualSnakeSetupACK, _ = strconv.Atoi(subVal.(string))
+				intVal, _ := strconv.Atoi(subVal.(string))
+				dropRates.Frames[types.TypeVirtualSnakeSetupACK] = uint64(intVal)
 			} else {
 				err = fmt.Errorf("%sConfigureAdversaryDefaults.DropRates.VirtualSnakeSetupACK field doesn't exist", FAILURE_PREAMBLE)
 			}
 			if subVal, subOk := val.(map[string]interface{})["VirtualSnakeTeardown"]; subOk {
-				dropRates.VirtualSnakeTeardown, _ = strconv.Atoi(subVal.(string))
+				intVal, _ := strconv.Atoi(subVal.(string))
+				dropRates.Frames[types.TypeVirtualSnakeTeardown] = uint64(intVal)
 			} else {
 				err = fmt.Errorf("%sConfigureAdversaryDefaults.DropRates.VirtualSnakeTeardown field doesn't exist", FAILURE_PREAMBLE)
 			}
 			if subVal, subOk := val.(map[string]interface{})["VirtualSnakeRouted"]; subOk {
-				dropRates.VirtualSnakeRouted, _ = strconv.Atoi(subVal.(string))
+				intVal, _ := strconv.Atoi(subVal.(string))
+				dropRates.Frames[types.TypeVirtualSnakeRouted] = uint64(intVal)
 			} else {
 				err = fmt.Errorf("%sConfigureAdversaryDefaults.DropRates.VirtualSnakeRouted field doesn't exist", FAILURE_PREAMBLE)
 			}
@@ -158,66 +174,81 @@ func UnmarshalCommandJSON(command *SimCommandMsg) (SimCommand, error) {
 	case SimConfigureAdversaryPeer:
 		node := ""
 		peer := ""
-		dropRates := adversary.DropRates{}
+		dropRates := adversary.NewDropRates()
 		if val, ok := command.Event.(map[string]interface{})["Node"]; ok {
 			node = val.(string)
 		} else {
-			err = fmt.Errorf("%sConfigureAdversaryDefaults.Node field doesn't exist", FAILURE_PREAMBLE)
+			err = fmt.Errorf("%sConfigureAdversaryPeer.Node field doesn't exist", FAILURE_PREAMBLE)
 		}
 		if val, ok := command.Event.(map[string]interface{})["Peer"]; ok {
 			peer = val.(string)
 		} else {
-			err = fmt.Errorf("%sConfigureAdversaryDefaults.Peer field doesn't exist", FAILURE_PREAMBLE)
+			err = fmt.Errorf("%sConfigureAdversaryPeer.Peer field doesn't exist", FAILURE_PREAMBLE)
 		}
 
 		if val, ok := command.Event.(map[string]interface{})["DropRates"]; ok {
-			if subVal, subOk := val.(map[string]interface{})["Keepalive"]; subOk {
-				dropRates.KeepAlive, _ = strconv.Atoi(subVal.(string))
+			if subVal, subOk := val.(map[string]interface{})["Overall"]; subOk {
+				intVal, _ := strconv.Atoi(subVal.(string))
+				dropRates.Overall = uint64(intVal)
 			} else {
-				err = fmt.Errorf("%sConfigureAdversaryDefaults.DropRates.Keepalive field doesn't exist", FAILURE_PREAMBLE)
+				err = fmt.Errorf("%sConfigureAdversaryPeer.DropRates.Overall field doesn't exist", FAILURE_PREAMBLE)
+			}
+			if subVal, subOk := val.(map[string]interface{})["Keepalive"]; subOk {
+				intVal, _ := strconv.Atoi(subVal.(string))
+				dropRates.Frames[types.TypeKeepalive] = uint64(intVal)
+			} else {
+				err = fmt.Errorf("%sConfigureAdversaryPeer.DropRates.Keepalive field doesn't exist", FAILURE_PREAMBLE)
 			}
 			if subVal, subOk := val.(map[string]interface{})["TreeAnnouncement"]; subOk {
-				dropRates.TreeAnnouncement, _ = strconv.Atoi(subVal.(string))
+				intVal, _ := strconv.Atoi(subVal.(string))
+				dropRates.Frames[types.TypeTreeAnnouncement] = uint64(intVal)
 			} else {
-				err = fmt.Errorf("%sConfigureAdversaryDefaults.DropRates.TreeAnnouncement field doesn't exist", FAILURE_PREAMBLE)
+				err = fmt.Errorf("%sConfigureAdversaryPeer.DropRates.TreeAnnouncement field doesn't exist", FAILURE_PREAMBLE)
 			}
 			if subVal, subOk := val.(map[string]interface{})["TreeRouted"]; subOk {
-				dropRates.TreeRouted, _ = strconv.Atoi(subVal.(string))
+				intVal, _ := strconv.Atoi(subVal.(string))
+				dropRates.Frames[types.TypeTreeRouted] = uint64(intVal)
 			} else {
-				err = fmt.Errorf("%sConfigureAdversaryDefaults.DropRates.TreeRouted field doesn't exist", FAILURE_PREAMBLE)
+				err = fmt.Errorf("%sConfigureAdversaryPeer.DropRates.TreeRouted field doesn't exist", FAILURE_PREAMBLE)
 			}
 			if subVal, subOk := val.(map[string]interface{})["VirtualSnakeBootstrap"]; subOk {
-				dropRates.VirtualSnakeBootstrap, _ = strconv.Atoi(subVal.(string))
+				intVal, _ := strconv.Atoi(subVal.(string))
+				dropRates.Frames[types.TypeVirtualSnakeBootstrap] = uint64(intVal)
 			} else {
-				err = fmt.Errorf("%sConfigureAdversaryDefaults.DropRates.VirtualSnakeBootstrap field doesn't exist", FAILURE_PREAMBLE)
+				err = fmt.Errorf("%sConfigureAdversaryPeer.DropRates.VirtualSnakeBootstrap field doesn't exist", FAILURE_PREAMBLE)
 			}
 			if subVal, subOk := val.(map[string]interface{})["VirtualSnakeBootstrapACK"]; subOk {
-				dropRates.VirtualSnakeBootstrapACK, _ = strconv.Atoi(subVal.(string))
+				intVal, _ := strconv.Atoi(subVal.(string))
+				dropRates.Frames[types.TypeVirtualSnakeBootstrapACK] = uint64(intVal)
 			} else {
-				err = fmt.Errorf("%sConfigureAdversaryDefaults.DropRates.VirtualSnakeBootstrapACK field doesn't exist", FAILURE_PREAMBLE)
+				err = fmt.Errorf("%sConfigureAdversaryPeer.DropRates.VirtualSnakeBootstrapACK field doesn't exist", FAILURE_PREAMBLE)
 			}
 			if subVal, subOk := val.(map[string]interface{})["VirtualSnakeSetup"]; subOk {
-				dropRates.VirtualSnakeSetup, _ = strconv.Atoi(subVal.(string))
+				intVal, _ := strconv.Atoi(subVal.(string))
+				dropRates.Frames[types.TypeVirtualSnakeSetup] = uint64(intVal)
 			} else {
-				err = fmt.Errorf("%sConfigureAdversaryDefaults.DropRates.VirtualSnakeSetup field doesn't exist", FAILURE_PREAMBLE)
+				err = fmt.Errorf("%sConfigureAdversaryPeer.DropRates.VirtualSnakeSetup field doesn't exist", FAILURE_PREAMBLE)
 			}
 			if subVal, subOk := val.(map[string]interface{})["VirtualSnakeSetupACK"]; subOk {
-				dropRates.VirtualSnakeSetupACK, _ = strconv.Atoi(subVal.(string))
+				intVal, _ := strconv.Atoi(subVal.(string))
+				dropRates.Frames[types.TypeVirtualSnakeSetupACK] = uint64(intVal)
 			} else {
-				err = fmt.Errorf("%sConfigureAdversaryDefaults.DropRates.VirtualSnakeSetupACK field doesn't exist", FAILURE_PREAMBLE)
+				err = fmt.Errorf("%sConfigureAdversaryPeer.DropRates.VirtualSnakeSetupACK field doesn't exist", FAILURE_PREAMBLE)
 			}
 			if subVal, subOk := val.(map[string]interface{})["VirtualSnakeTeardown"]; subOk {
-				dropRates.VirtualSnakeTeardown, _ = strconv.Atoi(subVal.(string))
+				intVal, _ := strconv.Atoi(subVal.(string))
+				dropRates.Frames[types.TypeVirtualSnakeTeardown] = uint64(intVal)
 			} else {
-				err = fmt.Errorf("%sConfigureAdversaryDefaults.DropRates.VirtualSnakeTeardown field doesn't exist", FAILURE_PREAMBLE)
+				err = fmt.Errorf("%sConfigureAdversaryPeer.DropRates.VirtualSnakeTeardown field doesn't exist", FAILURE_PREAMBLE)
 			}
 			if subVal, subOk := val.(map[string]interface{})["VirtualSnakeRouted"]; subOk {
-				dropRates.VirtualSnakeRouted, _ = strconv.Atoi(subVal.(string))
+				intVal, _ := strconv.Atoi(subVal.(string))
+				dropRates.Frames[types.TypeVirtualSnakeRouted] = uint64(intVal)
 			} else {
-				err = fmt.Errorf("%sConfigureAdversaryDefaults.DropRates.VirtualSnakeRouted field doesn't exist", FAILURE_PREAMBLE)
+				err = fmt.Errorf("%sConfigureAdversaryPeer.DropRates.VirtualSnakeRouted field doesn't exist", FAILURE_PREAMBLE)
 			}
 		} else {
-			err = fmt.Errorf("%sConfigureAdversaryDefaults.DropRates field doesn't exist", FAILURE_PREAMBLE)
+			err = fmt.Errorf("%sConfigureAdversaryPeer.DropRates field doesn't exist", FAILURE_PREAMBLE)
 		}
 		msg = ConfigureAdversaryPeer{node, peer, dropRates}
 	default:

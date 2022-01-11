@@ -50,6 +50,7 @@
             "Data": {
                 "Node": "Alice",
                 "DropRates": {
+                    "Overall": "0",
                     "Keepalive": "0",
 	                  "TreeAnnouncement": "0",
 	                  "TreeRouted": "0",
@@ -68,6 +69,7 @@
                 "Node": "Alice",
                 "Peer": "Bob",
                 "DropRates": {
+                    "Overall": "0",
                     "Keepalive": "0",
 	                  "TreeAnnouncement": "0",
 	                  "TreeRouted": "0",

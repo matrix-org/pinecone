@@ -29,7 +29,7 @@ import (
 
 // announcementInterval is the frequency at which this
 // node will send root announcements to other peers.
-const announcementInterval = time.Minute * 5
+const announcementInterval = time.Minute * 30
 
 // announcementTimeout is the amount of time that must
 // pass without receiving a root announcement before we

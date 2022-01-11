@@ -27,17 +27,39 @@ import (
 	"go.uber.org/atomic"
 )
 
+type FrameDropRates map[types.FrameType]uint64
+
 type DropRates struct {
-	KeepAlive                int
-	TreeAnnouncement         int
-	TreeRouted               int
-	VirtualSnakeBootstrap    int
-	VirtualSnakeBootstrapACK int
-	VirtualSnakeSetup        int
-	VirtualSnakeSetupACK     int
-	VirtualSnakeTeardown     int
-	VirtualSnakeRouted       int
+	Overall uint64
+	Frames  FrameDropRates
 }
+
+func NewDropRates() DropRates {
+	return DropRates{
+		Overall: 0,
+		Frames:  make(FrameDropRates, 9),
+	}
+}
+
+type PeerDropRates map[types.PublicKey]DropRates
+
+type DropSettings struct {
+	overall DropRates
+	peers   PeerDropRates
+}
+
+func NewDropSettings() DropSettings {
+	return DropSettings{
+		overall: DropRates{},
+		peers:   make(PeerDropRates, 1),
+	}
+}
+
+type PeerDropCounts PeerDropRates
+
+type DropCounts PeerFrameCount
+
+type PacketsDropped PacketsReceived
 
 type FrameCounts map[types.FrameType]*atomic.Uint64
 
@@ -49,8 +71,8 @@ type PeerFrameCount struct {
 type PeerFrameCounts map[types.PublicKey]PeerFrameCount
 
 type PacketsReceived struct {
-	peers   PeerFrameCounts
 	overall *atomic.Uint64
+	peers   PeerFrameCounts
 }
 
 func NewPacketsReceived() PacketsReceived {
@@ -81,15 +103,19 @@ func defaultFrameCount() PeerFrameCount {
 }
 
 type AdversaryRouter struct {
-	rtr       *router.Router
-	packetsRx PacketsReceived
+	rtr            *router.Router
+	dropSettings   DropSettings
+	packetsRx      PacketsReceived
+	packetsDropped PacketsDropped
 }
 
 func NewAdversaryRouter(log *log.Logger, sk ed25519.PrivateKey, debug bool) *AdversaryRouter {
 	rtr := router.NewRouter(log, sk, debug)
 	adversary := &AdversaryRouter{
 		rtr,
+		NewDropSettings(),
 		NewPacketsReceived(),
+		PacketsDropped(NewPacketsReceived()),
 	}
 
 	rtr.InjectPacketFilter(adversary.selectivelyDrop)
@@ -117,60 +143,85 @@ func (a *AdversaryRouter) Coords() types.Coordinates {
 }
 
 func (a *AdversaryRouter) ConfigureFilterDefaults(rates DropRates) {
-	log.Println("New Default Rates")
-	// TODO : me
+	a.dropSettings.overall = rates
 }
 
 func (a *AdversaryRouter) ConfigureFilterPeer(peer types.PublicKey, rates DropRates) {
-	log.Println("New Peer Rates")
-	// TODO : me
+	a.dropSettings.peers[peer] = rates
 }
 
-func (a *AdversaryRouter) updatePacketCounts(from types.PublicKey, f *types.Frame) {
+func (a *AdversaryRouter) updatePacketCounts(from types.PublicKey, frameType types.FrameType) {
 	a.packetsRx.overall.Inc()
-	val, containsPeer := a.packetsRx.peers[from]
-	if containsPeer {
-		val.overall.Inc()
-		val.frameCount[f.Type].Inc()
-	} else {
-		a.packetsRx.peers[from] = defaultFrameCount()
+	a.packetsRx.peers[from].overall.Inc()
+	a.packetsRx.peers[from].frameCount[frameType].Inc()
+}
+
+func (a *AdversaryRouter) updateDropCount(from types.PublicKey, f types.FrameType, countLimitOverall uint64, countLimitFrame uint64) {
+	a.packetsDropped.overall.Inc()
+	a.packetsDropped.peers[from].overall.Inc()
+	a.packetsDropped.peers[from].frameCount[f].Inc()
+
+	if a.packetsDropped.peers[from].overall.Load() >= countLimitOverall {
+		a.packetsDropped.peers[from].overall.Store(0)
 	}
+
+	if a.packetsDropped.peers[from].frameCount[f].Load() >= countLimitFrame {
+		a.packetsDropped.peers[from].frameCount[f].Store(0)
+	}
+}
+
+func getHighestCommonFactor(num1 uint64, num2 uint64) uint64 {
+	temp := uint64(0)
+
+	for num2 != 0 {
+		temp = num1 % num2
+		num1 = num2
+		num2 = temp
+	}
+
+	return num1
 }
 
 func (a *AdversaryRouter) selectivelyDrop(from types.PublicKey, f *types.Frame) bool {
 	shouldDrop := false
-	a.updatePacketCounts(from, f)
-	log.Printf("Router %s :: Received %s", a.PublicKey(), f.Type)
-
-	// TODO : drop appropriate packets
-	// TODO : reset appropriate packet counts
-
-	switch f.Type {
-	case types.TypeKeepalive:
-		shouldDrop = false
-	case types.TypeTreeAnnouncement:
-		shouldDrop = false
-	case types.TypeVirtualSnakeBootstrap:
-		shouldDrop = false
-	case types.TypeVirtualSnakeBootstrapACK:
-		shouldDrop = false
-	case types.TypeVirtualSnakeSetup:
-		shouldDrop = false
-	case types.TypeVirtualSnakeSetupACK:
-		shouldDrop = false
-	case types.TypeVirtualSnakeTeardown:
-		shouldDrop = false
-	case types.TypeVirtualSnakeRouted, types.TypeTreeRouted:
-		shouldDrop = false
-	case types.TypeSNEKPing:
-		shouldDrop = false
-	case types.TypeSNEKPong:
-		shouldDrop = false
-	case types.TypeTreePing:
-		shouldDrop = false
-	case types.TypeTreePong:
-		shouldDrop = false
+	if _, containsPeer := a.packetsRx.peers[from]; !containsPeer {
+		a.packetsRx.peers[from] = defaultFrameCount()
 	}
 
+	if _, containsPeer := a.packetsDropped.peers[from]; !containsPeer {
+		a.packetsDropped.peers[from] = defaultFrameCount()
+	}
+
+	a.updatePacketCounts(from, f.Type)
+
+	var dropRates DropRates
+	if val, exists := a.dropSettings.peers[from]; exists {
+		dropRates = val
+	} else {
+		dropRates = a.dropSettings.overall
+	}
+
+	// NOTE : Determine the HCF from the percentage provided and use that to drop
+	// the first X / Y packets.
+
+	hcfOverall := getHighestCommonFactor(dropRates.Overall, uint64(100))
+	numberToDropOverall := dropRates.Overall / hcfOverall
+	numberToCountOverall := 100 / hcfOverall
+
+	hcfFrame := getHighestCommonFactor(dropRates.Frames[f.Type], uint64(100))
+	numberToDropFrame := dropRates.Frames[f.Type] / hcfFrame
+	numberToCountFrame := 100 / hcfFrame
+
+	shouldDropOverall := a.packetsDropped.peers[from].overall.Load() < numberToDropOverall
+	shouldDropFrame := a.packetsDropped.peers[from].frameCount[f.Type].Load() < numberToDropFrame
+	if shouldDropOverall || shouldDropFrame {
+		shouldDrop = true
+	}
+
+	a.updateDropCount(from, f.Type, numberToCountOverall, numberToCountFrame)
+
+	if shouldDrop {
+		log.Printf("Router %s :: Dropping %s", a.PublicKey().String()[:8], f.Type)
+	}
 	return shouldDrop
 }
