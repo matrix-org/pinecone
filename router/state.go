@@ -27,6 +27,8 @@ import (
 	"go.uber.org/atomic"
 )
 
+type FilterFn func(from types.PublicKey, f *types.Frame) bool
+
 // NOTE: Functions prefixed with an underscore (_) are only safe to be called
 // from the actor that owns them, in order to prevent data races.
 
@@ -46,6 +48,7 @@ type state struct {
 	_treetimer     *time.Timer        // Tree maintenance timer
 	_snaketimer    *time.Timer        // Virtual snake maintenance timer
 	_waiting       bool               // Is the tree waiting to reparent?
+	_filterPacket  FilterFn           // Function called when forwarding packets
 }
 
 // _start resets the state and starts tree and virtual snake maintenance.

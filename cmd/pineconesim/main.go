@@ -89,7 +89,7 @@ func main() {
 	sim.CalculateShortestPaths(nodes, wires)
 
 	for n := range nodes {
-		if err := sim.CreateNode(n); err != nil {
+		if err := sim.CreateNode(n, simulator.DefaultNode); err != nil {
 			panic(err)
 		}
 		sim.StartNodeEventHandler(n, simulator.DefaultNode)

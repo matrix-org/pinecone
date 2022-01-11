@@ -15,6 +15,7 @@
 package simulator
 
 import (
+	"crypto/ed25519"
 	"log"
 	"net"
 	"sync"
@@ -59,6 +60,8 @@ func (r *EventSequenceRunner) Run(sim *Simulator) {
 	}
 }
 
+type RouterCreatorFn func(log *log.Logger, sk ed25519.PrivateKey, debug bool) SimRouter
+
 type Simulator struct {
 	log                      *log.Logger
 	sockets                  bool
@@ -82,6 +85,7 @@ type Simulator struct {
 	State                    *StateAccessor
 	eventPlaylist            []SimCommand
 	eventRunner              *EventSequenceRunner
+	routerCreationMap        map[APINodeType]RouterCreatorFn
 }
 
 func NewSimulator(log *log.Logger, sockets, ping bool, acceptCommands bool) *Simulator {
@@ -100,7 +104,11 @@ func NewSimulator(log *log.Logger, sockets, ping bool, acceptCommands bool) *Sim
 		State:               NewStateAccessor(),
 		eventPlaylist:       []SimCommand{},
 		eventRunner:         &EventSequenceRunner{_playlist: make(chan []SimCommand)},
+		routerCreationMap:   make(map[APINodeType]RouterCreatorFn, 2),
 	}
+
+	sim.routerCreationMap[DefaultNode] = createDefaultRouter
+	sim.routerCreationMap[GeneralAdversaryNode] = createAdversaryRouter
 
 	go sim.eventRunner.Run(sim)
 	sim.Play()

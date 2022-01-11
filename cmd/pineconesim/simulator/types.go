@@ -16,12 +16,10 @@ package simulator
 
 import (
 	"net"
-
-	"github.com/matrix-org/pinecone/router"
 )
 
 type Node struct {
-	*router.Router
+	SimRouter
 	l          *net.TCPListener // nolint:structcheck,unused
 	ListenAddr *net.TCPAddr
 }

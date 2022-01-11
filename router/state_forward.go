@@ -51,6 +51,10 @@ func (s *state) _nextHopsFor(from *peer, frame *types.Frame) *peer {
 // queue if possible. In some special cases, like tree announcements, path setups and
 // teardowns, special handling will be done before forwarding if needed.
 func (s *state) _forward(p *peer, f *types.Frame) error {
+	if s._filterPacket != nil && s._filterPacket(p.public, f) {
+		return fmt.Errorf("Packet of type %s destined for port %d was dropped due to filter rules", f.Type.String(), p.port)
+	}
+
 	nexthop := s._nextHopsFor(p, f)
 	deadend := nexthop == p.router.local
 

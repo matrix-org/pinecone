@@ -19,6 +19,8 @@ import (
 	"log"
 	"strconv"
 	"time"
+
+	"github.com/matrix-org/pinecone/cmd/pineconesim/simulator/adversary"
 )
 
 const FAILURE_PREAMBLE = "Failed unmarshalling event: "
@@ -96,7 +98,7 @@ func UnmarshalCommandJSON(command *SimCommandMsg) (SimCommand, error) {
 		msg = RemovePeer{node, peer}
 	case SimConfigureAdversaryDefaults:
 		node := ""
-		dropRates := DropRates{}
+		dropRates := adversary.DropRates{}
 		if val, ok := command.Event.(map[string]interface{})["Node"]; ok {
 			node = val.(string)
 		} else {
@@ -156,7 +158,7 @@ func UnmarshalCommandJSON(command *SimCommandMsg) (SimCommand, error) {
 	case SimConfigureAdversaryPeer:
 		node := ""
 		peer := ""
-		dropRates := DropRates{}
+		dropRates := adversary.DropRates{}
 		if val, ok := command.Event.(map[string]interface{})["Node"]; ok {
 			node = val.(string)
 		} else {
@@ -287,7 +289,7 @@ type AddNode struct {
 // Tag AddNode as a Command
 func (c AddNode) Run(log *log.Logger, sim *Simulator) {
 	log.Printf("Executing command %s", c)
-	if err := sim.CreateNode(c.Node); err != nil {
+	if err := sim.CreateNode(c.Node, c.NodeType); err != nil {
 		log.Printf("Failed creating new node %s: %s", c.Node, err)
 		return
 	}
@@ -347,27 +349,15 @@ func (c RemovePeer) String() string {
 	return fmt.Sprintf("RemovePeer{Node:%s, Peer:%s}", c.Node, c.Peer)
 }
 
-type DropRates struct {
-	KeepAlive                int
-	TreeAnnouncement         int
-	TreeRouted               int
-	VirtualSnakeBootstrap    int
-	VirtualSnakeBootstrapACK int
-	VirtualSnakeSetup        int
-	VirtualSnakeSetupACK     int
-	VirtualSnakeTeardown     int
-	VirtualSnakeRouted       int
-}
-
 type ConfigureAdversaryDefaults struct {
 	Node      string
-	DropRates DropRates
+	DropRates adversary.DropRates
 }
 
 // Tag ConfigureAdversaryDefaults as an Command
 func (c ConfigureAdversaryDefaults) Run(log *log.Logger, sim *Simulator) {
 	log.Printf("Executing command %s", c)
-	// TODO
+	sim.ConfigureFilterDefaults(c.Node, c.DropRates)
 }
 
 func (c ConfigureAdversaryDefaults) String() string {
@@ -377,13 +367,13 @@ func (c ConfigureAdversaryDefaults) String() string {
 type ConfigureAdversaryPeer struct {
 	Node      string
 	Peer      string
-	DropRates DropRates
+	DropRates adversary.DropRates
 }
 
 // Tag ConfigureAdversaryPeer as an Command
 func (c ConfigureAdversaryPeer) Run(log *log.Logger, sim *Simulator) {
 	log.Printf("Executing command %s", c)
-	// TODO
+	sim.ConfigureFilterPeer(c.Node, c.Peer, c.DropRates)
 }
 
 func (c ConfigureAdversaryPeer) String() string {

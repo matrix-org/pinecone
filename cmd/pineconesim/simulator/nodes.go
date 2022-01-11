@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/Arceliar/phony"
+	"github.com/matrix-org/pinecone/cmd/pineconesim/simulator/adversary"
 	"github.com/matrix-org/pinecone/router"
 	"github.com/matrix-org/pinecone/router/events"
 )
@@ -33,7 +34,7 @@ func (sim *Simulator) Node(t string) *Node {
 	return sim.nodes[t]
 }
 
-func (sim *Simulator) CreateNode(t string) error {
+func (sim *Simulator) CreateNode(t string, nodeType APINodeType) error {
 	if _, ok := sim.nodes[t]; ok {
 		return fmt.Errorf("%s already exists!", t)
 	}
@@ -61,9 +62,10 @@ func (sim *Simulator) CreateNode(t string) error {
 	}
 	crc := crc32.ChecksumIEEE([]byte(t))
 	color := 31 + (crc % 6)
-	log := log.New(sim.log.Writer(), fmt.Sprintf("\033[%dmNode %s:\033[0m ", color, t), 0)
+	logger := log.New(sim.log.Writer(), fmt.Sprintf("\033[%dmNode %s:\033[0m ", color, t), 0)
+
 	n := &Node{
-		Router:     router.NewRouter(log, sk, true),
+		SimRouter:  sim.routerCreationMap[nodeType](logger, sk, true),
 		l:          l,
 		ListenAddr: tcpaddr,
 	}
@@ -143,4 +145,33 @@ func (sim *Simulator) RemoveNode(node string) {
 	sim.nodesMutex.Unlock()
 
 	phony.Block(sim.State, func() { sim.State._removeNode(node) })
+}
+
+func (sim *Simulator) ConfigureFilterDefaults(node string, rates adversary.DropRates) {
+	if node, exists := sim.Nodes()[node]; exists {
+		node.ConfigureFilterDefaults(rates)
+	}
+}
+
+func (sim *Simulator) ConfigureFilterPeer(node string, peer string, rates adversary.DropRates) {
+	peerNode, exists := sim.Nodes()[peer]
+	if !exists {
+		log.Println("Failed configuring filters for peer. Key too long")
+		return
+	}
+
+	if node, exists := sim.Nodes()[node]; exists {
+		node.ConfigureFilterPeer(peerNode.PublicKey(), rates)
+	}
+}
+
+func createDefaultRouter(log *log.Logger, sk ed25519.PrivateKey, debug bool) SimRouter {
+	rtr := &DefaultRouter{
+		router.NewRouter(log, sk, debug),
+	}
+	return rtr
+}
+
+func createAdversaryRouter(log *log.Logger, sk ed25519.PrivateKey, debug bool) SimRouter {
+	return adversary.NewAdversaryRouter(log, sk, debug)
 }
