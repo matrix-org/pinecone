@@ -1089,9 +1089,12 @@ function generateSliderRow(label, name) {
     slider.value = 0;
     slider.name = name;
 
-    myLabel.innerHTML = slider.value + "%";
+    const escapeHtml = (unsafe) => {
+        return unsafe.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#039;');
+}
+    myLabel.innerHTML = escapeHtml(slider.value) + "%";
     let sliderLabelUpdate = function() {
-        myLabel.innerHTML = this.value + "%";
+        myLabel.innerHTML = escapeHtml(this.value) + "%";
     };
     slider.oninput = sliderLabelUpdate;
     sliderCol.appendChild(sliderLabel);
