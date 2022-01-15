@@ -388,7 +388,6 @@ func userProxyCommander(conn *websocket.Conn, connID uint64, sim *simulator.Simu
 				return
 			}
 		}
-		log.Printf("Received command sequence :: %v", eventSequence)
 
 		// Unmarshall the events into meaningful structs
 		var commands []simulator.SimCommand
@@ -396,7 +395,9 @@ func userProxyCommander(conn *websocket.Conn, connID uint64, sim *simulator.Simu
 			command, err := simulator.UnmarshalCommandJSON(&event)
 
 			if err != nil {
-				log.Printf("Index %d: %v", i, err)
+				escapedErr := strings.Replace(err.Error(), "\n", "", -1)
+				escapedErr = strings.Replace(escapedErr, "\r", "", -1)
+				log.Printf("Index %d: %v", i, escapedErr)
 				continue
 			}
 
