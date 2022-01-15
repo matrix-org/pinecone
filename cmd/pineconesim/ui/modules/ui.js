@@ -7,6 +7,9 @@ let rightShown = false;
 let nodesFormNodeCount = 0;
 let peeringsFormPeeringCount = 0;
 
+let nodeOptionsIndex = 2;
+let overrideOptionsIndex = 1;
+
 let nodeTypeToOptions = new Map();
 nodeTypeToOptions.set("Default", createNodeOptionsDefault);
 nodeTypeToOptions.set("GeneralAdversary", createNodeOptionsGeneralAdversary);
@@ -609,6 +612,7 @@ function extendPeeringsForm() {
     let firstNodeOptions = document.createElement("div");
     firstNodeOptions.className = "row";
     let availablePeers1 = document.createElement('select');
+    availablePeers1.className = "node-select";
     availablePeers1.name = "node1";
     availablePeers1.onchange = e => {
         updatePeeringNodeOptions(e.target.value, newPeeringID, "first-node");
@@ -617,6 +621,7 @@ function extendPeeringsForm() {
     let secondNodeOptions = document.createElement("div");
     secondNodeOptions.className = "row";
     let availablePeers2 = document.createElement('select');
+    availablePeers2.className = "node-select";
     availablePeers2.name = "node2";
     availablePeers2.onchange = e => {
         updatePeeringNodeOptions(e.target.value, newPeeringID, "second-node");
@@ -698,7 +703,7 @@ function updatePeeringNodeOptions(nodeID, formSubID, elementName) {
     let node = document.getElementById(formSubID);
     for (let i = 0; i < node.childNodes.length; i++) {
         if (node.childNodes[i].name === elementName) {
-            let nodeOptions = node.childNodes[i].childNodes[2];
+            let nodeOptions = node.childNodes[i].childNodes[nodeOptionsIndex];
             for (let j = 0; j < nodeOptions.childNodes.length; j++) {
                 if (nodeOptions.childNodes[j].className.includes("node-options")) {
                     nodeOptions.removeChild(nodeOptions.childNodes[j]);
@@ -706,7 +711,7 @@ function updatePeeringNodeOptions(nodeID, formSubID, elementName) {
                 }
             }
 
-            let overrideOptions = node.childNodes[i].childNodes[1];
+            let overrideOptions = node.childNodes[i].childNodes[overrideOptionsIndex];
             for (let j = 0; j < overrideOptions.childNodes.length; j++) {
                 if (overrideOptions.childNodes[j].className.includes("override-options")) {
                     overrideOptions.removeChild(overrideOptions.childNodes[j]);
@@ -739,14 +744,16 @@ function createCheckbox() {
     expandBox.type = "checkbox";
     expandBox.checked = false;
     expandBox.onclick = e => {
-        // TODO : This is very hard-coded
         let options = nodeTypeToOptions.get("Default")();
+        let nodeForm = box.parentNode.parentNode;
+        let nodeOptions = nodeForm.childNodes[nodeOptionsIndex];
+        let nodeIDSelect = nodeForm.querySelector("select[class='node-select']");
         if (expandBox.checked) {
-            let nodeType = graph.getNodeType(box.parentNode.parentNode.childNodes[0].childNodes[1].childNodes[0].value);
+            let nodeType = graph.getNodeType(nodeIDSelect.value);
             options = nodeTypeToOptions.get(convertTypeIDToNodeType(nodeType))();
         }
-        box.parentNode.parentNode.childNodes[2].removeChild(box.parentNode.parentNode.childNodes[2].childNodes[0]);
-        box.parentNode.parentNode.childNodes[2].appendChild(options);
+        nodeOptions.removeChild(nodeOptions.childNodes[0]);
+        nodeOptions.appendChild(options);
     };
     let expandMark = document.createElement("span");
     expandMark.className = "checkmark";
