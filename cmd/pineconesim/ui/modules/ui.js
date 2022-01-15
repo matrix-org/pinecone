@@ -5,6 +5,7 @@ let leftShown = false;
 let rightShown = false;
 
 let nodesFormNodeCount = 0;
+let peeringsFormPeeringCount = 0;
 
 let nodeTypeToOptions = new Map();
 nodeTypeToOptions.set("Default", createNodeOptionsDefault);
@@ -338,6 +339,7 @@ function handleToolAddNodes(subtool) {
 
 function handleToolAddPeerings(subtool) {
     setupBaseModal("add-peerings-modal");
+    peeringsFormPeeringCount = 0;
 
     let peeringsForm = document.getElementById("add-peerings-form");
     peeringsForm.innerHTML = '<span><button id="extend-peerings" type="button" class="toggle extend-form-button">+</button></span><h4>New Peer Connections</h4>';
@@ -442,6 +444,20 @@ function convertNodeTypeToID(nodeType) {
     return typeID;
 }
 
+function convertTypeIDToNodeType(typeID) {
+    let nodeType = "";
+    switch(typeID) {
+    case 1:
+        nodeType = "Default";
+        break;
+    case 2:
+        nodeType = "GeneralAdversary";
+        break;
+    }
+
+    return nodeType;
+}
+
 function convertCommandToID(command) {
     let id = APICommandID.Unknown;
     switch (command) {
@@ -488,6 +504,266 @@ export function ResetReplayUI(element) {
     tooltip.textContent = "Pause Events";
     let icon = element.getElementsByClassName("fa")[0];
     icon.className = icon.className.replace(" fa-play", " fa-pause");
+}
+
+function submitAddPeeringsForm(form) {
+    let commands = [];
+    for (let z = 0; z < peeringsFormPeeringCount; z++) {
+        let newPeering = document.getElementById("new-peering-" + z);
+        let node1 = newPeering.querySelector("select[name=node1]");
+        let node2 = newPeering.querySelector("select[name=node2]");
+        let nodes = newPeering.querySelectorAll(".node-options");
+
+        if (nodes.length != 2) {
+            console.warn("Form submitted without nodes selected.");
+            return;
+        }
+
+        if (node1.value === node2.value) {
+            if (!node2.className.includes(" focus-error")) {
+                node2.className += " focus-error";
+            }
+            // TODO : provide feedback with failure
+            return;
+        } else {
+            node2.className = node2.className.replace(" focus-error", "");
+        }
+
+        let nodeMap = new Map();
+
+        for (let i = 0; i < 2; i++) {
+            let options = nodes[i].querySelectorAll(".node-option");
+            let nodeOptions = new Map();
+            options.forEach(function(item) {
+                nodeOptions.set(item.name, item.value);
+            });
+
+            let thisNode = null;
+            let otherNode = null;
+            if (i === 0) {
+                thisNode = node1;
+                otherNode = node2;
+            } else {
+                thisNode = node2;
+                otherNode = node1;
+            }
+
+            if (nodeOptions.size > 0) {
+                switch(convertTypeIDToNodeType(graph.getNodeType(thisNode.value))) {
+                case "GeneralAdversary":
+                    commands.push({"MsgID": APICommandID.ConfigureAdversaryPeer, "Event": {
+                        "Node": thisNode.value,
+                        "Peer": otherNode.value,
+                        "DropRates": Object.fromEntries(nodeOptions)
+                    }});
+                    break;
+                }
+            }
+        }
+
+        commands.push({"MsgID": APICommandID.AddPeer, "Event": {"Node": node1.value, "Peer": node2.value}});
+    }
+
+    if (commands.length > 0) {
+        SendToServer({"MsgID": APICommandMessageID.PlaySequence, "Events": commands});
+    }
+
+    let peeringsModal = document.getElementById("add-peerings-modal");
+    if (!peeringsModal) {
+        return;
+    }
+
+    peeringsModal.style.display = "none";
+}
+
+function extendPeeringsForm() {
+    let newPeeringID = "new-peering-" + peeringsFormPeeringCount;
+    peeringsFormPeeringCount++;
+
+    let peeringsForm = document.getElementById("add-peerings-form");
+    // Remove the submit button from the bottom
+    peeringsForm.removeChild(peeringsForm.lastChild);
+
+    let peeringTable = document.createElement('div');
+    peeringTable.id = newPeeringID;
+
+    let hRule = document.createElement("hr");
+    peeringTable.appendChild(hRule);
+    let firstNode = document.createElement("div");
+    firstNode.className = "row";
+    let firstNodeCol = document.createElement("div");
+    firstNodeCol.className = "col-two-left";
+    let firstNodeLabel = document.createElement("label");
+    firstNodeLabel.innerHTML = "<b><u>Node 1";
+    let firstNodeColTwo = document.createElement("div");
+    firstNodeColTwo.className = "col-two-right";
+    let secondNode = document.createElement("div");
+    secondNode.className = "row";
+    let secondNodeCol = document.createElement("div");
+    secondNodeCol.className = "col-two-left";
+    let secondNodeLabel = document.createElement("label");
+    secondNodeLabel.innerHTML = "<b><u>Node 2";
+    let secondNodeColTwo = document.createElement("div");
+    secondNodeColTwo.className = "col-two-right";
+
+    let firstNodeOptions = document.createElement("div");
+    firstNodeOptions.className = "row";
+    let availablePeers1 = document.createElement('select');
+    availablePeers1.name = "node1";
+    availablePeers1.onchange = e => {
+        updatePeeringNodeOptions(e.target.value, newPeeringID, "first-node");
+    };
+
+    let secondNodeOptions = document.createElement("div");
+    secondNodeOptions.className = "row";
+    let availablePeers2 = document.createElement('select');
+    availablePeers2.name = "node2";
+    availablePeers2.onchange = e => {
+        updatePeeringNodeOptions(e.target.value, newPeeringID, "second-node");
+    };
+
+    for (let i = 0; i < graph.nodeIDs.length; i++) {
+        let option = document.createElement("option");
+        let optionDup = document.createElement("option");
+        option.value = graph.nodeIDs[i];
+        optionDup.value = graph.nodeIDs[i];
+        option.text = graph.nodeIDs[i];
+        optionDup.text = graph.nodeIDs[i];
+        availablePeers1.appendChild(option);
+        availablePeers2.appendChild(optionDup);
+    }
+
+    let options1 = null;
+    let options2 = null;
+    if (graph.nodeIDs.length > 0) {
+        let nodeType = convertTypeIDToNodeType(graph.getNodeType(graph.nodeIDs[0]));
+        options1 = nodeTypeToOptions.get(nodeType)();
+        options2 = nodeTypeToOptions.get(nodeType)();
+    }
+
+    firstNodeCol.appendChild(firstNodeLabel);
+    firstNodeColTwo.appendChild(availablePeers1);
+    firstNode.appendChild(firstNodeCol);
+    firstNode.appendChild(firstNodeColTwo);
+    let firstDiv = document.createElement("div");
+    firstDiv.name = "first-node";
+    firstDiv.appendChild(firstNode);
+    let firstCheckRow = document.createElement("div");
+    firstCheckRow.className = "row";
+
+    if (options1.childElementCount > 0) {
+        let checkbox = createCheckbox();
+        firstCheckRow.appendChild(checkbox);
+    }
+    firstDiv.appendChild(firstCheckRow);
+
+    options1 = nodeTypeToOptions.get("Default")();
+    if (options1) {
+        firstNodeOptions.appendChild(options1);
+        firstDiv.appendChild(firstNodeOptions);
+    }
+    peeringTable.appendChild(firstDiv);
+
+    secondNodeCol.appendChild(secondNodeLabel);
+    secondNodeColTwo.appendChild(availablePeers2);
+    secondNode.appendChild(secondNodeCol);
+    secondNode.appendChild(secondNodeColTwo);
+    let secondDiv = document.createElement("div");
+    secondDiv.name = "second-node";
+    secondDiv.appendChild(secondNode);
+    let secondCheckRow = document.createElement("div");
+    secondCheckRow.className = "row";
+
+    if (options2.childElementCount > 0) {
+        let checkbox = createCheckbox();
+        secondCheckRow.appendChild(checkbox);
+    }
+    secondDiv.appendChild(secondCheckRow);
+
+    options2 = nodeTypeToOptions.get("Default")();
+    if (options2) {
+        secondNodeOptions.appendChild(options2);
+        secondDiv.appendChild(secondNodeOptions);
+    }
+    peeringTable.appendChild(secondDiv);
+
+    peeringsForm.appendChild(peeringTable);
+    addSubmitButton(peeringsForm);
+
+    let extendButton = document.getElementById("extend-peerings");
+    extendButton.onclick = extendPeeringsForm;
+}
+
+function updatePeeringNodeOptions(nodeID, formSubID, elementName) {
+    let node = document.getElementById(formSubID);
+    for (let i = 0; i < node.childNodes.length; i++) {
+        if (node.childNodes[i].name === elementName) {
+            let nodeOptions = node.childNodes[i].childNodes[2];
+            for (let j = 0; j < nodeOptions.childNodes.length; j++) {
+                if (nodeOptions.childNodes[j].className.includes("node-options")) {
+                    nodeOptions.removeChild(nodeOptions.childNodes[j]);
+                    break;
+                }
+            }
+
+            let overrideOptions = node.childNodes[i].childNodes[1];
+            for (let j = 0; j < overrideOptions.childNodes.length; j++) {
+                if (overrideOptions.childNodes[j].className.includes("override-options")) {
+                    overrideOptions.removeChild(overrideOptions.childNodes[j]);
+                    break;
+                }
+            }
+
+            let nodeType = graph.getNodeType(nodeID);
+            let options = nodeTypeToOptions.get(convertTypeIDToNodeType(nodeType))();
+
+            if (options.childElementCount > 0) {
+                let checkbox = createCheckbox();
+                overrideOptions.appendChild(checkbox);
+            }
+
+            options = nodeTypeToOptions.get("Default")();
+            nodeOptions.appendChild(options);
+            break;
+        }
+    }
+}
+
+function createCheckbox() {
+    let box = document.createElement("div");
+    box.className = "override-options";
+    let expandOptions = document.createElement("label");
+    expandOptions.className = "options-container";
+    expandOptions.innerHTML = "Override Node Settings";
+    let expandBox = document.createElement("input");
+    expandBox.type = "checkbox";
+    expandBox.checked = false;
+    expandBox.onclick = e => {
+        // TODO : This is very hard-coded
+        let options = nodeTypeToOptions.get("Default")();
+        if (expandBox.checked) {
+            let nodeType = graph.getNodeType(box.parentNode.parentNode.childNodes[0].childNodes[1].childNodes[0].value);
+            options = nodeTypeToOptions.get(convertTypeIDToNodeType(nodeType))();
+        }
+        box.parentNode.parentNode.childNodes[2].removeChild(box.parentNode.parentNode.childNodes[2].childNodes[0]);
+        box.parentNode.parentNode.childNodes[2].appendChild(options);
+    };
+    let expandMark = document.createElement("span");
+    expandMark.className = "checkmark";
+    expandOptions.appendChild(expandBox);
+    expandOptions.appendChild(expandMark);
+    box.appendChild(expandOptions);
+
+    return box;
+}
+
+function addSubmitButton(form) {
+    let submitButton = document.createElement('div');
+    submitButton.innerHTML = '<div class="row">' +
+        '<input type="submit" value="Submit">' +
+        '</div>';
+
+    form.appendChild(submitButton);
 }
 
 function submitAddNodesForm(form) {
@@ -568,92 +844,6 @@ function submitAddNodesForm(form) {
     }
 }
 
-function submitAddPeeringsForm(form) {
-    let isTo = false;
-    let fromNode, toNode;
-    let commands = [];
-    let submitForm = true;
-    for (let i = 0; i < form.target.length; i++) {
-        if (form.target[i].name === "peer") {
-            if (isTo) {
-                toNode = form.target[i].value;
-                if (fromNode != toNode) {
-                    form.target[i].className = form.target[i].className.replace(" focus-error", "");
-                    commands.push({"MsgID": APICommandID.AddPeer, "Event": {"Node": fromNode, "Peer": toNode}});
-                } else {
-                    if (!form.target[i].className.includes(" focus-error")) {
-                        form.target[i].className += " focus-error";
-                    }
-                    // TODO : provide feedback with failure
-                    submitForm = false;
-                }
-            } else {
-                fromNode = form.target[i].value;
-            }
-
-            isTo = !isTo;
-        }
-    }
-
-    if (submitForm) {
-        if (commands.length > 0) {
-            SendToServer({"MsgID": APICommandMessageID.PlaySequence, "Events": commands});
-        }
-
-        let peeringsModal = document.getElementById("add-peerings-modal");
-        if (!peeringsModal) {
-            return;
-        }
-
-        peeringsModal.style.display = "none";
-    }
-}
-
-function extendPeeringsForm() {
-    let peeringsForm = document.getElementById("add-peerings-form");
-    // Remove the submit button from the bottom
-    peeringsForm.removeChild(peeringsForm.lastChild);
-    let peeringTable = document.createElement('div');
-    let availablePeers = '<select name="peer">';
-    for (let i = 0; i < graph.nodeIDs.length; i++) {
-        availablePeers += '<option value="' + graph.nodeIDs[i] + '">' + graph.nodeIDs[i] + '</option>';
-    }
-    availablePeers += '</select>';
-
-    peeringTable.innerHTML += '<hr>' +
-        '<div class="row">' +
-        '<div class="col-two-left">' +
-        '<label for="from">From</label>' +
-        '</div>' +
-        '<div class="col-two-right">' +
-        availablePeers +
-        '</div>' +
-        '</div>' +
-        '<div class="row">' +
-        '<div class="col-two-left">' +
-        '<label for="to">To</label>' +
-        '</div>' +
-        '<div class="col-two-right">' +
-        availablePeers +
-        '</div>' +
-        '</div>';
-
-    peeringsForm.appendChild(peeringTable);
-    addSubmitButton(peeringsForm);
-
-    let extendButton = document.getElementById("extend-peerings");
-    extendButton.onclick = extendPeeringsForm;
-}
-
-function addSubmitButton(form) {
-    let submitButton = document.createElement('div');
-    submitButton.innerHTML = '<div class="row">' +
-        '<input type="submit" value="Submit">' +
-        '</div>';
-
-    form.appendChild(submitButton);
-}
-
 function extendNodesForm() {
     let newNodeID = "new-node-" + nodesFormNodeCount;
     nodesFormNodeCount++;
@@ -662,10 +852,10 @@ function extendNodesForm() {
     // Remove the submit button from the bottom
     nodesForm.removeChild(nodesForm.lastChild);
 
-    let peeringTable = document.createElement('div');
-    peeringTable.id = newNodeID;
+    let nodeTable = document.createElement('div');
+    nodeTable.id = newNodeID;
     let hRule = document.createElement("hr");
-    peeringTable.appendChild(hRule);
+    nodeTable.appendChild(hRule);
     let nodeName = document.createElement("div");
     nodeName.className = "row";
     let nodeNameCol = document.createElement("div");
@@ -683,7 +873,7 @@ function extendNodesForm() {
     nodeNameColTwo.appendChild(nodeNameInput);
     nodeName.appendChild(nodeNameCol);
     nodeName.appendChild(nodeNameColTwo);
-    peeringTable.appendChild(nodeName);
+    nodeTable.appendChild(nodeName);
 
     let nodeType = document.createElement("div");
     nodeType.className = "row";
@@ -721,12 +911,12 @@ function extendNodesForm() {
     nodeColTwo.appendChild(typeSelect);
     nodeType.appendChild(nodeCol);
     nodeType.appendChild(nodeColTwo);
-    peeringTable.append(nodeType);
+    nodeTable.append(nodeType);
 
     let nodeOptions = nodeTypeToOptions.get(nodeTypeToOptions.keys().next().value)();
-    peeringTable.appendChild(nodeOptions);
+    nodeTable.appendChild(nodeOptions);
 
-    nodesForm.appendChild(peeringTable);
+    nodesForm.appendChild(nodeTable);
     addSubmitButton(nodesForm);
 
     let extendButton = document.getElementById("extend-nodes");

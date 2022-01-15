@@ -207,7 +207,6 @@ class Graph {
     addNode(id, key, type) {
         let colour = getComputedStyle(document.documentElement).getPropertyValue('--color-router-blue');
         if (type === APINodeType.GeneralAdversary) {
-            console.log("here!");
             colour = getComputedStyle(document.documentElement).getPropertyValue('--color-dark-red');
         }
         this.peerData.nodes.add({ id: id, label: id, color: {
@@ -249,6 +248,15 @@ class Graph {
 
         this.deselectRemovedNodes();
         this.updateUI(id);
+    }
+
+    getNodeType(nodeID) {
+        let nodeType = "";
+        if (Nodes.has(nodeID)) {
+            nodeType = Nodes.get(nodeID).nodeType;
+        }
+
+        return nodeType;
     }
 
     updateRootAnnouncement(id, root, sequence, time, coords) {
