@@ -1,0 +1,114 @@
+{
+    "EventSequence": [
+        {
+            "Command": "RemoveNode",
+            "Data": {
+                "Name": "Alice"
+            }
+        },
+        {
+            "Command": "RemoveNode",
+            "Data": {
+                "Name": "Bob"
+            }
+        },
+        {
+            "Command": "RemoveNode",
+            "Data": {
+                "Name": "Dan"
+            }
+        },
+        {
+            "Command": "RemoveNode",
+            "Data": {
+                "Name": "Mallory"
+            }
+        },
+        {
+            "Command": "AddNode",
+            "Data": {
+                "Name": "Alice",
+                "NodeType": "Default"
+            }
+        },
+        {
+            "Command": "AddNode",
+            "Data": {
+                "Name": "Bob",
+                "NodeType": "Default"
+            }
+        },
+        {
+            "Command": "AddNode",
+            "Data": {
+                "Name": "Dan",
+                "NodeType": "Default"
+            }
+        },
+        {
+            "Command": "AddNode",
+            "Data": {
+                "Name": "Mallory",
+                "NodeType": "GeneralAdversary"
+            }
+        },
+        {
+            "Command": "ConfigureAdversaryDefaults",
+            "Data": {
+                "Node": "Mallory",
+                "DropRates": {
+                    "Overall": "0",
+                    "Keepalive": "0",
+	                  "TreeAnnouncement": "0",
+	                  "TreeRouted": "0",
+	                  "VirtualSnakeBootstrap": "100",
+	                  "VirtualSnakeBootstrapACK": "100",
+	                  "VirtualSnakeSetup": "100",
+	                  "VirtualSnakeSetupACK": "100",
+	                  "VirtualSnakeTeardown": "100",
+	                  "VirtualSnakeRouted": "0"
+                }
+            }
+        },
+        {
+            "Command": "AddPeer",
+            "Data": {
+                "Node": "Alice",
+                "Peer": "Bob"
+            }
+        },
+        {
+            "Command": "AddPeer",
+            "Data": {
+                "Node": "Alice",
+                "Peer": "Mallory"
+            }
+        },
+        {
+            "Command": "ConfigureAdversaryPeer",
+            "Data": {
+                "Node": "Mallory",
+                "Peer": "Dan",
+                "DropRates": {
+                    "Overall": "0",
+                    "Keepalive": "0",
+	                  "TreeAnnouncement": "0",
+	                  "TreeRouted": "0",
+	                  "VirtualSnakeBootstrap": "0",
+	                  "VirtualSnakeBootstrapACK": "0",
+	                  "VirtualSnakeSetup": "0",
+	                  "VirtualSnakeSetupACK": "0",
+	                  "VirtualSnakeTeardown": "0",
+	                  "VirtualSnakeRouted": "0"
+                }
+            }
+        },
+        {
+            "Command": "AddPeer",
+            "Data": {
+                "Node": "Dan",
+                "Peer": "Mallory"
+            }
+        }
+    ]
+}
