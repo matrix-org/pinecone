@@ -20,8 +20,10 @@ import (
 	"hash/crc32"
 	"log"
 	"net"
+	"time"
 
 	"github.com/Arceliar/phony"
+	"github.com/matrix-org/pinecone/cmd/pineconesim/simulator/adversary"
 	"github.com/matrix-org/pinecone/router"
 	"github.com/matrix-org/pinecone/router/events"
 )
@@ -32,7 +34,11 @@ func (sim *Simulator) Node(t string) *Node {
 	return sim.nodes[t]
 }
 
-func (sim *Simulator) CreateNode(t string) error {
+func (sim *Simulator) CreateNode(t string, nodeType APINodeType) error {
+	if _, ok := sim.nodes[t]; ok {
+		return fmt.Errorf("%s already exists!", t)
+	}
+
 	var l *net.TCPListener
 	var tcpaddr *net.TCPAddr
 	if sim.sockets {
@@ -56,9 +62,10 @@ func (sim *Simulator) CreateNode(t string) error {
 	}
 	crc := crc32.ChecksumIEEE([]byte(t))
 	color := 31 + (crc % 6)
-	log := log.New(sim.log.Writer(), fmt.Sprintf("\033[%dmNode %s:\033[0m ", color, t), 0)
+	logger := log.New(sim.log.Writer(), fmt.Sprintf("\033[%dmNode %s:\033[0m ", color, t), 0)
+
 	n := &Node{
-		Router:     router.NewRouter(log, sk, true),
+		SimRouter:  sim.routerCreationMap[nodeType](logger, sk, true),
 		l:          l,
 		ListenAddr: tcpaddr,
 	}
@@ -67,27 +74,39 @@ func (sim *Simulator) CreateNode(t string) error {
 	sim.nodesMutex.Unlock()
 
 	if sim.sockets {
-		go func(n *Node) {
+		quit := make(chan bool)
+		go func(quit <-chan bool, n *Node) {
 			for {
-				c, err := n.l.AcceptTCP()
-				if err != nil {
-					continue
-				}
-				if err := c.SetNoDelay(true); err != nil {
-					panic(err)
-				}
-				if err := c.SetLinger(0); err != nil {
-					panic(err)
-				}
-				if _, err = n.Connect(
-					c,
-					router.ConnectionPeerType(router.PeerTypeRemote),
-					router.ConnectionKeepalives(true),
-				); err != nil {
-					continue
+				select {
+				case <-quit:
+					return
+				default:
+					n.l.SetDeadline(time.Now().Add(time.Duration(500) * time.Millisecond))
+					c, err := n.l.AcceptTCP()
+					if err != nil {
+						continue
+					}
+					if err := c.SetNoDelay(true); err != nil {
+						panic(err)
+					}
+					if err := c.SetLinger(0); err != nil {
+						panic(err)
+					}
+					if _, err = n.Connect(
+						c,
+						router.ConnectionPeerType(router.PeerTypeRemote),
+						router.ConnectionKeepalives(true),
+					); err != nil {
+						continue
+					}
 				}
 			}
-		}(n)
+		}(quit, n)
+
+		sim.nodeRunnerChannelsMutex.Lock()
+		sim.nodeRunnerChannels[t] = append(sim.nodeRunnerChannels[t], quit)
+		sim.nodeRunnerChannelsMutex.Unlock()
+
 		sim.log.Printf("Created node %q (listening on %s)\n", t, l.Addr())
 	} else {
 		sim.log.Printf("Created node %q\n", t)
@@ -95,11 +114,64 @@ func (sim *Simulator) CreateNode(t string) error {
 	return nil
 }
 
-func (sim *Simulator) StartNodeEventHandler(t string) {
+func (sim *Simulator) StartNodeEventHandler(t string, nodeType APINodeType) {
 	ch := make(chan events.Event)
 	handler := eventHandler{node: t, ch: ch}
-	go handler.Run(sim)
+	quit := make(chan bool)
+	go handler.Run(quit, sim)
 	sim.nodes[t].Subscribe(ch)
 
-	phony.Block(sim.State, func() { sim.State._addNode(t, sim.nodes[t].PublicKey().String()) })
+	sim.nodeRunnerChannelsMutex.Lock()
+	sim.nodeRunnerChannels[t] = append(sim.nodeRunnerChannels[t], quit)
+	sim.nodeRunnerChannelsMutex.Unlock()
+
+	phony.Block(sim.State, func() { sim.State._addNode(t, sim.nodes[t].PublicKey().String(), nodeType) })
+}
+
+func (sim *Simulator) RemoveNode(node string) {
+	// Stop all the goroutines running for this node
+	sim.nodeRunnerChannelsMutex.Lock()
+	for _, quitChan := range sim.nodeRunnerChannels[node] {
+		quitChan <- true
+	}
+	delete(sim.nodeRunnerChannels, node)
+	sim.nodeRunnerChannelsMutex.Unlock()
+
+	sim.DisconnectAllPeers(node)
+
+	// Remove the node from the simulators list of nodes
+	sim.nodesMutex.Lock()
+	delete(sim.nodes, node)
+	sim.nodesMutex.Unlock()
+
+	phony.Block(sim.State, func() { sim.State._removeNode(node) })
+}
+
+func (sim *Simulator) ConfigureFilterDefaults(node string, rates adversary.DropRates) {
+	if node, exists := sim.Nodes()[node]; exists {
+		node.ConfigureFilterDefaults(rates)
+	}
+}
+
+func (sim *Simulator) ConfigureFilterPeer(node string, peer string, rates adversary.DropRates) {
+	peerNode, exists := sim.Nodes()[peer]
+	if !exists {
+		log.Println("Failed configuring filters for peer. Key too long")
+		return
+	}
+
+	if node, exists := sim.Nodes()[node]; exists {
+		node.ConfigureFilterPeer(peerNode.PublicKey(), rates)
+	}
+}
+
+func createDefaultRouter(log *log.Logger, sk ed25519.PrivateKey, debug bool) SimRouter {
+	rtr := &DefaultRouter{
+		router.NewRouter(log, sk, debug),
+	}
+	return rtr
+}
+
+func createAdversaryRouter(log *log.Logger, sk ed25519.PrivateKey, debug bool) SimRouter {
+	return adversary.NewAdversaryRouter(log, sk, debug)
 }

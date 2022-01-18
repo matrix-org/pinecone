@@ -71,9 +71,10 @@ func NewRouter(logger *log.Logger, sk ed25519.PrivateKey, debug bool) *Router {
 	r.public = r.private.Public()
 	// Create a state actor.
 	r.state = &state{
-		r:      r,
-		_table: make(virtualSnakeTable),
-		_peers: make([]*peer, portCount),
+		r:             r,
+		_table:        make(virtualSnakeTable),
+		_peers:        make([]*peer, portCount),
+		_filterPacket: nil,
 	}
 	// Create a new local peer and wire it into port 0.
 	r.local = r.newLocalPeer()
@@ -82,6 +83,12 @@ func NewRouter(logger *log.Logger, sk ed25519.PrivateKey, debug bool) *Router {
 	r.state.Act(nil, r.state._start)
 	r.log.Println("Router identity:", r.public.String())
 	return r
+}
+
+func (r *Router) InjectPacketFilter(fn FilterFn) {
+	phony.Block(r.state, func() {
+		r.state._filterPacket = fn
+	})
 }
 
 // _publish notifies each subscriber of a new event.

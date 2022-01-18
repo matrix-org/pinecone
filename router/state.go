@@ -27,6 +27,8 @@ import (
 	"go.uber.org/atomic"
 )
 
+type FilterFn func(from types.PublicKey, f *types.Frame) bool
+
 // NOTE: Functions prefixed with an underscore (_) are only safe to be called
 // from the actor that owns them, in order to prevent data races.
 
@@ -46,6 +48,7 @@ type state struct {
 	_treetimer     *time.Timer        // Tree maintenance timer
 	_snaketimer    *time.Timer        // Virtual snake maintenance timer
 	_waiting       bool               // Is the tree waiting to reparent?
+	_filterPacket  FilterFn           // Function called when forwarding packets
 }
 
 // _start resets the state and starts tree and virtual snake maintenance.
@@ -53,17 +56,25 @@ func (s *state) _start() {
 	s._setParent(nil)
 	s._setAscendingNode(nil)
 	s._setDescendingNode(nil)
+
 	s._candidate = nil
+	s._ordering = 0
+	s._waiting = false
+
 	s._announcements = make(announcementTable, portCount)
 	s._table = virtualSnakeTable{}
-	s._ordering = 0
 
-	s._treetimer = time.AfterFunc(announcementInterval, func() {
-		s.Act(nil, s._maintainTree)
-	})
-	s._snaketimer = time.AfterFunc(time.Second, func() {
-		s.Act(nil, s._maintainSnake)
-	})
+	if s._treetimer == nil {
+		s._treetimer = time.AfterFunc(announcementInterval, func() {
+			s.Act(nil, s._maintainTree)
+		})
+	}
+
+	if s._snaketimer == nil {
+		s._snaketimer = time.AfterFunc(time.Second, func() {
+			s.Act(nil, s._maintainSnake)
+		})
+	}
 
 	s._maintainTreeIn(0)
 	s._maintainSnakeIn(0)
@@ -208,16 +219,7 @@ func (s *state) _portDisconnected(peer *peer) {
 	// snake state. When we connect to a peer in the future, we will do so
 	// with a blank slate.
 	if peercount == 0 {
-		s._setParent(nil)
-		s._setAscendingNode(nil)
-		s._setDescendingNode(nil)
-		for k := range s._announcements {
-			delete(s._announcements, k)
-		}
-		for k := range s._table {
-			delete(s._table, k)
-		}
-		s._ordering = 0
+		s._start()
 		return
 	}
 

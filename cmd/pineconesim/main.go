@@ -17,6 +17,7 @@ package main
 import (
 	"bufio"
 	"flag"
+	"fmt"
 	"log"
 	"math/rand"
 	"os"
@@ -40,15 +41,18 @@ type pair struct{ from, to string }
 
 const maxBatchSize int = 50
 
+var ConnUID atomic.Uint64 = atomic.Uint64{}
+
 func main() {
 	go func() {
 		panic(http.ListenAndServe(":65432", nil))
 	}()
 
-	filename := flag.String("filename", "cmd/pineconesim/graphs/sim.txt", "the file that describes the simulated topology")
+	filename := flag.String("filename", "cmd/pineconesim/graphs/empty.txt", "the file that describes the simulated topology")
 	sockets := flag.Bool("sockets", false, "use real TCP sockets to connect simulated nodes")
 	chaos := flag.Int("chaos", 0, "randomly connect and disconnect a certain number of links")
 	ping := flag.Bool("ping", false, "test end-to-end reachability between all nodes")
+	acceptCommands := flag.Bool("acceptCommands", true, "whether the sim can be commanded from the ui")
 	flag.Parse()
 
 	file, err := os.Open(*filename)
@@ -80,15 +84,15 @@ func main() {
 	}
 
 	log := log.New(os.Stdout, "\u001b[36m***\u001b[0m ", 0)
-	sim := simulator.NewSimulator(log, *sockets, *ping)
-	configureHTTPRouting(sim)
+	sim := simulator.NewSimulator(log, *sockets, *ping, *acceptCommands)
+	configureHTTPRouting(log, sim)
 	sim.CalculateShortestPaths(nodes, wires)
 
 	for n := range nodes {
-		if err := sim.CreateNode(n); err != nil {
+		if err := sim.CreateNode(n, simulator.DefaultNode); err != nil {
 			panic(err)
 		}
-		sim.StartNodeEventHandler(n)
+		sim.StartNodeEventHandler(n, simulator.DefaultNode)
 	}
 
 	for a, w := range wires {
@@ -199,7 +203,7 @@ func main() {
 	select {}
 }
 
-func configureHTTPRouting(sim *simulator.Simulator) {
+func configureHTTPRouting(log *log.Logger, sim *simulator.Simulator) {
 	var upgrader = websocket.Upgrader{}
 	http.Handle("/ui/", http.StripPrefix("/ui/", http.FileServer(http.Dir("./cmd/pineconesim/ui"))))
 
@@ -209,7 +213,14 @@ func configureHTTPRouting(sim *simulator.Simulator) {
 			log.Println(err)
 			return
 		}
-		go userProxy(conn, sim)
+
+		log.Println("New websocket connection established")
+
+		connID := ConnUID.Inc()
+		go userProxyReporter(conn, connID, sim)
+		if sim.AcceptCommands {
+			go userProxyCommander(conn, connID, sim)
+		}
 	})
 
 	http.DefaultServeMux.HandleFunc("/simws", func(w http.ResponseWriter, r *http.Request) {
@@ -249,7 +260,10 @@ func configureHTTPRouting(sim *simulator.Simulator) {
 	})
 }
 
-func userProxy(conn *websocket.Conn, sim *simulator.Simulator) {
+func userProxyReporter(conn *websocket.Conn, connID uint64, sim *simulator.Simulator) {
+	log := log.New(os.Stdout, fmt.Sprintf("\u001b[38;5;93mWsSimReporter::%d ***\u001b[0m ", connID), 0)
+	log.Println("Listening to sim for updates...")
+
 	// Subscribe to sim events and grab snapshot of current state
 	ch := make(chan simulator.SimEvent)
 	state := sim.State.Subscribe(ch)
@@ -274,6 +288,7 @@ func userProxy(conn *websocket.Conn, sim *simulator.Simulator) {
 
 		nodeState[name] = simulator.InitialNodeState{
 			PublicKey: node.PeerID,
+			NodeType:  node.NodeType,
 			RootState: simulator.RootState{
 				Root:        node.Announcement.Root,
 				AnnSequence: node.Announcement.Sequence,
@@ -305,11 +320,25 @@ func userProxy(conn *websocket.Conn, sim *simulator.Simulator) {
 		}
 	}
 
+	// In the case the sim starts with an empty graph, send an empty initial state message
+	// to let the UI know it can begin processing updates.
+	if len(state.Nodes) == 0 {
+		if err := conn.WriteJSON(simulator.InitialStateMsg{
+			MsgID: simulator.SimInitialState,
+			Nodes: map[string]simulator.InitialNodeState{},
+			End:   true,
+		}); err != nil {
+			log.Println(err)
+			return
+		}
+	}
+
 	// Start event handler for future sim events
-	handleSimEvents(conn, ch)
+	handleSimEvents(log, conn, ch)
+	log.Printf("Closing WsSimReporter::%d\n", connID)
 }
 
-func handleSimEvents(conn *websocket.Conn, ch <-chan simulator.SimEvent) {
+func handleSimEvents(log *log.Logger, conn *websocket.Conn, ch <-chan simulator.SimEvent) {
 	for {
 		event := <-ch
 		eventType := simulator.UnknownUpdate
@@ -332,11 +361,82 @@ func handleSimEvents(conn *websocket.Conn, ch <-chan simulator.SimEvent) {
 			eventType = simulator.SimTreeRootAnnUpdated
 		}
 
-		conn.WriteJSON(simulator.StateUpdateMsg{
-			MsgID: simulator.SimUpdate,
+		if err := conn.WriteJSON(simulator.StateUpdateMsg{
+			MsgID: simulator.SimStateUpdate,
 			Event: simulator.SimEventMsg{
 				UpdateID: eventType,
 				Event:    event,
-			}})
+			}}); err != nil {
+			log.Println(err)
+			return
+		}
+	}
+}
+
+func userProxyCommander(conn *websocket.Conn, connID uint64, sim *simulator.Simulator) {
+	log := log.New(os.Stdout, fmt.Sprintf("\u001b[38;5;220mWsSimCommander::%d ***\u001b[0m ", connID), 0)
+	log.Println("Listening to ui for commands...")
+
+	for {
+		var eventSequence simulator.SimCommandSequenceMsg
+		if err := conn.ReadJSON(&eventSequence); err != nil {
+			log.Println(err)
+			if strings.Contains(err.Error(), "unmarshal") {
+				continue
+			} else {
+				log.Printf("Unhandled websocket failure, closing WsSimCommander::%d\n", connID)
+				return
+			}
+		}
+
+		// Unmarshall the events into meaningful structs
+		var commands []simulator.SimCommand
+		for i, event := range eventSequence.Events {
+			command, err := simulator.UnmarshalCommandJSON(&event)
+
+			if err != nil {
+				escapedErr := strings.Replace(err.Error(), "\n", "", -1)
+				escapedErr = strings.Replace(escapedErr, "\r", "", -1)
+				log.Printf("Index %d: %v", i, escapedErr)
+				continue
+			}
+
+			commands = append(commands, command)
+		}
+
+		if len(commands) > 0 {
+			k := 0
+			keepCommand := func(i int, cmd simulator.SimCommand) {
+				if i != k {
+					commands[k] = cmd
+				}
+				k++
+			}
+			for i, cmd := range commands {
+				switch cmd.(type) {
+				case simulator.Play:
+					if len(commands) > 1 {
+						log.Println("Play removed from sequence")
+					} else {
+						cmd.Run(log, sim)
+					}
+				case simulator.Pause:
+					if len(commands) > 1 {
+						log.Println("Pause removed from sequence")
+					} else {
+						cmd.Run(log, sim)
+					}
+				default:
+					keepCommand(i, cmd)
+				}
+			}
+
+			commands = commands[:k]
+
+			if len(commands) > 0 {
+				log.Printf("Adding the following commands to be played: %v", commands)
+				sim.AddToPlaylist(commands)
+			}
+		}
 	}
 }

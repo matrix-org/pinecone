@@ -1,0 +1,95 @@
+{
+    "EventSequence": [
+        {
+            "Command": "AddNode",
+            "Data": {
+                "Name": "Alice",
+                "NodeType": "Default"
+            }
+        },
+        {
+            "Command": "AddNode",
+            "Data": {
+                "Name": "Bob",
+                "NodeType": "Default"
+            }
+        },
+        {
+            "Command": "AddPeer",
+            "Data": {
+                "Node": "Alice",
+                "Peer": "Bob"
+            }
+        },
+        {
+            "Command": "Delay",
+            "Data": {
+                "Length": 5000
+            }
+        },
+        {
+            "Command": "AddNode",
+            "Data": {
+                "Name": "Charlie",
+                "NodeType": "Default"
+            }
+        },
+        {
+            "Command": "AddNode",
+            "Data": {
+                "Name": "Dan",
+                "NodeType": "Default"
+            }
+        },
+        {
+            "Command": "AddPeer",
+            "Data": {
+                "Node": "Charlie",
+                "Peer": "Dan"
+            }
+        },
+        {
+            "Command": "Delay",
+            "Data": {
+                "Length": 5000
+            }
+        },
+        {
+            "Command": "AddPeer",
+            "Data": {
+                "Node": "Bob",
+                "Peer": "Charlie"
+            }
+        },
+        {
+            "Command": "Delay",
+            "Data": {
+                "Length": 5000
+            }
+        },
+        {
+            "Command": "RemoveNode",
+            "Data": {
+                "Name": "Alice"
+            }
+        },
+        {
+            "Command": "RemoveNode",
+            "Data": {
+                "Name": "Bob"
+            }
+        },
+        {
+            "Command": "RemoveNode",
+            "Data": {
+                "Name": "Charlie"
+            }
+        },
+        {
+            "Command": "RemoveNode",
+            "Data": {
+                "Name": "Dan"
+            }
+        }
+    ]
+}

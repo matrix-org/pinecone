@@ -16,9 +16,14 @@ body {
     --color-switch-blue: #6d8bac;
     --color-ems-purple: #7e69ff;
     --topo-panel-width: 150px;
+    --tool-panel-width: 187.5px;
     --topnav-height: 0px;
-    --toggle-box-size: 40px;
-    --toggle-box-margin: 5px;
+    --toggle-box-size: 35px;
+    --toggle-box-margin: 10px;
+    --tool-panel-count: 5;
+    --topo-panel-count: 4;
+    --tool-icon-size: calc(var(--tool-panel-width) / var(--tool-panel-count));
+    --topo-icon-size: calc(var(--topo-panel-width) / var(--topo-panel-count));
 }
 
 * {
@@ -27,7 +32,7 @@ body {
 
 .left {
     background-color: var(--color-dull-grey);
-    width: max-content;
+    width: 0;
     height: calc(100vh - var(--topnav-height));
     overflow: scroll;
     left: 0;
@@ -77,16 +82,23 @@ body {
     width: var(--toggle-box-size);
     height: var(--toggle-box-size);
     color: var(--color-dull-grey);
-    font-size: 20px;
+    font-size: 18px;
     background-color: var(--color-logo-green);
     align-items: center;
     border-radius: 10%;
     margin: var(--toggle-box-margin);
+    border: none;
 }
 
 .toggle:hover {
     color: var(--color-dark-grey);
     background-color: var(--color-logo-green);
+    cursor: pointer;
+}
+
+.toggle:active {
+    color: var(--color-dull-grey);
+    background-color: var(--color-dark-grey);
 }
 
 .topLeft {
@@ -135,7 +147,6 @@ body {
 .toggle-overlay {
     z-index: 9;
     position: absolute;
-    border: none;
     opacity: 1;
 }
 
@@ -148,38 +159,96 @@ body {
 
 .icon-bar {
     width: var(--topo-panel-width); /* Set a specific width */
+    height: var(--topo-panel-height);
     background-color: var(--color-dark-grey); /* Dark-grey background */
-    margin: 5px;
+    margin: 10px;
+}
+
+.tool-bar {
+    width: var(--tool-panel-width); /* Set a specific width */
+    background-color: var(--color-dark-grey); /* Dark-grey background */
+    margin: 10px;
+}
+
+.top {
+    top: 0;
+}
+
+.bottom {
+    bottom: 0;
 }
 
 .icon-bar-center {
-    top: 0;
     left: calc(50% - var(--topo-panel-width) / 2);
 }
 
-.icon-bar a:hover {
+.tool-bar-center {
+    left: calc(50% - var(--tool-panel-width) / 2);
+}
+
+.netselect, .toolselect, .dropup .dropup-button, .dropup-content button {
+    float: left; /* Float links side by side */
+    text-align: center; /* Center-align text */
+    padding: 12px 0; /* Some top and bottom padding */
+    background-color: var(--color-dark-grey);
+    color: var(--color-dull-grey); /* White text color */
+    font-size: 18px; /* Increased font size */
+    text-decoration: none;
+    position: relative;
+    border: none;
+}
+
+.netselect {
+    width: var(--topo-icon-size);
+}
+
+.toolselect {
+    width: var(--tool-icon-size);
+}
+
+.toolselect:hover, .netselect:hover, .dropup-content button:hover, .netselect.active:hover, .toolselect.active:hover {
+    background-color: var(--color-logo-green); /* Add an active/current color */
+    color: var(--color-dark-grey);
+    cursor: pointer;
+}
+
+.netselect.active, .toolselect.active, .dropup:hover .dropup-button {
+    color: var(--color-dull-grey);
+    background-color: var(--color-logo-green); /* Add an active/current color */
+}
+
+.toolselect:active, .netselect:active, .netselect.active:active, .toolselect.active:active, .dropup-content:active, .dropup-content button:active {
     background-color: var(--color-dull-grey);
     color: var(--color-dark-grey);
 }
 
-.icon-bar a.active {
-    background-color: var(--color-logo-green); /* Add an active/current color */
-    color: var(--color-dull-grey);
+.dropup {
+    float: left;
+    overflow: hidden;
 }
 
-.icon-bar a {
-    float: left; /* Float links side by side */
-    text-align: center; /* Center-align text */
-    width: 25%; /* Equal width (4 icons with 25% width each = 100%) */
-    padding: 12px 0; /* Some top and bottom padding */
-    transition: all 0.3s ease; /* Add transition for hover effects */
-    color: var(--color-dull-grey); /* White text color */
-    font-size: 18px; /* Increased font size */
-    text-decoration: none;
+.dropup .dropup-button {
+    width: var(--tool-icon-size);
 }
 
-.netselect {
-    position: relative;
+/* dropup content (hidden by default) */
+.dropup-content {
+    display: none;
+    position: absolute;
+    bottom: 100%;
+    z-index: 1;
+}
+
+/* Buttons inside the dropup */
+.dropup-content button {
+    float: none;
+    display: block;
+    width: var(--tool-icon-size);
+}
+
+/* Show the dropup menu on hover */
+.dropup:hover .dropup-content {
+    display: block;
 }
 
 /* Tooltip container */
@@ -278,4 +347,303 @@ body {
     border-width: 5px;
     border-style: solid;
     border-color: var(--color-dark-grey) transparent transparent transparent;
+}
+
+/* The Modal (background) */
+.modal {
+    display: none; /* Hidden by default */
+    position: fixed; /* Stay in place */
+    z-index: 10; /* Sit on top */
+    left: 0;
+    top: 0;
+    width: 100%; /* Full width */
+    height: 100%; /* Full height */
+    overflow: auto; /* Enable scroll if needed */
+    background-color: rgb(0,0,0); /* Fallback color */
+    background-color: rgba(0,0,0,0.4); /* Black w/ opacity */
+}
+
+/* Modal Header */
+.modal-header {
+    padding: 2px 16px;
+    background-color: var(--color-ems-purple);
+    color: var(--color-dull-grey);
+}
+
+/* Modal Body */
+.modal-body {padding: 2px 16px;}
+
+/* Modal Content */
+.modal-content {
+    position: relative;
+    background-color: var(--color-dull-grey);
+    margin: auto;
+    padding: 0;
+    margin-top: 5%;
+    margin-bottom: 5%;
+    width: 60%;
+    min-width: 540px; /* 600 * 90% */
+    box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2),0 6px 20px 0 rgba(0,0,0,0.19);
+    animation-name: animatemodal;
+    animation-duration: 0.4s
+}
+
+@media screen and (max-width: 600px) {
+    .modal-content {
+        width: 90%;
+        min-width: 0;
+    }
+}
+
+@keyframes animatemodal {
+    from {opacity: 0}
+    to {opacity: 1}
+}
+
+/* The Close Button */
+.close {
+    color: var(--color-dark-grey);
+    float: right;
+    margin-top: 10px;
+    font-size: 28px;
+    font-weight: bold;
+}
+
+.close:hover,
+.close:focus {
+    color: black;
+    text-decoration: none;
+    cursor: pointer;
+}
+
+/* Style inputs, select elements and textareas */
+input[type=text], select, textarea{
+    width: 100%;
+    padding: 12px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    box-sizing: border-box;
+    resize: vertical;
+}
+
+.focus-error {
+    outline: 1px solid var(--color-dark-red);
+    border: 1px solid var(--color-dark-red);
+    box-shadow: 0 0 3px var(--color-dark-red);
+    -moz-box-shadow: 0 0 3px var(--color-dark-red);
+    -webkit-box-shadow: 0 0 3px var(--color-dark-red);
+}
+
+input[type=text]:focus {
+    outline: none;
+    border: 1px solid var(--color-ems-purple);
+    box-shadow: 0 0 3px var(--color-ems-purple);
+    -moz-box-shadow: 0 0 3px var(--color-ems-purple);
+    -webkit-box-shadow: 0 0 3px var(--color-ems-purple);
+}
+
+/* Style the label to display next to the inputs */
+label {
+    padding: 12px 12px 12px 0;
+    display: inline-block;
+}
+
+/* Style the submit button */
+input[type=submit] {
+    background-color: var(--color-logo-green);
+    color: var(--color-dull-grey);
+    padding: 12px 20px;
+    margin-top: 10px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    float: right;
+}
+
+input[type=submit]:hover {
+    color: var(--color-dark-grey);
+    background-color: var(--color-logo-green);
+}
+
+input[type=submit]:active {
+    color: var(--color-dull-grey);
+    background-color: var(--color-dark-grey);
+}
+
+/* Style the container */
+.container {
+    border-radius: 5px;
+    background-color: var(--color-dull-grey);
+    padding: 20px;
+}
+
+.extend-form-button {
+    float: right;
+    margin: 0;
+    margin-top: -10px;
+}
+
+.col-two-left {
+    float: left;
+    width: 35%;
+    min-width: max-content;
+    margin-top: 6px;
+}
+
+.col-two-right {
+    float: left;
+    width: 65%;
+    margin-top: 6px;
+}
+
+.col-three-middle {
+    float: left;
+    width: 55%;
+    margin-top: 6px;
+}
+
+.col-three-right {
+    float: left;
+    width: 10%;
+    margin-top: 6px;
+    padding-left: 6px;
+}
+
+/* Clear floats after the columns */
+.row:after {
+    content: "";
+    display: table;
+    clear: both;
+}
+
+@media screen and (max-width: 600px) {
+    .col-two-left, .col-two-right {
+        width: 100%;
+        margin-top: 0;
+    }
+
+    .col-three-middle {
+        width: 85%;
+    }
+
+    input[type=submit] {
+        width: 100%;
+    }
+
+    .col-three-middle, .col-three-right {
+        margin-top: -10px;
+        margin-bottom: 20px;
+    }
+}
+
+.slidecontainer {
+    width: 100%; /* Width of the outside container */
+    transform: translateY(100%);
+}
+
+/* The slider itself */
+.slider {
+    -webkit-appearance: none;  /* Override default CSS styles */
+    appearance: none;
+    width: 100%; /* Full-width */
+    height: 10px; /* Specified height */
+    border-radius: 5px;
+    background: #d3d3d3; /* Grey background */
+    outline: none; /* Remove outline */
+    opacity: 0.7; /* Set transparency (for mouse-over effects on hover) */
+    -webkit-transition: .2s; /* 0.2 seconds transition on hover */
+    transition: opacity .2s;
+}
+
+/* Mouse-over effects */
+.slider:hover {
+    opacity: 1; /* Fully shown on mouse-over */
+}
+
+/* The slider handle (use -webkit- (Chrome, Opera, Safari, Edge) and -moz- (Firefox) to override default look) */
+.slider::-webkit-slider-thumb {
+    -webkit-appearance: none; /* Override default look */
+    appearance: none;
+    width: 15px; /* Set a specific slider handle width */
+    height: 15px; /* Slider handle height */
+    border-radius: 50%;
+    background: var(--color-logo-green); /* Green background */
+    cursor: pointer; /* Cursor on hover */
+}
+
+.slider::-moz-range-thumb {
+    width: 15px; /* Set a specific slider handle width */
+    height: 15px; /* Slider handle height */
+    border-radius: 50%;
+    background: var(--color-logo-green); /* Green background */
+    cursor: pointer; /* Cursor on hover */
+}
+
+
+ /* Customize the label (the container) */
+.options-container {
+  display: block;
+  position: relative;
+  padding-left: 45px;
+  margin-bottom: 12px;
+  cursor: pointer;
+  /* font-size: 22px; */
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+}
+
+/* Hide the browser's default checkbox */
+.options-container input {
+  position: absolute;
+  opacity: 0;
+  cursor: pointer;
+  height: 0;
+  width: 0;
+}
+
+/* Create a custom checkbox */
+.checkmark {
+  position: absolute;
+  top: 7;
+  left: 0;
+  height: 25px;
+  width: 25px;
+  background-color: #eee;
+}
+
+/* On mouse-over, add a grey background color */
+.options-container:hover input ~ .checkmark {
+  background-color: #d3d3d3;
+}
+
+/* When the checkbox is checked, add a blue background */
+.options-container input:checked ~ .checkmark {
+  background-color: var(--color-ems-purple);
+}
+
+/* Create the checkmark/indicator (hidden when not checked) */
+.checkmark:after {
+  content: "";
+  position: absolute;
+  display: none;
+}
+
+/* Show the checkmark when checked */
+.options-container input:checked ~ .checkmark:after {
+  display: block;
+}
+
+/* Style the checkmark/indicator */
+.options-container .checkmark:after {
+  left: 9px;
+  top: 5px;
+  width: 5px;
+  height: 10px;
+  border: solid white;
+  border-width: 0 3px 3px 0;
+  -webkit-transform: rotate(45deg);
+  -ms-transform: rotate(45deg);
+  transform: rotate(45deg);
 }

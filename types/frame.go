@@ -342,6 +342,8 @@ func (t FrameType) String() string {
 		return "VirtualSnakeBootstrapACK"
 	case TypeVirtualSnakeSetup:
 		return "VirtualSnakeSetup"
+	case TypeVirtualSnakeSetupACK:
+		return "VirtualSnakeSetupACK"
 	case TypeVirtualSnakeRouted:
 		return "VirtualSnakeRouted"
 	case TypeVirtualSnakeTeardown:

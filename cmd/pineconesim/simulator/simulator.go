@@ -15,20 +15,62 @@
 package simulator
 
 import (
+	"crypto/ed25519"
 	"log"
 	"net"
 	"sync"
 	"time"
 
+	"github.com/Arceliar/phony"
 	"github.com/RyanCarrier/dijkstra"
+	"go.uber.org/atomic"
 )
+
+type EventSequenceRunner struct {
+	phony.Inbox
+	_playlist  chan []SimCommand
+	_isPlaying atomic.Bool
+}
+
+func (r *EventSequenceRunner) Play() {
+	r._isPlaying.Store(true)
+}
+
+func (r *EventSequenceRunner) Pause() {
+	r._isPlaying.Store(false)
+}
+
+func (r *EventSequenceRunner) Run(sim *Simulator) {
+	for commands := range r._playlist {
+		sim.log.Printf("Executing new command sequence: %v", commands)
+		for _, cmd := range commands {
+			// Only process commands while in play mode
+			for {
+				if r._isPlaying.Load() {
+					break
+				}
+
+				// TODO : make this less sleepy with another channel for admin
+				time.Sleep(time.Duration(200) * time.Millisecond)
+			}
+
+			cmd.Run(sim.log, sim)
+		}
+		sim.log.Println("Finished executing command sequence")
+	}
+}
+
+type RouterCreatorFn func(log *log.Logger, sk ed25519.PrivateKey, debug bool) SimRouter
 
 type Simulator struct {
 	log                      *log.Logger
 	sockets                  bool
 	ping                     bool
+	AcceptCommands           bool
 	nodes                    map[string]*Node
 	nodesMutex               sync.RWMutex
+	nodeRunnerChannels       map[string][]chan<- bool
+	nodeRunnerChannelsMutex  sync.RWMutex
 	graph                    *dijkstra.Graph
 	maps                     map[string]int
 	wires                    map[string]map[string]net.Conn
@@ -41,21 +83,35 @@ type Simulator struct {
 	treePathConvergenceMutex sync.RWMutex
 	startTime                time.Time
 	State                    *StateAccessor
+	eventPlaylist            []SimCommand
+	eventRunner              *EventSequenceRunner
+	routerCreationMap        map[APINodeType]RouterCreatorFn
 }
 
-func NewSimulator(log *log.Logger, sockets, ping bool) *Simulator {
+func NewSimulator(log *log.Logger, sockets, ping bool, acceptCommands bool) *Simulator {
 	sim := &Simulator{
 		log:                 log,
 		sockets:             sockets,
 		ping:                ping,
+		AcceptCommands:      acceptCommands,
 		nodes:               make(map[string]*Node),
+		nodeRunnerChannels:  make(map[string][]chan<- bool),
 		wires:               make(map[string]map[string]net.Conn),
 		dists:               make(map[string]map[string]*Distance),
 		snekPathConvergence: make(map[string]map[string]bool),
 		treePathConvergence: make(map[string]map[string]bool),
 		startTime:           time.Now(),
 		State:               NewStateAccessor(),
+		eventPlaylist:       []SimCommand{},
+		eventRunner:         &EventSequenceRunner{_playlist: make(chan []SimCommand)},
+		routerCreationMap:   make(map[APINodeType]RouterCreatorFn, 2),
 	}
+
+	sim.routerCreationMap[DefaultNode] = createDefaultRouter
+	sim.routerCreationMap[GeneralAdversaryNode] = createAdversaryRouter
+
+	go sim.eventRunner.Run(sim)
+	sim.Play()
 
 	return sim
 }
@@ -127,6 +183,7 @@ func (sim *Simulator) handlePeerAdded(node string, peerID string, port int) {
 
 func (sim *Simulator) handlePeerRemoved(node string, peerID string, port int) {
 	if peerNode, err := sim.State.GetNodeName(peerID); err == nil {
+		sim.DisconnectNodes(node, peerNode)
 		sim.State.Act(nil, func() { sim.State._removePeerConnection(node, peerNode, port) })
 	}
 }
@@ -162,4 +219,26 @@ func (sim *Simulator) handleTreeRootAnnUpdate(node string, root string, sequence
 		rootName = peerNode
 	}
 	sim.State.Act(nil, func() { sim.State._updateTreeRootAnnouncement(node, rootName, sequence, time, coords) })
+}
+
+type EventSequencePlayer interface {
+	Play()
+	Pause()
+	AddToPlaylist(commands []SimCommand)
+}
+
+func (sim *Simulator) Play() {
+	sim.eventRunner.Play()
+}
+
+func (sim *Simulator) Pause() {
+	sim.eventRunner.Pause()
+}
+
+func (sim *Simulator) AddToPlaylist(commands []SimCommand) {
+	// NOTE : Pass a list of commands instead of individual commands to enforce
+	// command sets being run without interleaving events from other command sets
+	sim.eventRunner.Act(nil, func() {
+		sim.eventRunner._playlist <- commands
+	})
 }

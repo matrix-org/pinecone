@@ -23,6 +23,7 @@ type SimEvent interface {
 type NodeAdded struct {
 	Node      string
 	PublicKey string
+	NodeType  int
 }
 
 // Tag NodeAdded as an Event
@@ -97,24 +98,28 @@ type eventHandler struct {
 	ch   <-chan events.Event
 }
 
-func (h eventHandler) Run(sim *Simulator) {
+func (h eventHandler) Run(quit <-chan bool, sim *Simulator) {
 	for {
-		event := <-h.ch
-		switch e := event.(type) {
-		case events.PeerAdded:
-			sim.handlePeerAdded(h.node, e.PeerID, int(e.Port))
-		case events.PeerRemoved:
-			sim.handlePeerRemoved(h.node, e.PeerID, int(e.Port))
-		case events.TreeParentUpdate:
-			sim.handleTreeParentUpdate(h.node, e.PeerID)
-		case events.SnakeAscUpdate:
-			sim.handleSnakeAscUpdate(h.node, e.PeerID, e.PathID)
-		case events.SnakeDescUpdate:
-			sim.handleSnakeDescUpdate(h.node, e.PeerID, e.PathID)
-		case events.TreeRootAnnUpdate:
-			sim.handleTreeRootAnnUpdate(h.node, e.Root, e.Sequence, e.Time, e.Coords)
-		default:
-			sim.log.Println("Unhandled event!")
+		select {
+		case <-quit:
+			return
+		case event := <-h.ch:
+			switch e := event.(type) {
+			case events.PeerAdded:
+				sim.handlePeerAdded(h.node, e.PeerID, int(e.Port))
+			case events.PeerRemoved:
+				sim.handlePeerRemoved(h.node, e.PeerID, int(e.Port))
+			case events.TreeParentUpdate:
+				sim.handleTreeParentUpdate(h.node, e.PeerID)
+			case events.SnakeAscUpdate:
+				sim.handleSnakeAscUpdate(h.node, e.PeerID, e.PathID)
+			case events.SnakeDescUpdate:
+				sim.handleSnakeDescUpdate(h.node, e.PeerID, e.PathID)
+			case events.TreeRootAnnUpdate:
+				sim.handleTreeRootAnnUpdate(h.node, e.Root, e.Sequence, e.Time, e.Coords)
+			default:
+				sim.log.Println("Unhandled event!")
+			}
 		}
 	}
 }

@@ -1,8 +1,9 @@
 import { openRightPanel, closeRightPanel } from "./ui.js";
+import { ConvertNodeTypeToString, APINodeType } from "./server-api.js";
 
 // You can supply an element as your title.
 var titleElement = document.createElement("div");
-titleElement.style.height = "10em";
+titleElement.style.height = "15em";
 // titleElement.style.minWidth = "10em";
 titleElement.style.width = "max-content";
 titleElement.style.color = getComputedStyle(document.documentElement)
@@ -14,7 +15,6 @@ titleElement.style.margin = "-4px";
 titleElement.id = "nodeTooltip";
 
 let selectedNodes = null;
-let panelNodes = null;
 let hoverNode = null;
 
 let Nodes = new Map();
@@ -57,6 +57,7 @@ class Graph {
             zoomView: true,
             hover: true,
             tooltipDelay: 100,
+            multiselect: true,
         },
         physics: {
             enabled: true,
@@ -143,13 +144,14 @@ class Graph {
 
         // Initialize Stats Panel
         handleStatsPanelUpdate();
+        handleNodePanelUpdate();
     }
 
     startGraph() {
         this.started = true;
         this.network = new vis.Network(this.canvas, this.currentData, this.options);
         this.setupHandlers();
-        this.updateUI();
+        this.updateUI("");
 
         // HACK : network won't restabilize unless I give a node a kick...
         this.kickNode(this.nodeIDs[0]);
@@ -163,19 +165,16 @@ class Graph {
         this.network.on("showPopup", function (params) {
             let text = document.createElement('div');
             text.id = "nodePopupText";
+
             titleElement.appendChild(text);
 
             hoverNode = params;
-            handleNodeHoverUpdate(params);
+            handleNodeHoverUpdate();
         });
 
         this.network.on("hidePopup", function () {
-            let prevText = document.getElementById('nodePopupText');
-            if (prevText) {
-                titleElement.removeChild(prevText);
-            }
-
             hoverNode = null;
+            handleNodeHoverUpdate();
         });
 
         this.network.on("stabilized", function (params) {
@@ -184,51 +183,47 @@ class Graph {
 
         this.network.on("selectNode", function (params) {
             selectedNodes = params.nodes;
-            panelNodes = selectedNodes;
-            for (const node of params.nodes) {
-                handleNodePanelUpdate(node);
-            }
+            handleNodePanelUpdate();
             openRightPanel();
         });
 
         this.network.on("deselectNode", function (params) {
             selectedNodes = params.nodes;
+            handleNodePanelUpdate();
         });
     }
 
     updateUI(node) {
-        if (panelNodes && panelNodes.indexOf(node) > -1) {
-            handleNodePanelUpdate(node);
+        if (selectedNodes && selectedNodes.indexOf(node) > -1) {
+            handleNodePanelUpdate();
         }
         if (hoverNode && hoverNode === node) {
-            handleNodeHoverUpdate(node);
+            handleNodeHoverUpdate();
         }
 
         handleStatsPanelUpdate();
     }
 
-    addNode(id, key) {
-        this.peerData.nodes.add({ id: id, label: id });
-        this.snakeData.nodes.add({ id: id, label: id });
-        this.treeData.nodes.add({ id: id, label: id });
-        this.geoData.nodes.add({ id: id, label: id });
+    addNode(id, key, type) {
+        let colour = getComputedStyle(document.documentElement).getPropertyValue('--color-router-blue');
+        if (type === APINodeType.GeneralAdversary) {
+            colour = getComputedStyle(document.documentElement).getPropertyValue('--color-dark-red');
+        }
+        this.peerData.nodes.add({ id: id, label: id, color: {
+            background: colour, border: colour, hover: {
+                background: colour, border: colour } } });
+        this.snakeData.nodes.add({ id: id, label: id, color: {
+            background: colour, border: colour, hover: {
+                background: colour, border: colour } } });
+        this.treeData.nodes.add({ id: id, label: id, color: {
+            background: colour, border: colour, hover: {
+                background: colour, border: colour } }});
+        this.geoData.nodes.add({ id: id, label: id, color: {
+            background: colour, border: colour, hover: {
+                background: colour, border: colour } } });
         this.nodeIDs.push(id);
 
-        Nodes.set(id, {
-            announcement: {
-                root: "",
-                sequence: 0,
-                time: 0,
-            },
-            coords: [],
-            peers: [],
-            key: key,
-            treeParent: "",
-            snekAsc: "",
-            snekAscPath: "",
-            snekDesc: "",
-            snekDescPath: "",
-        });
+        Nodes.set(id, newNode(key, type));
 
         this.updateUI(id);
     }
@@ -244,9 +239,24 @@ class Graph {
             this.nodeIDs.splice(index, 1);
         }
 
+        this.removeAllEdges("peer", id);
+        this.removeAllEdges("tree", id);
+        this.removeAllEdges("snake", id);
+        this.removeAllEdges("geographic", id);
+
         Nodes.delete(id);
 
+        this.deselectRemovedNodes();
         this.updateUI(id);
+    }
+
+    getNodeType(nodeID) {
+        let nodeType = "";
+        if (Nodes.has(nodeID)) {
+            nodeType = Nodes.get(nodeID).nodeType;
+        }
+
+        return nodeType;
     }
 
     updateRootAnnouncement(id, root, sequence, time, coords) {
@@ -405,6 +415,56 @@ class Graph {
         }
     }
 
+    removeAllEdges(dataset, id) {
+        let matchingEdges = [];
+        switch(dataset) {
+        case "peer":
+            matchingEdges = this.peerData.edges.get({
+                filter: function (item) {
+                    return (item.from === id || item.to === id);
+                }
+            });
+
+            for (let i = 0; i < matchingEdges.length; i++) {
+                this.peerData.edges.remove(matchingEdges[i]);
+            }
+            break;
+        case "snake":
+            matchingEdges = this.snakeData.edges.get({
+                filter: function (item) {
+                    return (item.from === id || item.to === id);
+                }
+            });
+
+            for (let i = 0; i < matchingEdges.length; i++) {
+                this.snakeData.edges.remove(matchingEdges[i]);
+            }
+            break;
+        case "tree":
+            matchingEdges = this.treeData.edges.get({
+                filter: function (item) {
+                    return (item.from === id || item.to === id);
+                }
+            });
+
+            for (let i = 0; i < matchingEdges.length; i++) {
+                this.treeData.edges.remove(matchingEdges[i]);
+            }
+            break;
+        case "geographic":
+            matchingEdges = this.geoData.edges.get({
+                filter: function (item) {
+                    return (item.from === id || item.to === id);
+                }
+            });
+
+            for (let i = 0; i < matchingEdges.length; i++) {
+                this.geoData.edges.remove(matchingEdges[i]);
+            }
+            break;
+        }
+    }
+
     stabilize() {
         if (this.network) {
             this.network.stabilize();
@@ -434,16 +494,60 @@ class Graph {
     }
 
     focusSelectedNode() {
+        if (selectedNodes && selectedNodes.length > 0) {
+            this.focusNode(selectedNodes[selectedNodes.length - 1]);
+        }
+    }
+
+    deselectRemovedNodes() {
+        let nodeRemoved = false;
+
         if (selectedNodes) {
-            this.selectNodes(panelNodes);
-            this.focusNode(panelNodes);
+            for (let i = selectedNodes.length - 1; i >= 0; --i) {
+                if (!Nodes.has(selectedNodes[i])) {
+                    nodeRemoved = true;
+                    if (hoverNode === selectedNodes[i]) {
+                        hoverNode = null;
+                    }
+                    selectedNodes.splice(i, 1);
+                }
+            }
+        }
+
+        if (nodeRemoved) {
+            handleNodePanelUpdate();
+            handleNodeHoverUpdate();
+            handleStatsPanelUpdate();
         }
     }
 
     selectNodes(nodes) {
-        this.network.selectNodes(nodes);
+        this.deselectRemovedNodes();
+
+        if (nodes.length > 0) {
+            this.network.selectNodes(nodes);
+        }
         selectedNodes = nodes;
-        panelNodes = selectedNodes;
+    }
+
+    GetSelectedNodes() {
+        this.deselectRemovedNodes();
+        return selectedNodes;
+    }
+
+    GetSelectedPeerings() {
+        let peerings = [];
+        if (this.network && this.currentData === this.peerData) {
+            let edgeIDs = this.network.getSelectedEdges();
+            for (let i = 0; i < edgeIDs.length; i++) {
+                let edge = this.currentData.edges.get(edgeIDs[i]);
+                if (edge) {
+                    peerings.push(this.currentData.edges.get(edgeIDs[i]));
+                }
+            }
+        }
+
+        return peerings;
     }
 
     focusNode(nodeID) {
@@ -489,9 +593,7 @@ class Graph {
         }
 
         if (selectedNodes) {
-            if (this.network) {
-                this.network.selectNodes(selectedNodes);
-            }
+            this.selectNodes(selectedNodes);
         }
 
         // HACK : network won't restabilize unless I give a node a kick...
@@ -508,13 +610,56 @@ class Graph {
 
 export var graph = new Graph(document.getElementById("canvas"));
 
-function handleNodeHoverUpdate(nodeID) {
-    let node = Nodes.get(nodeID);
+function newNode(key, type) {
+    return {
+        nodeType: type,
+        announcement: {
+            root: "",
+            sequence: 0,
+            time: 0,
+        },
+        coords: [],
+        peers: [],
+        key: key,
+        treeParent: "",
+        snekAsc: "",
+        snekAscPath: "",
+        snekDesc: "",
+        snekDescPath: "",
+    };
+}
+
+function hideHoverPanel() {
+    let prevText = document.getElementById('nodePopupText');
+    if (prevText) {
+        titleElement.removeChild(prevText);
+    }
+
+    hoverNode = null;
+}
+
+function handleNodeHoverUpdate() {
+    if (!hoverNode) {
+        hideHoverPanel();
+        return;
+    }
+
+    let node = Nodes.get(hoverNode);
+    if (!node) {
+        hideHoverPanel();
+        return;
+    }
+
     let hoverPanel = document.getElementById('nodePopupText');
     if (hoverPanel) {
         let time = node.announcement.time.toString();
-        hoverPanel.innerHTML = "<u><b>Node " + nodeID + "</b></u>" +
+        hoverPanel.innerHTML = "<u><b>Node " + hoverNode + "</b></u>" +
+            "<br>Key: " + node.key.slice(0, 16).replace(/\"/g, "").toUpperCase() +
+            "<br>Type: " + ConvertNodeTypeToString(node.nodeType) +
             "<br>Coords: [" + node.coords + "]" +
+            "<br>Tree Parent: " + node.treeParent +
+            "<br>SNEK Desc: " + node.snekDesc +
+            "<br>SNEK Asc: " + node.snekAsc +
             "<br><br><u>Announcement</u>" +
             "<br>Root: Node " + node.announcement.root +
             "<br>Sequence: " + node.announcement.sequence +
@@ -531,47 +676,67 @@ function getNodeKey(nodeID) {
     return key;
 }
 
-function handleNodePanelUpdate(nodeID) {
-    let node = Nodes.get(nodeID);
+function handleNodePanelUpdate() {
+    let nodes = [];
     let nodePanel = document.getElementById('currentNodeState');
-
-    let peers = node.peers;
-    let peerTable = "";
-    for (let i = 0; i < peers.length; i++) {
-        let root = "";
-        let key = "";
-        if (Nodes.has(peers[i].id)) {
-            let peer = Nodes.get(peers[i].id);
-            root = peer.announcement.root;
-            key = peer.key;
-        }
-        peerTable += "<tr><td><code>" + peers[i].id + "</code></td><td><code>" + key.slice(0, 8) + "</code></td><td><code>" + peers[i].port + "</code></td><td><code>" + root + "</code></td></tr>";
+    if (nodePanel) {
+        nodePanel.innerHTML = "";
     }
 
-    if (nodePanel) {
-        nodePanel.innerHTML =
-            "<h3>Node Details</h3>" +
-            "<hr><table>" +
-            "<tr><td>Name:</td><td>" + nodeID + "</td></tr>" +
-            "<tr><td>Coordinates:</td><td>[" + node.coords + "]</td></tr>" +
-            "<tr><td>Public Key:</td><td><code>" + node.key.slice(0, 8) + "</code></td></tr>" +
-            "<tr><td>Root Key:</td><td><code>" + getNodeKey(node.announcement.root).slice(0, 8) + "</code></td></tr>" +
-            "<tr><td>Tree Parent:</td><td><code>" + node.treeParent + "</code></td></tr>" +
-            "<tr><td>Descending Node:</td><td><code>" + node.snekDesc + "</code></td></tr>" +
-            "<tr><td>Descending Path:</td><td><code>" + node.snekDescPath + "</code></td></tr>" +
-            "<tr><td>Ascending Node:</td><td><code>" + node.snekAsc + "</code></td></tr>" +
-            "<tr><td>Ascending Path:</td><td><code>" + node.snekAscPath + "</code></td></tr>" +
-            "</table>" +
-            "<hr><h4><u>Peers</u></h4>" +
-            "<table>" +
-            "<tr><th>Name</th><th>Public Key</th><th>Port</th><th>Root</th></tr>" +
-            peerTable +
-            "</table>" +
-            "<hr><h4><u>SNEK Routes</u></h4>" +
-            "<table>" +
-            "<tr><th>Public Key</th><th>Path ID</th><th>Src</th><th>Dst</th><th>Seq</th></tr>" +
-            "<tr><td><code><b>N/A</b></code></td><td><code><b>N/A</b></code></td><td><code><b>N/A</b></code></td><td><code><b>N/A</b></code></td><td><code><b>N/A</b></code></td></tr>" +
-            "</table>";
+    if (selectedNodes) {
+        for (let i = 0; i < selectedNodes.length; i++) {
+            nodes.push({id: selectedNodes[i], node: Nodes.get(selectedNodes[i])});
+        }
+    }
+
+    if (nodes.length === 0) {
+        closeRightPanel();
+        nodes.push({id: "", node: newNode("", "")});
+    }
+
+    for (let i = 0; i < nodes.length; i++) {
+        let nodeID = nodes[i].id;
+        let node = nodes[i].node;
+
+        let peers = node.peers;
+        let peerTable = "";
+        for (let i = 0; i < peers.length; i++) {
+            let root = "";
+            let key = "";
+            if (Nodes.has(peers[i].id)) {
+                let peer = Nodes.get(peers[i].id);
+                root = peer.announcement.root.replace(/\"/g, "").toUpperCase();
+                key = peer.key.replace(/\"/g, "").toUpperCase();
+            }
+            peerTable += "<tr><td><code>" + peers[i].id + "</code></td><td><code>" + key.slice(0, 8) + "</code></td><td><code>" + peers[i].port + "</code></td><td><code>" + root + "</code></td></tr>";
+        }
+
+        if (nodePanel) {
+            nodePanel.innerHTML +=
+                "<h3>Node " + nodeID + "</h3>" +
+                "<hr><table>" +
+                "<tr><td>Name:</td><td>" + nodeID + "</td></tr>" +
+                "<tr><td>Type:</td><td>" + ConvertNodeTypeToString(node.nodeType) + "</td></tr>" +
+                "<tr><td>Coordinates:</td><td>[" + node.coords + "]</td></tr>" +
+                "<tr><td>Public Key:</td><td><code>" + node.key.slice(0, 16).replace(/\"/g, "").toUpperCase() + "</code></td></tr>" +
+                "<tr><td>Root Key:</td><td><code>" + getNodeKey(node.announcement.root).slice(0, 16).replace(/\"/g, "").toUpperCase() + "</code></td></tr>" +
+                "<tr><td>Tree Parent:</td><td><code>" + node.treeParent + "</code></td></tr>" +
+                "<tr><td>Descending Node:</td><td><code>" + node.snekDesc + "</code></td></tr>" +
+                "<tr><td>Descending Path:</td><td><code>" + node.snekDescPath + "</code></td></tr>" +
+                "<tr><td>Ascending Node:</td><td><code>" + node.snekAsc + "</code></td></tr>" +
+                "<tr><td>Ascending Path:</td><td><code>" + node.snekAscPath + "</code></td></tr>" +
+                "</table>" +
+                "<hr><h4><u>Peers</u></h4>" +
+                "<table>" +
+                "<tr><th>Name</th><th>Public Key</th><th>Port</th><th>Root</th></tr>" +
+                peerTable +
+                "</table>" +
+                "<hr><h4><u>SNEK Routes</u></h4>" +
+                "<table>" +
+                "<tr><th>Public Key</th><th>Path ID</th><th>Src</th><th>Dst</th><th>Seq</th></tr>" +
+                "<tr><td><code><b>N/A</b></code></td><td><code><b>N/A</b></code></td><td><code><b>N/A</b></code></td><td><code><b>N/A</b></code></td><td><code><b>N/A</b></code></td></tr>" +
+                "</table><hr><br>";
+        }
     }
 }
 
@@ -585,7 +750,7 @@ function handleStatsPanelUpdate() {
 
     if (graph && graph.isStarted()) {
         for (const [key, value] of Nodes.entries()) {
-            nodeTable += "<tr><td><code>" + key + "</code></td><td><code>[" + value.coords + "]</code></td><td><code>" + value.announcement.root + "</code></td><td><code>" + getNodeKey(value.snekDesc).slice(0, 4) + "</code></td><td><code>" + value.key.slice(0, 4) + "</code></td><td><code>" + getNodeKey(value.snekAsc).slice(0, 4) + "</code></td></tr>";
+            nodeTable += "<tr><td><code>" + key + "</code></td><td><code>[" + value.coords + "]</code></td><td><code>" + value.announcement.root + "</code></td><td><code>" + getNodeKey(value.snekDesc).slice(0, 4).replace(/\"/g, "").toUpperCase() + "</code></td><td><code>" + value.key.slice(0, 4).replace(/\"/g, "").toUpperCase() + "</code></td><td><code>" + getNodeKey(value.snekAsc).slice(0, 4).replace(/\"/g, "").toUpperCase() + "</code></td></tr>";
 
             peerLinks += value.peers.length;
             if (rootConvergence.has(value.announcement.root)) {

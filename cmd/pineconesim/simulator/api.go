@@ -14,13 +14,21 @@
 
 package simulator
 
-type APIMessageID int
+type APIEventMessageID int
+type APICommandMessageID int
 type APIUpdateID int
+type APICommandID int
+type APINodeType int
 
 const (
-	UnknownMessage APIMessageID = iota
+	UnknownEventMsg APIEventMessageID = iota
 	SimInitialState
-	SimUpdate
+	SimStateUpdate
+)
+
+const (
+	UnknownCommandMsg APICommandMessageID = iota
+	SimPlaySequence
 )
 
 const (
@@ -35,8 +43,29 @@ const (
 	SimTreeRootAnnUpdated
 )
 
+const (
+	UnknownCommand APICommandID = iota
+	SimDebug
+	SimPlay
+	SimPause
+	SimDelay
+	SimAddNode
+	SimRemoveNode
+	SimAddPeer
+	SimRemovePeer
+	SimConfigureAdversaryDefaults
+	SimConfigureAdversaryPeer
+)
+
+const (
+	UnknownType APINodeType = iota
+	DefaultNode
+	GeneralAdversaryNode
+)
+
 type InitialNodeState struct {
 	PublicKey     string
+	NodeType      APINodeType
 	RootState     RootState
 	Peers         []PeerInfo
 	TreeParent    string
@@ -64,12 +93,22 @@ type SimEventMsg struct {
 }
 
 type InitialStateMsg struct {
-	MsgID APIMessageID
+	MsgID APIEventMessageID
 	Nodes map[string]InitialNodeState
 	End   bool
 }
 
 type StateUpdateMsg struct {
-	MsgID APIMessageID
+	MsgID APIEventMessageID
 	Event SimEventMsg
+}
+
+type SimCommandSequenceMsg struct {
+	MsgID  APICommandMessageID
+	Events []SimCommandMsg
+}
+
+type SimCommandMsg struct {
+	MsgID APICommandID
+	Event interface{}
 }

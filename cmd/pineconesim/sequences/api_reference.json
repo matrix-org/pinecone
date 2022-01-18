@@ -1,0 +1,86 @@
+{
+    "EventSequence": [
+        {
+            "Command": "Debug",
+            "Data": {}
+        },
+        {
+            "Command": "Play",
+            "Data": {}
+        },
+        {
+            "Command": "Pause",
+            "Data": {}
+        },
+        {
+            "Command": "Delay",
+            "Data": {
+                "Length": 100
+            }
+        },
+        {
+            "Command": "AddNode",
+            "Data": {
+                "Name": "Alice",
+                "NodeType": "Default"
+            }
+        },
+        {
+            "Command": "RemoveNode",
+            "Data": {
+                "Name": "Alice"
+            }
+        },
+        {
+            "Command": "AddPeer",
+            "Data": {
+                "Node": "Alice",
+                "Peer": "Bob"
+            }
+        },
+        {
+            "Command": "RemovePeer",
+            "Data": {
+                "Node": "Alice",
+                "Peer": "Bob"
+            }
+        },
+        {
+            "Command": "ConfigureAdversaryDefaults",
+            "Data": {
+                "Node": "Alice",
+                "DropRates": {
+                    "Overall": "0",
+                    "Keepalive": "0",
+	                  "TreeAnnouncement": "0",
+	                  "TreeRouted": "0",
+	                  "VirtualSnakeBootstrap": "0",
+	                  "VirtualSnakeBootstrapACK": "0",
+	                  "VirtualSnakeSetup": "0",
+	                  "VirtualSnakeSetupACK": "0",
+	                  "VirtualSnakeTeardown": "0",
+	                  "VirtualSnakeRouted": "0"
+                }
+            }
+        },
+        {
+            "Command": "ConfigureAdversaryPeer",
+            "Data": {
+                "Node": "Alice",
+                "Peer": "Bob",
+                "DropRates": {
+                    "Overall": "0",
+                    "Keepalive": "0",
+	                  "TreeAnnouncement": "0",
+	                  "TreeRouted": "0",
+	                  "VirtualSnakeBootstrap": "0",
+	                  "VirtualSnakeBootstrapACK": "0",
+	                  "VirtualSnakeSetup": "0",
+	                  "VirtualSnakeSetupACK": "0",
+	                  "VirtualSnakeTeardown": "0",
+	                  "VirtualSnakeRouted": "0"
+                }
+            }
+        }
+    ]
+}
