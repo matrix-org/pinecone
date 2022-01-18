@@ -86,7 +86,9 @@ func NewRouter(logger *log.Logger, sk ed25519.PrivateKey, debug bool) *Router {
 }
 
 func (r *Router) InjectPacketFilter(fn FilterFn) {
-	r.state._filterPacket = fn
+	phony.Block(r.state, func() {
+		r.state._filterPacket = fn
+	})
 }
 
 // _publish notifies each subscriber of a new event.

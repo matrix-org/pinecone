@@ -56,26 +56,25 @@ func (s *state) _start() {
 	s._setParent(nil)
 	s._setAscendingNode(nil)
 	s._setDescendingNode(nil)
+
 	s._candidate = nil
 	s._ordering = 0
 	s._waiting = false
 
-	for k := range s._announcements {
-		delete(s._announcements, k)
-	}
 	s._announcements = make(announcementTable, portCount)
-
-	for k := range s._table {
-		delete(s._table, k)
-	}
 	s._table = virtualSnakeTable{}
 
-	s._treetimer = time.AfterFunc(announcementInterval, func() {
-		s.Act(nil, s._maintainTree)
-	})
-	s._snaketimer = time.AfterFunc(time.Second, func() {
-		s.Act(nil, s._maintainSnake)
-	})
+	if s._treetimer == nil {
+		s._treetimer = time.AfterFunc(announcementInterval, func() {
+			s.Act(nil, s._maintainTree)
+		})
+	}
+
+	if s._snaketimer == nil {
+		s._snaketimer = time.AfterFunc(time.Second, func() {
+			s.Act(nil, s._maintainSnake)
+		})
+	}
 
 	s._maintainTreeIn(0)
 	s._maintainSnakeIn(0)
