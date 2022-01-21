@@ -63,7 +63,7 @@ func (sim *Simulator) ConnectNodes(a, b string) error {
 		sc := &util.SlowConn{Conn: c, ReadJitter: 5 * time.Millisecond}
 		if _, err := nb.Connect(
 			sc,
-			router.ConnectionKeepalives(false),
+			router.ConnectionKeepalives(true),
 			router.ConnectionPeerType(router.PeerTypeRemote),
 		); err != nil {
 			return fmt.Errorf("nb.AuthenticatedConnect: %w", err)
