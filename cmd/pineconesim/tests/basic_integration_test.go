@@ -16,6 +16,7 @@ package integration
 
 import (
 	"log"
+	"sort"
 	"testing"
 	"time"
 
@@ -40,8 +41,9 @@ func TestNodesAgreeOnCorrectTreeRoot(t *testing.T) {
 	// Assert
 	stateCapture := func(state simulator.State) interface{} {
 		lastRoots := make(map[string]string)
-		lastRoots["Alice"] = state.Nodes["Alice"].Announcement.Root
-		lastRoots["Bob"] = state.Nodes["Bob"].Announcement.Root
+		for _, node := range nodes {
+			lastRoots[node] = state.Nodes[node].Announcement.Root
+		}
 
 		correctRoot := ""
 		if state.Nodes["Alice"].PeerID > state.Nodes["Bob"].PeerID {
@@ -89,4 +91,119 @@ func TestNodesAgreeOnCorrectTreeRoot(t *testing.T) {
 	}
 
 	scenario.Validate(stateCapture, nodesAgreeOnCorrectTreeRoot, 2*time.Second, 5*time.Second)
+}
+
+type SnakeNeighbours struct {
+	asc  string
+	desc string
+}
+
+type SnakeValidationState struct {
+	snake        map[string]SnakeNeighbours
+	correctSnake map[string]SnakeNeighbours
+}
+
+type Node struct {
+	name string
+	key  string
+}
+
+type byKey []Node
+
+func (l byKey) Len() int {
+	return len(l)
+}
+
+func (l byKey) Less(i, j int) bool {
+	return l[i].key < l[j].key
+}
+
+func (l byKey) Swap(i, j int) {
+	l[i], l[j] = l[j], l[i]
+}
+
+func TestNodesAgreeOnCorrectSnakeFormation(t *testing.T) {
+	t.Parallel()
+	// Arrange
+	scenario := NewScenarioFixture(t)
+	nodes := []string{"Alice", "Bob", "Charlie"}
+	scenario.AddStandardNodes(nodes)
+
+	// Act
+	scenario.AddPeerConnections([]NodePair{NodePair{"Alice", "Bob"}, NodePair{"Bob", "Charlie"}})
+
+	// Assert
+	stateCapture := func(state simulator.State) interface{} {
+		snakeNeighbours := make(map[string]SnakeNeighbours)
+		for _, node := range nodes {
+			asc := state.Nodes[node].AscendingPeer
+			desc := state.Nodes[node].DescendingPeer
+			snakeNeighbours[node] = SnakeNeighbours{asc: asc, desc: desc}
+		}
+
+		nodesByKey := make(byKey, 0, len(state.Nodes))
+		for key, value := range state.Nodes {
+			nodesByKey = append(nodesByKey, Node{key, value.PeerID})
+		}
+		sort.Sort(nodesByKey)
+
+		correctSnake := make(map[string]SnakeNeighbours)
+		lowest := SnakeNeighbours{asc: nodesByKey[1].name, desc: ""}
+		middle := SnakeNeighbours{asc: nodesByKey[2].name, desc: nodesByKey[0].name}
+		highest := SnakeNeighbours{asc: "", desc: nodesByKey[1].name}
+		correctSnake[nodesByKey[0].name] = lowest
+		correctSnake[nodesByKey[1].name] = middle
+		correctSnake[nodesByKey[2].name] = highest
+
+		return SnakeValidationState{snakeNeighbours, correctSnake}
+	}
+
+	nodesAgreeOnCorrectSnakeFormation := func(prevState interface{}, event simulator.SimEvent) (interface{}, EventHandlerResult) {
+		switch state := prevState.(type) {
+		case SnakeValidationState:
+			isSnakeCorrect := func() bool {
+				snakeIsCorrect := true
+				for key, val := range state.snake {
+					if val.asc != state.correctSnake[key].asc || val.desc != state.correctSnake[key].desc {
+						snakeIsCorrect = false
+						break
+					}
+				}
+				return snakeIsCorrect
+			}
+
+			snakeWasCorrect := isSnakeCorrect()
+
+			action := DoNothing
+			updateReceived := false
+			switch e := event.(type) {
+			case simulator.SnakeAscUpdate:
+				updateReceived = true
+				if node, ok := state.snake[e.Node]; ok {
+					node.asc = e.Peer
+					state.snake[e.Node] = node
+				}
+			case simulator.SnakeDescUpdate:
+				updateReceived = true
+				if node, ok := state.snake[e.Node]; ok {
+					node.desc = e.Peer
+					state.snake[e.Node] = node
+				}
+			}
+
+			if updateReceived {
+				if isSnakeCorrect() && !snakeWasCorrect {
+					action = StartSettlingTimer
+				} else {
+					action = StopSettlingTimer
+				}
+			}
+
+			return state, action
+		}
+
+		return prevState, StopSettlingTimer
+	}
+
+	scenario.Validate(stateCapture, nodesAgreeOnCorrectSnakeFormation, 2*time.Second, 5*time.Second)
 }
