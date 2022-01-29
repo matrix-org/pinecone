@@ -118,14 +118,14 @@ func (sim *Simulator) StartNodeEventHandler(t string, nodeType APINodeType) {
 	ch := make(chan events.Event)
 	handler := eventHandler{node: t, ch: ch}
 	quit := make(chan bool)
-	go handler.Run(quit, sim)
-	sim.nodes[t].Subscribe(ch)
+	nodeState := sim.nodes[t].Subscribe(ch)
 
 	sim.nodeRunnerChannelsMutex.Lock()
 	sim.nodeRunnerChannels[t] = append(sim.nodeRunnerChannels[t], quit)
 	sim.nodeRunnerChannelsMutex.Unlock()
 
-	phony.Block(sim.State, func() { sim.State._addNode(t, sim.nodes[t].PublicKey().String(), nodeType) })
+	phony.Block(sim.State, func() { sim.State._addNode(t, sim.nodes[t].PublicKey().String(), nodeType, nodeState) })
+	go handler.Run(quit, sim)
 }
 
 func (sim *Simulator) RemoveNode(node string) {

@@ -19,6 +19,7 @@ import (
 	"reflect"
 
 	"github.com/Arceliar/phony"
+	"github.com/matrix-org/pinecone/router"
 )
 
 type RootAnnouncement struct {
@@ -148,13 +149,7 @@ func (s *StateAccessor) GetNodeName(peerID string) (string, error) {
 	node := ""
 	err := fmt.Errorf("Provided peerID is not associated with a known node")
 
-	phony.Block(s, func() {
-		for k, v := range s._state.Nodes {
-			if v.PeerID == peerID {
-				node, err = k, nil
-			}
-		}
-	})
+	phony.Block(s, func() { node, err = s._getNodeName(peerID) })
 	return node, err
 }
 
@@ -169,8 +164,54 @@ func (s *StateAccessor) GetNodeCoords(name string) []uint64 {
 	return coords
 }
 
-func (s *StateAccessor) _addNode(name string, peerID string, nodeType APINodeType) {
+func (s *StateAccessor) _getNodeName(peerID string) (string, error) {
+	node := ""
+	err := fmt.Errorf("Provided peerID is not associated with a known node")
+
+	for k, v := range s._state.Nodes {
+		if v.PeerID == peerID {
+			node, err = k, nil
+		}
+	}
+
+	return node, err
+}
+
+func (s *StateAccessor) _addNode(name string, peerID string, nodeType APINodeType, nodeState router.NodeState) {
 	s._state.Nodes[name] = NewNodeState(peerID, nodeType)
+	if peernode, err := s._getNodeName(nodeState.Parent); err == nil {
+		s._state.Nodes[name].Parent = peernode
+	}
+	connections := map[int]string{}
+	for i, node := range nodeState.Connections {
+		if i == 0 {
+			// NOTE : Skip connection on port 0 since it is the loopback port
+			continue
+		}
+		if peernode, err := s._getNodeName(node); err == nil {
+			connections[i] = peernode
+		}
+	}
+	s._state.Nodes[name].Connections = connections
+	s._state.Nodes[name].Coords = nodeState.Coords
+	root := ""
+	if peernode, err := s._getNodeName(nodeState.Announcement.RootPublicKey.String()); err == nil {
+		root = peernode
+	}
+	announcement := RootAnnouncement{
+		Root:     root,
+		Sequence: uint64(nodeState.Announcement.RootSequence),
+		Time:     nodeState.AnnouncementTime,
+	}
+	s._state.Nodes[name].Announcement = announcement
+	if peernode, err := s._getNodeName(nodeState.AscendingPeer); err == nil {
+		s._state.Nodes[name].AscendingPeer = peernode
+	}
+	s._state.Nodes[name].AscendingPathID = nodeState.AscendingPathID
+	if peernode, err := s._getNodeName(nodeState.DescendingPeer); err == nil {
+		s._state.Nodes[name].DescendingPeer = peernode
+	}
+	s._state.Nodes[name].DescendingPathID = nodeState.DescendingPathID
 	s._publish(NodeAdded{Node: name, PublicKey: peerID, NodeType: int(nodeType)})
 }
 

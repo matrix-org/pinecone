@@ -122,8 +122,8 @@ func NewAdversaryRouter(log *log.Logger, sk ed25519.PrivateKey, debug bool) *Adv
 	return adversary
 }
 
-func (a *AdversaryRouter) Subscribe(ch chan events.Event) {
-	a.rtr.Subscribe(ch)
+func (a *AdversaryRouter) Subscribe(ch chan events.Event) router.NodeState {
+	return a.rtr.Subscribe(ch)
 }
 
 func (a *AdversaryRouter) PublicKey() types.PublicKey {

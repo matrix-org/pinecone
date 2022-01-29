@@ -23,6 +23,9 @@ import (
 	"github.com/matrix-org/pinecone/cmd/pineconesim/simulator"
 )
 
+const SettlingTime time.Duration = time.Second * 2
+const TestTimeout time.Duration = time.Second * 5
+
 type TreeValidationState struct {
 	roots       map[string]string
 	correctRoot string
@@ -32,11 +35,11 @@ func TestNodesAgreeOnCorrectTreeRoot(t *testing.T) {
 	t.Parallel()
 	// Arrange
 	scenario := NewScenarioFixture(t)
-	nodes := []string{"Alice", "Bob"}
+	nodes := []string{"Alice", "Bob", "Charlie"}
 	scenario.AddStandardNodes(nodes)
 
 	// Act
-	scenario.AddPeerConnections([]NodePair{NodePair{"Alice", "Bob"}})
+	scenario.AddPeerConnections([]NodePair{NodePair{"Alice", "Bob"}, NodePair{"Bob", "Charlie"}})
 
 	// Assert
 	stateCapture := func(state simulator.State) interface{} {
@@ -45,12 +48,13 @@ func TestNodesAgreeOnCorrectTreeRoot(t *testing.T) {
 			lastRoots[node] = state.Nodes[node].Announcement.Root
 		}
 
-		correctRoot := ""
-		if state.Nodes["Alice"].PeerID > state.Nodes["Bob"].PeerID {
-			correctRoot = "Alice"
-		} else {
-			correctRoot = "Bob"
+		nodesByKey := make(byKey, 0, len(state.Nodes))
+		for key, value := range state.Nodes {
+			nodesByKey = append(nodesByKey, Node{key, value.PeerID})
 		}
+		sort.Sort(nodesByKey)
+
+		correctRoot := nodesByKey[len(nodesByKey)-1].name
 
 		return TreeValidationState{roots: lastRoots, correctRoot: correctRoot}
 	}
@@ -69,17 +73,23 @@ func TestNodesAgreeOnCorrectTreeRoot(t *testing.T) {
 					break
 				}
 
-				if state.roots["Alice"] == state.roots["Bob"] {
-					log.Println("Nodes agree on root")
-					if state.roots["Alice"] == state.correctRoot {
-						log.Println("The agreed root is the correct root")
-						action = StartSettlingTimer
-					} else {
-						log.Println("The agreed root is not the correct root")
-						action = StopSettlingTimer
+				nodesAgreeOnRoot := true
+				rootSample := ""
+				for _, node := range state.roots {
+					rootSample = node
+					for _, comparison := range state.roots {
+						if node != comparison {
+							nodesAgreeOnRoot = false
+							break
+						}
 					}
+				}
+
+				if nodesAgreeOnRoot && state.correctRoot == rootSample {
+					log.Println("Start settling for tree test")
+					action = StartSettlingTimer
 				} else {
-					log.Println("Nodes disagree on root")
+					log.Println("Stop settling for tree test")
 					action = StopSettlingTimer
 				}
 			}
@@ -90,7 +100,7 @@ func TestNodesAgreeOnCorrectTreeRoot(t *testing.T) {
 		return prevState, StopSettlingTimer
 	}
 
-	scenario.Validate(stateCapture, nodesAgreeOnCorrectTreeRoot, 2*time.Second, 5*time.Second)
+	scenario.Validate(stateCapture, nodesAgreeOnCorrectTreeRoot, SettlingTime, TestTimeout)
 }
 
 type SnakeNeighbours struct {
@@ -205,5 +215,5 @@ func TestNodesAgreeOnCorrectSnakeFormation(t *testing.T) {
 		return prevState, StopSettlingTimer
 	}
 
-	scenario.Validate(stateCapture, nodesAgreeOnCorrectSnakeFormation, 2*time.Second, 5*time.Second)
+	scenario.Validate(stateCapture, nodesAgreeOnCorrectSnakeFormation, SettlingTime, TestTimeout)
 }

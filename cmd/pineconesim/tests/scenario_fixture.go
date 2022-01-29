@@ -130,7 +130,7 @@ func assertState(scenario *ScenarioFixture, stateCapture InitialStateCapture, ev
 	for {
 		select {
 		case <-quit:
-			output <- fmt.Sprintf("Root Map: %v", prevState)
+			output <- fmt.Sprintf("%+v", prevState)
 			return
 		case <-settlingTimer.C:
 			output <- "PASS"
