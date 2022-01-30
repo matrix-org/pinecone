@@ -15,6 +15,7 @@
 package integration
 
 import (
+	"crypto/ed25519"
 	"fmt"
 	"log"
 	"os"
@@ -22,6 +23,7 @@ import (
 	"time"
 
 	"github.com/matrix-org/pinecone/cmd/pineconesim/simulator"
+	"github.com/matrix-org/pinecone/cmd/pineconesim/simulator/adversary"
 )
 
 type EventHandlerResult int
@@ -70,11 +72,33 @@ func (s *ScenarioFixture) AddStandardNodes(nodes []string) {
 	}
 }
 
+func (s *ScenarioFixture) AddStandardNodesWithKeys(nodes map[string]*ed25519.PrivateKey) {
+	for node, key := range nodes {
+		cmd := simulator.AddNode{
+			Node:     node,
+			NodeType: simulator.DefaultNode,
+			PrivKey:  key,
+		}
+		cmd.Run(s.log, s.sim)
+	}
+}
+
 func (s *ScenarioFixture) AddAdversaryNodes(nodes []string) {
 	for _, node := range nodes {
 		cmd := simulator.AddNode{
 			Node:     node,
 			NodeType: simulator.GeneralAdversaryNode,
+		}
+		cmd.Run(s.log, s.sim)
+	}
+}
+
+func (s *ScenarioFixture) AddAdversaryNodesWithKeys(nodes map[string]*ed25519.PrivateKey) {
+	for node, key := range nodes {
+		cmd := simulator.AddNode{
+			Node:     node,
+			NodeType: simulator.GeneralAdversaryNode,
+			PrivKey:  key,
 		}
 		cmd.Run(s.log, s.sim)
 	}
@@ -87,6 +111,13 @@ func (s *ScenarioFixture) AddPeerConnections(conns []NodePair) {
 			Peer: pair.B,
 		}
 		cmd.Run(s.log, s.sim)
+	}
+}
+
+func (s *ScenarioFixture) ConfigureAdversary(node string, defaults adversary.DropRates, peerDropRates map[string]adversary.DropRates) {
+	s.sim.ConfigureFilterDefaults(node, defaults)
+	for peer, rates := range peerDropRates {
+		s.sim.ConfigureFilterPeer(node, peer, rates)
 	}
 }
 

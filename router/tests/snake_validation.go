@@ -30,6 +30,15 @@ type SnakeValidationState struct {
 	correctSnake map[string]SnakeNeighbours
 }
 
+func contains(s []string, str string) bool {
+	for _, v := range s {
+		if v == str {
+			return true
+		}
+	}
+	return false
+}
+
 func createSnakeStateCapture(nodes []string) InitialStateCapture {
 	return func(state simulator.State) interface{} {
 		snakeNeighbours := make(map[string]SnakeNeighbours)
@@ -41,17 +50,31 @@ func createSnakeStateCapture(nodes []string) InitialStateCapture {
 
 		nodesByKey := make(byKey, 0, len(state.Nodes))
 		for key, value := range state.Nodes {
-			nodesByKey = append(nodesByKey, Node{key, value.PeerID})
+			if contains(nodes, key) {
+				nodesByKey = append(nodesByKey, Node{key, value.PeerID})
+			}
 		}
 		sort.Sort(nodesByKey)
 
 		correctSnake := make(map[string]SnakeNeighbours)
-		lowest := SnakeNeighbours{asc: nodesByKey[1].name, desc: ""}
-		middle := SnakeNeighbours{asc: nodesByKey[2].name, desc: nodesByKey[0].name}
-		highest := SnakeNeighbours{asc: "", desc: nodesByKey[1].name}
-		correctSnake[nodesByKey[0].name] = lowest
-		correctSnake[nodesByKey[1].name] = middle
-		correctSnake[nodesByKey[2].name] = highest
+		for i, node := range nodesByKey {
+			asc := ""
+			desc := ""
+			if i == 0 {
+				if len(nodesByKey) > 1 {
+					asc = nodesByKey[i+1].name
+				}
+			} else if i == len(nodesByKey)-1 {
+				if len(nodesByKey) > 1 {
+					desc = nodesByKey[i-1].name
+				}
+			} else {
+				asc = nodesByKey[i+1].name
+				desc = nodesByKey[i-1].name
+			}
+
+			correctSnake[node.name] = SnakeNeighbours{asc: asc, desc: desc}
+		}
 
 		return SnakeValidationState{snakeNeighbours, correctSnake}
 	}
