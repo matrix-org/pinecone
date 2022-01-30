@@ -45,7 +45,7 @@ func createTreeStateCapture(nodes []string) InitialStateCapture {
 	}
 }
 
-func nodesAgreeOnCorrectTreeRoot(prevState interface{}, event simulator.SimEvent) (interface{}, EventHandlerResult) {
+func nodesAgreeOnCorrectTreeRoot(prevState interface{}, event simulator.SimEvent) (newState interface{}, result EventHandlerResult) {
 	switch state := prevState.(type) {
 	case TreeValidationState:
 		action := DoNothing

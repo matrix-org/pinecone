@@ -80,7 +80,7 @@ func createSnakeStateCapture(nodes []string) InitialStateCapture {
 	}
 }
 
-func nodesAgreeOnCorrectSnakeFormation(prevState interface{}, event simulator.SimEvent) (interface{}, EventHandlerResult) {
+func nodesAgreeOnCorrectSnakeFormation(prevState interface{}, event simulator.SimEvent) (newState interface{}, result EventHandlerResult) {
 	switch state := prevState.(type) {
 	case SnakeValidationState:
 		isSnakeCorrect := func() bool {

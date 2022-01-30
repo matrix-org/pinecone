@@ -34,8 +34,8 @@ const (
 	StartSettlingTimer
 )
 
-type InitialStateCapture func(state simulator.State) interface{}
-type EventHandler func(prevState interface{}, event simulator.SimEvent) (interface{}, EventHandlerResult)
+type InitialStateCapture func(state simulator.State) (initialState interface{})
+type EventHandler func(prevState interface{}, event simulator.SimEvent) (newState interface{}, result EventHandlerResult)
 
 type NodePair struct {
 	A string
