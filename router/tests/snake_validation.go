@@ -15,7 +15,9 @@
 package integration
 
 import (
+	"log"
 	"sort"
+	"sync"
 
 	"github.com/matrix-org/pinecone/cmd/pineconesim/simulator"
 )
@@ -80,9 +82,10 @@ func createSnakeStateCapture(nodes []string) InitialStateCapture {
 	}
 }
 
-func nodesAgreeOnCorrectSnakeFormation(prevState interface{}, event simulator.SimEvent) (newState interface{}, result EventHandlerResult) {
+func nodesAgreeOnCorrectSnakeFormation(prevState interface{}, event simulator.SimEvent, isSettling bool) (newState interface{}, result EventHandlerResult) {
 	switch state := prevState.(type) {
 	case SnakeValidationState:
+		snakeWasCorrect := isSettling
 		isSnakeCorrect := func() bool {
 			snakeIsCorrect := true
 			for key, val := range state.snake {
@@ -94,35 +97,75 @@ func nodesAgreeOnCorrectSnakeFormation(prevState interface{}, event simulator.Si
 			return snakeIsCorrect
 		}
 
-		snakeWasCorrect := isSnakeCorrect()
-
-		action := DoNothing
-		updateReceived := false
 		switch e := event.(type) {
 		case simulator.SnakeAscUpdate:
-			updateReceived = true
 			if node, ok := state.snake[e.Node]; ok {
 				node.asc = e.Peer
 				state.snake[e.Node] = node
 			}
 		case simulator.SnakeDescUpdate:
-			updateReceived = true
 			if node, ok := state.snake[e.Node]; ok {
 				node.desc = e.Peer
 				state.snake[e.Node] = node
 			}
 		}
 
-		if updateReceived {
-			if isSnakeCorrect() && !snakeWasCorrect {
-				action = StartSettlingTimer
-			} else {
-				action = StopSettlingTimer
-			}
+		action := DoNothing
+		isCorrect := isSnakeCorrect()
+		if isCorrect && !snakeWasCorrect {
+			action = StartSettlingTimer
+		} else if !isCorrect {
+			action = StopSettlingTimer
 		}
 
 		return state, action
 	}
 
 	return prevState, StopSettlingTimer
+}
+
+func pingNode(scenario *ScenarioFixture, from string, to string, ch chan bool, wg *sync.WaitGroup) {
+	log.Printf("Pinging from %s to %s", from, to)
+	passed := true
+	if _, _, err := scenario.sim.PingSNEK(from, to); err != nil {
+		passed = false
+		scenario.t.Errorf("Failed pinging from %s to %s: %s", from, to, err)
+	}
+
+	ch <- passed
+	wg.Done()
+}
+
+func nodesCanAllPingEachOther(scenario *ScenarioFixture, nodes []string) bool {
+	wg := sync.WaitGroup{}
+
+	numberOfPings := 0
+	for range nodes {
+		for range nodes {
+			numberOfPings++
+		}
+	}
+
+	ch := make(chan bool, numberOfPings)
+
+	for _, from := range nodes {
+		for _, to := range nodes {
+			if from != to {
+				wg.Add(1)
+				go pingNode(scenario, from, to, ch, &wg)
+			}
+		}
+	}
+
+	wg.Wait()
+	close(ch)
+
+	overallPass := true
+	for passed := range ch {
+		if !passed {
+			overallPass = false
+		}
+	}
+
+	return overallPass
 }

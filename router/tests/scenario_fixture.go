@@ -35,7 +35,7 @@ const (
 )
 
 type InitialStateCapture func(state simulator.State) (initialState interface{})
-type EventHandler func(prevState interface{}, event simulator.SimEvent) (newState interface{}, result EventHandlerResult)
+type EventHandler func(prevState interface{}, event simulator.SimEvent, isSettling bool) (newState interface{}, result EventHandlerResult)
 
 type NodePair struct {
 	A string
@@ -104,7 +104,7 @@ func (s *ScenarioFixture) AddAdversaryNodesWithKeys(nodes map[string]*ed25519.Pr
 	}
 }
 
-func (s *ScenarioFixture) AddPeerConnections(conns []NodePair) {
+func (s *ScenarioFixture) ConnectNodes(conns []NodePair) {
 	for _, pair := range conns {
 		cmd := simulator.AddPeer{
 			Node: pair.A,
@@ -140,7 +140,7 @@ func (s *ScenarioFixture) Validate(initialState InitialStateCapture, eventHandle
 		failed = true
 		quit <- true
 	case <-output:
-		log.Println("Test passed")
+		log.Println("Successful validation")
 	}
 
 	if failed {
@@ -157,6 +157,26 @@ func assertState(scenario *ScenarioFixture, stateCapture InitialStateCapture, ev
 	state := scenario.SubscribeToSimState(simUpdates)
 
 	prevState := stateCapture(state)
+	isSettling := false
+
+	handleResult := func(newResult EventHandlerResult) {
+		switch newResult {
+		case StartSettlingTimer:
+			log.Println("Starting validation settling timer")
+			settlingTimer.Reset(settlingTime)
+			isSettling = true
+		case StopSettlingTimer:
+			if isSettling {
+				log.Println("Stopping validation settling timer")
+				settlingTimer.Stop()
+				isSettling = false
+			}
+		}
+	}
+
+	newState, initialResult := eventHandler(prevState, simulator.NullEvent{}, isSettling)
+	handleResult(initialResult)
+	prevState = newState
 
 	for {
 		select {
@@ -166,16 +186,8 @@ func assertState(scenario *ScenarioFixture, stateCapture InitialStateCapture, ev
 		case <-settlingTimer.C:
 			output <- "PASS"
 		case event := <-simUpdates:
-			newState, newResult := eventHandler(prevState, event)
-			switch newResult {
-			case StartSettlingTimer:
-				log.Println("Starting settling timer")
-				settlingTimer.Reset(settlingTime)
-			case StopSettlingTimer:
-				log.Println("Stopping settling timer")
-				settlingTimer.Stop()
-			}
-
+			newState, newResult := eventHandler(prevState, event, isSettling)
+			handleResult(newResult)
 			prevState = newState
 		}
 	}

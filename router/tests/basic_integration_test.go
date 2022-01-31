@@ -30,7 +30,7 @@ func TestNodesAgreeOnCorrectTreeRoot(t *testing.T) {
 	scenario.AddStandardNodes(nodes)
 
 	// Act
-	scenario.AddPeerConnections([]NodePair{NodePair{"Alice", "Bob"}, NodePair{"Bob", "Charlie"}})
+	scenario.ConnectNodes([]NodePair{NodePair{"Alice", "Bob"}, NodePair{"Bob", "Charlie"}})
 
 	// Assert
 	scenario.Validate(createTreeStateCapture(nodes), nodesAgreeOnCorrectTreeRoot, SettlingTime, TestTimeout)
@@ -44,7 +44,7 @@ func TestNodesAgreeOnCorrectSnakeFormation(t *testing.T) {
 	scenario.AddStandardNodes(nodes)
 
 	// Act
-	scenario.AddPeerConnections([]NodePair{NodePair{"Alice", "Bob"}, NodePair{"Bob", "Charlie"}})
+	scenario.ConnectNodes([]NodePair{NodePair{"Alice", "Bob"}, NodePair{"Bob", "Charlie"}})
 
 	// Assert
 	scenario.Validate(createSnakeStateCapture(nodes), nodesAgreeOnCorrectSnakeFormation, SettlingTime, TestTimeout)

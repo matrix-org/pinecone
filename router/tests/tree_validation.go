@@ -15,7 +15,6 @@
 package integration
 
 import (
-	"log"
 	"sort"
 
 	"github.com/matrix-org/pinecone/cmd/pineconesim/simulator"
@@ -45,25 +44,11 @@ func createTreeStateCapture(nodes []string) InitialStateCapture {
 	}
 }
 
-func nodesAgreeOnCorrectTreeRoot(prevState interface{}, event simulator.SimEvent) (newState interface{}, result EventHandlerResult) {
+func nodesAgreeOnCorrectTreeRoot(prevState interface{}, event simulator.SimEvent, isSettling bool) (newState interface{}, result EventHandlerResult) {
 	switch state := prevState.(type) {
 	case TreeValidationState:
-		action := DoNothing
-		switch e := event.(type) {
-		case simulator.TreeRootAnnUpdate:
-			if _, ok := state.roots[e.Node]; !ok {
-				// NOTE : only process events for nodes we care about
-				break
-			}
-
-			if state.roots[e.Node] != e.Root {
-				log.Printf("Root changed for %s to %s", e.Node, e.Root)
-				state.roots[e.Node] = e.Root
-			} else {
-				log.Printf("Got duplicate root info for %s", e.Node)
-				break
-			}
-
+		treeWasConverged := isSettling
+		isTreeConverged := func() bool {
 			nodesAgreeOnRoot := true
 			rootSample := ""
 			for _, node := range state.roots {
@@ -75,14 +60,29 @@ func nodesAgreeOnCorrectTreeRoot(prevState interface{}, event simulator.SimEvent
 					}
 				}
 			}
+			return nodesAgreeOnRoot && rootSample == state.correctRoot
+		}
 
-			if nodesAgreeOnRoot && state.correctRoot == rootSample {
-				log.Println("Start settling for tree test")
-				action = StartSettlingTimer
-			} else {
-				log.Println("Stop settling for tree test")
-				action = StopSettlingTimer
+		switch e := event.(type) {
+		case simulator.TreeRootAnnUpdate:
+			if _, ok := state.roots[e.Node]; !ok {
+				// NOTE : only process events for nodes we care about
+				break
 			}
+
+			if state.roots[e.Node] != e.Root {
+				state.roots[e.Node] = e.Root
+			} else {
+				break
+			}
+		}
+
+		action := DoNothing
+		isConverged := isTreeConverged()
+		if isConverged && !treeWasConverged {
+			action = StartSettlingTimer
+		} else if !isConverged {
+			action = StopSettlingTimer
 		}
 
 		return state, action
