@@ -93,6 +93,10 @@ func defaultFrameCount() PeerFrameCount {
 	frameCount[types.TypeVirtualSnakeTeardown] = atomic.NewUint64(0)
 	frameCount[types.TypeTreeRouted] = atomic.NewUint64(0)
 	frameCount[types.TypeVirtualSnakeRouted] = atomic.NewUint64(0)
+	frameCount[types.TypeTreePing] = atomic.NewUint64(0)
+	frameCount[types.TypeTreePong] = atomic.NewUint64(0)
+	frameCount[types.TypeSNEKPing] = atomic.NewUint64(0)
+	frameCount[types.TypeSNEKPong] = atomic.NewUint64(0)
 
 	peerFrameCount := PeerFrameCount{
 		frameCount: frameCount,
