@@ -36,11 +36,13 @@ func (sim *Simulator) ReportDistance(a, b string, l int64, snek bool) {
 		sim.dists[a][b].ObservedTree = l
 	}
 	if sim.dists[a][b].Real == 0 {
-		na, _ := sim.graph.GetMapping(a)
-		nb, _ := sim.graph.GetMapping(b)
-		path, err := sim.graph.Shortest(na, nb)
-		if err == nil {
-			sim.dists[a][b].Real = path.Distance
+		if sim.graph != nil {
+			na, _ := sim.graph.GetMapping(a)
+			nb, _ := sim.graph.GetMapping(b)
+			path, err := sim.graph.Shortest(na, nb)
+			if err == nil {
+				sim.dists[a][b].Real = path.Distance
+			}
 		}
 	}
 }
