@@ -52,7 +52,7 @@ func (s *state) _nextHopsFor(from *peer, frame *types.Frame) *peer {
 // teardowns, special handling will be done before forwarding if needed.
 func (s *state) _forward(p *peer, f *types.Frame) error {
 	if s._filterPacket != nil && s._filterPacket(p.public, f) {
-		s.r.log.Printf("Packet of type %s destined for port %d [%s] was dropped due to filter rules", f.Type.String(), p.port, p.public.String()[:8])
+		s.r.log.Printf("Packet of type %s destined for port %d [%s] from node %s [%s] was dropped due to filter rules", f.Type.String(), p.port, p.public.String()[:8], f.Source.String(), f.SourceKey.String()[:8])
 		return nil
 	}
 
