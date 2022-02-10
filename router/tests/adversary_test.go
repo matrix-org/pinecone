@@ -132,7 +132,13 @@ func TestNodesCanPingAdversaryDropsSnakeBootstraps(t *testing.T) {
 		},
 	}
 
+	runSpecificTest := false
+	specificTest, specificPermutation := "Test4NodeFanSNEKBootstrap", 2
+
 	for _, tc := range cases {
+		if runSpecificTest && tc.desc != specificTest {
+			continue
+		}
 		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
@@ -148,6 +154,9 @@ func TestNodesCanPingAdversaryDropsSnakeBootstraps(t *testing.T) {
 			keyPermutations := permutations(keySubset)
 
 			for i, keyOrder := range keyPermutations {
+				if runSpecificTest && i != specificPermutation {
+					continue
+				}
 				i, keyOrder := i, keyOrder
 				t.Run(fmt.Sprintf("KeyPermutation#%d", i), func(t *testing.T) {
 					t.Parallel()
