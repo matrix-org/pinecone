@@ -77,7 +77,7 @@ type SystemUnderTest struct {
 	adversaryKeys   KeyMap
 }
 
-func TestNodesCanPingAdversaryDropsSnakeBootstraps(t *testing.T) {
+func TestNodesCanPingAdversaryDropsFrames(t *testing.T) {
 	t.Parallel()
 
 	cases := []TestCase{
