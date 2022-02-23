@@ -417,7 +417,7 @@ func (s *state) _handleBootstrapACK(from *peer, rx *types.Frame) error {
 	case asc != nil && asc.valid():
 		// We already have an ascending entry and it hasn't expired yet.
 		switch {
-		case asc.PublicKey == rx.SourceKey && bootstrapACK.PathID != asc.PathID:
+		case asc.Origin == rx.SourceKey && bootstrapACK.PathID != asc.PathID:
 			// We've received another bootstrap ACK from our direct ascending node.
 			// Just refresh the record and then send a new path setup message to
 			// that node.
