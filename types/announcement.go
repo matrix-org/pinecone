@@ -25,6 +25,14 @@ type Root struct {
 	RootSequence  Varu64
 }
 
+func (r *Root) Length() int {
+	return ed25519.PublicKeySize + r.RootSequence.Length()
+}
+
+func (r *Root) MinLength() int {
+	return ed25519.PublicKeySize + 1
+}
+
 type SwitchAnnouncement struct {
 	Root
 	Signatures []SignatureWithHop
