@@ -22,7 +22,7 @@ type VirtualSnakeBootstrap struct {
 }
 
 func (v *VirtualSnakeBootstrap) MarshalBinary(buf []byte) (int, error) {
-	if len(buf) < VirtualSnakePathIDLength+ed25519.PublicKeySize+ed25519.SignatureSize {
+	if len(buf) < VirtualSnakePathIDLength+ed25519.PublicKeySize+v.RootSequence.Length()+ed25519.SignatureSize {
 		return 0, fmt.Errorf("buffer too small")
 	}
 	offset := 0
@@ -38,7 +38,7 @@ func (v *VirtualSnakeBootstrap) MarshalBinary(buf []byte) (int, error) {
 }
 
 func (v *VirtualSnakeBootstrap) UnmarshalBinary(buf []byte) (int, error) {
-	if len(buf) < VirtualSnakePathIDLength+ed25519.PublicKeySize+ed25519.SignatureSize {
+	if len(buf) < VirtualSnakePathIDLength+ed25519.PublicKeySize+1+ed25519.SignatureSize {
 		return 0, fmt.Errorf("buffer too small")
 	}
 	offset := 0
