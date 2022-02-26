@@ -29,6 +29,8 @@ import (
 
 const virtualSnakeMaintainInterval = time.Second
 const virtualSnakeNeighExpiryPeriod = time.Hour
+const bootstrapAttemptResetPoint = 100 // TODO : Pick a more meaningful value
+const neglectedNodeTrackingPoint = 5   // NOTE : Start tracking a neglected node's bootstraps when their attempt count reaches this number
 
 type virtualSnakeTable map[virtualSnakeIndex]*virtualSnakeEntry
 
@@ -46,6 +48,14 @@ type virtualSnakeEntry struct {
 	LastSeen    time.Time
 	Root        types.Root
 	Active      bool
+}
+
+type neglectedNodeTable map[types.PublicKey]*neglectedNodeEntry
+
+type neglectedNodeEntry struct {
+	AttemptCount []uint64  // List of attempt counts seen in the order they were seen
+	HopCount     uint64    // The hop count from the attempt when the entry was created
+	LastAttempt  time.Time // The time that the last attempt was seen
 }
 
 // valid returns true if the update hasn't expired, or false if it has. It is
@@ -144,8 +154,10 @@ func (s *state) _bootstrapNow() {
 	b := frameBufferPool.Get().(*[types.MaxFrameSize]byte)
 	defer frameBufferPool.Put(b)
 	bootstrap := types.VirtualSnakeBootstrap{
-		Root: ann.Root,
+		Root:         ann.Root,
+		AttemptCount: types.Varu64(s._bootstrapAttempt + 1),
 	}
+
 	// Generate a random path ID.
 	if _, err := rand.Read(bootstrap.PathID[:]); err != nil {
 		return
@@ -158,6 +170,9 @@ func (s *state) _bootstrapNow() {
 			ed25519.Sign(s.r.private[:], append(s.r.public[:], bootstrap.PathID[:]...)),
 		)
 	}
+	// if err := bootstrap.Sign(s.r.private[:]); err != nil {
+	// return
+	// }
 	n, err := bootstrap.MarshalBinary(b[:])
 	if err != nil {
 		return
@@ -174,6 +189,11 @@ func (s *state) _bootstrapNow() {
 	// bootstrap packets.
 	if p := s._nextHopsSNEK(send, true); p != nil && p.proto != nil {
 		p.proto.push(send)
+		s._bootstrapAttempt++
+		if s._bootstrapAttempt >= bootstrapAttemptResetPoint {
+			s._bootstrapAttempt = 0
+			s.r.log.Println("Resetting bootstrap attempt count")
+		}
 	}
 }
 
@@ -303,12 +323,16 @@ func getNextHopSNEK(params virtualSnakeNextHopParams) *peer {
 
 // _handleBootstrap is called in response to receiving a bootstrap packet.
 // This function will send a bootstrap ACK back to the sender.
-func (s *state) _handleBootstrap(from *peer, rx *types.Frame) error {
+func (s *state) _handleBootstrap(from *peer, rx *types.Frame, nexthop *peer, deadend bool) error {
 	// Unmarshal the bootstrap.
 	var bootstrap types.VirtualSnakeBootstrap
 	if _, err := bootstrap.UnmarshalBinary(rx.Payload); err != nil {
 		return fmt.Errorf("bootstrap.UnmarshalBinary: %w", err)
 	}
+	if err := bootstrap.SanityCheck(from.public, s.r.public, rx.DestinationKey); err != nil {
+		return nil
+	}
+
 	if s.r.secure {
 		// Check that the bootstrap message was signed by the node that claims
 		// to have sent it. Silently drop it if there's a signature problem.
@@ -320,6 +344,95 @@ func (s *state) _handleBootstrap(from *peer, rx *types.Frame) error {
 			return nil
 		}
 	}
+
+	if !deadend {
+		attemptSafetyLink := false
+		var frame *types.Frame = nil
+		if bootstrap.AttemptCount >= neglectedNodeTrackingPoint {
+			// TODO : Change this to increase the score more the further away you are from the source
+			// TODO : when should this score reset?
+			// TODO : teardown safety links when kicking a peer for this reason so they can rebootstrap
+			s._peerScores[nexthop].BootstrapFailures++
+			if score, ok := s._peerScores[nexthop]; ok {
+				if score.BootstrapFailures > 50 {
+					// TODO : This is vulnerable to a malicious node sending failing bootstrap attempts through us with a high hop count...
+					// Check to make sure the bootstrap is legit
+					//   right seq, signatures, is for a node less than root, etc.
+					// the malicious node could be refusing to accept bootstraps and continually sending bootstraps with high attempt counts and hop counts through this node
+					// in that case you should see ACKs & setup messages being returned through this node
+					// and they could help pinpoint the malicious peer
+					// malicious node could spoof sending ACKs through the peer though...
+					// think more on it...
+					nexthop.stop(fmt.Errorf("Too many bootstrap failures go through this peer"))
+				}
+			} else {
+				panic("Uhh where's my peer")
+			}
+			if entry, ok := s._neglectedNodes[rx.DestinationKey]; ok {
+				if entry.AttemptCount[len(entry.AttemptCount)-1] < uint64(bootstrap.AttemptCount) {
+					entry.AttemptCount = append(entry.AttemptCount, uint64(bootstrap.AttemptCount))
+					if 10-int(entry.HopCount)-len(entry.AttemptCount) == 0 {
+						if s.r.public.CompareTo(rx.DestinationKey) > 0 {
+							s.r.log.Printf("Replying to neglected node %s. Hop count: %d", rx.DestinationKey, entry.HopCount)
+							attemptSafetyLink = true
+						}
+					}
+				} else {
+					entry.AttemptCount = []uint64{uint64(bootstrap.AttemptCount)}
+					entry.HopCount = uint64(len(bootstrap.Signatures))
+					entry.LastAttempt = time.Now()
+				}
+			} else {
+				entry := &neglectedNodeEntry{
+					AttemptCount: []uint64{uint64(bootstrap.AttemptCount)},
+					HopCount:     uint64(len(bootstrap.Signatures)),
+					LastAttempt:  time.Now(),
+				}
+				s._neglectedNodes[rx.DestinationKey] = entry
+			}
+
+			// NOTE : Only add additional signatures if the node is struggling
+			if s.r.public.CompareTo(rx.DestinationKey) > 0 {
+				switch {
+				case len(bootstrap.Signatures) == 0:
+					// Received a bootstrap with no signatures. Either it is directly
+					// from the originating node or the bootstrap hasn't passed by any
+					// bootstrap candidate. We are a candidate so sign the bootstrap.
+					fallthrough
+				case s.r.public.CompareTo(bootstrap.Signatures[len(bootstrap.Signatures)-1].PublicKey) < 0:
+					if err := bootstrap.Sign(s.r.private[:]); err != nil {
+						return fmt.Errorf("failed signing bootstrap: %w", err)
+					}
+					frame = getFrame()
+					frame.Type = types.TypeVirtualSnakeBootstrap
+					n, err := bootstrap.MarshalBinary(frame.Payload[:cap(frame.Payload)])
+					if err != nil {
+						panic("failed to marshal bootstrap: " + err.Error())
+					}
+					frame.Payload = frame.Payload[:n]
+				}
+			}
+		}
+
+		if !attemptSafetyLink {
+			if frame != nil {
+				of := rx
+				defer framePool.Put(of)
+				frame.DestinationKey = of.DestinationKey
+				frame.SourceKey = of.SourceKey
+				frame.Destination = of.Destination
+				frame.Source = of.Source
+				frame.Version = of.Version
+				frame.Extra = of.Extra
+			} else {
+				frame = rx
+			}
+
+			nexthop.proto.push(frame)
+			return nil
+		}
+	}
+
 	// Check that the root key and sequence number in the update match our
 	// current root, otherwise we won't be able to route back to them using
 	// tree routing anyway. If they don't match, silently drop the bootstrap.
@@ -509,6 +622,7 @@ func (s *state) _handleBootstrapACK(from *peer, rx *types.Frame) error {
 			s._sendTeardownForExistingPath(s.r.local, dhtKey.PublicKey, dhtKey.PathID)
 		}
 	}
+
 	// Install the new route into the DHT.
 	s._table[index] = entry
 	s._candidate = entry
@@ -601,11 +715,16 @@ func (s *state) _handleSetup(from *peer, rx *types.Frame, nexthop *peer) error {
 			// there's a node out there that hasn't converged to a closer node
 			// yet, so we'll just ignore the bootstrap.
 		}
-		if !update {
+		isNeglectedNode := false
+		if _, ok := s._neglectedNodes[rx.SourceKey]; ok {
+			s.r.log.Println("Reply to neglected node")
+			isNeglectedNode = true
+		}
+		if !update && !isNeglectedNode {
 			s._sendTeardownForRejectedPath(rx.SourceKey, setup.PathID, from)
 			return nil
 		}
-		if desc != nil {
+		if desc != nil && !isNeglectedNode {
 			// Tear down the previous path, if there was one.
 			s._sendTeardownForExistingPath(s.r.local, desc.PublicKey, desc.PathID)
 		}
@@ -619,7 +738,9 @@ func (s *state) _handleSetup(from *peer, rx *types.Frame, nexthop *peer) error {
 			Root:              setup.Root,
 		}
 		s._table[index] = entry
-		s._setDescendingNode(entry)
+		if !isNeglectedNode {
+			s._setDescendingNode(entry)
+		}
 		// Send back a setup ACK to the remote side.
 		setupACK := types.VirtualSnakeSetupACK{
 			PathID: setup.PathID,
@@ -704,6 +825,7 @@ func (s *state) _handleSetupACK(from *peer, rx *types.Frame, nexthop *peer) erro
 				if v == s._candidate {
 					s._setAscendingNode(v)
 					s._candidate = nil
+					s._bootstrapAttempt = 0
 				}
 			}
 		}

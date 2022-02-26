@@ -32,23 +32,32 @@ type FilterFn func(from types.PublicKey, f *types.Frame) bool
 // NOTE: Functions prefixed with an underscore (_) are only safe to be called
 // from the actor that owns them, in order to prevent data races.
 
+type PeerScoreTable map[*peer]*PeerScore
+
+type PeerScore struct {
+	BootstrapFailures uint
+}
+
 // state is an actor that owns all of the mutable state for the Pinecone router.
 type state struct {
 	phony.Inbox
-	r              *Router
-	_peers         []*peer            // All switch ports, connected and disconnected
-	_ascending     *virtualSnakeEntry // Next ascending node in keyspace
-	_descending    *virtualSnakeEntry // Next descending node in keyspace
-	_candidate     *virtualSnakeEntry // Candidate to replace the ascending node
-	_parent        *peer              // Our chosen parent in the tree
-	_announcements announcementTable  // Announcements received from our peers
-	_table         virtualSnakeTable  // Virtual snake DHT entries
-	_ordering      uint64             // Used to order incoming tree announcements
-	_sequence      uint64             // Used to sequence our root tree announcements
-	_treetimer     *time.Timer        // Tree maintenance timer
-	_snaketimer    *time.Timer        // Virtual snake maintenance timer
-	_waiting       bool               // Is the tree waiting to reparent?
-	_filterPacket  FilterFn           // Function called when forwarding packets
+	r                 *Router
+	_peers            []*peer            // All switch ports, connected and disconnected
+	_ascending        *virtualSnakeEntry // Next ascending node in keyspace
+	_descending       *virtualSnakeEntry // Next descending node in keyspace
+	_candidate        *virtualSnakeEntry // Candidate to replace the ascending node
+	_parent           *peer              // Our chosen parent in the tree
+	_announcements    announcementTable  // Announcements received from our peers
+	_table            virtualSnakeTable  // Virtual snake DHT entries
+	_neglectedNodes   neglectedNodeTable // Nodes that are struggling to bootstrap
+	_peerScores       PeerScoreTable     // Keeps track of peer behaviour
+	_bootstrapAttempt uint64             // Count of bootstrap attempts since last success
+	_ordering         uint64             // Used to order incoming tree announcements
+	_sequence         uint64             // Used to sequence our root tree announcements
+	_treetimer        *time.Timer        // Tree maintenance timer
+	_snaketimer       *time.Timer        // Virtual snake maintenance timer
+	_waiting          bool               // Is the tree waiting to reparent?
+	_filterPacket     FilterFn           // Function called when forwarding packets
 }
 
 // _start resets the state and starts tree and virtual snake maintenance.
@@ -64,6 +73,10 @@ func (s *state) _start() {
 	s._announcements = make(announcementTable, portCount)
 	s._table = virtualSnakeTable{}
 
+	s._bootstrapAttempt = 0
+	s._neglectedNodes = make(neglectedNodeTable)
+	s._peerScores = make(PeerScoreTable)
+
 	if s._treetimer == nil {
 		s._treetimer = time.AfterFunc(announcementInterval, func() {
 			s.Act(nil, s._maintainTree)
@@ -71,7 +84,7 @@ func (s *state) _start() {
 	}
 
 	if s._snaketimer == nil {
-		s._snaketimer = time.AfterFunc(time.Second, func() {
+		s._snaketimer = time.AfterFunc(virtualSnakeMaintainInterval, func() {
 			s.Act(nil, s._maintainSnake)
 		})
 	}
@@ -137,6 +150,8 @@ func (s *state) _addPeer(conn net.Conn, public types.PublicKey, uri ConnectionUR
 		new.reader.Act(nil, new._read)
 		new.writer.Act(nil, new._write)
 
+		s._peerScores[new] = &PeerScore{}
+
 		s.r.Act(nil, func() {
 			s.r._publish(events.PeerAdded{Port: types.SwitchPortID(i), PeerID: new.public.String()})
 		})
@@ -149,6 +164,7 @@ func (s *state) _addPeer(conn net.Conn, public types.PublicKey, uri ConnectionUR
 // _removePeer removes the Peer from the specified switch port
 func (s *state) _removePeer(port types.SwitchPortID) {
 	peerID := s._peers[port].public.String()
+	s._peerScores[s._peers[port]] = nil
 	s._peers[port] = nil
 	s.r.Act(nil, func() {
 		s.r._publish(events.PeerRemoved{Port: port, PeerID: peerID})

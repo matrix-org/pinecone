@@ -341,8 +341,11 @@ func (s *state) _handleTreeAnnouncement(p *peer, f *types.Frame) error {
 		case AcceptNewParent:
 			s._setParent(p)
 			s._sendTreeAnnouncements()
+			// why not bootstrap here as well?
+			// s._bootstrapNow()
 		case SelectNewParent:
 			if s._selectNewParent() {
+				// why bootstrap here as well when we can wait for snek maintenance
 				s._bootstrapNow()
 			}
 		case SelectNewParentWithWait:
@@ -353,6 +356,7 @@ func (s *state) _handleTreeAnnouncement(p *peer, f *types.Frame) error {
 				s.Act(nil, func() {
 					s._waiting = false
 					if s._selectNewParent() {
+						// why bootstrap here as well when we can wait for snek maintenance
 						s._bootstrapNow()
 					}
 				})

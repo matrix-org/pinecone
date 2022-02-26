@@ -124,19 +124,21 @@ func nodesAgreeOnCorrectSnakeFormation(prevState interface{}, event simulator.Si
 	return prevState, StopSettlingTimer
 }
 
-func pingNode(scenario *ScenarioFixture, from string, to string, ch chan bool, wg *sync.WaitGroup) {
+func pingNode(scenario *ScenarioFixture, from string, to string, ch chan bool, wg *sync.WaitGroup, shouldFail bool) {
 	log.Printf("Pinging from %s to %s", from, to)
 	passed := true
 	if _, _, err := scenario.sim.PingSNEK(from, to); err != nil {
 		passed = false
-		scenario.t.Errorf("Failed pinging from %s to %s: %s", from, to, err)
+		if shouldFail {
+			scenario.t.Errorf("Failed pinging from %s to %s: %s", from, to, err)
+		}
 	}
 
 	ch <- passed
 	wg.Done()
 }
 
-func nodesCanAllPingEachOther(scenario *ScenarioFixture, nodes []string) bool {
+func nodesCanAllPingEachOther(scenario *ScenarioFixture, nodes []string, shouldFail bool) bool {
 	wg := sync.WaitGroup{}
 
 	numberOfPings := 0
@@ -152,7 +154,7 @@ func nodesCanAllPingEachOther(scenario *ScenarioFixture, nodes []string) bool {
 		for _, to := range nodes {
 			if from != to {
 				wg.Add(1)
-				go pingNode(scenario, from, to, ch, &wg)
+				go pingNode(scenario, from, to, ch, &wg, shouldFail)
 			}
 		}
 	}

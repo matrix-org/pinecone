@@ -56,6 +56,12 @@ func (s *state) _forward(p *peer, f *types.Frame) error {
 		return nil
 	}
 
+	if s._ascending != nil {
+		if f.SourceKey.CompareTo(s.r.public) > 0 && f.SourceKey.CompareTo(s._ascending.PublicKey) < 0 {
+			s.r.log.Printf("Node detected that is a better ascending neighbour...")
+		}
+	}
+
 	nexthop := s._nextHopsFor(p, f)
 	deadend := nexthop == p.router.local
 
@@ -73,14 +79,13 @@ func (s *state) _forward(p *peer, f *types.Frame) error {
 		return nil
 
 	case types.TypeVirtualSnakeBootstrap:
-		// Bootstrap messages are only handled specially when they reach a dead end.
-		// Otherwise they are forwarded normally by falling through.
-		if deadend {
-			if err := s._handleBootstrap(p, f); err != nil {
-				return fmt.Errorf("s._handleBootstrap (port %d): %w", p.port, err)
-			}
-			return nil
+		// Bootstrap messages are handled at each node on the path. _handleBootstrap
+		// determines whether to respond to the bootstrap or further it along to the
+		// next hop so the packet is not forwarded here.
+		if err := s._handleBootstrap(p, f, nexthop, deadend); err != nil {
+			return fmt.Errorf("s._handleBootstrap (port %d): %w", p.port, err)
 		}
+		return nil
 
 	case types.TypeVirtualSnakeBootstrapACK:
 		// Bootstrap ACK messages are only handled specially when they reach a dead end.

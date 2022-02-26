@@ -170,8 +170,11 @@ func TestNodesCanPingAdversaryDropsFrames(t *testing.T) {
 
 					// Assert
 					sut.scenario.Validate(createTreeStateCapture(tc.genericNodes), nodesAgreeOnCorrectTreeRoot, SettlingTime, TestTimeout)
-					if !nodesCanAllPingEachOther(&sut.scenario, tc.genericNodes) {
-						printSystemUnderTest(tc, &sut)
+					if !nodesCanAllPingEachOther(&sut.scenario, tc.genericNodes, false) {
+						time.Sleep(time.Second * 15)
+						if !nodesCanAllPingEachOther(&sut.scenario, tc.genericNodes, true) {
+							printSystemUnderTest(tc, &sut)
+						}
 					}
 				})
 			}
