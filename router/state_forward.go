@@ -90,12 +90,10 @@ func (s *state) _forward(p *peer, f *types.Frame) error {
 	case types.TypeVirtualSnakeBootstrapACK:
 		// Bootstrap ACK messages are only handled specially when they reach a dead end.
 		// Otherwise they are forwarded normally by falling through.
-		if deadend {
-			if err := s._handleBootstrapACK(p, f); err != nil {
-				return fmt.Errorf("s._handleBootstrapACK (port %d): %w", p.port, err)
-			}
-			return nil
+		if err := s._handleBootstrapACK(p, f, nexthop, deadend); err != nil {
+			return fmt.Errorf("s._handleBootstrapACK (port %d): %w", p.port, err)
 		}
+		return nil
 
 	case types.TypeVirtualSnakeSetup:
 		// Setup messages are handled at each node on the path. Since the _handleSetup

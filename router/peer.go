@@ -35,7 +35,7 @@ import (
 
 const peerKeepaliveInterval = time.Second * 3
 const peerKeepaliveTimeout = time.Second * 5
-const lowScoreThreshold = -50 // NOTE : peer scoring can go from -100 to 100
+const lowScoreThreshold = -100 // NOTE : peer scoring can go from -100 to 100
 
 const ( // These need to be a simple int type for gobind/gomobile to export them...
 	PeerTypeMulticast int = iota
@@ -82,7 +82,23 @@ func (p *peer) EvaluatePeerScore(bootstraps neglectedNodeTable) int {
 				peerScore -= 1 + 6/float64(node.HopCount-3) // TODO : Better equation?
 			} else if !setup.Acknowledged && setup.Next == p {
 				// NOTE : 1 for each new infraction
-				peerScore -= 1 + 0.01*math.Pow(float64(node.HopCount), 4) // TODO : Better equation?
+				peerScore -= 0.5 + 0.01*math.Pow(float64(node.HopCount), 4) // TODO : Better equation?
+			}
+		}
+
+		for _, bootstrap := range node.FailedBootstraps {
+			// NOTE : more failing nodes through me lower peer score - no, this could result
+			// in a scenario where multiple attackers across the network aim to cause nodes
+			// near the center of the network to begin cutting off their peers.
+			// Distance truly is the best measure for proper attack isolation in this case.
+			// And the distance factor needs to grow exponentially to really ensure that
+			// central nodes don't inadvertently cutoff peers.
+			if bootstrap.Acknowledged && bootstrap.Prev == p {
+				// NOTE : 1 for each new infraction
+				peerScore -= 1 + 6/float64(node.HopCount-3) // TODO : Better equation?
+			} else if !bootstrap.Acknowledged && bootstrap.Next == p {
+				// NOTE : 1 for each new infraction
+				peerScore -= 0.5 + 0.01*math.Pow(float64(node.HopCount), 4) // TODO : Better equation?
 			}
 		}
 	}

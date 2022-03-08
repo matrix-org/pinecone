@@ -51,8 +51,15 @@ type virtualSnakeEntry struct {
 	Active      bool
 }
 
+type neglectedBootstrapData struct {
+	Acknowledged bool
+	Prev         *peer
+	Next         *peer
+}
+
+type neglectedBootstrapTable map[types.VirtualSnakePathID]*neglectedBootstrapData
+
 type neglectedSetupData struct {
-	PathID       types.VirtualSnakePathID
 	Acknowledged bool
 	Prev         *peer
 	Next         *peer
@@ -63,10 +70,11 @@ type neglectedSetupTable map[types.VirtualSnakePathID]*neglectedSetupData
 type neglectedNodeTable map[types.PublicKey]*neglectedNodeEntry
 
 type neglectedNodeEntry struct {
-	AttemptCount []uint64            // List of attempt counts seen in the order they were seen
-	HopCount     uint64              // The hop count from the attempt when the entry was created
-	LastAttempt  time.Time           // The time that the last attempt was seen
-	FailedSetups neglectedSetupTable // Map of failed setup attempts
+	AttemptCount     []uint64                // List of attempt counts seen in the order they were seen
+	HopCount         uint64                  // The hop count from the attempt when the entry was created
+	LastAttempt      time.Time               // The time that the last attempt was seen
+	FailedBootstraps neglectedBootstrapTable // Map of failed bootstrap attempts
+	FailedSetups     neglectedSetupTable     // Map of failed setup attempts
 }
 
 // valid returns true if the update hasn't expired, or false if it has. It is
@@ -358,6 +366,7 @@ func (s *state) _handleBootstrap(from *peer, rx *types.Frame, nexthop *peer, dea
 
 	if !deadend {
 		var frame *types.Frame = nil
+		// NOTE : Only add additional signatures if the node is struggling
 		if bootstrap.AttemptCount >= neglectedNodeTrackingPoint {
 			if entry, ok := s._neglectedNodes[rx.DestinationKey]; ok {
 				if entry.AttemptCount[len(entry.AttemptCount)-1] < uint64(bootstrap.AttemptCount) {
@@ -366,19 +375,44 @@ func (s *state) _handleBootstrap(from *peer, rx *types.Frame, nexthop *peer, dea
 					entry.AttemptCount = []uint64{uint64(bootstrap.AttemptCount)}
 					entry.HopCount = uint64(len(bootstrap.Signatures))
 					entry.LastAttempt = time.Now()
+					entry.FailedBootstraps = make(neglectedBootstrapTable)
 					entry.FailedSetups = make(neglectedSetupTable)
 				}
 			} else {
 				entry := &neglectedNodeEntry{
-					AttemptCount: []uint64{uint64(bootstrap.AttemptCount)},
-					HopCount:     uint64(len(bootstrap.Signatures)),
-					LastAttempt:  time.Now(),
-					FailedSetups: make(neglectedSetupTable),
+					AttemptCount:     []uint64{uint64(bootstrap.AttemptCount)},
+					HopCount:         uint64(len(bootstrap.Signatures)),
+					LastAttempt:      time.Now(),
+					FailedBootstraps: make(neglectedBootstrapTable),
+					FailedSetups:     make(neglectedSetupTable),
 				}
 				s._neglectedNodes[rx.DestinationKey] = entry
 			}
 
-			// NOTE : Only add additional signatures if the node is struggling
+			s._neglectedNodes[rx.DestinationKey].FailedBootstraps[bootstrap.PathID] = &neglectedBootstrapData{
+				Acknowledged: false,
+				Prev:         from,
+				Next:         nexthop,
+			}
+
+			score := nexthop.EvaluatePeerScore(s._neglectedNodes)
+			if score <= lowScoreThreshold {
+				if s.r.scorePeers {
+					nexthop.stop(fmt.Errorf("peer score below threshold: %d", score))
+				}
+			}
+
+			longestHopCount := 1
+			for _, node := range s._neglectedNodes {
+				if node.HopCount > uint64(longestHopCount) {
+					longestHopCount = int(node.HopCount)
+				}
+			}
+			duration := time.Duration(uint64(math.Max(float64(30-0.6*math.Pow(float64(longestHopCount), 2)), 0)))
+			// TODO : more failing nodes through me, shorter duration
+			s._peerScoreReset.Reset(time.Second * duration)
+			s.r.log.Printf("Duration: %d", duration)
+
 			if s.r.public.CompareTo(rx.DestinationKey) > 0 {
 				switch {
 				case len(bootstrap.Signatures) == 0:
@@ -471,13 +505,52 @@ func (s *state) _handleBootstrap(from *peer, rx *types.Frame, nexthop *peer, dea
 // packet. This function will work out whether the remote node is a suitable
 // candidate to set up an outbound path to, and if so, will send path setup
 // packets to the network.
-func (s *state) _handleBootstrapACK(from *peer, rx *types.Frame) error {
+func (s *state) _handleBootstrapACK(from *peer, rx *types.Frame, nexthop *peer, deadend bool) error {
 	// Unmarshal the bootstrap ACK.
 	var bootstrapACK types.VirtualSnakeBootstrapACK
 	_, err := bootstrapACK.UnmarshalBinary(rx.Payload)
 	if err != nil {
 		return fmt.Errorf("bootstrapACK.UnmarshalBinary: %w", err)
 	}
+
+	// TODO : sig verification before this?
+	if !deadend {
+		knownFailure := false
+		if node, ok := s._neglectedNodes[rx.SourceKey]; ok {
+			if data, ok := node.FailedSetups[bootstrapACK.PathID]; ok {
+				knownFailure = true
+				data.Prev.send(rx)
+				data.Acknowledged = true
+				score := data.Prev.EvaluatePeerScore(s._neglectedNodes)
+				if score <= lowScoreThreshold {
+					if s.r.scorePeers {
+						data.Prev.stop(fmt.Errorf("peer score below threshold: %d", score))
+					}
+				}
+
+				longestHopCount := 1
+				for _, node := range s._neglectedNodes {
+					if node.HopCount > uint64(longestHopCount) {
+						longestHopCount = int(node.HopCount)
+					}
+				}
+				duration := time.Duration(uint64(math.Max(float64(30-0.6*math.Pow(float64(longestHopCount), 2)), 0)))
+				s.r.log.Printf("ACK Duration: %ds", duration)
+				s._peerScoreReset.Reset(time.Second * duration)
+			} else {
+				// TODO : should never get here!
+			}
+		}
+
+		if !knownFailure {
+			if nexthop != nil && !nexthop.send(rx) {
+				s.r.log.Println("Dropping forwarded packet of type", rx.Type)
+			}
+		}
+
+		return nil
+	}
+
 	if s.r.secure {
 		// Verify that the source signature hasn't been changed by the remote
 		// side. If it has then it won't validate using our own public key.
@@ -499,6 +572,7 @@ func (s *state) _handleBootstrapACK(from *peer, rx *types.Frame) error {
 			return nil
 		}
 	}
+
 	root := s._rootAnnouncement()
 	update := false
 	asc := s._ascending
@@ -569,20 +643,20 @@ func (s *state) _handleBootstrapACK(from *peer, rx *types.Frame) error {
 	send.DestinationKey = rx.SourceKey
 	send.SourceKey = s.r.public
 	send.Payload = append(send.Payload[:0], b[:n]...)
-	nexthop := s.r.state._nextHopsTree(s.r.local, send)
+	setupNexthop := s.r.state._nextHopsTree(s.r.local, send)
 	// Importantly, we will only create a DHT entry if it appears as though our next
 	// hop has actually accepted the packet. Otherwise we'll create a path entry and
 	// the setup message won't go anywhere.
 	switch {
-	case nexthop == nil:
+	case setupNexthop == nil:
 		fallthrough // No peer was identified, which shouldn't happen.
-	case nexthop.local():
+	case setupNexthop.local():
 		fallthrough // The peer is local, which shouldn't happen.
-	case !nexthop.started.Load():
+	case !setupNexthop.started.Load():
 		fallthrough // The peer has shut down or errored.
-	case nexthop.proto == nil:
+	case setupNexthop.proto == nil:
 		fallthrough // The peer doesn't have a protocol queue for some reason.
-	case !nexthop.proto.push(send):
+	case !setupNexthop.proto.push(send):
 		return nil // We failed to push the message into the peer queue.
 	}
 	index := virtualSnakeIndex{
@@ -594,7 +668,7 @@ func (s *state) _handleBootstrapACK(from *peer, rx *types.Frame) error {
 		Origin:            rx.SourceKey,
 		Target:            rx.SourceKey,
 		Source:            s.r.local,
-		Destination:       nexthop,
+		Destination:       setupNexthop,
 		LastSeen:          time.Now(),
 		Root:              bootstrapACK.Root,
 	}
@@ -669,7 +743,6 @@ func (s *state) _handleSetup(from *peer, rx *types.Frame, nexthop *peer) error {
 	if node, ok := s._neglectedNodes[rx.SourceKey]; ok {
 		if nexthop != nil {
 			node.FailedSetups[setup.PathID] = &neglectedSetupData{
-				PathID:       setup.PathID,
 				Acknowledged: false,
 				Prev:         from,
 				Next:         nexthop,
@@ -679,7 +752,6 @@ func (s *state) _handleSetup(from *peer, rx *types.Frame, nexthop *peer) error {
 			if score <= lowScoreThreshold {
 				if s.r.scorePeers {
 					nexthop.stop(fmt.Errorf("peer score below threshold: %d", score))
-					// TODO : reset scores
 				}
 			}
 

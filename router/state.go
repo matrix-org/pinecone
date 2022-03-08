@@ -100,6 +100,7 @@ func (s *state) _start() {
 
 func (s *state) _resetPeerScoring() {
 	s.r.log.Println("Reseting peer scores")
+	// TODO : Only reset scoring for a specific peer/peerset?
 	for pk := range s._neglectedNodes {
 		delete(s._neglectedNodes, pk)
 	}
