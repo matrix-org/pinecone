@@ -18,6 +18,7 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"fmt"
+	"math"
 	"time"
 
 	"github.com/matrix-org/pinecone/types"
@@ -29,8 +30,8 @@ import (
 
 const virtualSnakeMaintainInterval = time.Second
 const virtualSnakeNeighExpiryPeriod = time.Hour
-const bootstrapAttemptResetPoint = 100 // TODO : Pick a more meaningful value
-const neglectedNodeTrackingPoint = 5   // NOTE : Start tracking a neglected node's bootstraps when their attempt count reaches this number
+const bootstrapAttemptResetPoint = math.MaxUint32 // TODO : Pick a more meaningful value
+const neglectedNodeTrackingPoint = 5              // NOTE : Start tracking a neglected node's bootstraps when their attempt count reaches this number
 
 type virtualSnakeTable map[virtualSnakeIndex]*virtualSnakeEntry
 
@@ -50,12 +51,22 @@ type virtualSnakeEntry struct {
 	Active      bool
 }
 
+type neglectedSetupData struct {
+	PathID       types.VirtualSnakePathID
+	Acknowledged bool
+	Prev         *peer
+	Next         *peer
+}
+
+type neglectedSetupTable map[types.VirtualSnakePathID]*neglectedSetupData
+
 type neglectedNodeTable map[types.PublicKey]*neglectedNodeEntry
 
 type neglectedNodeEntry struct {
-	AttemptCount []uint64  // List of attempt counts seen in the order they were seen
-	HopCount     uint64    // The hop count from the attempt when the entry was created
-	LastAttempt  time.Time // The time that the last attempt was seen
+	AttemptCount []uint64            // List of attempt counts seen in the order they were seen
+	HopCount     uint64              // The hop count from the attempt when the entry was created
+	LastAttempt  time.Time           // The time that the last attempt was seen
+	FailedSetups neglectedSetupTable // Map of failed setup attempts
 }
 
 // valid returns true if the update hasn't expired, or false if it has. It is
@@ -346,47 +357,23 @@ func (s *state) _handleBootstrap(from *peer, rx *types.Frame, nexthop *peer, dea
 	}
 
 	if !deadend {
-		attemptSafetyLink := false
 		var frame *types.Frame = nil
 		if bootstrap.AttemptCount >= neglectedNodeTrackingPoint {
-			// TODO : Change this to increase the score more the further away you are from the source
-			// TODO : when should this score reset?
-			// TODO : teardown safety links when kicking a peer for this reason so they can rebootstrap
-			s._peerScores[nexthop].BootstrapFailures++
-			if score, ok := s._peerScores[nexthop]; ok {
-				if score.BootstrapFailures > 50 {
-					// TODO : This is vulnerable to a malicious node sending failing bootstrap attempts through us with a high hop count...
-					// Check to make sure the bootstrap is legit
-					//   right seq, signatures, is for a node less than root, etc.
-					// the malicious node could be refusing to accept bootstraps and continually sending bootstraps with high attempt counts and hop counts through this node
-					// in that case you should see ACKs & setup messages being returned through this node
-					// and they could help pinpoint the malicious peer
-					// malicious node could spoof sending ACKs through the peer though...
-					// think more on it...
-					nexthop.stop(fmt.Errorf("Too many bootstrap failures go through this peer"))
-				}
-			} else {
-				panic("Uhh where's my peer")
-			}
 			if entry, ok := s._neglectedNodes[rx.DestinationKey]; ok {
 				if entry.AttemptCount[len(entry.AttemptCount)-1] < uint64(bootstrap.AttemptCount) {
 					entry.AttemptCount = append(entry.AttemptCount, uint64(bootstrap.AttemptCount))
-					if 10-int(entry.HopCount)-len(entry.AttemptCount) == 0 {
-						if s.r.public.CompareTo(rx.DestinationKey) > 0 {
-							s.r.log.Printf("Replying to neglected node %s. Hop count: %d", rx.DestinationKey, entry.HopCount)
-							attemptSafetyLink = true
-						}
-					}
 				} else {
 					entry.AttemptCount = []uint64{uint64(bootstrap.AttemptCount)}
 					entry.HopCount = uint64(len(bootstrap.Signatures))
 					entry.LastAttempt = time.Now()
+					entry.FailedSetups = make(neglectedSetupTable)
 				}
 			} else {
 				entry := &neglectedNodeEntry{
 					AttemptCount: []uint64{uint64(bootstrap.AttemptCount)},
 					HopCount:     uint64(len(bootstrap.Signatures)),
 					LastAttempt:  time.Now(),
+					FailedSetups: make(neglectedSetupTable),
 				}
 				s._neglectedNodes[rx.DestinationKey] = entry
 			}
@@ -414,23 +401,21 @@ func (s *state) _handleBootstrap(from *peer, rx *types.Frame, nexthop *peer, dea
 			}
 		}
 
-		if !attemptSafetyLink {
-			if frame != nil {
-				of := rx
-				defer framePool.Put(of)
-				frame.DestinationKey = of.DestinationKey
-				frame.SourceKey = of.SourceKey
-				frame.Destination = of.Destination
-				frame.Source = of.Source
-				frame.Version = of.Version
-				frame.Extra = of.Extra
-			} else {
-				frame = rx
-			}
-
-			nexthop.proto.push(frame)
-			return nil
+		if frame != nil {
+			of := rx
+			defer framePool.Put(of)
+			frame.DestinationKey = of.DestinationKey
+			frame.SourceKey = of.SourceKey
+			frame.Destination = of.Destination
+			frame.Source = of.Source
+			frame.Version = of.Version
+			frame.Extra = of.Extra
+		} else {
+			frame = rx
 		}
+
+		nexthop.proto.push(frame)
+		return nil
 	}
 
 	// Check that the root key and sequence number in the update match our
@@ -680,6 +665,37 @@ func (s *state) _handleSetup(from *peer, rx *types.Frame, nexthop *peer) error {
 		s._sendTeardownForRejectedPath(rx.SourceKey, setup.PathID, from)      // second call sends back to origin
 		return nil
 	}
+
+	if node, ok := s._neglectedNodes[rx.SourceKey]; ok {
+		if nexthop != nil {
+			node.FailedSetups[setup.PathID] = &neglectedSetupData{
+				PathID:       setup.PathID,
+				Acknowledged: false,
+				Prev:         from,
+				Next:         nexthop,
+			}
+
+			score := nexthop.EvaluatePeerScore(s._neglectedNodes)
+			if score <= lowScoreThreshold {
+				if s.r.scorePeers {
+					nexthop.stop(fmt.Errorf("peer score below threshold: %d", score))
+					// TODO : reset scores
+				}
+			}
+
+			longestHopCount := 1
+			for _, node := range s._neglectedNodes {
+				if node.HopCount > uint64(longestHopCount) {
+					longestHopCount = int(node.HopCount)
+				}
+			}
+			duration := time.Duration(uint64(math.Max(float64(30-0.6*math.Pow(float64(longestHopCount), 2)), 0)))
+			// TODO : more failing nodes through me, shorter duration
+			s._peerScoreReset.Reset(time.Second * duration)
+			s.r.log.Printf("Duration: %d", duration)
+		}
+	}
+
 	// If we're at the destination of the setup then update our predecessor
 	// with information from the bootstrap.
 	if rx.DestinationKey == s.r.public {
@@ -715,16 +731,12 @@ func (s *state) _handleSetup(from *peer, rx *types.Frame, nexthop *peer) error {
 			// there's a node out there that hasn't converged to a closer node
 			// yet, so we'll just ignore the bootstrap.
 		}
-		isNeglectedNode := false
-		if _, ok := s._neglectedNodes[rx.SourceKey]; ok {
-			s.r.log.Println("Reply to neglected node")
-			isNeglectedNode = true
-		}
-		if !update && !isNeglectedNode {
+
+		if !update {
 			s._sendTeardownForRejectedPath(rx.SourceKey, setup.PathID, from)
 			return nil
 		}
-		if desc != nil && !isNeglectedNode {
+		if desc != nil {
 			// Tear down the previous path, if there was one.
 			s._sendTeardownForExistingPath(s.r.local, desc.PublicKey, desc.PathID)
 		}
@@ -738,9 +750,7 @@ func (s *state) _handleSetup(from *peer, rx *types.Frame, nexthop *peer) error {
 			Root:              setup.Root,
 		}
 		s._table[index] = entry
-		if !isNeglectedNode {
-			s._setDescendingNode(entry)
-		}
+		s._setDescendingNode(entry)
 		// Send back a setup ACK to the remote side.
 		setupACK := types.VirtualSnakeSetupACK{
 			PathID: setup.PathID,
@@ -821,6 +831,30 @@ func (s *state) _handleSetupACK(from *peer, rx *types.Frame, nexthop *peer) erro
 				continue
 			}
 			if v.Source.local() || v.Source.send(rx) {
+				if node, ok := s._neglectedNodes[rx.SourceKey]; ok {
+					if data, ok := node.FailedSetups[setup.PathID]; ok {
+						data.Acknowledged = true
+						score := data.Prev.EvaluatePeerScore(s._neglectedNodes)
+						if score <= lowScoreThreshold {
+							if s.r.scorePeers {
+								data.Prev.stop(fmt.Errorf("peer score below threshold: %d", score))
+							}
+						}
+
+						longestHopCount := 1
+						for _, node := range s._neglectedNodes {
+							if node.HopCount > uint64(longestHopCount) {
+								longestHopCount = int(node.HopCount)
+							}
+						}
+						duration := time.Duration(uint64(math.Max(float64(30-0.6*math.Pow(float64(longestHopCount), 2)), 0)))
+						s.r.log.Printf("ACK Duration: %ds", duration)
+						s._peerScoreReset.Reset(time.Second * duration)
+					} else {
+						// TODO : should never get here!
+					}
+				}
+
 				v.Active = true
 				if v == s._candidate {
 					s._setAscendingNode(v)

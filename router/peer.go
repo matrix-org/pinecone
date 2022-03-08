@@ -21,6 +21,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"math"
 	"net"
 	"time"
 
@@ -34,6 +35,7 @@ import (
 
 const peerKeepaliveInterval = time.Second * 3
 const peerKeepaliveTimeout = time.Second * 5
+const lowScoreThreshold = -50 // NOTE : peer scoring can go from -100 to 100
 
 const ( // These need to be a simple int type for gobind/gomobile to export them...
 	PeerTypeMulticast int = iota
@@ -62,6 +64,31 @@ type peer struct {
 	started    atomic.Bool        // Thread-safe toggle for marking a peer as down.
 	proto      *fifoQueue         // Thread-safe queue for outbound protocol messages.
 	traffic    *lifoQueue         // Thread-safe queue for outbound traffic messages.
+}
+
+func (p *peer) EvaluatePeerScore(bootstraps neglectedNodeTable) int {
+	peerScore := 0.0
+
+	for _, node := range bootstraps {
+		for _, setup := range node.FailedSetups {
+			// NOTE : more failing nodes through me lower peer score - no, this could result
+			// in a scenario where multiple attackers across the network aim to cause nodes
+			// near the center of the network to begin cutting off their peers.
+			// Distance truly is the best measure for proper attack isolation in this case.
+			// And the distance factor needs to grow exponentially to really ensure that
+			// central nodes don't inadvertently cutoff peers.
+			if setup.Acknowledged && setup.Prev == p {
+				// NOTE : 1 for each new infraction
+				peerScore -= 1 + 6/float64(node.HopCount-3) // TODO : Better equation?
+			} else if !setup.Acknowledged && setup.Next == p {
+				// NOTE : 1 for each new infraction
+				peerScore -= 1 + 0.01*math.Pow(float64(node.HopCount), 4) // TODO : Better equation?
+			}
+		}
+	}
+
+	p.router.log.Printf("PeerScore: %s --- %f", p.public.String()[:8], peerScore)
+	return int(peerScore)
 }
 
 func (p *peer) String() string { // to make sim less ugly

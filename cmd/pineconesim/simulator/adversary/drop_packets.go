@@ -123,6 +123,7 @@ func NewAdversaryRouter(log *log.Logger, sk ed25519.PrivateKey, debug bool) *Adv
 	}
 
 	rtr.InjectPacketFilter(adversary.selectivelyDrop)
+	rtr.DisablePeerScoring()
 	return adversary
 }
 

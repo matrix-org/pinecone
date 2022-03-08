@@ -51,6 +51,7 @@ type Router struct {
 	state        *state
 	secure       bool
 	_subscribers map[chan<- events.Event]*phony.Inbox
+	scorePeers   bool
 }
 
 func NewRouter(logger *log.Logger, sk ed25519.PrivateKey, debug bool) *Router {
@@ -65,6 +66,7 @@ func NewRouter(logger *log.Logger, sk ed25519.PrivateKey, debug bool) *Router {
 		cancel:       cancel,
 		secure:       !insecure,
 		_subscribers: make(map[chan<- events.Event]*phony.Inbox),
+		scorePeers:   true,
 	}
 	// Populate the node keys from the supplied private key.
 	copy(r.private[:], sk)
@@ -83,6 +85,10 @@ func NewRouter(logger *log.Logger, sk ed25519.PrivateKey, debug bool) *Router {
 	r.state.Act(nil, r.state._start)
 	r.log.Println("Router identity:", r.public.String())
 	return r
+}
+
+func (r *Router) DisablePeerScoring() {
+	r.scorePeers = false
 }
 
 func (r *Router) InjectPacketFilter(fn FilterFn) {

@@ -50,7 +50,6 @@ type state struct {
 	_announcements    announcementTable  // Announcements received from our peers
 	_table            virtualSnakeTable  // Virtual snake DHT entries
 	_neglectedNodes   neglectedNodeTable // Nodes that are struggling to bootstrap
-	_peerScores       PeerScoreTable     // Keeps track of peer behaviour
 	_bootstrapAttempt uint64             // Count of bootstrap attempts since last success
 	_ordering         uint64             // Used to order incoming tree announcements
 	_sequence         uint64             // Used to sequence our root tree announcements
@@ -58,6 +57,7 @@ type state struct {
 	_snaketimer       *time.Timer        // Virtual snake maintenance timer
 	_waiting          bool               // Is the tree waiting to reparent?
 	_filterPacket     FilterFn           // Function called when forwarding packets
+	_peerScoreReset   *time.Timer
 }
 
 // _start resets the state and starts tree and virtual snake maintenance.
@@ -75,7 +75,6 @@ func (s *state) _start() {
 
 	s._bootstrapAttempt = 0
 	s._neglectedNodes = make(neglectedNodeTable)
-	s._peerScores = make(PeerScoreTable)
 
 	if s._treetimer == nil {
 		s._treetimer = time.AfterFunc(announcementInterval, func() {
@@ -89,8 +88,21 @@ func (s *state) _start() {
 		})
 	}
 
+	if s._peerScoreReset == nil {
+		s._peerScoreReset = time.AfterFunc(0, func() {
+			s.Act(nil, s._resetPeerScoring)
+		})
+	}
+
 	s._maintainTreeIn(0)
 	s._maintainSnakeIn(0)
+}
+
+func (s *state) _resetPeerScoring() {
+	s.r.log.Println("Reseting peer scores")
+	for pk := range s._neglectedNodes {
+		delete(s._neglectedNodes, pk)
+	}
 }
 
 // _maintainTreeIn resets the tree maintenance timer to the specified
@@ -150,8 +162,6 @@ func (s *state) _addPeer(conn net.Conn, public types.PublicKey, uri ConnectionUR
 		new.reader.Act(nil, new._read)
 		new.writer.Act(nil, new._write)
 
-		s._peerScores[new] = &PeerScore{}
-
 		s.r.Act(nil, func() {
 			s.r._publish(events.PeerAdded{Port: types.SwitchPortID(i), PeerID: new.public.String()})
 		})
@@ -164,7 +174,6 @@ func (s *state) _addPeer(conn net.Conn, public types.PublicKey, uri ConnectionUR
 // _removePeer removes the Peer from the specified switch port
 func (s *state) _removePeer(port types.SwitchPortID) {
 	peerID := s._peers[port].public.String()
-	s._peerScores[s._peers[port]] = nil
 	s._peers[port] = nil
 	s.r.Act(nil, func() {
 		s.r._publish(events.PeerRemoved{Port: port, PeerID: peerID})
