@@ -61,7 +61,7 @@ type peer struct {
 	keepalives bool               // Not mutated after peer setup.
 	started    atomic.Bool        // Thread-safe toggle for marking a peer as down.
 	proto      *fifoQueue         // Thread-safe queue for outbound protocol messages.
-	traffic    *lifoQueue         // Thread-safe queue for outbound traffic messages.
+	traffic    *fifoQueue         // Thread-safe queue for outbound traffic messages.
 }
 
 func (p *peer) String() string { // to make sim less ugly
@@ -195,9 +195,9 @@ func (p *peer) _write() {
 	case frame = <-p.proto.pop():
 		// A protocol packet is ready to send.
 		p.proto.ack()
-	case <-p.traffic.wait():
-		// A traffic packet is ready to send.
-		frame, _ = p.traffic.pop()
+	case frame = <-p.traffic.pop():
+		// A protocol packet is ready to send.
+		p.traffic.ack()
 	case <-keepalive():
 		// Nothing else happened but we reached the keepalive interval, so
 		// we will generate a keepalive frame to send instead.

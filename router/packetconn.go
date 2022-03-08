@@ -34,7 +34,7 @@ func (r *Router) newLocalPeer() *peer {
 		zone:     "local",
 		peertype: 0,
 		public:   r.public,
-		traffic:  newLIFOQueue(trafficBuffer),
+		traffic:  newFIFOQueue(trafficBuffer),
 	}
 	return peer
 }
@@ -50,8 +50,9 @@ func (r *Router) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
 	case <-r.local.context.Done():
 		r.local.stop(nil)
 		return
-	case <-r.local.traffic.wait():
-		frame, _ = r.local.traffic.pop()
+	case frame = <-r.local.traffic.pop():
+		// A protocol packet is ready to send.
+		r.local.traffic.ack()
 	}
 	switch frame.Type {
 	case types.TypeTreeRouted:
