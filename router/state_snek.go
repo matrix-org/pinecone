@@ -513,7 +513,19 @@ func (s *state) _handleBootstrapACK(from *peer, rx *types.Frame, nexthop *peer, 
 		return fmt.Errorf("bootstrapACK.UnmarshalBinary: %w", err)
 	}
 
-	// TODO : sig verification before this?
+	if s.r.secure {
+		// Verify that the destination signature is OK, which allows us to confirm
+		// that the remote node accepted our bootstrap and that the remote node is
+		// who they claim to be.
+		if !ed25519.Verify(
+			rx.SourceKey[:],
+			append(bootstrapACK.SourceSig[:], append(rx.DestinationKey[:], bootstrapACK.PathID[:]...)...),
+			bootstrapACK.DestinationSig[:],
+		) {
+			return nil
+		}
+	}
+
 	if !deadend {
 		knownFailure := false
 		if node, ok := s._neglectedNodes[rx.SourceKey]; ok {
@@ -558,16 +570,6 @@ func (s *state) _handleBootstrapACK(from *peer, rx *types.Frame, nexthop *peer, 
 			s.r.public[:],
 			append(s.r.public[:], bootstrapACK.PathID[:]...),
 			bootstrapACK.SourceSig[:],
-		) {
-			return nil
-		}
-		// Verify that the destination signature is OK, which allows us to confirm
-		// that the remote node accepted our bootstrap and that the remote node is
-		// who they claim to be.
-		if !ed25519.Verify(
-			rx.SourceKey[:],
-			append(bootstrapACK.SourceSig[:], append(rx.DestinationKey[:], bootstrapACK.PathID[:]...)...),
-			bootstrapACK.DestinationSig[:],
 		) {
 			return nil
 		}
