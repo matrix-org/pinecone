@@ -41,7 +41,11 @@ func (q *fifoQueue) _initialise() {
 		q.entries[i] = nil
 	}
 	if q.max != 0 {
-		q.entries = make([]chan *types.Frame, 1, q.max)
+		// Make space for one extra entry in the capacity, since
+		// every push appends a new channel. To prevent reallocating
+		// the whole slice when we hit q.max to increase capacity,
+		// make sure there's room for that trailing entry.
+		q.entries = make([]chan *types.Frame, 1, q.max+1)
 		q.entries[0] = make(chan *types.Frame, 1)
 	} else {
 		q.entries = []chan *types.Frame{
@@ -65,7 +69,7 @@ func (q *fifoQueue) queuesize() int { // nolint:unused
 func (q *fifoQueue) push(frame *types.Frame) bool {
 	q.mutex.Lock()
 	defer q.mutex.Unlock()
-	if q.max != 0 && len(q.entries) >= q.max {
+	if q.max != 0 && len(q.entries)-1 >= q.max {
 		return false
 	}
 	ch := q.entries[len(q.entries)-1]
