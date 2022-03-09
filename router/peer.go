@@ -87,32 +87,31 @@ func (p *peer) EvaluatePeerScore(bootstraps neglectedNodeTable) int {
 }
 
 func scoreMissingAck(hopCount uint64) float64 {
-	// TODO : Better equation?
+	// TODO : Refine this
+	// NOTE : Gives exponential weighting the higher the hop count as that implies being closer to the problem
 	return -(0.5 + 0.01*math.Pow(float64(hopCount), 4))
 }
 
 func scoreAck(hopCount uint64) float64 {
-	// TODO : Better equation?
+	// TODO : Better equation. Haven't refined this at all
 	return -(1 + 6/float64(hopCount-3))
 }
 
 func cachePeerScoreHistory(node *neglectedNodeEntry) {
 	for _, bootstrap := range node.FailedBootstraps {
-		if bootstrap.Acknowledged {
-			// NOTE : 1 for each new infraction
-			bootstrap.Prev.scoreCache += scoreAck(node.HopCount)
-		} else if !bootstrap.Acknowledged {
-			// NOTE : 1 for each new infraction
+		// NOTE : Cannot know which peer is suspect if an ACK was received.
+		// Since there isn't guaranteed to be a matching setup pair due to the forwarding
+		// logic being different for the setup frames, we have no way of guaranteeing
+		// if a setup frame was sent in response to the bootstrap ack.
+		if !bootstrap.Acknowledged {
 			bootstrap.Next.scoreCache += scoreMissingAck(node.HopCount)
 		}
 	}
 
 	for _, setup := range node.FailedSetups {
 		if setup.Acknowledged {
-			// NOTE : 1 for each new infraction
 			setup.Prev.scoreCache += scoreAck(node.HopCount)
 		} else if !setup.Acknowledged {
-			// NOTE : 1 for each new infraction
 			setup.Next.scoreCache += scoreMissingAck(node.HopCount)
 		}
 	}
@@ -122,10 +121,11 @@ func (p *peer) EvaluatePeerScoreForNode(node *neglectedNodeEntry) float64 {
 	peerScore := 0.0
 
 	for _, bootstrap := range node.FailedBootstraps {
-		if bootstrap.Acknowledged && bootstrap.Prev == p {
-			// NOTE : 1 for each new infraction
-			peerScore += scoreAck(node.HopCount)
-		} else if !bootstrap.Acknowledged && bootstrap.Next == p {
+		// NOTE : Cannot know which peer is suspect if an ACK was received.
+		// Since there isn't guaranteed to be a matching setup pair due to the forwarding
+		// logic being different for the setup frames, we have no way of guaranteeing
+		// if a setup frame was sent in response to the bootstrap ack.
+		if !bootstrap.Acknowledged && bootstrap.Next == p {
 			// NOTE : 1 for each new infraction
 			peerScore += scoreMissingAck(node.HopCount)
 		}
