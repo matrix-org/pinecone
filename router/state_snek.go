@@ -456,12 +456,10 @@ func (s *state) _handleBootstrap(from *peer, rx *types.Frame, nexthop *peer, dea
 				}
 			}
 
-			// duration := time.Duration(uint64(math.Max(float64(30-0.6*math.Pow(float64(longestHopCount), 2)), 0)))
+			// TODO : more failing nodes through me, shorter duration, ie. should being closer
+			// to the problem result in a short score reset period?
 			duration := peerScoreResetPeriod
-			// TODO : more failing nodes through me, shorter duration
-			// s._peerScoreReset.Reset(time.Second * duration)
 			s._peerScoreReset.Reset(duration)
-			s.r.log.Printf("Duration: %d", duration)
 
 			if s.r.public.CompareTo(rx.DestinationKey) > 0 {
 				switch {
@@ -596,12 +594,8 @@ func (s *state) _handleBootstrapACK(from *peer, rx *types.Frame, nexthop *peer, 
 						longestHopCount = int(node.HopCount)
 					}
 				}
-				// duration := time.Duration(uint64(math.Max(float64(30-0.6*math.Pow(float64(longestHopCount), 2)), 0)))
 				duration := peerScoreResetPeriod
-				// TODO : more failing nodes through me, shorter duration
-				// s._peerScoreReset.Reset(time.Second * duration)
 				s._peerScoreReset.Reset(duration)
-				s.r.log.Printf("Duration: %d", duration)
 			} else {
 				// TODO : should never get here!
 				// This means we received an ACK to a bootstrap we haven't seen but should have
@@ -822,12 +816,8 @@ func (s *state) _handleSetup(from *peer, rx *types.Frame, nexthop *peer) error {
 					longestHopCount = int(node.HopCount)
 				}
 			}
-			// duration := time.Duration(uint64(math.Max(float64(30-0.6*math.Pow(float64(longestHopCount), 2)), 0)))
 			duration := peerScoreResetPeriod
-			// TODO : more failing nodes through me, shorter duration
-			// s._peerScoreReset.Reset(time.Second * duration)
 			s._peerScoreReset.Reset(duration)
-			s.r.log.Printf("Duration: %d", duration)
 		}
 	}
 
@@ -982,12 +972,8 @@ func (s *state) _handleSetupACK(from *peer, rx *types.Frame, nexthop *peer) erro
 								longestHopCount = int(node.HopCount)
 							}
 						}
-						// duration := time.Duration(uint64(math.Max(float64(30-0.6*math.Pow(float64(longestHopCount), 2)), 0)))
 						duration := peerScoreResetPeriod
-						// TODO : more failing nodes through me, shorter duration
-						// s._peerScoreReset.Reset(time.Second * duration)
 						s._peerScoreReset.Reset(duration)
-						s.r.log.Printf("Duration: %d", duration)
 					} else {
 						// TODO : should never get here!
 					}
