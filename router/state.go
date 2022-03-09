@@ -101,8 +101,16 @@ func (s *state) _start() {
 func (s *state) _resetPeerScoring() {
 	s.r.log.Println("Reseting peer scores")
 	// TODO : Only reset scoring for a specific peer/peerset?
+	// maybe only start reset timers on a per peer basis as well
+	// if you are seeing issues correlated with a specific peer, then you need to time
+	// issues seen from that peer, not just any peer
 	for pk := range s._neglectedNodes {
 		delete(s._neglectedNodes, pk)
+	}
+	for _, peer := range s._peers {
+		if peer != nil {
+			peer.scoreCache = 0
+		}
 	}
 }
 

@@ -30,8 +30,11 @@ import (
 
 const virtualSnakeMaintainInterval = time.Second
 const virtualSnakeNeighExpiryPeriod = time.Hour
-const bootstrapAttemptResetPoint = math.MaxUint32 // TODO : Pick a more meaningful value
-const neglectedNodeTrackingPoint = 5              // NOTE : Start tracking a neglected node's bootstraps when their attempt count reaches this number
+const bootstrapAttemptResetPoint = math.MaxUint32               // TODO : Pick a more meaningful value
+const neglectedNodeTrackingPoint = 5                            // NOTE : Start tracking a neglected node's bootstraps when their attempt count reaches this number
+const maxNeglectedNodesToTrack = 5                              // NOTE : This prevents an attacker from flooding large amounts of sybils into the network to cause a lot of inappropriate peer disconnections
+const staleInformationPeriod = 3 * virtualSnakeMaintainInterval // Neglected node information older than this could be considered stale
+const peerScoreResetPeriod = 2 * staleInformationPeriod         // How long to wait before clearing peer scores
 
 type virtualSnakeTable map[virtualSnakeIndex]*virtualSnakeEntry
 
@@ -368,9 +371,12 @@ func (s *state) _handleBootstrap(from *peer, rx *types.Frame, nexthop *peer, dea
 		var frame *types.Frame = nil
 		// NOTE : Only add additional signatures if the node is struggling
 		if bootstrap.AttemptCount >= neglectedNodeTrackingPoint {
+			trackBootstrap := false
 			if entry, ok := s._neglectedNodes[rx.DestinationKey]; ok {
+				trackBootstrap = true
 				if entry.AttemptCount[len(entry.AttemptCount)-1] < uint64(bootstrap.AttemptCount) {
 					entry.AttemptCount = append(entry.AttemptCount, uint64(bootstrap.AttemptCount))
+					entry.LastAttempt = time.Now()
 				} else {
 					entry.AttemptCount = []uint64{uint64(bootstrap.AttemptCount)}
 					entry.HopCount = uint64(len(bootstrap.Signatures))
@@ -379,20 +385,55 @@ func (s *state) _handleBootstrap(from *peer, rx *types.Frame, nexthop *peer, dea
 					entry.FailedSetups = make(neglectedSetupTable)
 				}
 			} else {
-				entry := &neglectedNodeEntry{
-					AttemptCount:     []uint64{uint64(bootstrap.AttemptCount)},
-					HopCount:         uint64(len(bootstrap.Signatures)),
-					LastAttempt:      time.Now(),
-					FailedBootstraps: make(neglectedBootstrapTable),
-					FailedSetups:     make(neglectedSetupTable),
+				if len(s._neglectedNodes) < maxNeglectedNodesToTrack {
+					trackBootstrap = true
+					entry := &neglectedNodeEntry{
+						AttemptCount:     []uint64{uint64(bootstrap.AttemptCount)},
+						HopCount:         uint64(len(bootstrap.Signatures)),
+						LastAttempt:      time.Now(),
+						FailedBootstraps: make(neglectedBootstrapTable),
+						FailedSetups:     make(neglectedSetupTable),
+					}
+					s._neglectedNodes[rx.DestinationKey] = entry
+				} else {
+					for key, node := range s._neglectedNodes {
+						replaceNode := false
+						if len(bootstrap.Signatures) > int(node.HopCount) {
+							replaceNode = true
+						} else if time.Since(node.LastAttempt) > staleInformationPeriod {
+							// Problem: sybils can overwrite the longest node/s then stop sending failures
+							// what do? maybe if hop count is lower but time since is... something?
+							// maybe if time since is 3 x snake bootstrap attempt interval?
+							// ensures to only track nodes that are continuously failing
+							s.r.log.Println("Replace stale node")
+							replaceNode = true
+						}
+
+						if replaceNode {
+							trackBootstrap = true
+							// TODO : Does this result in an issue since we no longer can route via reverse path?
+							cachePeerScoreHistory(node)
+							delete(s._neglectedNodes, key)
+							entry := &neglectedNodeEntry{
+								AttemptCount:     []uint64{uint64(bootstrap.AttemptCount)},
+								HopCount:         uint64(len(bootstrap.Signatures)),
+								LastAttempt:      time.Now(),
+								FailedBootstraps: make(neglectedBootstrapTable),
+								FailedSetups:     make(neglectedSetupTable),
+							}
+							s._neglectedNodes[rx.DestinationKey] = entry
+							break
+						}
+					}
 				}
-				s._neglectedNodes[rx.DestinationKey] = entry
 			}
 
-			s._neglectedNodes[rx.DestinationKey].FailedBootstraps[bootstrap.PathID] = &neglectedBootstrapData{
-				Acknowledged: false,
-				Prev:         from,
-				Next:         nexthop,
+			if trackBootstrap {
+				s._neglectedNodes[rx.DestinationKey].FailedBootstraps[bootstrap.PathID] = &neglectedBootstrapData{
+					Acknowledged: false,
+					Prev:         from,
+					Next:         nexthop,
+				}
 			}
 
 			score := nexthop.EvaluatePeerScore(s._neglectedNodes)
@@ -408,9 +449,12 @@ func (s *state) _handleBootstrap(from *peer, rx *types.Frame, nexthop *peer, dea
 					longestHopCount = int(node.HopCount)
 				}
 			}
-			duration := time.Duration(uint64(math.Max(float64(30-0.6*math.Pow(float64(longestHopCount), 2)), 0)))
+
+			// duration := time.Duration(uint64(math.Max(float64(30-0.6*math.Pow(float64(longestHopCount), 2)), 0)))
+			duration := peerScoreResetPeriod
 			// TODO : more failing nodes through me, shorter duration
-			s._peerScoreReset.Reset(time.Second * duration)
+			// s._peerScoreReset.Reset(time.Second * duration)
+			s._peerScoreReset.Reset(duration)
 			s.r.log.Printf("Duration: %d", duration)
 
 			if s.r.public.CompareTo(rx.DestinationKey) > 0 {
@@ -546,11 +590,15 @@ func (s *state) _handleBootstrapACK(from *peer, rx *types.Frame, nexthop *peer, 
 						longestHopCount = int(node.HopCount)
 					}
 				}
-				duration := time.Duration(uint64(math.Max(float64(30-0.6*math.Pow(float64(longestHopCount), 2)), 0)))
-				s.r.log.Printf("ACK Duration: %ds", duration)
-				s._peerScoreReset.Reset(time.Second * duration)
+				// duration := time.Duration(uint64(math.Max(float64(30-0.6*math.Pow(float64(longestHopCount), 2)), 0)))
+				duration := peerScoreResetPeriod
+				// TODO : more failing nodes through me, shorter duration
+				// s._peerScoreReset.Reset(time.Second * duration)
+				s._peerScoreReset.Reset(duration)
+				s.r.log.Printf("Duration: %d", duration)
 			} else {
 				// TODO : should never get here!
+				// This means we received an ACK to a bootstrap we haven't seen but should have
 			}
 		}
 
@@ -763,9 +811,11 @@ func (s *state) _handleSetup(from *peer, rx *types.Frame, nexthop *peer) error {
 					longestHopCount = int(node.HopCount)
 				}
 			}
-			duration := time.Duration(uint64(math.Max(float64(30-0.6*math.Pow(float64(longestHopCount), 2)), 0)))
+			// duration := time.Duration(uint64(math.Max(float64(30-0.6*math.Pow(float64(longestHopCount), 2)), 0)))
+			duration := peerScoreResetPeriod
 			// TODO : more failing nodes through me, shorter duration
-			s._peerScoreReset.Reset(time.Second * duration)
+			// s._peerScoreReset.Reset(time.Second * duration)
+			s._peerScoreReset.Reset(duration)
 			s.r.log.Printf("Duration: %d", duration)
 		}
 	}
@@ -921,9 +971,12 @@ func (s *state) _handleSetupACK(from *peer, rx *types.Frame, nexthop *peer) erro
 								longestHopCount = int(node.HopCount)
 							}
 						}
-						duration := time.Duration(uint64(math.Max(float64(30-0.6*math.Pow(float64(longestHopCount), 2)), 0)))
-						s.r.log.Printf("ACK Duration: %ds", duration)
-						s._peerScoreReset.Reset(time.Second * duration)
+						// duration := time.Duration(uint64(math.Max(float64(30-0.6*math.Pow(float64(longestHopCount), 2)), 0)))
+						duration := peerScoreResetPeriod
+						// TODO : more failing nodes through me, shorter duration
+						// s._peerScoreReset.Reset(time.Second * duration)
+						s._peerScoreReset.Reset(duration)
+						s.r.log.Printf("Duration: %d", duration)
 					} else {
 						// TODO : should never get here!
 					}

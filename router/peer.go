@@ -64,47 +64,84 @@ type peer struct {
 	started    atomic.Bool        // Thread-safe toggle for marking a peer as down.
 	proto      *fifoQueue         // Thread-safe queue for outbound protocol messages.
 	traffic    *lifoQueue         // Thread-safe queue for outbound traffic messages.
+	scoreCache float64            // Tracks peer score information from replaced sources
 }
 
 func (p *peer) EvaluatePeerScore(bootstraps neglectedNodeTable) int {
 	peerScore := 0.0
+	// NOTE : more failing nodes through me lower peer score - no, this could result
+	// in a scenario where multiple attackers across the network aim to cause nodes
+	// near the center of the network to begin cutting off their peers.
+	// Distance truly is the best measure for proper attack isolation in this case.
+	// And the distance factor needs to grow exponentially to really ensure that
+	// central nodes don't inadvertently cutoff peers.
 
 	for _, node := range bootstraps {
-		for _, setup := range node.FailedSetups {
-			// NOTE : more failing nodes through me lower peer score - no, this could result
-			// in a scenario where multiple attackers across the network aim to cause nodes
-			// near the center of the network to begin cutting off their peers.
-			// Distance truly is the best measure for proper attack isolation in this case.
-			// And the distance factor needs to grow exponentially to really ensure that
-			// central nodes don't inadvertently cutoff peers.
-			if setup.Acknowledged && setup.Prev == p {
-				// NOTE : 1 for each new infraction
-				peerScore -= 1 + 6/float64(node.HopCount-3) // TODO : Better equation?
-			} else if !setup.Acknowledged && setup.Next == p {
-				// NOTE : 1 for each new infraction
-				peerScore -= 0.5 + 0.01*math.Pow(float64(node.HopCount), 4) // TODO : Better equation?
-			}
-		}
-
-		for _, bootstrap := range node.FailedBootstraps {
-			// NOTE : more failing nodes through me lower peer score - no, this could result
-			// in a scenario where multiple attackers across the network aim to cause nodes
-			// near the center of the network to begin cutting off their peers.
-			// Distance truly is the best measure for proper attack isolation in this case.
-			// And the distance factor needs to grow exponentially to really ensure that
-			// central nodes don't inadvertently cutoff peers.
-			if bootstrap.Acknowledged && bootstrap.Prev == p {
-				// NOTE : 1 for each new infraction
-				peerScore -= 1 + 6/float64(node.HopCount-3) // TODO : Better equation?
-			} else if !bootstrap.Acknowledged && bootstrap.Next == p {
-				// NOTE : 1 for each new infraction
-				peerScore -= 0.5 + 0.01*math.Pow(float64(node.HopCount), 4) // TODO : Better equation?
-			}
-		}
+		peerScore += p.EvaluatePeerScoreForNode(node)
 	}
+
+	peerScore += float64(p.scoreCache)
 
 	p.router.log.Printf("PeerScore: %s --- %f", p.public.String()[:8], peerScore)
 	return int(peerScore)
+}
+
+func scoreMissingAck(hopCount uint64) float64 {
+	// TODO : Better equation?
+	return -(0.5 + 0.01*math.Pow(float64(hopCount), 4))
+}
+
+func scoreAck(hopCount uint64) float64 {
+	// TODO : Better equation?
+	return -(1 + 6/float64(hopCount-3))
+}
+
+func cachePeerScoreHistory(node *neglectedNodeEntry) {
+	for _, bootstrap := range node.FailedBootstraps {
+		if bootstrap.Acknowledged {
+			// NOTE : 1 for each new infraction
+			bootstrap.Prev.scoreCache += scoreAck(node.HopCount)
+		} else if !bootstrap.Acknowledged {
+			// NOTE : 1 for each new infraction
+			bootstrap.Next.scoreCache += scoreMissingAck(node.HopCount)
+		}
+	}
+
+	for _, setup := range node.FailedSetups {
+		if setup.Acknowledged {
+			// NOTE : 1 for each new infraction
+			setup.Prev.scoreCache += scoreAck(node.HopCount)
+		} else if !setup.Acknowledged {
+			// NOTE : 1 for each new infraction
+			setup.Next.scoreCache += scoreMissingAck(node.HopCount)
+		}
+	}
+}
+
+func (p *peer) EvaluatePeerScoreForNode(node *neglectedNodeEntry) float64 {
+	peerScore := 0.0
+
+	for _, bootstrap := range node.FailedBootstraps {
+		if bootstrap.Acknowledged && bootstrap.Prev == p {
+			// NOTE : 1 for each new infraction
+			peerScore += scoreAck(node.HopCount)
+		} else if !bootstrap.Acknowledged && bootstrap.Next == p {
+			// NOTE : 1 for each new infraction
+			peerScore += scoreMissingAck(node.HopCount)
+		}
+	}
+
+	for _, setup := range node.FailedSetups {
+		if setup.Acknowledged && setup.Prev == p {
+			// NOTE : 1 for each new infraction
+			peerScore += scoreAck(node.HopCount)
+		} else if !setup.Acknowledged && setup.Next == p {
+			// NOTE : 1 for each new infraction
+			peerScore += scoreMissingAck(node.HopCount)
+		}
+	}
+
+	return peerScore
 }
 
 func (p *peer) String() string { // to make sim less ugly
