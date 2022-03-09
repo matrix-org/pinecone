@@ -99,20 +99,24 @@ func scoreAck(hopCount uint64) float64 {
 
 func cachePeerScoreHistory(node *neglectedNodeEntry) {
 	for _, bootstrap := range node.FailedBootstraps {
-		// NOTE : Cannot know which peer is suspect if an ACK was received.
-		// Since there isn't guaranteed to be a matching setup pair due to the forwarding
-		// logic being different for the setup frames, we have no way of guaranteeing
-		// if a setup frame was sent in response to the bootstrap ack.
-		if !bootstrap.Acknowledged {
-			bootstrap.Next.scoreCache += scoreMissingAck(node.HopCount)
+		if time.Since(bootstrap.ArrivalTime) > ackSettlingPeriod {
+			// NOTE : Cannot know which peer is suspect if an ACK was received.
+			// Since there isn't guaranteed to be a matching setup pair due to the forwarding
+			// logic being different for the setup frames, we have no way of guaranteeing
+			// if a setup frame was sent in response to the bootstrap ack.
+			if !bootstrap.Acknowledged {
+				bootstrap.Next.scoreCache += scoreMissingAck(node.HopCount)
+			}
 		}
 	}
 
 	for _, setup := range node.FailedSetups {
-		if setup.Acknowledged {
-			setup.Prev.scoreCache += scoreAck(node.HopCount)
-		} else if !setup.Acknowledged {
-			setup.Next.scoreCache += scoreMissingAck(node.HopCount)
+		if time.Since(setup.ArrivalTime) > ackSettlingPeriod {
+			if setup.Acknowledged {
+				setup.Prev.scoreCache += scoreAck(node.HopCount)
+			} else if !setup.Acknowledged {
+				setup.Next.scoreCache += scoreMissingAck(node.HopCount)
+			}
 		}
 	}
 }
@@ -121,23 +125,31 @@ func (p *peer) EvaluatePeerScoreForNode(node *neglectedNodeEntry) float64 {
 	peerScore := 0.0
 
 	for _, bootstrap := range node.FailedBootstraps {
-		// NOTE : Cannot know which peer is suspect if an ACK was received.
-		// Since there isn't guaranteed to be a matching setup pair due to the forwarding
-		// logic being different for the setup frames, we have no way of guaranteeing
-		// if a setup frame was sent in response to the bootstrap ack.
-		if !bootstrap.Acknowledged && bootstrap.Next == p {
-			// NOTE : 1 for each new infraction
-			peerScore += scoreMissingAck(node.HopCount)
+		if time.Since(bootstrap.ArrivalTime) > ackSettlingPeriod {
+			// NOTE : Cannot know which peer is suspect if an ACK was received.
+			// Since there isn't guaranteed to be a matching setup pair due to the forwarding
+			// logic being different for the setup frames, we have no way of guaranteeing
+			// if a setup frame was sent in response to the bootstrap ack.
+			if !bootstrap.Acknowledged && bootstrap.Next == p {
+				// NOTE : 1 for each new infraction
+				peerScore += scoreMissingAck(node.HopCount)
+			}
+		} else {
+			// NOTE : Ignoring this datapoint for scoring purposes
 		}
 	}
 
 	for _, setup := range node.FailedSetups {
-		if setup.Acknowledged && setup.Prev == p {
-			// NOTE : 1 for each new infraction
-			peerScore += scoreAck(node.HopCount)
-		} else if !setup.Acknowledged && setup.Next == p {
-			// NOTE : 1 for each new infraction
-			peerScore += scoreMissingAck(node.HopCount)
+		if time.Since(setup.ArrivalTime) > ackSettlingPeriod {
+			if setup.Acknowledged && setup.Prev == p {
+				// NOTE : 1 for each new infraction
+				peerScore += scoreAck(node.HopCount)
+			} else if !setup.Acknowledged && setup.Next == p {
+				// NOTE : 1 for each new infraction
+				peerScore += scoreMissingAck(node.HopCount)
+			}
+		} else {
+			// NOTE : Ignoring this datapoint for scoring purposes
 		}
 	}
 

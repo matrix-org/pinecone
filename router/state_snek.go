@@ -32,9 +32,11 @@ const virtualSnakeMaintainInterval = time.Second
 const virtualSnakeNeighExpiryPeriod = time.Hour
 const bootstrapAttemptResetPoint = math.MaxUint32               // TODO : Pick a more meaningful value
 const neglectedNodeTrackingPoint = 5                            // NOTE : Start tracking a neglected node's bootstraps when their attempt count reaches this number
-const maxNeglectedNodesToTrack = 5                              // NOTE : This prevents an attacker from flooding large amounts of sybils into the network to cause a lot of inappropriate peer disconnections
+const maxNeglectedNodesToTrack = 10                             // NOTE : This prevents an attacker from flooding large amounts of sybils into the network to cause a lot of inappropriate peer disconnections or memory spikes
 const staleInformationPeriod = 3 * virtualSnakeMaintainInterval // Neglected node information older than this could be considered stale
 const peerScoreResetPeriod = 2 * staleInformationPeriod         // How long to wait before clearing peer scores
+const ackSettlingPeriod = time.Second * 2                       // TODO : Arrive at this value better
+// NOTE : Must be < staleInformationPeriod to prevent exploit
 
 type virtualSnakeTable map[virtualSnakeIndex]*virtualSnakeEntry
 
@@ -56,6 +58,7 @@ type virtualSnakeEntry struct {
 
 type neglectedBootstrapData struct {
 	Acknowledged bool
+	ArrivalTime  time.Time
 	Prev         *peer
 	Next         *peer
 }
@@ -64,6 +67,7 @@ type neglectedBootstrapTable map[types.VirtualSnakePathID]*neglectedBootstrapDat
 
 type neglectedSetupData struct {
 	Acknowledged bool
+	ArrivalTime  time.Time
 	Prev         *peer
 	Next         *peer
 }
@@ -74,7 +78,6 @@ type neglectedNodeTable map[types.PublicKey]*neglectedNodeEntry
 
 type neglectedNodeEntry struct {
 	HopCount         uint64                  // The hop count from the attempt when the entry was created
-	LastAttempt      time.Time               // The time that the last attempt was seen
 	FailedBootstraps neglectedBootstrapTable // Map of failed bootstrap attempts
 	FailedSetups     neglectedSetupTable     // Map of failed setup attempts
 }
@@ -372,15 +375,16 @@ func (s *state) _handleBootstrap(from *peer, rx *types.Frame, nexthop *peer, dea
 		// TODO : Change attempt count to a bool since the numeric value cannot be trusted?
 		if bootstrap.AttemptCount >= neglectedNodeTrackingPoint {
 			trackBootstrap := false
-			if entry, ok := s._neglectedNodes[rx.DestinationKey]; ok {
+			if node, ok := s._neglectedNodes[rx.DestinationKey]; ok {
 				trackBootstrap = true
-				entry.LastAttempt = time.Now()
+				if uint64(len(bootstrap.Signatures)) > node.HopCount {
+					node.HopCount = uint64(len(bootstrap.Signatures))
+				}
 			} else {
 				if len(s._neglectedNodes) < maxNeglectedNodesToTrack {
 					trackBootstrap = true
 					entry := &neglectedNodeEntry{
 						HopCount:         uint64(len(bootstrap.Signatures)),
-						LastAttempt:      time.Now(),
 						FailedBootstraps: make(neglectedBootstrapTable),
 						FailedSetups:     make(neglectedSetupTable),
 					}
@@ -388,9 +392,22 @@ func (s *state) _handleBootstrap(from *peer, rx *types.Frame, nexthop *peer, dea
 				} else {
 					for key, node := range s._neglectedNodes {
 						replaceNode := false
+
+						latestArrival := time.UnixMicro(0)
+						for _, info := range node.FailedBootstraps {
+							if info.ArrivalTime.After(latestArrival) {
+								latestArrival = info.ArrivalTime
+							}
+						}
+						for _, info := range node.FailedSetups {
+							if info.ArrivalTime.After(latestArrival) {
+								latestArrival = info.ArrivalTime
+							}
+						}
+
 						if len(bootstrap.Signatures) > int(node.HopCount) {
 							replaceNode = true
-						} else if time.Since(node.LastAttempt) > staleInformationPeriod {
+						} else if time.Since(latestArrival) > staleInformationPeriod {
 							// NOTE : This is to prevent attackers from filling the neglected
 							// node list with artificially high hop counts then not continuing
 							// to send frames.
@@ -400,12 +417,12 @@ func (s *state) _handleBootstrap(from *peer, rx *types.Frame, nexthop *peer, dea
 
 						if replaceNode {
 							trackBootstrap = true
-							// TODO : Does this result in an issue since we no longer can route via reverse path?
+							// NOTE : Reverse path routing guarantees still exist in this case.
+							// We just don't track this node for peer scoring purposes anymore.
 							cachePeerScoreHistory(node)
 							delete(s._neglectedNodes, key)
 							entry := &neglectedNodeEntry{
 								HopCount:         uint64(len(bootstrap.Signatures)),
-								LastAttempt:      time.Now(),
 								FailedBootstraps: make(neglectedBootstrapTable),
 								FailedSetups:     make(neglectedSetupTable),
 							}
@@ -419,6 +436,7 @@ func (s *state) _handleBootstrap(from *peer, rx *types.Frame, nexthop *peer, dea
 			if trackBootstrap {
 				s._neglectedNodes[rx.DestinationKey].FailedBootstraps[bootstrap.PathID] = &neglectedBootstrapData{
 					Acknowledged: false,
+					ArrivalTime:  time.Now(),
 					Prev:         from,
 					Next:         nexthop,
 				}
@@ -778,10 +796,15 @@ func (s *state) _handleSetup(from *peer, rx *types.Frame, nexthop *peer) error {
 		return nil
 	}
 
+	// NOTE : If you only see setups and not bootstraps then you can conclude that you aren't
+	// attached to a malicious peer. Otherwise you would have been guaranteed to also see the
+	// corresponding bootstrap frames from that node.
+	// Other than this case, there are no firm conclusions that can be drawn.
 	if node, ok := s._neglectedNodes[rx.SourceKey]; ok {
 		if nexthop != nil {
 			node.FailedSetups[setup.PathID] = &neglectedSetupData{
 				Acknowledged: false,
+				ArrivalTime:  time.Now(),
 				Prev:         from,
 				Next:         nexthop,
 			}
