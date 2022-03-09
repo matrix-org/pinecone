@@ -73,7 +73,6 @@ type neglectedSetupTable map[types.VirtualSnakePathID]*neglectedSetupData
 type neglectedNodeTable map[types.PublicKey]*neglectedNodeEntry
 
 type neglectedNodeEntry struct {
-	AttemptCount     []uint64                // List of attempt counts seen in the order they were seen
 	HopCount         uint64                  // The hop count from the attempt when the entry was created
 	LastAttempt      time.Time               // The time that the last attempt was seen
 	FailedBootstraps neglectedBootstrapTable // Map of failed bootstrap attempts
@@ -370,25 +369,16 @@ func (s *state) _handleBootstrap(from *peer, rx *types.Frame, nexthop *peer, dea
 	if !deadend {
 		var frame *types.Frame = nil
 		// NOTE : Only add additional signatures if the node is struggling
+		// TODO : Change attempt count to a bool since the numeric value cannot be trusted?
 		if bootstrap.AttemptCount >= neglectedNodeTrackingPoint {
 			trackBootstrap := false
 			if entry, ok := s._neglectedNodes[rx.DestinationKey]; ok {
 				trackBootstrap = true
-				if entry.AttemptCount[len(entry.AttemptCount)-1] < uint64(bootstrap.AttemptCount) {
-					entry.AttemptCount = append(entry.AttemptCount, uint64(bootstrap.AttemptCount))
-					entry.LastAttempt = time.Now()
-				} else {
-					entry.AttemptCount = []uint64{uint64(bootstrap.AttemptCount)}
-					entry.HopCount = uint64(len(bootstrap.Signatures))
-					entry.LastAttempt = time.Now()
-					entry.FailedBootstraps = make(neglectedBootstrapTable)
-					entry.FailedSetups = make(neglectedSetupTable)
-				}
+				entry.LastAttempt = time.Now()
 			} else {
 				if len(s._neglectedNodes) < maxNeglectedNodesToTrack {
 					trackBootstrap = true
 					entry := &neglectedNodeEntry{
-						AttemptCount:     []uint64{uint64(bootstrap.AttemptCount)},
 						HopCount:         uint64(len(bootstrap.Signatures)),
 						LastAttempt:      time.Now(),
 						FailedBootstraps: make(neglectedBootstrapTable),
@@ -401,10 +391,9 @@ func (s *state) _handleBootstrap(from *peer, rx *types.Frame, nexthop *peer, dea
 						if len(bootstrap.Signatures) > int(node.HopCount) {
 							replaceNode = true
 						} else if time.Since(node.LastAttempt) > staleInformationPeriod {
-							// Problem: sybils can overwrite the longest node/s then stop sending failures
-							// what do? maybe if hop count is lower but time since is... something?
-							// maybe if time since is 3 x snake bootstrap attempt interval?
-							// ensures to only track nodes that are continuously failing
+							// NOTE : This is to prevent attackers from filling the neglected
+							// node list with artificially high hop counts then not continuing
+							// to send frames.
 							s.r.log.Println("Replace stale node")
 							replaceNode = true
 						}
@@ -415,7 +404,6 @@ func (s *state) _handleBootstrap(from *peer, rx *types.Frame, nexthop *peer, dea
 							cachePeerScoreHistory(node)
 							delete(s._neglectedNodes, key)
 							entry := &neglectedNodeEntry{
-								AttemptCount:     []uint64{uint64(bootstrap.AttemptCount)},
 								HopCount:         uint64(len(bootstrap.Signatures)),
 								LastAttempt:      time.Now(),
 								FailedBootstraps: make(neglectedBootstrapTable),
