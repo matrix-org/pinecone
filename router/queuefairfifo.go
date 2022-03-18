@@ -24,8 +24,8 @@ const fairFIFOQueueCount = 32
 const fairFIFOQueueSize = trafficBuffer
 
 type fairFIFOQueue struct {
-	queues map[int]chan *types.Frame // queue ID -> frame, map for randomness
-	count  int                       // how many queued items in total?
+	queues map[uint8]chan *types.Frame // queue ID -> frame, map for randomness
+	count  int                         // how many queued items in total?
 	mutex  sync.Mutex
 }
 
@@ -38,30 +38,25 @@ func newFairFIFOQueue(_ int) *fairFIFOQueue {
 func (q *fairFIFOQueue) queuecount() int { // nolint:unused
 	q.mutex.Lock()
 	defer q.mutex.Unlock()
-	return 0
+	return q.count
 }
 
 func (q *fairFIFOQueue) queuesize() int { // nolint:unused
-	q.mutex.Lock()
-	defer q.mutex.Unlock()
-	return fairFIFOQueueCount * trafficBuffer
+	return fairFIFOQueueCount * fairFIFOQueueSize
 }
 
-func (q *fairFIFOQueue) hash(frame *types.Frame) int {
+func (q *fairFIFOQueue) hash(frame *types.Frame) uint8 {
 	var h uint64
 	for _, v := range frame.SourceKey {
 		h += uint64(v)
 	}
-	for _, v := range frame.DestinationKey {
-		h += uint64(v)
-	}
-	return int(h) % fairFIFOQueueCount
+	return uint8(h) % fairFIFOQueueCount
 }
 
 func (q *fairFIFOQueue) push(frame *types.Frame) bool {
 	q.mutex.Lock()
 	defer q.mutex.Unlock()
-	var h int
+	var h uint8
 	if q.count > 0 {
 		h = q.hash(frame) + 1
 	}
@@ -77,8 +72,8 @@ func (q *fairFIFOQueue) push(frame *types.Frame) bool {
 func (q *fairFIFOQueue) reset() {
 	q.mutex.Lock()
 	defer q.mutex.Unlock()
-	q.queues = make(map[int]chan *types.Frame, fairFIFOQueueCount+1)
-	for i := 0; i <= fairFIFOQueueCount; i++ {
+	q.queues = make(map[uint8]chan *types.Frame, fairFIFOQueueCount+1)
+	for i := uint8(0); i <= fairFIFOQueueCount; i++ {
 		q.queues[i] = make(chan *types.Frame, fairFIFOQueueSize)
 	}
 }
@@ -86,15 +81,28 @@ func (q *fairFIFOQueue) reset() {
 func (q *fairFIFOQueue) pop() <-chan *types.Frame {
 	q.mutex.Lock()
 	defer q.mutex.Unlock()
-	if q.count == 0 || len(q.queues[0]) > 0 {
+	switch {
+	case q.count == 0:
+		// Nothing has been queued yet — whatever gets queued up
+		// next will always be in queue 0, so it makes sense to
+		// return the channel for that queue for now.
+		fallthrough
+	case len(q.queues[0]) > 0:
+		// There's something in queue 0 waiting to be sent.
 		return q.queues[0]
-	}
-	for _, queue := range q.queues {
-		if len(queue) > 0 {
-			return queue
+	default:
+		// Select a random queue that has something waiting.
+		for i, queue := range q.queues {
+			if i == 0 {
+				continue
+			}
+			if len(queue) > 0 {
+				return queue
+			}
 		}
 	}
-	return q.queues[0]
+	// We shouldn't ever arrive here.
+	panic("invalid queue state")
 }
 
 func (q *fairFIFOQueue) ack() {
