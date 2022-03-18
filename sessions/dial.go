@@ -23,6 +23,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net"
+	"strings"
 
 	"github.com/matrix-org/pinecone/types"
 )
@@ -40,6 +41,7 @@ func (q *Sessions) DialContext(ctx context.Context, network, addrstr string) (ne
 		return nil, fmt.Errorf("net.SplitHostPort: %w", err)
 	}
 
+	host = strings.TrimSuffix(host, ".pinecone.matrix.org")
 	pk := make(ed25519.PublicKey, ed25519.PublicKeySize)
 	pkb, err := hex.DecodeString(host)
 	if err != nil {
