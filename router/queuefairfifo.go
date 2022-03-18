@@ -29,7 +29,7 @@ type fairFIFOQueue struct {
 	mutex  sync.Mutex
 }
 
-func newFairQueue(_ int) *fairFIFOQueue {
+func newFairFIFOQueue(_ int) *fairFIFOQueue {
 	q := &fairFIFOQueue{}
 	q.reset()
 	return q
