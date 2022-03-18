@@ -126,7 +126,7 @@ func (s *state) _addPeer(conn net.Conn, public types.PublicKey, uri ConnectionUR
 			context:    ctx,
 			cancel:     cancel,
 			proto:      newFIFOQueue(fifoNoMax),
-			traffic:    newFIFOQueue(trafficBuffer),
+			traffic:    newFairFIFOQueue(trafficBuffer),
 		}
 		s._peers[i] = new
 		s.r.log.Println("Connected to peer", new.public.String(), "on port", new.port)

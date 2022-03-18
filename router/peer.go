@@ -61,7 +61,7 @@ type peer struct {
 	keepalives bool               // Not mutated after peer setup.
 	started    atomic.Bool        // Thread-safe toggle for marking a peer as down.
 	proto      *fifoQueue         // Thread-safe queue for outbound protocol messages.
-	traffic    *fifoQueue         // Thread-safe queue for outbound traffic messages.
+	traffic    *fairFIFOQueue     // Thread-safe queue for outbound traffic messages.
 }
 
 func (p *peer) String() string { // to make sim less ugly
