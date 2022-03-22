@@ -20,13 +20,13 @@ type VirtualSnakeBootstrap struct {
 	PathID    VirtualSnakePathID
 	SourceSig VirtualSnakePathSig
 	Root
-	AttemptCount Varu64
-	Signatures   []BootstrapSignature
+	Failing    byte
+	Signatures []BootstrapSignature
 }
 
 func (v *VirtualSnakeBootstrap) MarshalBinary(buf []byte) (int, error) {
 	// TODO : Add hop signatures size to below check
-	if len(buf) < VirtualSnakePathIDLength+v.Root.Length()+ed25519.SignatureSize+v.AttemptCount.Length() {
+	if len(buf) < VirtualSnakePathIDLength+v.Root.Length()+ed25519.SignatureSize+1 {
 		return 0, fmt.Errorf("buffer too small")
 	}
 	offset := 0
@@ -38,11 +38,8 @@ func (v *VirtualSnakeBootstrap) MarshalBinary(buf []byte) (int, error) {
 	}
 	offset += n
 	offset += copy(buf[offset:], v.SourceSig[:])
-	n, err = v.AttemptCount.MarshalBinary(buf[offset:])
-	if err != nil {
-		return 0, fmt.Errorf("v.AttemptCount.MarshalBinary: %w", err)
-	}
-	offset += n
+	buf[offset] = v.Failing
+	offset += 1
 	for _, sig := range v.Signatures {
 		n, err := sig.MarshalBinary(buf[offset:])
 		if err != nil {
@@ -67,11 +64,8 @@ func (v *VirtualSnakeBootstrap) UnmarshalBinary(buf []byte) (int, error) {
 	}
 	offset += l
 	offset += copy(v.SourceSig[:], buf[offset:])
-	l, err = v.AttemptCount.UnmarshalBinary(buf[offset:])
-	if err != nil {
-		return 0, fmt.Errorf("v.AttemptCount.UnmarshalBinary: %w", err)
-	}
-	offset += l
+	v.Failing = buf[offset]
+	offset += 1
 	remaining := buf[offset:]
 	for i := uint64(0); len(remaining) >= BootstrapSignatureSize; i++ {
 		var signature BootstrapSignature

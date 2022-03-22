@@ -177,9 +177,13 @@ func (s *state) _bootstrapNow() {
 	// the same root node when processing the update.
 	b := frameBufferPool.Get().(*[types.MaxFrameSize]byte)
 	defer frameBufferPool.Put(b)
+	failing := byte(0)
+	if s._bootstrapAttempt > neglectedNodeTrackingPoint {
+		failing = 1
+	}
 	bootstrap := types.VirtualSnakeBootstrap{
-		Root:         ann.Root,
-		AttemptCount: types.Varu64(s._bootstrapAttempt + 1),
+		Root:    ann.Root,
+		Failing: failing,
 	}
 
 	// Generate a random path ID.
@@ -372,8 +376,7 @@ func (s *state) _handleBootstrap(from *peer, rx *types.Frame, nexthop *peer, dea
 	if !deadend {
 		var frame *types.Frame = nil
 		// NOTE : Only add additional signatures if the node is struggling
-		// TODO : Change attempt count to a bool since the numeric value cannot be trusted?
-		if bootstrap.AttemptCount >= neglectedNodeTrackingPoint {
+		if bootstrap.Failing > 0 {
 			trackBootstrap := false
 			if node, ok := s._neglectedNodes[rx.DestinationKey]; ok {
 				trackBootstrap = true
