@@ -15,22 +15,27 @@
 package router
 
 import (
+	"math/rand"
 	"sync"
 
 	"github.com/matrix-org/pinecone/types"
 )
 
-const fairFIFOQueueCount = 32
-const fairFIFOQueueSize = trafficBuffer
+const fairFIFOQueueCount = 128
+const fairFIFOQueueSize = 16
 
 type fairFIFOQueue struct {
 	queues map[uint8]chan *types.Frame // queue ID -> frame, map for randomness
 	count  int                         // how many queued items in total?
+	n      uint8                       // which queue did we last iterate on?
+	offset uint64                      // adds an element of randomness to queue assignment
 	mutex  sync.Mutex
 }
 
 func newFairFIFOQueue(_ int) *fairFIFOQueue {
-	q := &fairFIFOQueue{}
+	q := &fairFIFOQueue{
+		offset: rand.Uint64(),
+	}
 	q.reset()
 	return q
 }
@@ -46,8 +51,17 @@ func (q *fairFIFOQueue) queuesize() int { // nolint:unused
 }
 
 func (q *fairFIFOQueue) hash(frame *types.Frame) uint8 {
-	var h uint64
+	h := q.offset
+	for _, v := range frame.Source {
+		h += uint64(v)
+	}
+	for _, v := range frame.Destination {
+		h += uint64(v)
+	}
 	for _, v := range frame.SourceKey {
+		h += uint64(v)
+	}
+	for _, v := range frame.DestinationKey {
 		h += uint64(v)
 	}
 	return uint8(h) % fairFIFOQueueCount
@@ -62,11 +76,14 @@ func (q *fairFIFOQueue) push(frame *types.Frame) bool {
 	}
 	select {
 	case q.queues[h] <- frame:
+		// There is space in the queue
 		q.count++
-		return true
 	default:
-		return false
+		// The queue is full - perform a head drop
+		<-q.queues[h]
+		q.queues[h] <- frame
 	}
+	return true
 }
 
 func (q *fairFIFOQueue) reset() {
@@ -91,12 +108,12 @@ func (q *fairFIFOQueue) pop() <-chan *types.Frame {
 		// There's something in queue 0 waiting to be sent.
 		return q.queues[0]
 	default:
-		// Select a random queue that has something waiting.
-		for i, queue := range q.queues {
-			if i == 0 {
+		// Select the next queue that has something waiting.
+		for i := 0; i <= fairFIFOQueueCount; i++ {
+			if q.n = (q.n + 1) % (fairFIFOQueueCount + 1); q.n == 0 {
 				continue
 			}
-			if len(queue) > 0 {
+			if queue := q.queues[q.n]; len(queue) > 0 {
 				return queue
 			}
 		}
