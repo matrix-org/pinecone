@@ -459,10 +459,8 @@ func (s *state) _handleBootstrap(from *peer, rx *types.Frame, nexthop *peer, dea
 				}
 			}
 
-			// TODO : more failing nodes through me, shorter duration, ie. should being closer
-			// to the problem result in a short score reset period?
-			duration := peerScoreResetPeriod
-			s._peerScoreReset.Reset(duration)
+			s._neglectReset.Reset(peerScoreResetPeriod)
+			from.peerScoreAccumulator.Reset(peerScoreResetPeriod)
 
 			if s.r.public.CompareTo(rx.DestinationKey) > 0 {
 				switch {
@@ -598,10 +596,8 @@ func (s *state) _handleBootstrapACK(from *peer, rx *types.Frame, nexthop *peer, 
 					}
 				}
 				duration := peerScoreResetPeriod
-				s._peerScoreReset.Reset(duration)
-			} else {
-				// TODO : should never get here!
-				// This means we received an ACK to a bootstrap we haven't seen but should have
+				s._neglectReset.Reset(duration)
+				from.peerScoreAccumulator.Reset(peerScoreResetPeriod)
 			}
 		}
 
@@ -820,7 +816,8 @@ func (s *state) _handleSetup(from *peer, rx *types.Frame, nexthop *peer) error {
 				}
 			}
 			duration := peerScoreResetPeriod
-			s._peerScoreReset.Reset(duration)
+			s._neglectReset.Reset(duration)
+			from.peerScoreAccumulator.Reset(peerScoreResetPeriod)
 		}
 	}
 
@@ -976,9 +973,8 @@ func (s *state) _handleSetupACK(from *peer, rx *types.Frame, nexthop *peer) erro
 							}
 						}
 						duration := peerScoreResetPeriod
-						s._peerScoreReset.Reset(duration)
-					} else {
-						// TODO : should never get here!
+						s._neglectReset.Reset(duration)
+						from.peerScoreAccumulator.Reset(peerScoreResetPeriod)
 					}
 				}
 

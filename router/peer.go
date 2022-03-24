@@ -49,22 +49,23 @@ const ( // These need to be a simple int type for gobind/gomobile to export them
 // the peering). Having separate actors allows reads and writes to take
 // place concurrently.
 type peer struct {
-	reader     phony.Inbox
-	writer     phony.Inbox
-	router     *Router
-	port       types.SwitchPortID // Not mutated after peer setup.
-	context    context.Context    // Not mutated after peer setup.
-	cancel     context.CancelFunc // Not mutated after peer setup.
-	conn       net.Conn           // Not mutated after peer setup.
-	uri        ConnectionURI      // Not mutated after peer setup.
-	zone       ConnectionZone     // Not mutated after peer setup.
-	peertype   ConnectionPeerType // Not mutated after peer setup.
-	public     types.PublicKey    // Not mutated after peer setup.
-	keepalives bool               // Not mutated after peer setup.
-	started    atomic.Bool        // Thread-safe toggle for marking a peer as down.
-	proto      *fifoQueue         // Thread-safe queue for outbound protocol messages.
-	traffic    *lifoQueue         // Thread-safe queue for outbound traffic messages.
-	scoreCache float64            // Tracks peer score information from replaced sources
+	reader               phony.Inbox
+	writer               phony.Inbox
+	router               *Router
+	port                 types.SwitchPortID // Not mutated after peer setup.
+	context              context.Context    // Not mutated after peer setup.
+	cancel               context.CancelFunc // Not mutated after peer setup.
+	conn                 net.Conn           // Not mutated after peer setup.
+	uri                  ConnectionURI      // Not mutated after peer setup.
+	zone                 ConnectionZone     // Not mutated after peer setup.
+	peertype             ConnectionPeerType // Not mutated after peer setup.
+	public               types.PublicKey    // Not mutated after peer setup.
+	keepalives           bool               // Not mutated after peer setup.
+	started              atomic.Bool        // Thread-safe toggle for marking a peer as down.
+	proto                *fifoQueue         // Thread-safe queue for outbound protocol messages.
+	traffic              *lifoQueue         // Thread-safe queue for outbound traffic messages.
+	scoreCache           float64            // Tracks peer score information from replaced sources
+	peerScoreAccumulator *time.Timer        // Accumulates peer merit points over time.
 }
 
 func (p *peer) EvaluatePeerScore(bootstraps neglectedNodeTable) int {
@@ -82,7 +83,7 @@ func (p *peer) EvaluatePeerScore(bootstraps neglectedNodeTable) int {
 
 	peerScore += float64(p.scoreCache)
 
-	p.router.log.Printf("PeerScore: %s --- %f", p.public.String()[:8], peerScore)
+	// p.router.log.Printf("PeerScore: %s --- %f", p.public.String()[:8], peerScore)
 	return int(peerScore)
 }
 

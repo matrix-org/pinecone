@@ -57,7 +57,7 @@ type state struct {
 	_snaketimer       *time.Timer        // Virtual snake maintenance timer
 	_waiting          bool               // Is the tree waiting to reparent?
 	_filterPacket     FilterFn           // Function called when forwarding packets
-	_peerScoreReset   *time.Timer
+	_neglectReset     *time.Timer
 }
 
 // _start resets the state and starts tree and virtual snake maintenance.
@@ -88,9 +88,9 @@ func (s *state) _start() {
 		})
 	}
 
-	if s._peerScoreReset == nil {
-		s._peerScoreReset = time.AfterFunc(0, func() {
-			s.Act(nil, s._resetPeerScoring)
+	if s._neglectReset == nil {
+		s._neglectReset = time.AfterFunc(0, func() {
+			s.Act(nil, s._resetNeglectedNodes)
 		})
 	}
 
@@ -98,20 +98,18 @@ func (s *state) _start() {
 	s._maintainSnakeIn(0)
 }
 
-func (s *state) _resetPeerScoring() {
-	s.r.log.Println("Reseting peer scores")
-	// TODO : Only reset scoring for a specific peer/peerset?
-	// maybe only start reset timers on a per peer basis as well
-	// if you are seeing issues correlated with a specific peer, then you need to time
-	// issues seen from that peer, not just any peer
+func (s *state) _resetNeglectedNodes() {
 	for pk := range s._neglectedNodes {
 		delete(s._neglectedNodes, pk)
 	}
-	for _, peer := range s._peers {
-		if peer != nil {
-			peer.scoreCache = 0
-		}
+}
+
+func (s *state) _accumulatePeerScore(p *peer) {
+	if p != nil && p.scoreCache < 100 {
+		p.scoreCache += 5
 	}
+
+	p.peerScoreAccumulator.Reset(peerScoreResetPeriod)
 }
 
 // _maintainTreeIn resets the tree maintenance timer to the specified
@@ -149,19 +147,26 @@ func (s *state) _addPeer(conn net.Conn, public types.PublicKey, uri ConnectionUR
 		}
 		ctx, cancel := context.WithCancel(s.r.context)
 		new = &peer{
-			router:     s.r,
-			port:       types.SwitchPortID(i),
-			conn:       conn,
-			public:     public,
-			uri:        uri,
-			zone:       zone,
-			peertype:   peertype,
-			keepalives: keepalives,
-			context:    ctx,
-			cancel:     cancel,
-			proto:      newFIFOQueue(),
-			traffic:    newLIFOQueue(trafficBuffer),
+			router:               s.r,
+			port:                 types.SwitchPortID(i),
+			conn:                 conn,
+			public:               public,
+			uri:                  uri,
+			zone:                 zone,
+			peertype:             peertype,
+			keepalives:           keepalives,
+			context:              ctx,
+			cancel:               cancel,
+			proto:                newFIFOQueue(),
+			traffic:              newLIFOQueue(trafficBuffer),
+			peerScoreAccumulator: nil,
 		}
+		if new.peerScoreAccumulator == nil {
+			new.peerScoreAccumulator = time.AfterFunc(peerScoreResetPeriod, func() {
+				s.Act(nil, func() { s._accumulatePeerScore(new) })
+			})
+		}
+
 		s._peers[i] = new
 		s.r.log.Println("Connected to peer", new.public.String(), "on port", new.port)
 		v, _ := s.r.active.LoadOrStore(hex.EncodeToString(new.public[:])+string(zone), atomic.NewUint64(0))
