@@ -227,6 +227,7 @@ func (s *state) _bootstrapNow() {
 
 type virtualSnakeNextHopParams struct {
 	isBootstrap       bool
+	isTraffic         bool
 	destinationKey    types.PublicKey
 	publicKey         types.PublicKey
 	parentPeer        *peer
@@ -242,6 +243,7 @@ type virtualSnakeNextHopParams struct {
 func (s *state) _nextHopsSNEK(rx *types.Frame, bootstrap bool) *peer {
 	return getNextHopSNEK(virtualSnakeNextHopParams{
 		bootstrap,
+		rx.Type == types.TypeVirtualSnakeRouted || rx.Type == types.TypeTreeRouted,
 		rx.DestinationKey,
 		s.r.public,
 		s._parent,
@@ -260,10 +262,12 @@ func getNextHopSNEK(params virtualSnakeNextHopParams) *peer {
 	}
 
 	// We start off with our own key as the best key. Any suitable next-hop
-	// candidate has to improve on our own key in order to forward the frame,
-	// otherwise we'll return the local router port instead.
+	// candidate has to improve on our own key in order to forward the frame.
+	var bestPeer *peer
+	if !params.isTraffic {
+		bestPeer = params.selfPeer
+	}
 	bestKey := params.publicKey
-	bestPeer := params.selfPeer
 	destKey := params.destinationKey
 
 	// newCandidate updates the best key and best peer with new candidates.

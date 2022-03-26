@@ -157,8 +157,8 @@ func (s *state) _addPeer(conn net.Conn, public types.PublicKey, uri ConnectionUR
 			keepalives:           keepalives,
 			context:              ctx,
 			cancel:               cancel,
-			proto:                newFIFOQueue(),
-			traffic:              newLIFOQueue(trafficBuffer),
+			proto:                newFIFOQueue(fifoNoMax),
+			traffic:              newFairFIFOQueue(trafficBuffer),
 			peerScoreAccumulator: nil,
 		}
 		if new.peerScoreAccumulator == nil {

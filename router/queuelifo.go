@@ -20,7 +20,7 @@ import (
 	"github.com/matrix-org/pinecone/types"
 )
 
-type lifoQueue struct {
+type lifoQueue struct { // nolint:unused
 	frames []*types.Frame
 	size   int
 	count  int
@@ -28,7 +28,7 @@ type lifoQueue struct {
 	notifs chan struct{}
 }
 
-func newLIFOQueue(size int) *lifoQueue {
+func newLIFOQueue(size int) *lifoQueue { // nolint:unused,deadcode
 	q := &lifoQueue{
 		frames: make([]*types.Frame, size),
 		size:   size,
@@ -49,7 +49,7 @@ func (q *lifoQueue) queuesize() int { // nolint:unused
 	return q.size
 }
 
-func (q *lifoQueue) push(frame *types.Frame) bool {
+func (q *lifoQueue) push(frame *types.Frame) bool { // nolint:unused
 	q.mutex.Lock()
 	defer q.mutex.Unlock()
 	if q.count == q.size {
@@ -66,7 +66,7 @@ func (q *lifoQueue) push(frame *types.Frame) bool {
 	return true
 }
 
-func (q *lifoQueue) pop() (*types.Frame, bool) {
+func (q *lifoQueue) pop() (*types.Frame, bool) { // nolint:unused
 	q.mutex.Lock()
 	defer q.mutex.Unlock()
 	if q.count == 0 {
@@ -95,7 +95,7 @@ func (q *lifoQueue) reset() { // nolint:unused
 	q.notifs = make(chan struct{}, q.size)
 }
 
-func (q *lifoQueue) wait() <-chan struct{} {
+func (q *lifoQueue) wait() <-chan struct{} { // nolint:unused
 	q.mutex.Lock()
 	defer q.mutex.Unlock()
 	return q.notifs
