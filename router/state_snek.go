@@ -460,7 +460,9 @@ func (s *state) _handleBootstrap(from *peer, rx *types.Frame, nexthop *peer, dea
 			}
 
 			s._neglectReset.Reset(peerScoreResetPeriod)
-			from.peerScoreAccumulator.Reset(peerScoreResetPeriod)
+			if nexthop.started.Load() {
+				nexthop.peerScoreAccumulator.Reset(peerScoreResetPeriod)
+			}
 
 			if s.r.public.CompareTo(rx.DestinationKey) > 0 {
 				switch {
@@ -600,9 +602,10 @@ func (s *state) _handleBootstrapACK(from *peer, rx *types.Frame, nexthop *peer, 
 						longestHopCount = int(node.HopCount)
 					}
 				}
-				duration := peerScoreResetPeriod
-				s._neglectReset.Reset(duration)
-				from.peerScoreAccumulator.Reset(peerScoreResetPeriod)
+				s._neglectReset.Reset(peerScoreResetPeriod)
+				if data.Prev.started.Load() {
+					data.Prev.peerScoreAccumulator.Reset(peerScoreResetPeriod)
+				}
 			}
 		}
 
@@ -825,9 +828,10 @@ func (s *state) _handleSetup(from *peer, rx *types.Frame, nexthop *peer) error {
 					longestHopCount = int(node.HopCount)
 				}
 			}
-			duration := peerScoreResetPeriod
-			s._neglectReset.Reset(duration)
-			from.peerScoreAccumulator.Reset(peerScoreResetPeriod)
+			s._neglectReset.Reset(peerScoreResetPeriod)
+			if nexthop.started.Load() {
+				nexthop.peerScoreAccumulator.Reset(peerScoreResetPeriod)
+			}
 		}
 	}
 
@@ -986,9 +990,10 @@ func (s *state) _handleSetupACK(from *peer, rx *types.Frame, nexthop *peer) erro
 								longestHopCount = int(node.HopCount)
 							}
 						}
-						duration := peerScoreResetPeriod
-						s._neglectReset.Reset(duration)
-						from.peerScoreAccumulator.Reset(peerScoreResetPeriod)
+						s._neglectReset.Reset(peerScoreResetPeriod)
+						if data.Prev.started.Load() {
+							data.Prev.peerScoreAccumulator.Reset(peerScoreResetPeriod)
+						}
 					}
 				}
 
