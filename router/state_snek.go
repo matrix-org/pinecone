@@ -579,6 +579,11 @@ func (s *state) _handleBootstrapACK(from *peer, rx *types.Frame, nexthop *peer, 
 		knownFailure := false
 		if node, ok := s._neglectedNodes[rx.SourceKey]; ok {
 			if data, ok := node.FailedSetups[bootstrapACK.PathID]; ok {
+				if data.Acknowledged {
+					// NOTE : This peer is sending us duplicate frames.
+					return nil
+				}
+
 				knownFailure = true
 				data.Prev.send(rx)
 				data.Acknowledged = true
@@ -795,6 +800,11 @@ func (s *state) _handleSetup(from *peer, rx *types.Frame, nexthop *peer) error {
 	// Other than this case, there are no firm conclusions that can be drawn.
 	if node, ok := s._neglectedNodes[rx.SourceKey]; ok {
 		if nexthop != nil {
+			if _, ok := node.FailedSetups[setup.PathID]; ok {
+				// NOTE : This peer is sending us duplicate frames.
+				return nil
+			}
+
 			node.FailedSetups[setup.PathID] = &neglectedSetupData{
 				Acknowledged: false,
 				ArrivalTime:  time.Now(),
@@ -958,6 +968,10 @@ func (s *state) _handleSetupACK(from *peer, rx *types.Frame, nexthop *peer) erro
 			if v.Source.local() || v.Source.send(rx) {
 				if node, ok := s._neglectedNodes[rx.SourceKey]; ok {
 					if data, ok := node.FailedSetups[setup.PathID]; ok {
+						if data.Acknowledged {
+							// NOTE : This peer is sending us duplicate frames.
+							continue
+						}
 						data.Acknowledged = true
 						score := data.Prev.EvaluatePeerScore(s._neglectedNodes)
 						if score <= lowScoreThreshold {
