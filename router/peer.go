@@ -83,7 +83,7 @@ func (p *peer) EvaluatePeerScore(bootstraps neglectedNodeTable) int {
 
 	peerScore += float64(p.scoreCache)
 
-	// p.router.log.Printf("PeerScore: %s --- %f", p.public.String()[:8], peerScore)
+	p.router.log.Printf("PeerScore: %s --- %f", p.public.String()[:8], peerScore)
 	return int(peerScore)
 }
 
