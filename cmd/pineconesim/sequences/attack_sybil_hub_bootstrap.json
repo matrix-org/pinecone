@@ -1,0 +1,893 @@
+{
+    "EventSequence": [
+        {
+            "Command": "RemoveNode",
+            "Data": {
+                "Name": "m1"
+            }
+        },
+        {
+            "Command": "RemoveNode",
+            "Data": {
+                "Name": "m2"
+            }
+        },
+        {
+            "Command": "RemoveNode",
+            "Data": {
+                "Name": "m3"
+            }
+        },
+        {
+            "Command": "RemoveNode",
+            "Data": {
+                "Name": "m4"
+            }
+        },
+        {
+            "Command": "RemoveNode",
+            "Data": {
+                "Name": "m5"
+            }
+        },
+        {
+            "Command": "RemoveNode",
+            "Data": {
+                "Name": "m6"
+            }
+        },
+        {
+            "Command": "RemoveNode",
+            "Data": {
+                "Name": "m7"
+            }
+        },
+        {
+            "Command": "RemoveNode",
+            "Data": {
+                "Name": "m8"
+            }
+        },
+        {
+            "Command": "RemoveNode",
+            "Data": {
+                "Name": "m9"
+            }
+        },
+        {
+            "Command": "RemoveNode",
+            "Data": {
+                "Name": "m10"
+            }
+        },
+        {
+            "Command": "RemoveNode",
+            "Data": {
+                "Name": "m11"
+            }
+        },
+        {
+            "Command": "RemoveNode",
+            "Data": {
+                "Name": "m12"
+            }
+        },
+        {
+            "Command": "RemoveNode",
+            "Data": {
+                "Name": "m13"
+            }
+        },
+        {
+            "Command": "RemoveNode",
+            "Data": {
+                "Name": "m14"
+            }
+        },
+        {
+            "Command": "RemoveNode",
+            "Data": {
+                "Name": "m15"
+            }
+        },
+        {
+            "Command": "RemoveNode",
+            "Data": {
+                "Name": "Sybil Proxy"
+            }
+        },
+        {
+            "Command": "RemoveNode",
+            "Data": {
+                "Name": "h1"
+            }
+        },
+        {
+            "Command": "RemoveNode",
+            "Data": {
+                "Name": "h2"
+            }
+        },
+        {
+            "Command": "RemoveNode",
+            "Data": {
+                "Name": "h3"
+            }
+        },
+        {
+            "Command": "RemoveNode",
+            "Data": {
+                "Name": "h4"
+            }
+        },
+        {
+            "Command": "RemoveNode",
+            "Data": {
+                "Name": "h5"
+            }
+        },
+        {
+            "Command": "RemoveNode",
+            "Data": {
+                "Name": "h6"
+            }
+        },
+        {
+            "Command": "RemoveNode",
+            "Data": {
+                "Name": "h7"
+            }
+        },
+        {
+            "Command": "RemoveNode",
+            "Data": {
+                "Name": "h8"
+            }
+        },
+        {
+            "Command": "RemoveNode",
+            "Data": {
+                "Name": "h9"
+            }
+        },
+        {
+            "Command": "RemoveNode",
+            "Data": {
+                "Name": "h10"
+            }
+        },
+        {
+            "Command": "RemoveNode",
+            "Data": {
+                "Name": "h11"
+            }
+        },
+        {
+            "Command": "RemoveNode",
+            "Data": {
+                "Name": "h12"
+            }
+        },
+        {
+            "Command": "RemoveNode",
+            "Data": {
+                "Name": "h13"
+            }
+        },
+        {
+            "Command": "RemoveNode",
+            "Data": {
+                "Name": "h14"
+            }
+        },
+        {
+            "Command": "RemoveNode",
+            "Data": {
+                "Name": "h15"
+            }
+        },
+        {
+            "Command": "AddNode",
+            "Data": {
+                "Name": "m1",
+                "NodeType": "GeneralAdversary"
+            }
+        },
+        {
+            "Command": "AddNode",
+            "Data": {
+                "Name": "m2",
+                "NodeType": "GeneralAdversary"
+            }
+        },
+        {
+            "Command": "AddNode",
+            "Data": {
+                "Name": "m3",
+                "NodeType": "GeneralAdversary"
+            }
+        },
+        {
+            "Command": "AddNode",
+            "Data": {
+                "Name": "m4",
+                "NodeType": "GeneralAdversary"
+            }
+        },
+        {
+            "Command": "AddNode",
+            "Data": {
+                "Name": "m5",
+                "NodeType": "GeneralAdversary"
+            }
+        },
+        {
+            "Command": "AddNode",
+            "Data": {
+                "Name": "m6",
+                "NodeType": "GeneralAdversary"
+            }
+        },
+        {
+            "Command": "AddNode",
+            "Data": {
+                "Name": "m7",
+                "NodeType": "GeneralAdversary"
+            }
+        },
+        {
+            "Command": "AddNode",
+            "Data": {
+                "Name": "m8",
+                "NodeType": "GeneralAdversary"
+            }
+        },
+        {
+            "Command": "AddNode",
+            "Data": {
+                "Name": "m9",
+                "NodeType": "GeneralAdversary"
+            }
+        },
+        {
+            "Command": "AddNode",
+            "Data": {
+                "Name": "m10",
+                "NodeType": "GeneralAdversary"
+            }
+        },
+        {
+            "Command": "AddNode",
+            "Data": {
+                "Name": "m11",
+                "NodeType": "GeneralAdversary"
+            }
+        },
+        {
+            "Command": "AddNode",
+            "Data": {
+                "Name": "m12",
+                "NodeType": "GeneralAdversary"
+            }
+        },
+        {
+            "Command": "AddNode",
+            "Data": {
+                "Name": "m13",
+                "NodeType": "GeneralAdversary"
+            }
+        },
+        {
+            "Command": "AddNode",
+            "Data": {
+                "Name": "m14",
+                "NodeType": "GeneralAdversary"
+            }
+        },
+        {
+            "Command": "AddNode",
+            "Data": {
+                "Name": "m15",
+                "NodeType": "GeneralAdversary"
+            }
+        },
+        {
+            "Command": "AddNode",
+            "Data": {
+                "Name": "Sybil Proxy",
+                "NodeType": "GeneralAdversary"
+            }
+        },
+        {
+            "Command": "AddNode",
+            "Data": {
+                "Name": "h1",
+                "NodeType": "Default"
+            }
+        },
+        {
+            "Command": "AddNode",
+            "Data": {
+                "Name": "h2",
+                "NodeType": "Default"
+            }
+        },
+        {
+            "Command": "AddNode",
+            "Data": {
+                "Name": "h3",
+                "NodeType": "Default"
+            }
+        },
+        {
+            "Command": "AddNode",
+            "Data": {
+                "Name": "h4",
+                "NodeType": "Default"
+            }
+        },
+        {
+            "Command": "AddNode",
+            "Data": {
+                "Name": "h5",
+                "NodeType": "Default"
+            }
+        },
+        {
+            "Command": "AddNode",
+            "Data": {
+                "Name": "h6",
+                "NodeType": "Default"
+            }
+        },
+        {
+            "Command": "AddNode",
+            "Data": {
+                "Name": "h7",
+                "NodeType": "Default"
+            }
+        },
+        {
+            "Command": "AddNode",
+            "Data": {
+                "Name": "h8",
+                "NodeType": "Default"
+            }
+        },
+        {
+            "Command": "AddNode",
+            "Data": {
+                "Name": "h9",
+                "NodeType": "Default"
+            }
+        },
+        {
+            "Command": "AddNode",
+            "Data": {
+                "Name": "h10",
+                "NodeType": "Default"
+            }
+        },
+        {
+            "Command": "AddNode",
+            "Data": {
+                "Name": "h11",
+                "NodeType": "Default"
+            }
+        },
+        {
+            "Command": "AddNode",
+            "Data": {
+                "Name": "h12",
+                "NodeType": "Default"
+            }
+        },
+        {
+            "Command": "AddNode",
+            "Data": {
+                "Name": "h13",
+                "NodeType": "Default"
+            }
+        },
+        {
+            "Command": "AddNode",
+            "Data": {
+                "Name": "h14",
+                "NodeType": "Default"
+            }
+        },
+        {
+            "Command": "AddNode",
+            "Data": {
+                "Name": "h15",
+                "NodeType": "Default"
+            }
+        },
+        {
+            "Command": "ConfigureAdversaryDefaults",
+            "Data": {
+                "Node": "m1",
+                "DropRates": {
+                    "Overall": "0",
+                    "Keepalive": "0",
+	                  "TreeAnnouncement": "0",
+	                  "TreeRouted": "0",
+	                  "VirtualSnakeBootstrap": "100",
+	                  "VirtualSnakeBootstrapACK": "0",
+	                  "VirtualSnakeSetup": "0",
+	                  "VirtualSnakeSetupACK": "0",
+	                  "VirtualSnakeTeardown": "0",
+	                  "VirtualSnakeRouted": "0"
+                }
+            }
+        },
+        {
+            "Command": "ConfigureAdversaryDefaults",
+            "Data": {
+                "Node": "m2",
+                "DropRates": {
+                    "Overall": "0",
+                    "Keepalive": "0",
+	                  "TreeAnnouncement": "0",
+	                  "TreeRouted": "0",
+	                  "VirtualSnakeBootstrap": "100",
+	                  "VirtualSnakeBootstrapACK": "0",
+	                  "VirtualSnakeSetup": "0",
+	                  "VirtualSnakeSetupACK": "0",
+	                  "VirtualSnakeTeardown": "0",
+	                  "VirtualSnakeRouted": "0"
+                }
+            }
+        },
+        {
+            "Command": "ConfigureAdversaryDefaults",
+            "Data": {
+                "Node": "m3",
+                "DropRates": {
+                    "Overall": "0",
+                    "Keepalive": "0",
+	                  "TreeAnnouncement": "0",
+	                  "TreeRouted": "0",
+	                  "VirtualSnakeBootstrap": "100",
+	                  "VirtualSnakeBootstrapACK": "0",
+	                  "VirtualSnakeSetup": "0",
+	                  "VirtualSnakeSetupACK": "0",
+	                  "VirtualSnakeTeardown": "0",
+	                  "VirtualSnakeRouted": "0"
+                }
+            }
+        },
+        {
+            "Command": "ConfigureAdversaryDefaults",
+            "Data": {
+                "Node": "m4",
+                "DropRates": {
+                    "Overall": "0",
+                    "Keepalive": "0",
+	                  "TreeAnnouncement": "0",
+	                  "TreeRouted": "0",
+	                  "VirtualSnakeBootstrap": "100",
+	                  "VirtualSnakeBootstrapACK": "0",
+	                  "VirtualSnakeSetup": "0",
+	                  "VirtualSnakeSetupACK": "0",
+	                  "VirtualSnakeTeardown": "0",
+	                  "VirtualSnakeRouted": "0"
+                }
+            }
+        },
+        {
+            "Command": "ConfigureAdversaryDefaults",
+            "Data": {
+                "Node": "m5",
+                "DropRates": {
+                    "Overall": "0",
+                    "Keepalive": "0",
+	                  "TreeAnnouncement": "0",
+	                  "TreeRouted": "0",
+	                  "VirtualSnakeBootstrap": "100",
+	                  "VirtualSnakeBootstrapACK": "0",
+	                  "VirtualSnakeSetup": "0",
+	                  "VirtualSnakeSetupACK": "0",
+	                  "VirtualSnakeTeardown": "0",
+	                  "VirtualSnakeRouted": "0"
+                }
+            }
+        },
+        {
+            "Command": "ConfigureAdversaryDefaults",
+            "Data": {
+                "Node": "m6",
+                "DropRates": {
+                    "Overall": "0",
+                    "Keepalive": "0",
+	                  "TreeAnnouncement": "0",
+	                  "TreeRouted": "0",
+	                  "VirtualSnakeBootstrap": "100",
+	                  "VirtualSnakeBootstrapACK": "0",
+	                  "VirtualSnakeSetup": "0",
+	                  "VirtualSnakeSetupACK": "0",
+	                  "VirtualSnakeTeardown": "0",
+	                  "VirtualSnakeRouted": "0"
+                }
+            }
+        },
+        {
+            "Command": "ConfigureAdversaryDefaults",
+            "Data": {
+                "Node": "m7",
+                "DropRates": {
+                    "Overall": "0",
+                    "Keepalive": "0",
+	                  "TreeAnnouncement": "0",
+	                  "TreeRouted": "0",
+	                  "VirtualSnakeBootstrap": "100",
+	                  "VirtualSnakeBootstrapACK": "0",
+	                  "VirtualSnakeSetup": "0",
+	                  "VirtualSnakeSetupACK": "0",
+	                  "VirtualSnakeTeardown": "0",
+	                  "VirtualSnakeRouted": "0"
+                }
+            }
+        },
+        {
+            "Command": "ConfigureAdversaryDefaults",
+            "Data": {
+                "Node": "m8",
+                "DropRates": {
+                    "Overall": "0",
+                    "Keepalive": "0",
+	                  "TreeAnnouncement": "0",
+	                  "TreeRouted": "0",
+	                  "VirtualSnakeBootstrap": "100",
+	                  "VirtualSnakeBootstrapACK": "0",
+	                  "VirtualSnakeSetup": "0",
+	                  "VirtualSnakeSetupACK": "0",
+	                  "VirtualSnakeTeardown": "0",
+	                  "VirtualSnakeRouted": "0"
+                }
+            }
+        },
+        {
+            "Command": "ConfigureAdversaryDefaults",
+            "Data": {
+                "Node": "m9",
+                "DropRates": {
+                    "Overall": "0",
+                    "Keepalive": "0",
+	                  "TreeAnnouncement": "0",
+	                  "TreeRouted": "0",
+	                  "VirtualSnakeBootstrap": "100",
+	                  "VirtualSnakeBootstrapACK": "0",
+	                  "VirtualSnakeSetup": "0",
+	                  "VirtualSnakeSetupACK": "0",
+	                  "VirtualSnakeTeardown": "0",
+	                  "VirtualSnakeRouted": "0"
+                }
+            }
+        },
+        {
+            "Command": "ConfigureAdversaryDefaults",
+            "Data": {
+                "Node": "m10",
+                "DropRates": {
+                    "Overall": "0",
+                    "Keepalive": "0",
+	                  "TreeAnnouncement": "0",
+	                  "TreeRouted": "0",
+	                  "VirtualSnakeBootstrap": "100",
+	                  "VirtualSnakeBootstrapACK": "0",
+	                  "VirtualSnakeSetup": "0",
+	                  "VirtualSnakeSetupACK": "0",
+	                  "VirtualSnakeTeardown": "0",
+	                  "VirtualSnakeRouted": "0"
+                }
+            }
+        },
+        {
+            "Command": "ConfigureAdversaryDefaults",
+            "Data": {
+                "Node": "m11",
+                "DropRates": {
+                    "Overall": "0",
+                    "Keepalive": "0",
+	                  "TreeAnnouncement": "0",
+	                  "TreeRouted": "0",
+	                  "VirtualSnakeBootstrap": "100",
+	                  "VirtualSnakeBootstrapACK": "0",
+	                  "VirtualSnakeSetup": "0",
+	                  "VirtualSnakeSetupACK": "0",
+	                  "VirtualSnakeTeardown": "0",
+	                  "VirtualSnakeRouted": "0"
+                }
+            }
+        },
+        {
+            "Command": "ConfigureAdversaryDefaults",
+            "Data": {
+                "Node": "m12",
+                "DropRates": {
+                    "Overall": "0",
+                    "Keepalive": "0",
+	                  "TreeAnnouncement": "0",
+	                  "TreeRouted": "0",
+	                  "VirtualSnakeBootstrap": "100",
+	                  "VirtualSnakeBootstrapACK": "0",
+	                  "VirtualSnakeSetup": "0",
+	                  "VirtualSnakeSetupACK": "0",
+	                  "VirtualSnakeTeardown": "0",
+	                  "VirtualSnakeRouted": "0"
+                }
+            }
+        },
+        {
+            "Command": "ConfigureAdversaryDefaults",
+            "Data": {
+                "Node": "m13",
+                "DropRates": {
+                    "Overall": "0",
+                    "Keepalive": "0",
+	                  "TreeAnnouncement": "0",
+	                  "TreeRouted": "0",
+	                  "VirtualSnakeBootstrap": "100",
+	                  "VirtualSnakeBootstrapACK": "0",
+	                  "VirtualSnakeSetup": "0",
+	                  "VirtualSnakeSetupACK": "0",
+	                  "VirtualSnakeTeardown": "0",
+	                  "VirtualSnakeRouted": "0"
+                }
+            }
+        },
+        {
+            "Command": "ConfigureAdversaryDefaults",
+            "Data": {
+                "Node": "m14",
+                "DropRates": {
+                    "Overall": "0",
+                    "Keepalive": "0",
+	                  "TreeAnnouncement": "0",
+	                  "TreeRouted": "0",
+	                  "VirtualSnakeBootstrap": "100",
+	                  "VirtualSnakeBootstrapACK": "0",
+	                  "VirtualSnakeSetup": "0",
+	                  "VirtualSnakeSetupACK": "0",
+	                  "VirtualSnakeTeardown": "0",
+	                  "VirtualSnakeRouted": "0"
+                }
+            }
+        },
+        {
+            "Command": "ConfigureAdversaryDefaults",
+            "Data": {
+                "Node": "m15",
+                "DropRates": {
+                    "Overall": "0",
+                    "Keepalive": "0",
+	                  "TreeAnnouncement": "0",
+	                  "TreeRouted": "0",
+	                  "VirtualSnakeBootstrap": "100",
+	                  "VirtualSnakeBootstrapACK": "0",
+	                  "VirtualSnakeSetup": "0",
+	                  "VirtualSnakeSetupACK": "0",
+	                  "VirtualSnakeTeardown": "0",
+	                  "VirtualSnakeRouted": "0"
+                }
+            }
+        },
+        {
+            "Command": "AddPeer",
+            "Data": {
+                "Node": "h1",
+                "Peer": "h2"
+            }
+        },
+        {
+            "Command": "AddPeer",
+            "Data": {
+                "Node": "h1",
+                "Peer": "h3"
+            }
+        },
+        {
+            "Command": "AddPeer",
+            "Data": {
+                "Node": "h1",
+                "Peer": "h4"
+            }
+        },
+        {
+            "Command": "AddPeer",
+            "Data": {
+                "Node": "h1",
+                "Peer": "h5"
+            }
+        },
+        {
+            "Command": "AddPeer",
+            "Data": {
+                "Node": "h1",
+                "Peer": "h6"
+            }
+        },
+        {
+            "Command": "AddPeer",
+            "Data": {
+                "Node": "h1",
+                "Peer": "h7"
+            }
+        },
+        {
+            "Command": "AddPeer",
+            "Data": {
+                "Node": "h1",
+                "Peer": "h8"
+            }
+        },
+        {
+            "Command": "AddPeer",
+            "Data": {
+                "Node": "h1",
+                "Peer": "h9"
+            }
+        },
+        {
+            "Command": "AddPeer",
+            "Data": {
+                "Node": "h1",
+                "Peer": "h10"
+            }
+        },
+        {
+            "Command": "AddPeer",
+            "Data": {
+                "Node": "h1",
+                "Peer": "h11"
+            }
+        },
+        {
+            "Command": "AddPeer",
+            "Data": {
+                "Node": "h1",
+                "Peer": "h12"
+            }
+        },
+        {
+            "Command": "AddPeer",
+            "Data": {
+                "Node": "h1",
+                "Peer": "h13"
+            }
+        },
+        {
+            "Command": "AddPeer",
+            "Data": {
+                "Node": "h1",
+                "Peer": "h14"
+            }
+        },
+        {
+            "Command": "AddPeer",
+            "Data": {
+                "Node": "h1",
+                "Peer": "h15"
+            }
+        },
+        {
+            "Command": "AddPeer",
+            "Data": {
+                "Node": "Sybil Proxy",
+                "Peer": "m1"
+            }
+        },
+        {
+            "Command": "AddPeer",
+            "Data": {
+                "Node": "Sybil Proxy",
+                "Peer": "m2"
+            }
+        },
+        {
+            "Command": "AddPeer",
+            "Data": {
+                "Node": "Sybil Proxy",
+                "Peer": "m3"
+            }
+        },
+        {
+            "Command": "AddPeer",
+            "Data": {
+                "Node": "Sybil Proxy",
+                "Peer": "m4"
+            }
+        },
+        {
+            "Command": "AddPeer",
+            "Data": {
+                "Node": "Sybil Proxy",
+                "Peer": "m5"
+            }
+        },
+        {
+            "Command": "AddPeer",
+            "Data": {
+                "Node": "Sybil Proxy",
+                "Peer": "m6"
+            }
+        },
+        {
+            "Command": "AddPeer",
+            "Data": {
+                "Node": "Sybil Proxy",
+                "Peer": "m7"
+            }
+        },
+        {
+            "Command": "AddPeer",
+            "Data": {
+                "Node": "Sybil Proxy",
+                "Peer": "m8"
+            }
+        },
+        {
+            "Command": "AddPeer",
+            "Data": {
+                "Node": "Sybil Proxy",
+                "Peer": "m9"
+            }
+        },
+        {
+            "Command": "AddPeer",
+            "Data": {
+                "Node": "Sybil Proxy",
+                "Peer": "m10"
+            }
+        },
+        {
+            "Command": "AddPeer",
+            "Data": {
+                "Node": "Sybil Proxy",
+                "Peer": "m11"
+            }
+        },
+        {
+            "Command": "AddPeer",
+            "Data": {
+                "Node": "Sybil Proxy",
+                "Peer": "m12"
+            }
+        },
+        {
+            "Command": "AddPeer",
+            "Data": {
+                "Node": "Sybil Proxy",
+                "Peer": "m13"
+            }
+        },
+        {
+            "Command": "AddPeer",
+            "Data": {
+                "Node": "Sybil Proxy",
+                "Peer": "m14"
+            }
+        },
+        {
+            "Command": "AddPeer",
+            "Data": {
+                "Node": "Sybil Proxy",
+                "Peer": "m15"
+            }
+        },
+        {
+            "Command": "Delay",
+            "Data": {
+                "Length": 10000
+            }
+        },
+        {
+            "Command": "AddPeer",
+            "Data": {
+                "Node": "h1",
+                "Peer": "Sybil Proxy"
+            }
+        }
+    ]
+}
