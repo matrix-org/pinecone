@@ -36,58 +36,78 @@ import (
 )
 
 type Sessions struct {
-	r             *router.Router
-	log           *log.Logger                      // logger
-	context       context.Context                  // router context
-	cancel        context.CancelFunc               // shut down the router
-	streams       chan net.Conn                    // accepted connections
-	sessions      map[types.PublicKey]quic.Session // open sessions
-	sessionsMutex sync.RWMutex                     // protects sessions
-	proto         string                           //
-	tlsCert       *tls.Certificate                 //
-	tlsServerCfg  *tls.Config                      //
-	quicListener  quic.Listener                    //
-	quicConfig    *quic.Config                     //
+	r            *router.Router
+	log          *log.Logger                 // logger
+	context      context.Context             // router context
+	cancel       context.CancelFunc          // shut down the router
+	protocols    map[string]*SessionProtocol // accepted connections by proto
+	tlsCert      *tls.Certificate            //
+	tlsServerCfg *tls.Config                 //
+	quicListener quic.Listener               //
+	quicConfig   *quic.Config                //
 }
 
-func NewSessions(log *log.Logger, r *router.Router, proto string) *Sessions {
+type SessionProtocol struct {
+	s             *Sessions
+	proto         string
+	sessions      map[types.PublicKey]quic.Session
+	sessionsMutex sync.RWMutex // protects sessions
+	streams       chan net.Conn
+}
+
+func NewSessions(log *log.Logger, r *router.Router, protos []string) *Sessions {
 	ctx, cancel := context.WithCancel(context.Background())
-	q := &Sessions{
-		r:        r,
-		log:      log,
-		context:  ctx,
-		cancel:   cancel,
-		streams:  make(chan net.Conn, 16),
-		sessions: make(map[types.PublicKey]quic.Session),
-		proto:    proto,
+	s := &Sessions{
+		r:         r,
+		log:       log,
+		context:   ctx,
+		cancel:    cancel,
+		protocols: make(map[string]*SessionProtocol, len(protos)),
 		quicConfig: &quic.Config{
 			DisablePathMTUDiscovery:          true,
 			DisableVersionNegotiationPackets: true,
 		},
 	}
+	for _, proto := range protos {
+		s.protocols[proto] = &SessionProtocol{
+			s:        s,
+			proto:    proto,
+			sessions: make(map[types.PublicKey]quic.Session),
+			streams:  make(chan net.Conn),
+		}
+	}
 
-	q.tlsCert = q.generateTLSCertificate()
-	q.tlsServerCfg = &tls.Config{
-		Certificates: []tls.Certificate{*q.tlsCert},
+	s.tlsCert = s.generateTLSCertificate()
+	s.tlsServerCfg = &tls.Config{
+		Certificates: []tls.Certificate{*s.tlsCert},
 		ClientAuth:   tls.RequireAnyClientCert,
-		NextProtos:   []string{proto},
+		NextProtos:   protos,
 	}
 
 	var err error
-	q.quicListener, err = quic.Listen(r, q.tlsServerCfg, q.quicConfig)
+	s.quicListener, err = quic.Listen(r, s.tlsServerCfg, s.quicConfig)
 	if err != nil {
 		panic(fmt.Errorf("utp.NewSocketFromPacketConnNoClose: %w", err))
 	}
 
-	go q.listener()
-	return q
+	go s.listener()
+	return s
 }
 
-func (q *Sessions) Sessions() []ed25519.PublicKey {
+func (s *Sessions) Close() error {
+	s.cancel()
+	return nil
+}
+
+func (s *Sessions) Protocol(proto string) *SessionProtocol {
+	return s.protocols[proto]
+}
+
+func (s *SessionProtocol) Sessions() []ed25519.PublicKey {
 	var sessions []ed25519.PublicKey
-	q.sessionsMutex.RLock()
-	defer q.sessionsMutex.RUnlock()
-	for _, s := range q.sessions {
+	s.sessionsMutex.RLock()
+	defer s.sessionsMutex.RUnlock()
+	for _, s := range s.sessions {
 		switch k := s.RemoteAddr().(type) {
 		case types.PublicKey:
 			sessions = append(sessions, k[:])
@@ -97,8 +117,8 @@ func (q *Sessions) Sessions() []ed25519.PublicKey {
 	return sessions
 }
 
-func (q *Sessions) generateTLSCertificate() *tls.Certificate {
-	private, public := q.r.PrivateKey(), q.r.PublicKey()
+func (s *Sessions) generateTLSCertificate() *tls.Certificate {
+	private, public := s.r.PrivateKey(), s.r.PublicKey()
 	id := hex.EncodeToString(public[:])
 
 	template := x509.Certificate{

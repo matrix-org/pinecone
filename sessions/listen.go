@@ -45,44 +45,59 @@ func (q *Sessions) listener() {
 			continue
 		}
 
-		go q.sessionlistener(session)
+		if proto := q.Protocol(session.ConnectionState().TLS.NegotiatedProtocol); proto != nil {
+			go proto.sessionlistener(session)
+		}
 	}
 }
 
-func (q *Sessions) sessionlistener(session quic.Session) {
+func (s *SessionProtocol) sessionlistener(session quic.Session) {
+	key, ok := session.RemoteAddr().(types.PublicKey)
+	if !ok {
+		return
+	}
+
+	s.sessionsMutex.Lock()
+	if existing, ok := s.sessions[key]; ok {
+		_ = existing.CloseWithError(0, "session replaced")
+	}
+	s.sessions[key] = session
+	s.sessionsMutex.Unlock()
+
 	defer func() {
-		if key, ok := session.RemoteAddr().(types.PublicKey); ok {
-			q.sessionsMutex.Lock()
-			defer q.sessionsMutex.Unlock()
-			delete(q.sessions, key)
-		}
+		s.sessionsMutex.Lock()
+		defer s.sessionsMutex.Unlock()
+		delete(s.sessions, key)
 	}()
 
+	ctx := session.Context()
 	for {
-		stream, err := session.AcceptStream(q.context)
+		stream, err := session.AcceptStream(ctx)
 		if err != nil {
 			return
 		}
 
-		q.streams <- &Stream{stream, session}
+		select {
+		case <-ctx.Done():
+		case s.streams <- &Stream{stream, session}:
+		}
 	}
 }
 
 // Accept blocks until a new session request is received. The
 // connection returned by this function will be TLS-encrypted.
-func (q *Sessions) Accept() (net.Conn, error) {
-	stream := <-q.streams
+func (s *SessionProtocol) Accept() (net.Conn, error) {
+	stream := <-s.streams
 	if stream == nil {
 		return nil, fmt.Errorf("listener closed")
 	}
 	return stream, nil
 }
 
-func (q *Sessions) Addr() net.Addr {
-	return q.r.Addr()
+func (s *SessionProtocol) Addr() net.Addr {
+	return s.s.r.Addr()
 }
 
-func (q *Sessions) Close() error {
-	q.cancel()
-	return nil
+func (s *SessionProtocol) Close() error {
+	return fmt.Errorf("not implemented")
 }

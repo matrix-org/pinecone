@@ -26,7 +26,7 @@ type HTTP struct {
 	httpClient    *http.Client
 }
 
-func (q *Sessions) HTTP() *HTTP {
+func (q *SessionProtocol) HTTP() *HTTP {
 	t := &http.Transport{
 		DisableKeepAlives:   true,
 		MaxIdleConnsPerHost: -1,

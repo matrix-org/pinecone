@@ -35,7 +35,7 @@ import (
 // networks automatically. Otherwise, the default "ed25519" will use snake
 // routing. The address must be the destination public key specified in hex.
 // If the context expires then the session will be torn down automatically.
-func (q *Sessions) DialContext(ctx context.Context, network, addrstr string) (net.Conn, error) {
+func (s *SessionProtocol) DialContext(ctx context.Context, network, addrstr string) (net.Conn, error) {
 	host, _, err := net.SplitHostPort(addrstr)
 	if err != nil {
 		return nil, fmt.Errorf("net.SplitHostPort: %w", err)
@@ -53,18 +53,18 @@ func (q *Sessions) DialContext(ctx context.Context, network, addrstr string) (ne
 	copy(pk[:], pkb)
 	addr = pk
 
-	q.sessionsMutex.RLock()
-	session, ok := q.sessions[pk]
-	q.sessionsMutex.RUnlock()
+	s.sessionsMutex.RLock()
+	session, ok := s.sessions[pk]
+	s.sessionsMutex.RUnlock()
 
 	retried := false
 retry:
 	if !ok {
 		tlsConfig := &tls.Config{
-			NextProtos:         []string{q.proto},
+			NextProtos:         []string{s.proto},
 			InsecureSkipVerify: true,
 			GetClientCertificate: func(info *tls.CertificateRequestInfo) (*tls.Certificate, error) {
-				return q.tlsCert, nil
+				return s.s.tlsCert, nil
 			},
 			VerifyPeerCertificate: func(rawCerts [][]byte, _ [][]*x509.Certificate) error {
 				if c := len(rawCerts); c != 1 {
@@ -85,7 +85,7 @@ retry:
 			},
 		}
 
-		session, err = quic.DialContext(ctx, q.r, addr, addrstr, tlsConfig, q.quicConfig)
+		session, err = quic.DialContext(ctx, s.s.r, addr, addrstr, tlsConfig, s.s.quicConfig)
 		if err != nil {
 			if err == context.DeadlineExceeded {
 				return nil, err
@@ -93,9 +93,9 @@ retry:
 			return nil, fmt.Errorf("quic.Dial: %w", err)
 		}
 
-		q.sessionsMutex.Lock()
-		q.sessions[pk] = session
-		q.sessionsMutex.Unlock()
+		s.sessionsMutex.Lock()
+		s.sessions[pk] = session
+		s.sessionsMutex.Unlock()
 	}
 
 	stream, err := session.OpenStreamSync(ctx)
@@ -115,17 +115,17 @@ retry:
 
 // Dial dials a given public key using the supplied network.
 // The address must be the destination public key specified in hex.
-func (q *Sessions) Dial(network, addr string) (net.Conn, error) {
+func (q *SessionProtocol) Dial(network, addr string) (net.Conn, error) {
 	return q.DialContext(context.Background(), network, addr)
 }
 
 // DialTLS is an alias for Dial, as all sessions are TLS-encrypted.
-func (q *Sessions) DialTLS(network, addr string) (net.Conn, error) {
+func (q *SessionProtocol) DialTLS(network, addr string) (net.Conn, error) {
 	return q.DialTLSContext(context.Background(), network, addr)
 }
 
 // DialTLSContext is an alias for DialContext, as all sessions are
 // TLS-encrypted.
-func (q *Sessions) DialTLSContext(ctx context.Context, network, addr string) (net.Conn, error) {
+func (q *SessionProtocol) DialTLSContext(ctx context.Context, network, addr string) (net.Conn, error) {
 	return q.DialContext(ctx, network, addr)
 }
