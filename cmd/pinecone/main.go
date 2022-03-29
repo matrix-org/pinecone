@@ -29,7 +29,6 @@ import (
 
 	"github.com/matrix-org/pinecone/multicast"
 	"github.com/matrix-org/pinecone/router"
-	"github.com/matrix-org/pinecone/sessions"
 )
 
 func main() {
@@ -52,7 +51,6 @@ func main() {
 	listener := net.ListenConfig{}
 
 	pineconeRouter := router.NewRouter(logger, sk, false)
-	_ = sessions.NewSessions(logger, pineconeRouter)
 	pineconeMulticast := multicast.NewMulticast(logger, pineconeRouter)
 	pineconeMulticast.Start()
 
