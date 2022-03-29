@@ -18,21 +18,21 @@ func TestSNEKNextHopSelection(t *testing.T) {
 
 	peers := []*peer{
 		// self
-		&peer{
+		{
 			started: *atomic.NewBool(true),
 			public:  selfKey,
 		},
 		// from
-		&peer{
+		{
 			started: *atomic.NewBool(true),
 			public:  parentKey,
 		},
 		// assorted peers
-		&peer{
+		{
 			started: *atomic.NewBool(true),
 			public:  destUpKey,
 		},
-		&peer{
+		{
 			started: *atomic.NewBool(true),
 			public:  destDownKey,
 		},
@@ -62,16 +62,20 @@ func TestSNEKNextHopSelection(t *testing.T) {
 		receiveTime:  time.Now(),
 		receiveOrder: 1,
 		SwitchAnnouncement: types.SwitchAnnouncement{
-			Root:       root,
-			Signatures: []types.SignatureWithHop{types.SignatureWithHop{PublicKey: destUpKey}},
+			Root: root,
+			Signatures: []types.SignatureWithHop{
+				{PublicKey: destUpKey},
+			},
 		},
 	}
 	knowsHigherAnn := rootAnnouncementWithTime{
 		receiveTime:  time.Now(),
 		receiveOrder: 1,
 		SwitchAnnouncement: types.SwitchAnnouncement{
-			Root:       root,
-			Signatures: []types.SignatureWithHop{types.SignatureWithHop{PublicKey: higherKey}},
+			Root: root,
+			Signatures: []types.SignatureWithHop{
+				{PublicKey: higherKey},
+			},
 		},
 	}
 
@@ -81,6 +85,7 @@ func TestSNEKNextHopSelection(t *testing.T) {
 		expected *peer // index into peer list
 	}{
 		{"TestNotBootstrapNoValidNextHop", virtualSnakeNextHopParams{
+			false,
 			false,
 			destUpKey,
 			selfKey,
@@ -94,6 +99,7 @@ func TestSNEKNextHopSelection(t *testing.T) {
 		}, peers[1]}, // default peer with no next hop is parent
 		{"TestBootstrapNoValidNextHop", virtualSnakeNextHopParams{
 			true,
+			false,
 			destUpKey,
 			selfKey,
 			peers[1],
@@ -105,6 +111,7 @@ func TestSNEKNextHopSelection(t *testing.T) {
 			virtualSnakeTable{},
 		}, peers[1]}, // default bootstrap peer with no next hop is parent
 		{"TestNotBootstrapDestIsSelf", virtualSnakeNextHopParams{
+			false,
 			false,
 			destUpKey,
 			destUpKey,
@@ -119,6 +126,7 @@ func TestSNEKNextHopSelection(t *testing.T) {
 		}, peers[0]},
 		{"TestBootstrapDestIsSelf", virtualSnakeNextHopParams{
 			true,
+			false,
 			destUpKey,
 			destUpKey,
 			peers[1],
@@ -130,6 +138,7 @@ func TestSNEKNextHopSelection(t *testing.T) {
 			virtualSnakeTable{},
 		}, peers[1]}, // bootstraps always start working towards root via parent
 		{"TestNotBootstrapPeerIsDestination", virtualSnakeNextHopParams{
+			false,
 			false,
 			destUpKey,
 			selfKey,
@@ -144,6 +153,7 @@ func TestSNEKNextHopSelection(t *testing.T) {
 		}, peers[2]},
 		{"TestBootstrapPeerIsDestination", virtualSnakeNextHopParams{
 			true,
+			false,
 			destUpKey,
 			selfKey,
 			peers[1],
@@ -157,6 +167,7 @@ func TestSNEKNextHopSelection(t *testing.T) {
 		}, peers[1]}, // bootstraps work their way toward the root
 		{"TestNotBootstrapParentKnowsDestination", virtualSnakeNextHopParams{
 			false,
+			false,
 			destUpKey,
 			selfKey,
 			peers[1],
@@ -168,6 +179,7 @@ func TestSNEKNextHopSelection(t *testing.T) {
 			virtualSnakeTable{},
 		}, peers[1]},
 		{"TestNotBootstrapPeerKnowsDestination", virtualSnakeNextHopParams{
+			false,
 			false,
 			destUpKey,
 			selfKey,
@@ -182,6 +194,7 @@ func TestSNEKNextHopSelection(t *testing.T) {
 		}, peers[2]},
 		{"TestBootstrapPeerKnowsDestination", virtualSnakeNextHopParams{
 			true,
+			false,
 			destUpKey,
 			selfKey,
 			peers[1],
@@ -195,6 +208,7 @@ func TestSNEKNextHopSelection(t *testing.T) {
 		}, peers[1]}, // bootstraps work their way toward the root
 		{"TestNotBootstrapParentKnowsCloser", virtualSnakeNextHopParams{
 			false,
+			false,
 			destUpKey,
 			selfKey,
 			peers[1],
@@ -207,6 +221,7 @@ func TestSNEKNextHopSelection(t *testing.T) {
 		}, peers[1]},
 		{"TestBootstrapParentKnowsCloser", virtualSnakeNextHopParams{
 			true,
+			false,
 			destUpKey,
 			selfKey,
 			peers[1],
@@ -218,6 +233,7 @@ func TestSNEKNextHopSelection(t *testing.T) {
 			virtualSnakeTable{},
 		}, peers[1]},
 		{"TestNotBootstrapSnakeEntryIsDest", virtualSnakeNextHopParams{
+			false,
 			false,
 			destDownKey,
 			selfKey,
@@ -237,6 +253,7 @@ func TestSNEKNextHopSelection(t *testing.T) {
 		}, peers[3]},
 		{"TestBootstrapSnakeEntryIsDest", virtualSnakeNextHopParams{
 			true,
+			false,
 			destDownKey,
 			selfKey,
 			peers[1],

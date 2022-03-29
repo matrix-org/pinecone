@@ -568,12 +568,12 @@ func TestTreeNextHopCandidate(t *testing.T) {
 func TestTreeNextHopSelection(t *testing.T) {
 	peers := []*peer{
 		// self
-		&peer{started: *atomic.NewBool(true)},
+		{started: *atomic.NewBool(true)},
 		// from
-		&peer{started: *atomic.NewBool(true)},
+		{started: *atomic.NewBool(true)},
 		// assorted peers
-		&peer{started: *atomic.NewBool(true)},
-		&peer{started: *atomic.NewBool(true)},
+		{started: *atomic.NewBool(true)},
+		{started: *atomic.NewBool(true)},
 	}
 
 	destCoords := types.Coordinates{1, 1, 1}
@@ -586,10 +586,10 @@ func TestTreeNextHopSelection(t *testing.T) {
 	}
 
 	destSignatures := []types.SignatureWithHop{
-		types.SignatureWithHop{Hop: 1},
-		types.SignatureWithHop{Hop: 1},
-		types.SignatureWithHop{Hop: 1},
-		types.SignatureWithHop{Hop: 1},
+		{Hop: 1},
+		{Hop: 1},
+		{Hop: 1},
+		{Hop: 1},
 	}
 
 	selfAnn := rootAnnouncementWithTime{
@@ -598,8 +598,8 @@ func TestTreeNextHopSelection(t *testing.T) {
 		SwitchAnnouncement: types.SwitchAnnouncement{
 			Root: selfRoot,
 			Signatures: []types.SignatureWithHop{
-				types.SignatureWithHop{Hop: 2},
-				types.SignatureWithHop{Hop: 2},
+				{Hop: 2},
+				{Hop: 2},
 			},
 		},
 	}
@@ -609,8 +609,8 @@ func TestTreeNextHopSelection(t *testing.T) {
 		SwitchAnnouncement: types.SwitchAnnouncement{
 			Root: selfRoot,
 			Signatures: []types.SignatureWithHop{
-				types.SignatureWithHop{Hop: 3},
-				types.SignatureWithHop{Hop: 3},
+				{Hop: 3},
+				{Hop: 3},
 			},
 		},
 	}
@@ -628,8 +628,8 @@ func TestTreeNextHopSelection(t *testing.T) {
 		SwitchAnnouncement: types.SwitchAnnouncement{
 			Root: selfRoot,
 			Signatures: []types.SignatureWithHop{
-				types.SignatureWithHop{Hop: 1},
-				types.SignatureWithHop{Hop: 1},
+				{Hop: 1},
+				{Hop: 1},
 			},
 		},
 	}
