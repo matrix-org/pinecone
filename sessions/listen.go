@@ -1,4 +1,4 @@
-// Copyright 2021 The Matrix.org Foundation C.I.C.
+// Copyright 2022 The Matrix.org Foundation C.I.C.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,6 +15,8 @@
 package sessions
 
 import (
+	"bytes"
+	"crypto/ed25519"
 	"fmt"
 	"net"
 
@@ -26,8 +28,21 @@ func (q *Sessions) listener() {
 	for {
 		session, err := q.quicListener.Accept(q.context)
 		if err != nil {
-			q.log.Println("Failed to accept session:", err)
 			return
+		}
+
+		pk := session.RemoteAddr().(types.PublicKey)
+		tls := session.ConnectionState().TLS
+		if c := len(tls.PeerCertificates); c != 1 {
+			continue
+		}
+		cert := tls.PeerCertificates[0]
+		public, ok := cert.PublicKey.(ed25519.PublicKey)
+		if !ok {
+			continue
+		}
+		if !bytes.Equal(public, pk[:]) {
+			continue
 		}
 
 		go q.sessionlistener(session)
@@ -46,7 +61,6 @@ func (q *Sessions) sessionlistener(session quic.Session) {
 	for {
 		stream, err := session.AcceptStream(q.context)
 		if err != nil {
-			q.log.Println("Failed to accept stream:", err)
 			return
 		}
 

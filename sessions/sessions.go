@@ -1,4 +1,4 @@
-// Copyright 2021 The Matrix.org Foundation C.I.C.
+// Copyright 2022 The Matrix.org Foundation C.I.C.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -43,13 +43,14 @@ type Sessions struct {
 	streams       chan net.Conn                    // accepted connections
 	sessions      map[types.PublicKey]quic.Session // open sessions
 	sessionsMutex sync.RWMutex                     // protects sessions
+	proto         string                           //
 	tlsCert       *tls.Certificate                 //
 	tlsServerCfg  *tls.Config                      //
 	quicListener  quic.Listener                    //
 	quicConfig    *quic.Config                     //
 }
 
-func NewSessions(log *log.Logger, r *router.Router) *Sessions {
+func NewSessions(log *log.Logger, r *router.Router, proto string) *Sessions {
 	ctx, cancel := context.WithCancel(context.Background())
 	q := &Sessions{
 		r:        r,
@@ -58,6 +59,7 @@ func NewSessions(log *log.Logger, r *router.Router) *Sessions {
 		cancel:   cancel,
 		streams:  make(chan net.Conn, 16),
 		sessions: make(map[types.PublicKey]quic.Session),
+		proto:    proto,
 		quicConfig: &quic.Config{
 			DisablePathMTUDiscovery:          true,
 			DisableVersionNegotiationPackets: true,
@@ -68,6 +70,7 @@ func NewSessions(log *log.Logger, r *router.Router) *Sessions {
 	q.tlsServerCfg = &tls.Config{
 		Certificates: []tls.Certificate{*q.tlsCert},
 		ClientAuth:   tls.RequireAnyClientCert,
+		NextProtos:   []string{proto},
 	}
 
 	var err error
