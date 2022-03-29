@@ -30,64 +30,50 @@ import (
 	"sync"
 	"time"
 
+	"github.com/lucas-clemente/quic-go"
 	"github.com/matrix-org/pinecone/router"
 	"github.com/matrix-org/pinecone/types"
-	"github.com/neilalexander/utp"
-	"go.uber.org/atomic"
 )
 
 type Sessions struct {
 	r             *router.Router
-	log           *log.Logger                // logger
-	context       context.Context            // router context
-	cancel        context.CancelFunc         // shut down the router
-	streams       chan net.Conn              // accepted connections
-	sessions      map[net.Addr]*atomic.Int32 // open sessions
-	sessionsMutex sync.RWMutex               // protects sessions
-	tlsCert       *tls.Certificate           //
-	tlsServerCfg  *tls.Config                //
-	utpSocket     *utp.Socket                //
+	log           *log.Logger                      // logger
+	context       context.Context                  // router context
+	cancel        context.CancelFunc               // shut down the router
+	streams       chan net.Conn                    // accepted connections
+	sessions      map[types.PublicKey]quic.Session // open sessions
+	sessionsMutex sync.RWMutex                     // protects sessions
+	tlsCert       *tls.Certificate                 //
+	tlsServerCfg  *tls.Config                      //
+	quicListener  quic.Listener                    //
+	quicConfig    *quic.Config                     //
 }
 
 func NewSessions(log *log.Logger, r *router.Router) *Sessions {
 	ctx, cancel := context.WithCancel(context.Background())
-	s, err := utp.NewSocketFromPacketConnNoClose(r)
-	if err != nil {
-		panic(fmt.Errorf("utp.NewSocketFromPacketConnNoClose: %w", err))
-	}
 	q := &Sessions{
-		r:         r,
-		log:       log,
-		context:   ctx,
-		cancel:    cancel,
-		streams:   make(chan net.Conn, 16),
-		sessions:  make(map[net.Addr]*atomic.Int32),
-		utpSocket: s,
+		r:        r,
+		log:      log,
+		context:  ctx,
+		cancel:   cancel,
+		streams:  make(chan net.Conn, 16),
+		sessions: make(map[types.PublicKey]quic.Session),
+		quicConfig: &quic.Config{
+			DisablePathMTUDiscovery:          true,
+			DisableVersionNegotiationPackets: true,
+		},
 	}
-
-	s.OnAttach(func(remote net.Addr) {
-		q.sessionsMutex.Lock()
-		defer q.sessionsMutex.Unlock()
-		if _, ok := q.sessions[remote]; !ok {
-			q.sessions[remote] = &atomic.Int32{}
-		}
-		q.sessions[remote].Inc()
-	})
-	s.OnDetach(func(remote net.Addr) {
-		q.sessionsMutex.Lock()
-		defer q.sessionsMutex.Unlock()
-		if _, ok := q.sessions[remote]; !ok {
-			return
-		}
-		if q.sessions[remote].Dec() == 0 {
-			delete(q.sessions, remote)
-		}
-	})
 
 	q.tlsCert = q.generateTLSCertificate()
 	q.tlsServerCfg = &tls.Config{
 		Certificates: []tls.Certificate{*q.tlsCert},
 		ClientAuth:   tls.RequireAnyClientCert,
+	}
+
+	var err error
+	q.quicListener, err = quic.Listen(r, q.tlsServerCfg, q.quicConfig)
+	if err != nil {
+		panic(fmt.Errorf("utp.NewSocketFromPacketConnNoClose: %w", err))
 	}
 
 	go q.listener()
@@ -98,8 +84,8 @@ func (q *Sessions) Sessions() []ed25519.PublicKey {
 	var sessions []ed25519.PublicKey
 	q.sessionsMutex.RLock()
 	defer q.sessionsMutex.RUnlock()
-	for s := range q.sessions {
-		switch k := s.(type) {
+	for _, s := range q.sessions {
+		switch k := s.RemoteAddr().(type) {
 		case types.PublicKey:
 			sessions = append(sessions, k[:])
 		default:

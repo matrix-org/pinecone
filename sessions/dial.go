@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"net"
 
+	"github.com/lucas-clemente/quic-go"
 	"github.com/matrix-org/pinecone/types"
 )
 
@@ -40,77 +41,69 @@ func (q *Sessions) DialContext(ctx context.Context, network, addrstr string) (ne
 		return nil, fmt.Errorf("net.SplitHostPort: %w", err)
 	}
 
-	pk := make(ed25519.PublicKey, ed25519.PublicKeySize)
-	pkb, err := hex.DecodeString(host)
-	if err != nil {
-		return nil, fmt.Errorf("hex.DecodeString: %w", err)
-	}
-	if len(pkb) != ed25519.PublicKeySize {
-		return nil, fmt.Errorf("host must be length of an ed25519 public key")
-	}
-	copy(pk, pkb)
-
+	var pk types.PublicKey
 	var addr net.Addr
 	switch network {
-	/*
-		case "ed25519+greedy":
-			_, addr, err = q.r.DHTSearch(ctx, pk, types.FullMask[:], false)
-			if err != nil {
-				return nil, fmt.Errorf("q.dht.search: %w", err)
-			}
-
-		case "ed25519+source":
-			_, coords, err := q.r.DHTSearch(ctx, pk, types.FullMask[:], false)
-			if err != nil {
-				return nil, fmt.Errorf("q.dht.search: %w", err)
-			}
-			addr, err = q.r.Pathfind(ctx, coords)
-			if err != nil {
-				return nil, fmt.Errorf("q.pathfinder.pathfind: %w", err)
-			}
-	*/
-
 	case "ed25519":
-		fallthrough
+		pkb, err := hex.DecodeString(host)
+		if err != nil {
+			return nil, fmt.Errorf("hex.DecodeString: %w", err)
+		}
+		if len(pkb) != ed25519.PublicKeySize {
+			return nil, fmt.Errorf("host must be length of an ed25519 public key")
+		}
+		copy(pk[:], pkb)
+		addr = pk
 
 	default:
-		a := types.PublicKey{}
-		copy(a[:], pk)
-		addr = a
+		return nil, fmt.Errorf("unknown network %q", network)
 	}
 
-	session, err := q.utpSocket.DialAddrContext(
-		ctx, addr,
-	)
+	q.sessionsMutex.RLock()
+	session, ok := q.sessions[pk]
+	q.sessionsMutex.RUnlock()
+
+	if !ok {
+		tlsConfig := &tls.Config{
+			InsecureSkipVerify: true,
+			GetClientCertificate: func(info *tls.CertificateRequestInfo) (*tls.Certificate, error) {
+				return q.tlsCert, nil
+			},
+			VerifyPeerCertificate: func(rawCerts [][]byte, _ [][]*x509.Certificate) error {
+				if c := len(rawCerts); c != 1 {
+					return fmt.Errorf("expected exactly one peer certificate but got %d", c)
+				}
+				cert, err := x509.ParseCertificate(rawCerts[0])
+				if err != nil {
+					return fmt.Errorf("x509.ParseCertificate: %w", err)
+				}
+				public, ok := cert.PublicKey.(ed25519.PublicKey)
+				if !ok {
+					return fmt.Errorf("expected ed25519 public key")
+				}
+				if !bytes.Equal(public, pk[:]) {
+					return fmt.Errorf("remote side returned incorrect public key")
+				}
+				return nil
+			},
+		}
+
+		session, err = quic.DialContext(ctx, q.r, addr, addrstr, tlsConfig, &quic.Config{})
+		if err != nil {
+			return nil, fmt.Errorf("quic.Dial: %w", err)
+		}
+
+		q.sessionsMutex.Lock()
+		q.sessions[pk] = session
+		q.sessionsMutex.Unlock()
+	}
+
+	stream, err := session.OpenStream()
 	if err != nil {
-		return nil, fmt.Errorf("q.utpSocket.DialContext: %w", err)
+		return nil, fmt.Errorf("session.OpenStream: %w", err)
 	}
 
-	session = tls.Client(session, &tls.Config{
-		InsecureSkipVerify: true,
-		GetClientCertificate: func(info *tls.CertificateRequestInfo) (*tls.Certificate, error) {
-			return q.tlsCert, nil
-		},
-		VerifyPeerCertificate: func(rawCerts [][]byte, _ [][]*x509.Certificate) error {
-			if c := len(rawCerts); c != 1 {
-				return fmt.Errorf("expected exactly one peer certificate but got %d", c)
-			}
-			cert, err := x509.ParseCertificate(rawCerts[0])
-			if err != nil {
-				return fmt.Errorf("x509.ParseCertificate: %w", err)
-			}
-			public, ok := cert.PublicKey.(ed25519.PublicKey)
-			if !ok {
-				return fmt.Errorf("expected ed25519 public key")
-			}
-			if !bytes.Equal(public, pk) {
-				return fmt.Errorf("remote side returned incorrect public key")
-			}
-			return nil
-		},
-	})
-
-	return session, nil
+	return &Stream{stream, session}, nil
 }
 
 // Dial dials a given public key using the supplied network.

@@ -15,23 +15,42 @@
 package sessions
 
 import (
-	"crypto/tls"
 	"fmt"
 	"net"
+
+	"github.com/lucas-clemente/quic-go"
+	"github.com/matrix-org/pinecone/types"
 )
 
 func (q *Sessions) listener() {
-	q.log.Println("Listening for UTP sessions")
 	for {
-		session, err := q.utpSocket.Accept()
+		session, err := q.quicListener.Accept(q.context)
 		if err != nil {
-			q.log.Println("Failed to accept UTP:", err)
+			q.log.Println("Failed to accept session:", err)
 			return
 		}
 
-		go func(session net.Conn) {
-			q.streams <- session
-		}(session)
+		go q.sessionlistener(session)
+	}
+}
+
+func (q *Sessions) sessionlistener(session quic.Session) {
+	defer func() {
+		if key, ok := session.RemoteAddr().(types.PublicKey); ok {
+			q.sessionsMutex.Lock()
+			defer q.sessionsMutex.Unlock()
+			delete(q.sessions, key)
+		}
+	}()
+
+	for {
+		stream, err := session.AcceptStream(q.context)
+		if err != nil {
+			q.log.Println("Failed to accept stream:", err)
+			return
+		}
+
+		q.streams <- &Stream{stream, session}
 	}
 }
 
@@ -42,7 +61,6 @@ func (q *Sessions) Accept() (net.Conn, error) {
 	if stream == nil {
 		return nil, fmt.Errorf("listener closed")
 	}
-	stream = tls.Server(stream, q.tlsServerCfg)
 	return stream, nil
 }
 
