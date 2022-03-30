@@ -35,8 +35,8 @@ import (
 	"go.uber.org/atomic"
 )
 
-const portCount = math.MaxUint8
-const trafficBuffer = math.MaxUint8
+const portCount = math.MaxUint8 - 1
+const trafficBuffer = math.MaxUint8 - 1
 
 type Router struct {
 	phony.Inbox
