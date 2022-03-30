@@ -57,6 +57,10 @@ func (a PublicKey) String() string {
 	return fmt.Sprintf("%v", hex.EncodeToString(a[:]))
 }
 
+func (a PublicKey) MarshalJSON() ([]byte, error) {
+	return []byte(`"` + a.String() + `"`), nil
+}
+
 func (a PublicKey) Network() string {
 	return "ed25519"
 }
