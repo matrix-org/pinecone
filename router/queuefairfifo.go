@@ -22,18 +22,18 @@ import (
 	"github.com/matrix-org/pinecone/types"
 )
 
-const fairFIFOQueueSize = uint8(16)
+const fairFIFOQueueSize = 16
 
 type fairFIFOQueue struct {
-	queues map[uint8]chan *types.Frame // queue ID -> frame, map for randomness
-	num    uint8                       // how many queues should we have?
-	count  int                         // how many queued items in total?
-	n      uint8                       // which queue did we last iterate on?
-	offset uint64                      // adds an element of randomness to queue assignment
+	queues map[uint16]chan *types.Frame // queue ID -> frame, map for randomness
+	num    uint16                       // how many queues should we have?
+	count  int                          // how many queued items in total?
+	n      uint16                       // which queue did we last iterate on?
+	offset uint64                       // adds an element of randomness to queue assignment
 	mutex  sync.Mutex
 }
 
-func newFairFIFOQueue(num uint8) *fairFIFOQueue {
+func newFairFIFOQueue(num uint16) *fairFIFOQueue {
 	q := &fairFIFOQueue{
 		offset: rand.Uint64(),
 		num:    num,
@@ -49,10 +49,10 @@ func (q *fairFIFOQueue) queuecount() int { // nolint:unused
 }
 
 func (q *fairFIFOQueue) queuesize() int { // nolint:unused
-	return int(q.num * fairFIFOQueueSize)
+	return int(q.num) * fairFIFOQueueSize
 }
 
-func (q *fairFIFOQueue) hash(frame *types.Frame) uint8 {
+func (q *fairFIFOQueue) hash(frame *types.Frame) uint16 {
 	h := q.offset
 	switch frame.Type {
 	case types.TypeTreeRouted:
@@ -70,13 +70,13 @@ func (q *fairFIFOQueue) hash(frame *types.Frame) uint8 {
 			h += uint64(v)
 		}
 	}
-	return uint8(h) % q.num
+	return uint16(h % uint64(q.num))
 }
 
 func (q *fairFIFOQueue) push(frame *types.Frame) bool {
 	q.mutex.Lock()
 	defer q.mutex.Unlock()
-	var h uint8
+	var h uint16
 	if q.count > 0 {
 		h = q.hash(frame) + 1
 	}
@@ -98,8 +98,8 @@ func (q *fairFIFOQueue) push(frame *types.Frame) bool {
 func (q *fairFIFOQueue) reset() {
 	q.mutex.Lock()
 	defer q.mutex.Unlock()
-	q.queues = make(map[uint8]chan *types.Frame, q.num+1)
-	for i := uint8(0); i <= q.num; i++ {
+	q.queues = make(map[uint16]chan *types.Frame, q.num+1)
+	for i := uint16(0); i <= q.num; i++ {
 		q.queues[i] = make(chan *types.Frame, fairFIFOQueueSize)
 	}
 }
@@ -118,7 +118,7 @@ func (q *fairFIFOQueue) pop() <-chan *types.Frame {
 		return q.queues[0]
 	default:
 		// Select the next queue that has something waiting.
-		for i := uint8(0); i <= q.num; i++ {
+		for i := uint16(0); i <= q.num; i++ {
 			if q.n = (q.n + 1) % (q.num + 1); q.n == 0 {
 				continue
 			}
@@ -141,13 +141,13 @@ func (q *fairFIFOQueue) MarshalJSON() ([]byte, error) {
 	q.mutex.Lock()
 	defer q.mutex.Unlock()
 	res := struct {
-		Count  int           `json:"count"`
-		Size   uint8         `json:"size"`
-		Queues map[uint8]int `json:"queues"`
+		Count  int            `json:"count"`
+		Size   int            `json:"size"`
+		Queues map[uint16]int `json:"queues"`
 	}{
 		Count:  q.count,
-		Size:   q.num * fairFIFOQueueSize,
-		Queues: map[uint8]int{},
+		Size:   int(q.num) * fairFIFOQueueSize,
+		Queues: map[uint16]int{},
 	}
 	for h, queue := range q.queues {
 		if c := len(queue); c > 0 {

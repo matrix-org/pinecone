@@ -114,8 +114,8 @@ func (s *state) _addPeer(conn net.Conn, public types.PublicKey, uri ConnectionUR
 			continue
 		}
 		ctx, cancel := context.WithCancel(s.r.context)
-		queues := uint8(trafficBuffer)
-		if peertype == PeerTypeBluetooth {
+		queues := uint16(trafficBuffer)
+		if peertype == ConnectionPeerType(PeerTypeBluetooth) {
 			queues = 16
 		}
 		new = &peer{
