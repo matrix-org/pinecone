@@ -15,6 +15,7 @@
 package router
 
 import (
+	"encoding/json"
 	"sync"
 
 	"github.com/matrix-org/pinecone/types"
@@ -107,4 +108,16 @@ func (q *fifoQueue) ack() {
 	if q.max == 0 && len(q.entries) == 0 {
 		q._initialise()
 	}
+}
+
+func (q *fifoQueue) MarshalJSON() ([]byte, error) {
+	q.mutex.Lock()
+	defer q.mutex.Unlock()
+	return json.Marshal(struct {
+		Count int `json:"count"`
+		Size  int `json:"size"`
+	}{
+		Count: len(q.entries) - 1,
+		Size:  cap(q.entries),
+	})
 }

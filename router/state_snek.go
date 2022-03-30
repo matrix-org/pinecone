@@ -33,19 +33,19 @@ const virtualSnakeNeighExpiryPeriod = time.Hour
 type virtualSnakeTable map[virtualSnakeIndex]*virtualSnakeEntry
 
 type virtualSnakeIndex struct {
-	PublicKey types.PublicKey
-	PathID    types.VirtualSnakePathID
+	PublicKey types.PublicKey          `json:"public_key"`
+	PathID    types.VirtualSnakePathID `json:"path_id"`
 }
 
 type virtualSnakeEntry struct {
 	*virtualSnakeIndex
-	Origin      types.PublicKey
-	Target      types.PublicKey
-	Source      *peer
-	Destination *peer
-	LastSeen    time.Time
-	Root        types.Root
-	Active      bool
+	Origin      types.PublicKey `json:"origin"`
+	Target      types.PublicKey `json:"target"`
+	Source      *peer           `json:"source"`
+	Destination *peer           `json:"destination"`
+	LastSeen    time.Time       `json:"last_seen"`
+	Root        types.Root      `json:"root"`
+	Active      bool            `json:"active"`
 }
 
 // valid returns true if the update hasn't expired, or false if it has. It is
