@@ -37,7 +37,7 @@ const peerKeepaliveInterval = time.Second * 3
 const peerKeepaliveTimeout = time.Second * 5
 
 const ( // These need to be a simple int type for gobind/gomobile to export them...
-	PeerTypeMulticast ConnectionPeerType = iota
+	PeerTypeMulticast int = iota
 	PeerTypeBluetooth
 	PeerTypeRemote
 )
