@@ -64,8 +64,8 @@ func NewSessions(log *log.Logger, r *router.Router, protos []string) *Sessions {
 		cancel:    cancel,
 		protocols: make(map[string]*SessionProtocol, len(protos)),
 		quicConfig: &quic.Config{
-			DisablePathMTUDiscovery:          true,
-			DisableVersionNegotiationPackets: true,
+			MaxIdleTimeout:          time.Second * 15,
+			DisablePathMTUDiscovery: true,
 		},
 	}
 	for _, proto := range protos {
@@ -73,7 +73,7 @@ func NewSessions(log *log.Logger, r *router.Router, protos []string) *Sessions {
 			s:        s,
 			proto:    proto,
 			sessions: make(map[types.PublicKey]quic.Session),
-			streams:  make(chan net.Conn),
+			streams:  make(chan net.Conn, 1),
 		}
 	}
 

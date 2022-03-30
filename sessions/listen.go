@@ -31,7 +31,7 @@ func (q *Sessions) listener() {
 			return
 		}
 
-		pk := session.RemoteAddr().(types.PublicKey)
+		key := session.RemoteAddr().(types.PublicKey)
 		tls := session.ConnectionState().TLS
 		if c := len(tls.PeerCertificates); c != 1 {
 			continue
@@ -41,11 +41,18 @@ func (q *Sessions) listener() {
 		if !ok {
 			continue
 		}
-		if !bytes.Equal(public, pk[:]) {
+		if !bytes.Equal(public, key[:]) {
 			continue
 		}
 
 		if proto := q.Protocol(session.ConnectionState().TLS.NegotiatedProtocol); proto != nil {
+			proto.sessionsMutex.Lock()
+			if existing, ok := proto.sessions[key]; ok {
+				_ = existing.CloseWithError(0, "session replaced")
+			}
+			proto.sessions[key] = session
+			proto.sessionsMutex.Unlock()
+
 			go proto.sessionlistener(session)
 		}
 	}
@@ -56,13 +63,6 @@ func (s *SessionProtocol) sessionlistener(session quic.Session) {
 	if !ok {
 		return
 	}
-
-	s.sessionsMutex.Lock()
-	if existing, ok := s.sessions[key]; ok {
-		_ = existing.CloseWithError(0, "session replaced")
-	}
-	s.sessions[key] = session
-	s.sessionsMutex.Unlock()
 
 	defer func() {
 		s.sessionsMutex.Lock()

@@ -57,8 +57,6 @@ func (s *SessionProtocol) DialContext(ctx context.Context, network, addrstr stri
 	session, ok := s.sessions[pk]
 	s.sessionsMutex.RUnlock()
 
-	retried := false
-retry:
 	if !ok {
 		tlsConfig := &tls.Config{
 			NextProtos:         []string{s.proto},
@@ -100,13 +98,6 @@ retry:
 
 	stream, err := session.OpenStreamSync(ctx)
 	if err != nil {
-		if err == context.DeadlineExceeded {
-			return nil, err
-		}
-		if !retried {
-			retried, ok = true, false
-			goto retry
-		}
 		return nil, fmt.Errorf("session.OpenStream: %w", err)
 	}
 

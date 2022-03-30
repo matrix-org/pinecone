@@ -38,7 +38,9 @@ func (q *SessionProtocol) HTTP() *HTTP {
 
 	h := &HTTP{
 		httpServer: &http.Server{
-			IdleTimeout: time.Second * 30,
+			IdleTimeout:  time.Second * 30,
+			ReadTimeout:  time.Second * 10,
+			WriteTimeout: time.Second * 10,
 		},
 		httpMux:       &http.ServeMux{},
 		httpTransport: t,
