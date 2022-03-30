@@ -21,8 +21,8 @@ import (
 )
 
 type Root struct {
-	RootPublicKey PublicKey
-	RootSequence  Varu64
+	RootPublicKey PublicKey `json:"root_public_key"`
+	RootSequence  Varu64    `json:"root_sequence"`
 }
 
 func (r *Root) Length() int {

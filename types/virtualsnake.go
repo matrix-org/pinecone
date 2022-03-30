@@ -1,6 +1,7 @@
 package types
 
 import (
+	"bytes"
 	"crypto/ed25519"
 	"encoding/hex"
 	"fmt"
@@ -13,6 +14,10 @@ type VirtualSnakePathSig [ed25519.SignatureSize]byte
 
 func (p VirtualSnakePathID) MarshalJSON() ([]byte, error) {
 	return []byte("\"" + hex.EncodeToString(p[:]) + "\""), nil
+}
+
+func (a VirtualSnakePathID) CompareTo(b VirtualSnakePathID) int {
+	return bytes.Compare(a[:], b[:])
 }
 
 type VirtualSnakeBootstrap struct {

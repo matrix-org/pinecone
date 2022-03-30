@@ -114,6 +114,10 @@ func (s *state) _addPeer(conn net.Conn, public types.PublicKey, uri ConnectionUR
 			continue
 		}
 		ctx, cancel := context.WithCancel(s.r.context)
+		queues := uint8(trafficBuffer)
+		if peertype == PeerTypeBluetooth {
+			queues = 16
+		}
 		new = &peer{
 			router:     s.r,
 			port:       types.SwitchPortID(i),
@@ -126,7 +130,7 @@ func (s *state) _addPeer(conn net.Conn, public types.PublicKey, uri ConnectionUR
 			context:    ctx,
 			cancel:     cancel,
 			proto:      newFIFOQueue(fifoNoMax),
-			traffic:    newFairFIFOQueue(trafficBuffer),
+			traffic:    newFairFIFOQueue(queues),
 		}
 		s._peers[i] = new
 		s.r.log.Println("Connected to peer", new.public.String(), "on port", new.port)
