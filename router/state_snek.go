@@ -216,6 +216,7 @@ func getNextHopSNEK(params virtualSnakeNextHopParams) *peer {
 	// We start off with our own key as the best key. Any suitable next-hop
 	// candidate has to improve on our own key in order to forward the frame.
 	var bestPeer *peer
+	var bestAnn *rootAnnouncementWithTime
 	if !params.isTraffic {
 		bestPeer = params.selfPeer
 	}
@@ -224,7 +225,7 @@ func getNextHopSNEK(params virtualSnakeNextHopParams) *peer {
 
 	// newCandidate updates the best key and best peer with new candidates.
 	newCandidate := func(key types.PublicKey, p *peer) {
-		bestKey, bestPeer = key, p
+		bestKey, bestPeer, bestAnn = key, p, params.peerAnnouncements[p]
 	}
 	// newCheckedCandidate performs some sanity checks on the candidate before
 	// passing it to newCandidate.
@@ -300,6 +301,24 @@ func getNextHopSNEK(params virtualSnakeNextHopParams) *peer {
 			continue
 		}
 		newCheckedCandidate(entry.PublicKey, entry.Source)
+	}
+
+	// Finally, be sure that we're using the best-looking path to our next-hop.
+	// Prefer faster link types and, if not, lower latencies to the root.
+	if bestPeer != nil && bestAnn != nil {
+		for p, ann := range params.peerAnnouncements {
+			peerKey := p.public
+			switch {
+			case bestKey != peerKey:
+				continue
+			case p.peertype < bestPeer.peertype:
+				// Prefer faster classes of links if possible.
+				newCandidate(peerKey, p)
+			case p.peertype == bestPeer.peertype && ann.receiveOrder < bestAnn.receiveOrder:
+				// Prefer links that have the lowest latency to the root.
+				newCandidate(peerKey, p)
+			}
+		}
 	}
 
 	return bestPeer
