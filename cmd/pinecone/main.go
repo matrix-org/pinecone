@@ -22,11 +22,11 @@ import (
 	"log"
 	"net"
 	"os"
-	"time"
 
 	"net/http"
 	_ "net/http/pprof"
 
+	"github.com/matrix-org/pinecone/connections"
 	"github.com/matrix-org/pinecone/multicast"
 	"github.com/matrix-org/pinecone/router"
 	"github.com/matrix-org/pinecone/sessions"
@@ -46,37 +46,20 @@ func main() {
 		}()
 	}
 
-	dialer := net.Dialer{
-		Timeout: time.Second * 5,
-	}
 	listener := net.ListenConfig{}
 
 	pineconeRouter := router.NewRouter(logger, sk, false)
 	_ = sessions.NewSessions(logger, pineconeRouter)
 	pineconeMulticast := multicast.NewMulticast(logger, pineconeRouter)
 	pineconeMulticast.Start()
+	pineconeManager := connections.NewConnectionManager(pineconeRouter)
 
 	listen := flag.String("listen", "", "address to listen on")
 	connect := flag.String("connect", "", "peer to connect to")
 	flag.Parse()
 
 	if connect != nil && *connect != "" {
-		go func() {
-			conn, err := dialer.Dial("tcp", *connect)
-			if err != nil {
-				panic(err)
-			}
-
-			if _, err := pineconeRouter.Connect(
-				conn,
-				router.ConnectionURI(*connect),
-				router.ConnectionPeerType(router.PeerTypeRemote),
-			); err != nil {
-				panic(err)
-			}
-
-			fmt.Println("Outbound connection", conn.RemoteAddr(), "is connected")
-		}()
+		pineconeManager.AddPeer(*connect)
 	}
 
 	go func() {
