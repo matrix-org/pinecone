@@ -105,17 +105,15 @@ func (f *Frame) MarshalBinary(buffer []byte) (int, error) {
 	case TypeVirtualSnakeBootstrapACK:
 		payloadLen := len(f.Payload)
 		binary.BigEndian.PutUint16(buffer[offset+0:offset+2], uint16(payloadLen))
-		dn, err := f.Destination.MarshalBinary(buffer[offset+6:])
+		dn, err := f.Destination.MarshalBinary(buffer[offset+2:])
 		if err != nil {
 			return 0, fmt.Errorf("f.Destination.MarshalBinary: %w", err)
 		}
-		sn, err := f.Source.MarshalBinary(buffer[offset+6+dn:])
+		sn, err := f.Source.MarshalBinary(buffer[offset+2+dn:])
 		if err != nil {
 			return 0, fmt.Errorf("f.Source.MarshalBinary: %w", err)
 		}
-		binary.BigEndian.PutUint16(buffer[offset+2:offset+4], uint16(dn))
-		binary.BigEndian.PutUint16(buffer[offset+4:offset+6], uint16(sn))
-		offset += 6 + dn + sn
+		offset += 2 + dn + sn
 		offset += copy(buffer[offset:], f.DestinationKey[:ed25519.PublicKeySize])
 		offset += copy(buffer[offset:], f.SourceKey[:ed25519.PublicKeySize])
 		if f.Payload != nil {
@@ -172,22 +170,20 @@ func (f *Frame) MarshalBinary(buffer []byte) (int, error) {
 	case TypeKeepalive:
 
 	default: // destination = coords, source = coords
-		dn, err := f.Destination.MarshalBinary(buffer[offset+6:])
+		payloadLen := len(f.Payload)
+		binary.BigEndian.PutUint16(buffer[offset+0:offset+2], uint16(payloadLen))
+		dn, err := f.Destination.MarshalBinary(buffer[offset+2:])
 		if err != nil {
 			return 0, fmt.Errorf("f.Destination.MarshalBinary: %w", err)
 		}
-		sn, err := f.Source.MarshalBinary(buffer[offset+6+dn:])
+		sn, err := f.Source.MarshalBinary(buffer[offset+2+dn:])
 		if err != nil {
 			return 0, fmt.Errorf("f.Source.MarshalBinary: %w", err)
 		}
-		payloadLen := len(f.Payload)
 		if dn > math.MaxUint16 || sn > math.MaxUint16 || payloadLen > math.MaxUint16 {
 			return 0, fmt.Errorf("frame contents too large")
 		}
-		binary.BigEndian.PutUint16(buffer[offset+0:offset+2], uint16(dn))
-		binary.BigEndian.PutUint16(buffer[offset+2:offset+4], uint16(sn))
-		binary.BigEndian.PutUint16(buffer[offset+4:offset+6], uint16(payloadLen))
-		offset += 6 + dn + sn
+		offset += 2 + dn + sn
 		if f.Payload != nil {
 			f.Payload = f.Payload[:payloadLen]
 			offset += copy(buffer[offset:], f.Payload[:payloadLen])
@@ -220,11 +216,12 @@ func (f *Frame) UnmarshalBinary(data []byte) (int, error) {
 		if payloadLen > cap(f.Payload) {
 			return 0, fmt.Errorf("payload length exceeds frame capacity")
 		}
-		srcLen := int(binary.BigEndian.Uint16(data[offset+2 : offset+4]))
-		if _, err := f.Source.UnmarshalBinary(data[offset+2:]); err != nil {
-			return 0, fmt.Errorf("f.Source.UnmarshalBinary: %w", err)
+		offset += 2
+		srcLen, srcErr := f.Source.UnmarshalBinary(data[offset:])
+		if srcErr != nil {
+			return 0, fmt.Errorf("f.Source.UnmarshalBinary: %w", srcErr)
 		}
-		offset += 4 + srcLen
+		offset += srcLen
 		offset += copy(f.DestinationKey[:], data[offset:])
 		f.Payload = f.Payload[:payloadLen]
 		offset += copy(f.Payload, data[offset:])
@@ -235,15 +232,15 @@ func (f *Frame) UnmarshalBinary(data []byte) (int, error) {
 		if payloadLen > cap(f.Payload) {
 			return 0, fmt.Errorf("payload length exceeds frame capacity")
 		}
-		dstLen := int(binary.BigEndian.Uint16(data[offset+2 : offset+4]))
-		srcLen := int(binary.BigEndian.Uint16(data[offset+4 : offset+6]))
-		offset += 6
-		if _, err := f.Destination.UnmarshalBinary(data[offset:]); err != nil {
-			return 0, fmt.Errorf("f.Destination.UnmarshalBinary: %w", err)
+		offset += 2
+		dstLen, dstErr := f.Destination.UnmarshalBinary(data[offset:])
+		if dstErr != nil {
+			return 0, fmt.Errorf("f.Destination.UnmarshalBinary: %w", dstErr)
 		}
 		offset += dstLen
-		if _, err := f.Source.UnmarshalBinary(data[offset:]); err != nil {
-			return 0, fmt.Errorf("f.Destination.UnmarshalBinary: %w", err)
+		srcLen, srcErr := f.Source.UnmarshalBinary(data[offset:])
+		if srcErr != nil {
+			return 0, fmt.Errorf("f.Destination.UnmarshalBinary: %w", srcErr)
 		}
 		offset += srcLen
 		offset += copy(f.DestinationKey[:], data[offset:])
@@ -257,11 +254,12 @@ func (f *Frame) UnmarshalBinary(data []byte) (int, error) {
 		if payloadLen > cap(f.Payload) {
 			return 0, fmt.Errorf("payload length exceeds frame capacity")
 		}
-		dstLen := int(binary.BigEndian.Uint16(data[offset+2 : offset+4]))
-		if _, err := f.Destination.UnmarshalBinary(data[offset+2:]); err != nil {
-			return 0, fmt.Errorf("f.Destination.UnmarshalBinary: %w", err)
+		offset += 2
+		dstLen, dstErr := f.Destination.UnmarshalBinary(data[offset:])
+		if dstErr != nil {
+			return 0, fmt.Errorf("f.Destination.UnmarshalBinary: %w", dstErr)
 		}
-		offset += 4 + dstLen
+		offset += dstLen
 		offset += copy(f.SourceKey[:], data[offset:])
 		offset += copy(f.DestinationKey[:], data[offset:])
 		f.Payload = f.Payload[:payloadLen]
@@ -306,24 +304,24 @@ func (f *Frame) UnmarshalBinary(data []byte) (int, error) {
 		return offset, nil
 
 	default: // destination = coords, source = coords
-		dstLen := int(binary.BigEndian.Uint16(data[offset+0 : offset+2]))
-		srcLen := int(binary.BigEndian.Uint16(data[offset+2 : offset+4]))
-		payloadLen := int(binary.BigEndian.Uint16(data[offset+4 : offset+6]))
+		payloadLen := int(binary.BigEndian.Uint16(data[offset+0 : offset+2]))
 		if payloadLen > cap(f.Payload) {
 			return 0, fmt.Errorf("payload length exceeds frame capacity")
 		}
-		offset += 6
-		if size := offset + dstLen + srcLen + payloadLen; len(data) != int(size) {
-			return 0, fmt.Errorf("frame expecting %d total bytes, got %d bytes", size, len(data))
-		}
-		if _, err := f.Destination.UnmarshalBinary(data[offset : offset+dstLen]); err != nil {
-			return 0, fmt.Errorf("f.Destination.UnmarshalBinary: %w", err)
+		offset += 2
+		dstLen, dstErr := f.Destination.UnmarshalBinary(data[offset:])
+		if dstErr != nil {
+			return 0, fmt.Errorf("f.Destination.UnmarshalBinary: %w", dstErr)
 		}
 		offset += dstLen
-		if _, err := f.Source.UnmarshalBinary(data[offset : offset+srcLen]); err != nil {
-			return 0, fmt.Errorf("f.Source.UnmarshalBinary: %w", err)
+		srcLen, srcErr := f.Source.UnmarshalBinary(data[offset:])
+		if srcErr != nil {
+			return 0, fmt.Errorf("f.Source.UnmarshalBinary: %w", srcErr)
 		}
 		offset += srcLen
+		if size := offset + payloadLen; len(data) != int(size) {
+			return 0, fmt.Errorf("frame expecting %d total bytes, got %d bytes", size, len(data))
+		}
 		f.Payload = f.Payload[:payloadLen]
 		offset += copy(f.Payload, data[offset:])
 		return offset + payloadLen, nil
