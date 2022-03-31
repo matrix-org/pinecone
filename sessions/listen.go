@@ -20,7 +20,6 @@ import (
 	"fmt"
 	"net"
 
-	"github.com/lucas-clemente/quic-go"
 	"github.com/matrix-org/pinecone/types"
 )
 
@@ -46,29 +45,25 @@ func (q *Sessions) listener() {
 		}
 
 		if proto := q.Protocol(session.ConnectionState().TLS.NegotiatedProtocol); proto != nil {
-			proto.sessionsMutex.Lock()
-			if existing, ok := proto.sessions[key]; ok {
-				_ = existing.CloseWithError(0, "session replaced")
+			entry, ok := proto.getSession(key)
+			entry.Lock()
+			if ok {
+				_ = session.CloseWithError(0, "session replaced")
 			}
-			proto.sessions[key] = session
-			proto.sessionsMutex.Unlock()
-
-			go proto.sessionlistener(session)
+			entry.Session = session
+			entry.Unlock()
+			go proto.sessionlistener(entry)
 		}
 	}
 }
 
-func (s *SessionProtocol) sessionlistener(session quic.Session) {
+func (s *SessionProtocol) sessionlistener(session *activeSession) {
 	key, ok := session.RemoteAddr().(types.PublicKey)
 	if !ok {
 		return
 	}
 
-	defer func() {
-		s.sessionsMutex.Lock()
-		defer s.sessionsMutex.Unlock()
-		delete(s.sessions, key)
-	}()
+	defer s.sessions.Delete(key)
 
 	ctx := session.Context()
 	for {

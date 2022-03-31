@@ -53,11 +53,15 @@ func (s *SessionProtocol) DialContext(ctx context.Context, network, addrstr stri
 	copy(pk[:], pkb)
 	addr = pk
 
-	s.sessionsMutex.RLock()
-	session, ok := s.sessions[pk]
-	s.sessionsMutex.RUnlock()
+	if pk == s.s.r.PublicKey() {
+		return nil, fmt.Errorf("loopback dial")
+	}
 
+	var retrying bool
+retry:
+	session, ok := s.getSession(pk)
 	if !ok {
+		session.Lock()
 		tlsConfig := &tls.Config{
 			NextProtos:         []string{s.proto},
 			InsecureSkipVerify: true,
@@ -83,7 +87,8 @@ func (s *SessionProtocol) DialContext(ctx context.Context, network, addrstr stri
 			},
 		}
 
-		session, err = quic.DialContext(ctx, s.s.r, addr, addrstr, tlsConfig, s.s.quicConfig)
+		session.Session, err = quic.DialContext(ctx, s.s.r, addr, addrstr, tlsConfig, s.s.quicConfig)
+		session.Unlock()
 		if err != nil {
 			if err == context.DeadlineExceeded {
 				return nil, err
@@ -91,13 +96,24 @@ func (s *SessionProtocol) DialContext(ctx context.Context, network, addrstr stri
 			return nil, fmt.Errorf("quic.Dial: %w", err)
 		}
 
-		s.sessionsMutex.Lock()
-		s.sessions[pk] = session
-		s.sessionsMutex.Unlock()
+		go s.sessionlistener(session)
+	} else {
+		session.RLock()
+		defer session.RUnlock()
+	}
+
+	if session.Session == nil {
+		s.sessions.Delete(pk)
+		return nil, fmt.Errorf("session failed to open")
 	}
 
 	stream, err := session.OpenStreamSync(ctx)
 	if err != nil {
+		s.sessions.Delete(pk)
+		if !retrying {
+			retrying = true
+			goto retry
+		}
 		return nil, fmt.Errorf("session.OpenStream: %w", err)
 	}
 

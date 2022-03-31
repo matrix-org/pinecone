@@ -48,11 +48,15 @@ type Sessions struct {
 }
 
 type SessionProtocol struct {
-	s             *Sessions
-	proto         string
-	sessions      map[types.PublicKey]quic.Session
-	sessionsMutex sync.RWMutex // protects sessions
-	streams       chan net.Conn
+	s        *Sessions
+	proto    string
+	streams  chan net.Conn
+	sessions sync.Map // types.PublicKey -> *activeSession
+}
+
+type activeSession struct {
+	quic.Session
+	sync.RWMutex
 }
 
 func NewSessions(log *log.Logger, r *router.Router, protos []string) *Sessions {
@@ -70,10 +74,9 @@ func NewSessions(log *log.Logger, r *router.Router, protos []string) *Sessions {
 	}
 	for _, proto := range protos {
 		s.protocols[proto] = &SessionProtocol{
-			s:        s,
-			proto:    proto,
-			sessions: make(map[types.PublicKey]quic.Session),
-			streams:  make(chan net.Conn, 1),
+			s:       s,
+			proto:   proto,
+			streams: make(chan net.Conn, 1),
 		}
 	}
 
@@ -105,16 +108,20 @@ func (s *Sessions) Protocol(proto string) *SessionProtocol {
 
 func (s *SessionProtocol) Sessions() []ed25519.PublicKey {
 	var sessions []ed25519.PublicKey
-	s.sessionsMutex.RLock()
-	defer s.sessionsMutex.RUnlock()
-	for _, s := range s.sessions {
-		switch k := s.RemoteAddr().(type) {
+	s.sessions.Range(func(k, _ interface{}) bool {
+		switch pk := k.(type) {
 		case types.PublicKey:
-			sessions = append(sessions, k[:])
+			sessions = append(sessions, pk[:])
 		default:
 		}
-	}
+		return true
+	})
 	return sessions
+}
+
+func (p *SessionProtocol) getSession(pk types.PublicKey) (*activeSession, bool) {
+	v, ok := p.sessions.LoadOrStore(pk, &activeSession{})
+	return v.(*activeSession), ok
 }
 
 func (s *Sessions) generateTLSCertificate() *tls.Certificate {
