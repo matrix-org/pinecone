@@ -26,10 +26,10 @@ local frame_types = {
   [6] = "Setup ACK",
   [7] = "Teardown",
   [8] = "SNEK Routed",
-  [209] = "SNEK Ping",
-  [210] = "SNEK Pong",
-  [211] = "Tree Ping",
-  [212] = "Tree Pong",
+  [9] = "SNEK Ping",
+  [10] = "SNEK Pong",
+  [11] = "Tree Ping",
+  [12] = "Tree Pong",
 }
 
 header_size = 10
@@ -244,7 +244,7 @@ local function do_pinecone_dissect(buffer, pinfo, tree)
       -- Info column
       pinfo.cols.info:set(frame_types[7])
       pinfo.cols.info:append(" → [" .. short_pk(dstkey:bytes():raw()) .. "]")
-    elseif (ftype == 8 or ftype == 209 or ftype == 210) then
+    elseif (ftype == 8 or ftype == 9 or ftype == 10) then
       -- SNEK Routed
       -- SNEK Ping
       -- SNEK Pong
@@ -267,13 +267,13 @@ local function do_pinecone_dissect(buffer, pinfo, tree)
           pinfo.cols.protocol:prepend(pinecone_protocol.name .. "-")
         end
         pinfo.cols.info:set(frame_types[8])
-      elseif (ftype == 209 or ftype == 210) then
-        if ftype == 209 then
+      elseif (ftype == 9 or ftype == 10) then
+        if ftype == 9 then
           -- SNEK Ping
-          pinfo.cols.info:set(frame_types[209])
-        elseif ftype == 210 then
+          pinfo.cols.info:set(frame_types[9])
+        elseif ftype == 10 then
           -- SNEK Pong
-          pinfo.cols.info:set(frame_types[210])
+          pinfo.cols.info:set(frame_types[10])
         end
         subtree:add(hop_count, buffer(f_extra_idx, 2), buffer(f_extra_idx, 2):uint())
       end
@@ -332,7 +332,7 @@ local function do_pinecone_dissect(buffer, pinfo, tree)
                                  short_pk(payload(0, 32):bytes():raw()) .. "]")
           pinfo.cols.info:append(" Coords=[" .. table.concat(ports, " ") ..
                                  "]")
-      elseif (ftype == 2 or ftype == 211 or ftype == 212) then
+      elseif (ftype == 2 or ftype == 11 or ftype == 12) then
         if plen > 0 and ftype == 2 then
           -- Tree Routed
           quic_dissector = Dissector.get("quic")
@@ -341,13 +341,13 @@ local function do_pinecone_dissect(buffer, pinfo, tree)
             pinfo.cols.protocol:prepend(pinecone_protocol.name .. "-")
           end
           pinfo.cols.info:set(frame_types[2])
-        elseif (ftype == 211 or ftype == 212) then
-          if ftype == 211 then
+        elseif (ftype == 11 or ftype == 12) then
+          if ftype == 11 then
             -- Tree Ping
-            pinfo.cols.info:set(frame_types[211])
-          elseif ftype == 212 then
+            pinfo.cols.info:set(frame_types[11])
+          elseif ftype == 12 then
             -- Tree Pong
-            pinfo.cols.info:set(frame_types[212])
+            pinfo.cols.info:set(frame_types[12])
           end
           subtree:add(hop_count, buffer(f_extra_idx, 2), buffer(f_extra_idx, 2):uint())
         end

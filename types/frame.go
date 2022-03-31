@@ -34,19 +34,19 @@ type FrameVersion uint8
 type FrameType uint8
 
 const (
-	TypeKeepalive                FrameType = iota       // protocol frame, direct to peers only
-	TypeTreeAnnouncement                                // protocol frame, bypasses queues
-	TypeTreeRouted                                      // traffic frame, forwarded using tree routing
-	TypeVirtualSnakeBootstrap                           // protocol frame, forwarded using SNEK
-	TypeVirtualSnakeBootstrapACK                        // protocol frame, forwarded using tree routing
-	TypeVirtualSnakeSetup                               // protocol frame, forwarded using tree routing
-	TypeVirtualSnakeSetupACK                            // protocol frame, forwarded using special rules
-	TypeVirtualSnakeTeardown                            // protocol frame, forwarded using special rules
-	TypeVirtualSnakeRouted                              // traffic frame, forwarded using SNEK
-	TypeSNEKPing                 FrameType = iota + 200 // traffic frame, forwarded using SNEK
-	TypeSNEKPong                                        // traffic frame, forwarded using SNEK
-	TypeTreePing                                        // traffic frame, forwarded using tree
-	TypeTreePong                                        // traffic frame, forwarded using tree
+	TypeKeepalive                FrameType = iota // protocol frame, direct to peers only
+	TypeTreeAnnouncement                          // protocol frame, bypasses queues
+	TypeTreeRouted                                // traffic frame, forwarded using tree routing
+	TypeVirtualSnakeBootstrap                     // protocol frame, forwarded using SNEK
+	TypeVirtualSnakeBootstrapACK                  // protocol frame, forwarded using tree routing
+	TypeVirtualSnakeSetup                         // protocol frame, forwarded using tree routing
+	TypeVirtualSnakeSetupACK                      // protocol frame, forwarded using special rules
+	TypeVirtualSnakeTeardown                      // protocol frame, forwarded using special rules
+	TypeVirtualSnakeRouted                        // traffic frame, forwarded using SNEK
+	TypeSNEKPing                                  // traffic frame, forwarded using SNEK
+	TypeSNEKPong                                  // traffic frame, forwarded using SNEK
+	TypeTreePing                                  // traffic frame, forwarded using tree
+	TypeTreePong                                  // traffic frame, forwarded using tree
 )
 
 const (
