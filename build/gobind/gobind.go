@@ -27,7 +27,6 @@ import (
 	pineconeConnections "github.com/matrix-org/pinecone/connections"
 	pineconeMulticast "github.com/matrix-org/pinecone/multicast"
 	pineconeRouter "github.com/matrix-org/pinecone/router"
-	pineconeSessions "github.com/matrix-org/pinecone/sessions"
 	"github.com/matrix-org/pinecone/types"
 
 	_ "golang.org/x/mobile/bind"
@@ -45,16 +44,11 @@ type Pinecone struct {
 	logger            *log.Logger
 	PineconeRouter    *pineconeRouter.Router
 	PineconeMulticast *pineconeMulticast.Multicast
-	PineconeQUIC      *pineconeSessions.Sessions
 	PineconeManager   *pineconeConnections.ConnectionManager
 }
 
 func (m *Pinecone) PeerCount(peertype int) int {
 	return m.PineconeRouter.PeerCount(peertype)
-}
-
-func (m *Pinecone) SessionCount() int {
-	return len(m.PineconeQUIC.Sessions())
 }
 
 func (m *Pinecone) SetMulticastEnabled(enabled bool) {
@@ -137,14 +131,12 @@ func (m *Pinecone) Start() {
 	m.logger.Println("Public key:", hex.EncodeToString(pk))
 
 	m.PineconeRouter = pineconeRouter.NewRouter(m.logger, sk, false)
-	m.PineconeQUIC = pineconeSessions.NewSessions(m.logger, m.PineconeRouter)
 	m.PineconeMulticast = pineconeMulticast.NewMulticast(m.logger, m.PineconeRouter)
 	m.PineconeManager = pineconeConnections.NewConnectionManager(m.PineconeRouter)
 }
 
 func (m *Pinecone) Stop() {
 	m.PineconeMulticast.Stop()
-	_ = m.PineconeQUIC.Close()
 	_ = m.PineconeRouter.Close()
 	m.cancel()
 }
