@@ -20,7 +20,6 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
-	"log"
 	"net"
 	"sync"
 	"time"
@@ -36,7 +35,7 @@ const MulticastGroupPort = 60606
 
 type Multicast struct {
 	r          *router.Router
-	log        *log.Logger
+	log        types.Logger
 	ctx        context.Context
 	cancel     context.CancelFunc
 	id         string
@@ -56,7 +55,7 @@ type multicastInterface struct {
 }
 
 func NewMulticast(
-	log *log.Logger, r *router.Router,
+	log types.Logger, r *router.Router,
 ) *Multicast {
 	public := r.PublicKey()
 	m := &Multicast{

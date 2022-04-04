@@ -24,7 +24,6 @@ import (
 	"encoding/hex"
 	"encoding/pem"
 	"fmt"
-	"log"
 	"math/big"
 	"net"
 	"sync"
@@ -37,7 +36,7 @@ import (
 
 type Sessions struct {
 	r            *router.Router
-	log          *log.Logger                 // logger
+	log          types.Logger                // logger
 	context      context.Context             // router context
 	cancel       context.CancelFunc          // shut down the router
 	protocols    map[string]*SessionProtocol // accepted connections by proto
@@ -59,7 +58,7 @@ type activeSession struct {
 	sync.RWMutex
 }
 
-func NewSessions(log *log.Logger, r *router.Router, protos []string) *Sessions {
+func NewSessions(log types.Logger, r *router.Router, protos []string) *Sessions {
 	ctx, cancel := context.WithCancel(context.Background())
 	s := &Sessions{
 		r:         r,
