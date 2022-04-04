@@ -24,7 +24,6 @@ import (
 	"encoding/hex"
 	"encoding/pem"
 	"fmt"
-	"log"
 	"math/big"
 	"net"
 	"sync"
@@ -38,7 +37,7 @@ import (
 
 type Sessions struct {
 	r             *router.Router
-	log           *log.Logger                // logger
+	log           types.Logger               // logger
 	context       context.Context            // router context
 	cancel        context.CancelFunc         // shut down the router
 	streams       chan net.Conn              // accepted connections
@@ -49,7 +48,7 @@ type Sessions struct {
 	utpSocket     *utp.Socket                //
 }
 
-func NewSessions(log *log.Logger, r *router.Router) *Sessions {
+func NewSessions(log types.Logger, r *router.Router) *Sessions {
 	ctx, cancel := context.WithCancel(context.Background())
 	s, err := utp.NewSocketFromPacketConnNoClose(r)
 	if err != nil {
