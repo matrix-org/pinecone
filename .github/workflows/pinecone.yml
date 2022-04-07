@@ -31,5 +31,3 @@ jobs:
     if: github.repository == 'matrix-org/pinecone' && github.ref_name == 'main'
     needs: [build]
     uses: matrix-org/pinecone/.github/workflows/docker.yml@main
-    secrets:
-      DOCKER_TOKEN: ${{ secrets.DOCKER_TOKEN }}
