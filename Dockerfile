@@ -17,7 +17,7 @@ LABEL org.opencontainers.image.licenses="Apache-2.0"
 
 COPY --from=base /build/bin/* /usr/bin/
 
-EXPOSE 80/tcp
 EXPOSE 65432/tcp
+EXPOSE 65433/tcp
 
-ENTRYPOINT ["/usr/bin/pinecone", "-listenws=:80", "-listen=:65432"]
+ENTRYPOINT ["/usr/bin/pinecone", "-listenws=:65433", "-listen=:65432"]
