@@ -22,16 +22,23 @@ import (
 	"log"
 	"net"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"net/http"
 	_ "net/http/pprof"
 
+	"github.com/gorilla/websocket"
 	"github.com/matrix-org/pinecone/connections"
 	"github.com/matrix-org/pinecone/multicast"
 	"github.com/matrix-org/pinecone/router"
+	"github.com/matrix-org/pinecone/util"
 )
 
 func main() {
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+
 	_, sk, err := ed25519.GenerateKey(nil)
 	if err != nil {
 		panic(err)
@@ -52,7 +59,8 @@ func main() {
 	pineconeMulticast.Start()
 	pineconeManager := connections.NewConnectionManager(pineconeRouter)
 
-	listen := flag.String("listen", "", "address to listen on")
+	listentcp := flag.String("listen", ":0", "address to listen for TCP connections")
+	listenws := flag.String("listenws", ":0", "address to listen for WebSockets connections")
 	connect := flag.String("connect", "", "peer to connect to")
 	flag.Parse()
 
@@ -60,31 +68,68 @@ func main() {
 		pineconeManager.AddPeer(*connect)
 	}
 
-	go func() {
-		listener, err := listener.Listen(context.Background(), "tcp", *listen)
-		if err != nil {
-			panic(err)
-		}
+	if listenws != nil && *listenws != "" {
+		go func() {
+			var upgrader = websocket.Upgrader{}
+			http.DefaultServeMux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+				conn, err := upgrader.Upgrade(w, r, nil)
+				if err != nil {
+					log.Println(err)
+					return
+				}
 
-		fmt.Println("Listening on", listener.Addr())
+				if _, err := pineconeRouter.Connect(
+					util.WrapWebSocketConn(conn),
+					router.ConnectionURI(conn.RemoteAddr().String()),
+					router.ConnectionPeerType(router.PeerTypeRemote),
+					router.ConnectionZone("websocket"),
+				); err != nil {
+					panic(err)
+				}
 
-		for {
-			conn, err := listener.Accept()
+				fmt.Println("Inbound WS connection", conn.RemoteAddr(), "is connected")
+			})
+
+			listener, err := listener.Listen(context.Background(), "tcp", *listenws)
 			if err != nil {
 				panic(err)
 			}
 
-			if _, err := pineconeRouter.Connect(
-				conn,
-				router.ConnectionURI(conn.RemoteAddr().String()),
-				router.ConnectionPeerType(router.PeerTypeRemote),
-			); err != nil {
+			fmt.Printf("Listening for WebSockets on http://%s\n", listener.Addr())
+
+			if err := http.Serve(listener, http.DefaultServeMux); err != nil {
+				panic(err)
+			}
+		}()
+	}
+
+	if listentcp != nil && *listentcp != "" {
+		go func() {
+			listener, err := listener.Listen(context.Background(), "tcp", *listentcp)
+			if err != nil {
 				panic(err)
 			}
 
-			fmt.Println("Inbound connection", conn.RemoteAddr(), "is connected")
-		}
-	}()
+			fmt.Println("Listening on", listener.Addr())
 
-	select {}
+			for {
+				conn, err := listener.Accept()
+				if err != nil {
+					panic(err)
+				}
+
+				if _, err := pineconeRouter.Connect(
+					conn,
+					router.ConnectionURI(conn.RemoteAddr().String()),
+					router.ConnectionPeerType(router.PeerTypeRemote),
+				); err != nil {
+					panic(err)
+				}
+
+				fmt.Println("Inbound TCP connection", conn.RemoteAddr(), "is connected")
+			}
+		}()
+	}
+
+	<-sigs
 }
