@@ -369,7 +369,7 @@ func (m *Multicast) listen(intf *multicastInterface, conn net.PacketConn, srcadd
 		go func() {
 			defer m.dialling.Delete(straddr)
 
-			conn, err := dialer.Dial("tcp6", straddr)
+			conn, err := dialer.Dial("tcp", straddr)
 			if err != nil {
 				//m.log.Println("dialer.Dial:", err)
 				return
