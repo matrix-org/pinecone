@@ -47,11 +47,45 @@ func NewConnectionManager(r *router.Router) *ConnectionManager {
 		_staticPeers:    map[string]struct{}{},
 		_connectedPeers: map[string]struct{}{},
 	}
-	time.AfterFunc(interval, m.worker)
+	time.AfterFunc(interval, m._worker)
 	return m
 }
 
-func (m *ConnectionManager) worker() {
+func (m *ConnectionManager) _connect(uri string) {
+	ctx, cancel := context.WithTimeout(m.ctx, interval)
+	defer cancel()
+	var parent net.Conn
+	switch {
+	case strings.HasPrefix(uri, "ws://"):
+		fallthrough
+	case strings.HasPrefix(uri, "wss://"):
+		c, _, err := websocket.Dial(ctx, uri, nil)
+		if err != nil {
+			return
+		}
+		parent = websocket.NetConn(m.ctx, c, websocket.MessageBinary)
+	default:
+		var err error
+		dialer := net.Dialer{
+			Timeout: interval,
+		}
+		parent, err = dialer.DialContext(ctx, "tcp", uri)
+		if err != nil {
+			return
+		}
+	}
+	if parent == nil {
+		return
+	}
+	_, _ = m.router.Connect(
+		parent,
+		router.ConnectionZone("static"),
+		router.ConnectionPeerType(router.PeerTypeRemote),
+		router.ConnectionURI(uri),
+	)
+}
+
+func (m *ConnectionManager) _worker() {
 	for k := range m._connectedPeers {
 		delete(m._connectedPeers, k)
 	}
@@ -63,37 +97,7 @@ func (m *ConnectionManager) worker() {
 		uri := peer
 		if _, ok := m._connectedPeers[uri]; !ok {
 			m.Act(nil, func() {
-				ctx, cancel := context.WithTimeout(m.ctx, interval)
-				defer cancel()
-				var parent net.Conn
-				switch {
-				case strings.HasPrefix(uri, "ws://"):
-					fallthrough
-				case strings.HasPrefix(uri, "wss://"):
-					c, _, err := websocket.Dial(ctx, peer, nil)
-					if err != nil {
-						return
-					}
-					parent = websocket.NetConn(m.ctx, c, websocket.MessageBinary)
-				default:
-					var err error
-					dialer := net.Dialer{
-						Timeout: interval,
-					}
-					parent, err = dialer.DialContext(ctx, "tcp", peer)
-					if err != nil {
-						return
-					}
-				}
-				if parent == nil {
-					return
-				}
-				_, _ = m.router.Connect(
-					parent,
-					router.ConnectionZone("static"),
-					router.ConnectionPeerType(router.PeerTypeRemote),
-					router.ConnectionURI(peer),
-				)
+				m._connect(uri)
 			})
 		}
 	}
@@ -101,13 +105,14 @@ func (m *ConnectionManager) worker() {
 	select {
 	case <-m.ctx.Done():
 	default:
-		time.AfterFunc(interval, m.worker)
+		time.AfterFunc(interval, m._worker)
 	}
 }
 
 func (m *ConnectionManager) AddPeer(uri string) {
 	phony.Block(m, func() {
 		m._staticPeers[uri] = struct{}{}
+		m._connect(uri)
 	})
 }
 
