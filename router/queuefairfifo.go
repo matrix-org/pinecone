@@ -25,12 +25,14 @@ import (
 const fairFIFOQueueSize = 16
 
 type fairFIFOQueue struct {
-	queues map[uint16]chan *types.Frame // queue ID -> frame, map for randomness
-	num    uint16                       // how many queues should we have?
-	count  int                          // how many queued items in total?
-	n      uint16                       // which queue did we last iterate on?
-	offset uint64                       // adds an element of randomness to queue assignment
-	mutex  sync.Mutex
+	queues  map[uint16]chan *types.Frame // queue ID -> frame, map for randomness
+	num     uint16                       // how many queues should we have?
+	count   int                          // how many queued items in total?
+	n       uint16                       // which queue did we last iterate on?
+	offset  uint64                       // adds an element of randomness to queue assignment
+	total   uint64                       // how many packets handled?
+	dropped uint64                       // how many packets dropped?
+	mutex   sync.Mutex
 }
 
 func newFairFIFOQueue(num uint16) *fairFIFOQueue {
@@ -87,11 +89,13 @@ func (q *fairFIFOQueue) push(frame *types.Frame) bool {
 	default:
 		// The queue is full - perform a head drop
 		<-q.queues[h]
+		q.dropped++
 		if q.count-1 == 0 {
 			h = 0
 		}
 		q.queues[h] <- frame
 	}
+	q.total++
 	return true
 }
 
@@ -141,13 +145,17 @@ func (q *fairFIFOQueue) MarshalJSON() ([]byte, error) {
 	q.mutex.Lock()
 	defer q.mutex.Unlock()
 	res := struct {
-		Count  int            `json:"count"`
-		Size   int            `json:"size"`
-		Queues map[uint16]int `json:"queues"`
+		Count   int            `json:"count"`
+		Size    int            `json:"size"`
+		Queues  map[uint16]int `json:"queues"`
+		Total   uint64         `json:"packets_total"`
+		Dropped uint64         `json:"packets_dropped"`
 	}{
-		Count:  q.count,
-		Size:   int(q.num) * fairFIFOQueueSize,
-		Queues: map[uint16]int{},
+		Count:   q.count,
+		Size:    int(q.num) * fairFIFOQueueSize,
+		Queues:  map[uint16]int{},
+		Total:   q.total,
+		Dropped: q.dropped,
 	}
 	for h, queue := range q.queues {
 		if c := len(queue); c > 0 {

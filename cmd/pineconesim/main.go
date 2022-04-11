@@ -255,6 +255,16 @@ func configureHTTPRouting(log *log.Logger, sim *simulator.Simulator) {
 		log.Printf("WebSocket peer %q connected to sim node %q\n", c.RemoteAddr(), nodeID)
 	})
 
+	http.DefaultServeMux.HandleFunc("/manhole", func(w http.ResponseWriter, r *http.Request) {
+		nodeID := r.URL.Query().Get("node")
+		node := sim.Node(nodeID)
+		if node == nil {
+			w.WriteHeader(404)
+			return
+		}
+		node.SimRouter.ManholeHandler(w, r)
+	})
+
 	http.DefaultServeMux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		_ = template.Must(template.ParseFiles("./cmd/pineconesim/page.html")).Execute(w, "")
 	})

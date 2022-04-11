@@ -30,6 +30,7 @@ import (
 	_ "net/http/pprof"
 
 	"github.com/matrix-org/pinecone/cmd/pineconeip/tun"
+	"github.com/matrix-org/pinecone/connections"
 	"github.com/matrix-org/pinecone/multicast"
 	"github.com/matrix-org/pinecone/router"
 )
@@ -71,49 +72,15 @@ func main() {
 	pineconeRouter := router.NewRouter(logger, sk, false)
 	pineconeMulticast := multicast.NewMulticast(logger, pineconeRouter)
 	pineconeMulticast.Start()
+	pineconeManager := connections.NewConnectionManager(pineconeRouter)
 	pineconeTUN, err := tun.NewTUN(pineconeRouter)
 	if err != nil {
 		panic(err)
 	}
 	_ = pineconeTUN
 
-	tcpParams := func(conn *net.TCPConn) error {
-		if err := conn.SetNoDelay(true); err != nil {
-			return fmt.Errorf("conn.SetNoDelay: %w", err)
-		}
-		if err := conn.SetLinger(0); err != nil {
-			return fmt.Errorf("conn.SetLinger: %w", err)
-		}
-		return nil
-	}
-
 	if connect != nil && *connect != "" {
-		go func() {
-			addr, err := net.ResolveTCPAddr("tcp", *connect)
-			if err != nil {
-				panic(err)
-			}
-
-			conn, err := net.DialTCP("tcp", nil, addr)
-			if err != nil {
-				panic(err)
-			}
-
-			if err := tcpParams(conn); err != nil {
-				panic(err)
-			}
-
-			port, err := pineconeRouter.Connect(
-				conn,
-				router.ConnectionURI(*connect),
-				router.ConnectionPeerType(router.PeerTypeRemote),
-			)
-			if err != nil {
-				panic(err)
-			}
-
-			fmt.Println("Outbound connection", conn.RemoteAddr(), "is connected to port", port)
-		}()
+		pineconeManager.AddPeer(*connect)
 	}
 
 	go func() {
@@ -122,10 +89,6 @@ func main() {
 		for {
 			conn, err := listener.AcceptTCP()
 			if err != nil {
-				panic(err)
-			}
-
-			if err := tcpParams(conn); err != nil {
 				panic(err)
 			}
 

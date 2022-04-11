@@ -2,24 +2,33 @@ name: Pinecone
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
+    branches: [main]
 
 jobs:
-
   build:
+    name: Build
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v2
+      - uses: actions/checkout@v2
 
-    - name: Set up Go
-      uses: actions/setup-go@v2
-      with:
-        go-version: 1.17
+      - name: Set up Go
+        uses: actions/setup-go@v2
+        with:
+          go-version: 1.17
 
-    - name: Build Pinecone
-      run: go build -v ./...
+      - name: Build Pinecone
+        run: go build -v ./...
 
-    - name: Run unit tests
-      run: go test -v ./...
+      - name: Run unit tests
+        run: go test -v ./...
+
+  docker:
+    name: Docker
+    permissions:
+      packages: write
+      contents: read
+    if: github.repository == 'matrix-org/pinecone' && github.ref_name == 'main'
+    needs: [build]
+    uses: matrix-org/pinecone/.github/workflows/docker.yml@main

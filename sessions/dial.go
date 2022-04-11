@@ -1,4 +1,4 @@
-// Copyright 2021 The Matrix.org Foundation C.I.C.
+// Copyright 2022 The Matrix.org Foundation C.I.C.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -25,7 +25,7 @@ import (
 	"net"
 	"strings"
 
-	"github.com/matrix-org/pinecone/types"
+	"github.com/lucas-clemente/quic-go"
 )
 
 // DialContext dials a given public key using the supplied network.
@@ -35,7 +35,7 @@ import (
 // networks automatically. Otherwise, the default "ed25519" will use snake
 // routing. The address must be the destination public key specified in hex.
 // If the context expires then the session will be torn down automatically.
-func (q *Sessions) DialContext(ctx context.Context, network, addrstr string) (net.Conn, error) {
+func (s *SessionProtocol) DialContext(ctx context.Context, network, addrstr string) (net.Conn, error) {
 	host, _, err := net.SplitHostPort(addrstr)
 	if err != nil {
 		return nil, fmt.Errorf("net.SplitHostPort: %w", err)
@@ -50,88 +50,89 @@ func (q *Sessions) DialContext(ctx context.Context, network, addrstr string) (ne
 	if len(pkb) != ed25519.PublicKeySize {
 		return nil, fmt.Errorf("host must be length of an ed25519 public key")
 	}
-	copy(pk, pkb)
+	copy(pk[:], pkb)
+	var addr net.Addr = pk
 
-	var addr net.Addr
-	switch network {
-	/*
-		case "ed25519+greedy":
-			_, addr, err = q.r.DHTSearch(ctx, pk, types.FullMask[:], false)
-			if err != nil {
-				return nil, fmt.Errorf("q.dht.search: %w", err)
-			}
-
-		case "ed25519+source":
-			_, coords, err := q.r.DHTSearch(ctx, pk, types.FullMask[:], false)
-			if err != nil {
-				return nil, fmt.Errorf("q.dht.search: %w", err)
-			}
-			addr, err = q.r.Pathfind(ctx, coords)
-			if err != nil {
-				return nil, fmt.Errorf("q.pathfinder.pathfind: %w", err)
-			}
-	*/
-
-	case "ed25519":
-		fallthrough
-
-	default:
-		a := types.PublicKey{}
-		copy(a[:], pk)
-		addr = a
+	if pk == s.s.r.PublicKey() {
+		return nil, fmt.Errorf("loopback dial")
 	}
 
-	session, err := q.utpSocket.DialAddrContext(
-		ctx, addr,
-	)
+	var retrying bool
+retry:
+	session, ok := s.getSession(pk)
+	if !ok {
+		session.Lock()
+		tlsConfig := &tls.Config{
+			NextProtos:         []string{s.proto},
+			InsecureSkipVerify: true,
+			GetClientCertificate: func(info *tls.CertificateRequestInfo) (*tls.Certificate, error) {
+				return s.s.tlsCert, nil
+			},
+			VerifyPeerCertificate: func(rawCerts [][]byte, _ [][]*x509.Certificate) error {
+				if c := len(rawCerts); c != 1 {
+					return fmt.Errorf("expected exactly one peer certificate but got %d", c)
+				}
+				cert, err := x509.ParseCertificate(rawCerts[0])
+				if err != nil {
+					return fmt.Errorf("x509.ParseCertificate: %w", err)
+				}
+				public, ok := cert.PublicKey.(ed25519.PublicKey)
+				if !ok {
+					return fmt.Errorf("expected ed25519 public key")
+				}
+				if !bytes.Equal(public, pk[:]) {
+					return fmt.Errorf("remote side returned incorrect public key")
+				}
+				return nil
+			},
+		}
+
+		session.Session, err = quic.DialContext(ctx, s.s.r, addr, addrstr, tlsConfig, s.s.quicConfig)
+		session.Unlock()
+		if err != nil {
+			if err == context.DeadlineExceeded {
+				return nil, err
+			}
+			return nil, fmt.Errorf("quic.Dial: %w", err)
+		}
+
+		go s.sessionlistener(session)
+	} else {
+		session.RLock()
+		defer session.RUnlock()
+	}
+
+	if session.Session == nil {
+		s.sessions.Delete(pk)
+		return nil, fmt.Errorf("session failed to open")
+	}
+
+	stream, err := session.OpenStreamSync(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("q.utpSocket.DialContext: %w", err)
+		s.sessions.Delete(pk)
+		if !retrying {
+			retrying = true
+			goto retry
+		}
+		return nil, fmt.Errorf("session.OpenStream: %w", err)
 	}
 
-	session = tls.Client(session, &tls.Config{
-		InsecureSkipVerify: true,
-		GetClientCertificate: func(info *tls.CertificateRequestInfo) (*tls.Certificate, error) {
-			return q.tlsCert, nil
-		},
-		VerifyPeerCertificate: func(rawCerts [][]byte, _ [][]*x509.Certificate) error {
-			if c := len(rawCerts); c != 1 {
-				return fmt.Errorf("expected exactly one peer certificate but got %d", c)
-			}
-			cert, err := x509.ParseCertificate(rawCerts[0])
-			if err != nil {
-				return fmt.Errorf("x509.ParseCertificate: %w", err)
-			}
-			public, ok := cert.PublicKey.(ed25519.PublicKey)
-			if !ok {
-				return fmt.Errorf("expected ed25519 public key")
-			}
-			if !bytes.Equal(public, pk) {
-				return fmt.Errorf("remote side returned incorrect public key")
-			}
-			return nil
-		},
-	})
-
-	return session, nil
+	return &Stream{stream, session}, nil
 }
 
 // Dial dials a given public key using the supplied network.
-// The network field can be used to specify which routing algorithm to
-// use for the session: "ed25519+greedy" for greedy routing or "ed25519+source"
-// for source routing. DHT lookups and pathfinds will be performed for these
-// networks automatically. Otherwise, the default "ed25519" will use snake
-// routing. The address must be the destination public key specified in hex.
-func (q *Sessions) Dial(network, addr string) (net.Conn, error) {
+// The address must be the destination public key specified in hex.
+func (q *SessionProtocol) Dial(network, addr string) (net.Conn, error) {
 	return q.DialContext(context.Background(), network, addr)
 }
 
 // DialTLS is an alias for Dial, as all sessions are TLS-encrypted.
-func (q *Sessions) DialTLS(network, addr string) (net.Conn, error) {
+func (q *SessionProtocol) DialTLS(network, addr string) (net.Conn, error) {
 	return q.DialTLSContext(context.Background(), network, addr)
 }
 
 // DialTLSContext is an alias for DialContext, as all sessions are
 // TLS-encrypted.
-func (q *Sessions) DialTLSContext(ctx context.Context, network, addr string) (net.Conn, error) {
+func (q *SessionProtocol) DialTLSContext(ctx context.Context, network, addr string) (net.Conn, error) {
 	return q.DialContext(ctx, network, addr)
 }
