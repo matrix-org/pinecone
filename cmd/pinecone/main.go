@@ -57,7 +57,7 @@ func main() {
 	pineconeRouter := router.NewRouter(logger, sk, false)
 	pineconeMulticast := multicast.NewMulticast(logger, pineconeRouter)
 	pineconeMulticast.Start()
-	pineconeManager := connections.NewConnectionManager(pineconeRouter)
+	pineconeManager := connections.NewConnectionManager(pineconeRouter, nil)
 
 	listentcp := flag.String("listen", ":0", "address to listen for TCP connections")
 	listenws := flag.String("listenws", ":0", "address to listen for WebSockets connections")
