@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"math"
 	"net"
+	"net/http"
 	"strings"
 	"time"
 
@@ -35,6 +36,8 @@ type ConnectionManager struct {
 	ctx             context.Context
 	cancel          context.CancelFunc
 	router          *router.Router
+	client          *http.Client
+	ws              *websocket.DialOptions
 	_staticPeers    map[string]*connectionAttempts
 	_connectedPeers map[string]struct{}
 }
@@ -44,14 +47,21 @@ type connectionAttempts struct {
 	next     time.Time
 }
 
-func NewConnectionManager(r *router.Router) *ConnectionManager {
+func NewConnectionManager(r *router.Router, client *http.Client) *ConnectionManager {
 	ctx, cancel := context.WithCancel(context.Background())
 	m := &ConnectionManager{
-		ctx:             ctx,
-		cancel:          cancel,
-		router:          r,
+		ctx:    ctx,
+		cancel: cancel,
+		router: r,
+		client: client,
+		ws: &websocket.DialOptions{
+			HTTPClient: client,
+		},
 		_staticPeers:    map[string]*connectionAttempts{},
 		_connectedPeers: map[string]struct{}{},
+	}
+	if m.ws.HTTPClient == nil {
+		m.ws.HTTPClient = http.DefaultClient
 	}
 	time.AfterFunc(interval, m._worker)
 	return m
@@ -82,7 +92,7 @@ func (m *ConnectionManager) _connect(uri string) {
 	case strings.HasPrefix(uri, "ws://"):
 		fallthrough
 	case strings.HasPrefix(uri, "wss://"):
-		c, _, err := websocket.Dial(ctx, uri, nil)
+		c, _, err := websocket.Dial(ctx, uri, m.ws)
 		if err != nil {
 			result(err)
 			return

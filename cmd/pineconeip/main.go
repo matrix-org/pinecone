@@ -72,7 +72,7 @@ func main() {
 	pineconeRouter := router.NewRouter(logger, sk, false)
 	pineconeMulticast := multicast.NewMulticast(logger, pineconeRouter)
 	pineconeMulticast.Start()
-	pineconeManager := connections.NewConnectionManager(pineconeRouter)
+	pineconeManager := connections.NewConnectionManager(pineconeRouter, nil)
 	pineconeTUN, err := tun.NewTUN(pineconeRouter)
 	if err != nil {
 		panic(err)

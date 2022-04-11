@@ -132,7 +132,7 @@ func (m *Pinecone) Start() {
 
 	m.PineconeRouter = pineconeRouter.NewRouter(m.logger, sk, false)
 	m.PineconeMulticast = pineconeMulticast.NewMulticast(m.logger, m.PineconeRouter)
-	m.PineconeManager = pineconeConnections.NewConnectionManager(m.PineconeRouter)
+	m.PineconeManager = pineconeConnections.NewConnectionManager(m.PineconeRouter, nil)
 }
 
 func (m *Pinecone) Stop() {
