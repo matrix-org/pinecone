@@ -26,6 +26,7 @@ import (
 	"strings"
 
 	"github.com/lucas-clemente/quic-go"
+	"github.com/matrix-org/pinecone/types"
 )
 
 // DialContext dials a given public key using the supplied network.
@@ -42,7 +43,7 @@ func (s *SessionProtocol) DialContext(ctx context.Context, network, addrstr stri
 	}
 
 	host = strings.TrimSuffix(host, ".pinecone.matrix.org")
-	pk := make(ed25519.PublicKey, ed25519.PublicKeySize)
+	var pk types.PublicKey
 	pkb, err := hex.DecodeString(host)
 	if err != nil {
 		return nil, fmt.Errorf("hex.DecodeString: %w", err)
@@ -51,7 +52,6 @@ func (s *SessionProtocol) DialContext(ctx context.Context, network, addrstr stri
 		return nil, fmt.Errorf("host must be length of an ed25519 public key")
 	}
 	copy(pk[:], pkb)
-	var addr net.Addr = pk
 
 	if pk == s.s.r.PublicKey() {
 		return nil, fmt.Errorf("loopback dial")
@@ -87,7 +87,7 @@ retry:
 			},
 		}
 
-		session.Session, err = quic.DialContext(ctx, s.s.r, addr, addrstr, tlsConfig, s.s.quicConfig)
+		session.Session, err = quic.DialContext(ctx, s.s.r, pk, addrstr, tlsConfig, s.s.quicConfig)
 		session.Unlock()
 		if err != nil {
 			if err == context.DeadlineExceeded {

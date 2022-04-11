@@ -40,11 +40,11 @@ func main() {
 	}
 
 	n.router = router.NewRouter(n.log, sk, false)
-	n.sessions = sessions.NewSessions(n.log, n.router)
+	n.sessions = sessions.NewSessions(n.log, n.router, []string{"matrix"})
 	n.multicast = multicast.NewMulticast(n.log, n.router)
 	n.multicast.Start()
 
-	pineconeHTTP := n.sessions.HTTP()
+	pineconeHTTP := n.sessions.Protocol("matrix").HTTP()
 	pineconeHTTP.Mux().HandleFunc("/", n.handleHTTPPineconeToFederation)
 	n.client = pineconeHTTP.Client()
 
