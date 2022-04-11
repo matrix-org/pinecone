@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/ed25519"
+	"encoding/hex"
 	"io"
 	"log"
 	"net/http"
@@ -13,6 +14,7 @@ import (
 	"github.com/matrix-org/pinecone/multicast"
 	"github.com/matrix-org/pinecone/router"
 	"github.com/matrix-org/pinecone/sessions"
+	"github.com/matrix-org/pinecone/types"
 )
 
 type node struct {
@@ -85,21 +87,26 @@ func (n *node) handleHTTPFederationToPinecone(w http.ResponseWriter, req *http.R
 		http.Error(w, "not /_matrix", http.StatusServiceUnavailable)
 		return
 	}
-	xmatrix := req.Header.Get("Authorization")
-	_, _, host, _, _ := gomatrixserverlib.ParseAuthorization(xmatrix)
-	if host == "" {
-		query := req.URL.Query()
-		host = gomatrixserverlib.ServerName(query.Get("_destination"))
-		query.Del("_destination")
-		req.URL.RawQuery = query.Encode()
-		if host == "" {
-			http.Error(w, "no destination supplied in request", http.StatusServiceUnavailable)
-			return
+	pk, ok := tryHostnameFromHostHeader(req)
+	if !ok {
+		pk, ok = tryHostnameFromDestinationHeader(req)
+		if !ok {
+			pk, ok = tryHostnameFromQueryString(req)
+			if !ok {
+				http.Error(w, "no destination supplied in request", http.StatusServiceUnavailable)
+				return
+			} else {
+				n.log.Println("Query string:", pk.String())
+			}
+		} else {
+			n.log.Println("Destination header:", pk.String())
 		}
+	} else {
+		n.log.Println("Host header:", pk.String())
 	}
 	req.URL.Scheme = "http"
-	req.Host = string(host)
-	req.URL.Host = string(host)
+	req.Host = pk.String()
+	req.URL.Host = pk.String()
 	resp, err := n.client.Transport.RoundTrip(req)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusServiceUnavailable)
@@ -114,4 +121,38 @@ func (n *node) handleHTTPFederationToPinecone(w http.ResponseWriter, req *http.R
 	w.WriteHeader(resp.StatusCode)
 	_, _ = io.Copy(w, resp.Body)
 	n.log.Println("Returning", resp.StatusCode, "for", req.URL.String())
+}
+
+func tryHostnameFromDestinationHeader(req *http.Request) (types.PublicKey, bool) {
+	xmatrix := req.Header.Get("Authorization")
+	_, _, host, _, _ := gomatrixserverlib.ParseAuthorization(xmatrix)
+	return tryDecodeHex(string(host))
+}
+
+func tryHostnameFromHostHeader(req *http.Request) (types.PublicKey, bool) {
+	if !strings.HasSuffix(req.Host, ".pinecone.matrix.org") {
+		return types.PublicKey{}, false
+	}
+	return tryDecodeHex(strings.TrimSuffix(req.Host, ".pinecone.matrix.org"))
+}
+
+func tryHostnameFromQueryString(req *http.Request) (types.PublicKey, bool) {
+	query := req.URL.Query()
+	host := query.Get("_destination")
+	query.Del("_destination")
+	req.URL.RawQuery = query.Encode()
+	return tryDecodeHex(host)
+}
+
+func tryDecodeHex(h string) (types.PublicKey, bool) {
+	b, err := hex.DecodeString(h)
+	if err != nil {
+		return types.PublicKey{}, false
+	}
+	if len(b) != ed25519.PublicKeySize {
+		return types.PublicKey{}, false
+	}
+	var pk types.PublicKey
+	copy(pk[:], b)
+	return pk, true
 }
