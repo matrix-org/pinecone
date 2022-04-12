@@ -184,7 +184,7 @@ func getNextHopSNEK(params virtualSnakeNextHopParams) *peer {
 	// candidate has to improve on our own key in order to forward the frame.
 	var bestPeer *peer
 	var bestAnn *rootAnnouncementWithTime
-	if !params.isTraffic {
+	if params.isTraffic {
 		bestPeer = params.selfPeer
 	}
 	bestKey := params.publicKey
