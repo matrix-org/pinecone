@@ -46,6 +46,7 @@ type state struct {
 	_sequence      uint64             // Used to sequence our root tree announcements
 	_treetimer     *time.Timer        // Tree maintenance timer
 	_snaketimer    *time.Timer        // Virtual snake maintenance timer
+	_lastbootstrap time.Time          // When did we last bootstrap?
 	_waiting       bool               // Is the tree waiting to reparent?
 	_filterPacket  FilterFn           // Function called when forwarding packets
 }
@@ -171,6 +172,10 @@ func (s *state) _setParent(peer *peer) {
 }
 
 func (s *state) _setDescendingNode(node *virtualSnakeEntry) {
+	if s._descending != node {
+		defer s._bootstrapNow()
+	}
+
 	s._descending = node
 
 	s.r.Act(nil, func() {

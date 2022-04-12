@@ -27,8 +27,9 @@ import (
 // NOTE: Functions prefixed with an underscore (_) are only safe to be called
 // from the actor that owns them, in order to prevent data races.
 
-const virtualSnakeMaintainInterval = time.Second * 5
-const virtualSnakeNeighExpiryPeriod = virtualSnakeMaintainInterval * 2
+const virtualSnakeMaintainInterval = time.Second
+const virtualSnakeBootstrapInterval = time.Second * 5
+const virtualSnakeNeighExpiryPeriod = virtualSnakeBootstrapInterval * 2
 
 type virtualSnakeTable map[virtualSnakeIndex]*virtualSnakeEntry
 
@@ -38,10 +39,9 @@ type virtualSnakeIndex struct {
 
 type virtualSnakeEntry struct {
 	*virtualSnakeIndex
-	Origin   types.PublicKey `json:"origin"`
-	Source   *peer           `json:"source"`
-	LastSeen time.Time       `json:"last_seen"`
-	Root     types.Root      `json:"root"`
+	Source   *peer      `json:"source"`
+	LastSeen time.Time  `json:"last_seen"`
+	Root     types.Root `json:"root"`
 }
 
 // valid returns true if the update hasn't expired, or false if it has. It is
@@ -85,9 +85,10 @@ func (s *state) _maintainSnake() {
 		}
 	}
 
-	// If one of the previous conditions means that we need to bootstrap, then
-	// send the actual bootstrap message into the network.
-	s._bootstrapNow()
+	// Send a new bootstrap.
+	if time.Since(s._lastbootstrap) >= virtualSnakeBootstrapInterval {
+		s._bootstrapNow()
+	}
 }
 
 // _bootstrapNow is responsible for sending a bootstrap message to the network.
@@ -135,6 +136,7 @@ func (s *state) _bootstrapNow() {
 	// bootstrap packets.
 	if p := s._nextHopsSNEK(send, true); p != nil && p.proto != nil {
 		p.proto.push(send)
+		s._lastbootstrap = time.Now()
 	}
 }
 
@@ -315,7 +317,6 @@ func (s *state) _handleBootstrap(from *peer, rx *types.Frame) error {
 	}
 	s._table[index] = &virtualSnakeEntry{
 		virtualSnakeIndex: &index,
-		Origin:            rx.DestinationKey,
 		Source:            from,
 		LastSeen:          time.Now(),
 		Root:              bootstrap.Root,
