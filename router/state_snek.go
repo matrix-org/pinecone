@@ -137,13 +137,12 @@ func (s *state) _bootstrapNow() {
 	// bootstrap packets.
 	if p := s._nextHopsSNEK(send, true); p != nil && p.proto != nil {
 		p.proto.push(send)
-		s._lastbootstrap = time.Now()
 	}
+	s._lastbootstrap = time.Now()
 }
 
 type virtualSnakeNextHopParams struct {
 	isBootstrap       bool
-	isTraffic         bool
 	destinationKey    types.PublicKey
 	publicKey         types.PublicKey
 	parentPeer        *peer
@@ -158,8 +157,7 @@ type virtualSnakeNextHopParams struct {
 // specific rules — this should only be used for VirtualSnakeBootstrap frames.
 func (s *state) _nextHopsSNEK(rx *types.Frame, bootstrap bool) *peer {
 	return getNextHopSNEK(virtualSnakeNextHopParams{
-		bootstrap,
-		rx.Type == types.TypeVirtualSnakeRouted || rx.Type == types.TypeTreeRouted,
+		rx.Type == types.TypeVirtualSnakeBootstrap,
 		rx.DestinationKey,
 		s.r.public,
 		s._parent,
@@ -181,7 +179,7 @@ func getNextHopSNEK(params virtualSnakeNextHopParams) *peer {
 	// candidate has to improve on our own key in order to forward the frame.
 	var bestPeer *peer
 	var bestAnn *rootAnnouncementWithTime
-	if params.isTraffic {
+	if !params.isBootstrap {
 		bestPeer = params.selfPeer
 	}
 	bestKey := params.publicKey
