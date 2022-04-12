@@ -67,7 +67,7 @@ func (s *state) _forward(p *peer, f *types.Frame) error {
 	case types.TypeVirtualSnakeBootstrap:
 		// Bootstrap messages are only handled specially when they reach a dead end.
 		// Otherwise they are forwarded normally by falling through.
-		if err := s._handleBootstrap(p, f); err != nil {
+		if err := s._handleBootstrap(p, nexthop, f); err != nil {
 			return fmt.Errorf("s._handleBootstrap (port %d): %w", p.port, err)
 		}
 		if deadend {

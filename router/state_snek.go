@@ -39,9 +39,10 @@ type virtualSnakeIndex struct {
 
 type virtualSnakeEntry struct {
 	*virtualSnakeIndex
-	Source   *peer      `json:"source"`
-	LastSeen time.Time  `json:"last_seen"`
-	Root     types.Root `json:"root"`
+	Source      *peer      `json:"source"`
+	Destination *peer      `json:"destination"`
+	LastSeen    time.Time  `json:"last_seen"`
+	Root        types.Root `json:"root"`
 }
 
 // valid returns true if the update hasn't expired, or false if it has. It is
@@ -257,7 +258,7 @@ func getNextHopSNEK(params virtualSnakeNextHopParams) *peer {
 	// higher one, this is effectively looking for paths that descend through
 	// keyspace toward lower keys rather than ascend toward higher ones.
 	for _, entry := range params.snakeRoutes {
-		if !entry.Source.started.Load() || !entry.valid() || entry.Source == params.selfPeer {
+		if !entry.Source.started.Load() || !entry.valid() {
 			continue
 		}
 		newCheckedCandidate(entry.PublicKey, entry.Source)
@@ -286,7 +287,7 @@ func getNextHopSNEK(params virtualSnakeNextHopParams) *peer {
 
 // _handleBootstrap is called in response to receiving a bootstrap packet.
 // This function will send a bootstrap ACK back to the sender.
-func (s *state) _handleBootstrap(from *peer, rx *types.Frame) error {
+func (s *state) _handleBootstrap(from, to *peer, rx *types.Frame) error {
 	// Unmarshal the bootstrap.
 	var bootstrap types.VirtualSnakeBootstrap
 	if _, err := bootstrap.UnmarshalBinary(rx.Payload); err != nil {
@@ -318,6 +319,7 @@ func (s *state) _handleBootstrap(from *peer, rx *types.Frame) error {
 	s._table[index] = &virtualSnakeEntry{
 		virtualSnakeIndex: &index,
 		Source:            from,
+		Destination:       to,
 		LastSeen:          time.Now(),
 		Root:              bootstrap.Root,
 	}

@@ -173,7 +173,7 @@ func (s *state) _setParent(peer *peer) {
 
 func (s *state) _setDescendingNode(node *virtualSnakeEntry) {
 	switch {
-	case node == nil:
+	case s._descending == nil || node == nil:
 		fallthrough
 	case s._descending != nil && s._descending.PublicKey != node.PublicKey:
 		defer s._bootstrapNow()
@@ -223,7 +223,7 @@ func (s *state) _portDisconnected(peer *peer) {
 	// direction, so that nodes further along the path will learn that the
 	// path was broken.
 	for k, v := range s._table {
-		if v.Source == peer {
+		if v.Source == peer || v.Destination == peer {
 			delete(s._table, k)
 		}
 	}
