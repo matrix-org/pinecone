@@ -172,7 +172,10 @@ func (s *state) _setParent(peer *peer) {
 }
 
 func (s *state) _setDescendingNode(node *virtualSnakeEntry) {
-	if s._descending != node {
+	switch {
+	case node == nil:
+		fallthrough
+	case s._descending != nil && s._descending.PublicKey != node.PublicKey:
 		defer s._bootstrapNow()
 	}
 
@@ -195,7 +198,6 @@ func (s *state) _setDescendingNode(node *virtualSnakeEntry) {
 // _portDisconnected is called when a peer disconnects.
 func (s *state) _portDisconnected(peer *peer) {
 	peercount := 0
-	bootstrap := false
 
 	// Work out how many peers are connected now that this peer has
 	// disconnected.
@@ -230,18 +232,14 @@ func (s *state) _portDisconnected(peer *peer) {
 	// peering then clear that path (although we can't send a teardown) and
 	// wait for another incoming setup.
 	if desc := s._descending; desc != nil && desc.Source == peer {
-		s._descending = nil
+		s._setDescendingNode(nil)
 	}
 
 	// If the peer that died was our chosen tree parent, then we will need to
 	// select a new parent. If we successfully choose a new parent (as in, we
 	// don't end up promoting ourselves to a root) then we will also need to
 	// send a new bootstrap into the network.
-	if s._parent == peer {
-		bootstrap = bootstrap || s._selectNewParent()
-	}
-
-	if bootstrap {
+	if s._parent == peer && s._selectNewParent() {
 		s._bootstrapNow()
 	}
 }
