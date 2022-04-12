@@ -53,10 +53,6 @@ func (e *virtualSnakeEntry) valid() bool {
 	return time.Since(e.LastSeen) < virtualSnakeNeighExpiryPeriod
 }
 
-func (e *virtualSnakeEntry) validForForwarding() bool {
-	return time.Since(e.LastSeen) < (virtualSnakeNeighExpiryPeriod * 2)
-}
-
 // _maintainSnake is responsible for working out if we need to send bootstraps
 // or to clean up any old paths.
 func (s *state) _maintainSnake() {
@@ -261,7 +257,7 @@ func getNextHopSNEK(params virtualSnakeNextHopParams) *peer {
 	// higher one, this is effectively looking for paths that descend through
 	// keyspace toward lower keys rather than ascend toward higher ones.
 	for _, entry := range params.snakeRoutes {
-		if !entry.Source.started.Load() || !entry.validForForwarding() || entry.Source == params.selfPeer {
+		if !entry.Source.started.Load() || !entry.valid() || entry.Source == params.selfPeer {
 			continue
 		}
 		if !params.isBootstrap && !entry.Active {
