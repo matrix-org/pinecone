@@ -137,7 +137,7 @@ func UnmarshalCommandJSON(command *SimCommandMsg) (SimCommand, error) {
 			} else {
 				err = fmt.Errorf("%sConfigureAdversaryDefaults.DropRates.VirtualSnakeBootstrap field doesn't exist", FAILURE_PREAMBLE)
 			}
-			if subVal, subOk := val.(map[string]interface{})["VirtualSnakeBootstrapACK"]; subOk {
+			/*if subVal, subOk := val.(map[string]interface{})["VirtualSnakeBootstrapACK"]; subOk {
 				intVal, _ := strconv.Atoi(subVal.(string))
 				dropRates.Frames[types.TypeVirtualSnakeBootstrapACK] = uint64(intVal)
 			} else {
@@ -160,7 +160,7 @@ func UnmarshalCommandJSON(command *SimCommandMsg) (SimCommand, error) {
 				dropRates.Frames[types.TypeVirtualSnakeTeardown] = uint64(intVal)
 			} else {
 				err = fmt.Errorf("%sConfigureAdversaryDefaults.DropRates.VirtualSnakeTeardown field doesn't exist", FAILURE_PREAMBLE)
-			}
+			}*/
 			if subVal, subOk := val.(map[string]interface{})["VirtualSnakeRouted"]; subOk {
 				intVal, _ := strconv.Atoi(subVal.(string))
 				dropRates.Frames[types.TypeVirtualSnakeRouted] = uint64(intVal)
@@ -217,7 +217,7 @@ func UnmarshalCommandJSON(command *SimCommandMsg) (SimCommand, error) {
 			} else {
 				err = fmt.Errorf("%sConfigureAdversaryPeer.DropRates.VirtualSnakeBootstrap field doesn't exist", FAILURE_PREAMBLE)
 			}
-			if subVal, subOk := val.(map[string]interface{})["VirtualSnakeBootstrapACK"]; subOk {
+			/*if subVal, subOk := val.(map[string]interface{})["VirtualSnakeBootstrapACK"]; subOk {
 				intVal, _ := strconv.Atoi(subVal.(string))
 				dropRates.Frames[types.TypeVirtualSnakeBootstrapACK] = uint64(intVal)
 			} else {
@@ -240,7 +240,7 @@ func UnmarshalCommandJSON(command *SimCommandMsg) (SimCommand, error) {
 				dropRates.Frames[types.TypeVirtualSnakeTeardown] = uint64(intVal)
 			} else {
 				err = fmt.Errorf("%sConfigureAdversaryPeer.DropRates.VirtualSnakeTeardown field doesn't exist", FAILURE_PREAMBLE)
-			}
+			}*/
 			if subVal, subOk := val.(map[string]interface{})["VirtualSnakeRouted"]; subOk {
 				intVal, _ := strconv.Atoi(subVal.(string))
 				dropRates.Frames[types.TypeVirtualSnakeRouted] = uint64(intVal)

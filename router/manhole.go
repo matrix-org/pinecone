@@ -78,7 +78,6 @@ func (r *Router) ManholeHandler(w http.ResponseWriter, req *http.Request) {
 			public := p.public.String()
 			response.Peers[public] = append(response.Peers[public], info)
 		}
-		response.SNEK.Ascending = r.state._ascending
 		response.SNEK.Descending = r.state._descending
 		for _, p := range r.state._table {
 			response.SNEK.Paths = append(response.SNEK.Paths, p)
@@ -90,11 +89,7 @@ func (r *Router) ManholeHandler(w http.ResponseWriter, req *http.Request) {
 		})
 	}
 	sort.Slice(response.SNEK.Paths, func(i, j int) bool {
-		c := response.SNEK.Paths[i].PublicKey.CompareTo(response.SNEK.Paths[j].PublicKey)
-		if c == 0 {
-			return response.SNEK.Paths[i].PathID.CompareTo(response.SNEK.Paths[j].PathID) < 0
-		}
-		return c < 0
+		return response.SNEK.Paths[i].PublicKey.CompareTo(response.SNEK.Paths[j].PublicKey) < 0
 	})
 	encoder := json.NewEncoder(w)
 	encoder.SetIndent("", "  ")

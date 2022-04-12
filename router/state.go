@@ -37,7 +37,6 @@ type state struct {
 	phony.Inbox
 	r              *Router
 	_peers         []*peer            // All switch ports, connected and disconnected
-	_ascending     *virtualSnakeEntry // Next ascending node in keyspace
 	_descending    *virtualSnakeEntry // Next descending node in keyspace
 	_candidate     *virtualSnakeEntry // Candidate to replace the ascending node
 	_parent        *peer              // Our chosen parent in the tree
@@ -54,7 +53,6 @@ type state struct {
 // _start resets the state and starts tree and virtual snake maintenance.
 func (s *state) _start() {
 	s._setParent(nil)
-	s._setAscendingNode(nil)
 	s._setDescendingNode(nil)
 
 	s._candidate = nil
@@ -172,23 +170,6 @@ func (s *state) _setParent(peer *peer) {
 	})
 }
 
-func (s *state) _setAscendingNode(node *virtualSnakeEntry) {
-	s._ascending = node
-
-	s.r.Act(nil, func() {
-		peerID := ""
-		pathID := []byte{}
-		if node != nil {
-			peerID = node.Origin.String()
-			if node.virtualSnakeIndex != nil {
-				pathID, _ = node.PathID.MarshalJSON()
-			}
-		}
-
-		s.r._publish(events.SnakeAscUpdate{PeerID: peerID, PathID: string(pathID)})
-	})
-}
-
 func (s *state) _setDescendingNode(node *virtualSnakeEntry) {
 	s._descending = node
 
@@ -197,9 +178,9 @@ func (s *state) _setDescendingNode(node *virtualSnakeEntry) {
 		pathID := []byte{}
 		if node != nil {
 			peerID = node.PublicKey.String()
-			if node.virtualSnakeIndex != nil {
+			/*if node.virtualSnakeIndex != nil {
 				pathID, _ = node.PathID.MarshalJSON()
-			}
+			}*/
 		}
 
 		s.r._publish(events.SnakeDescUpdate{PeerID: peerID, PathID: string(pathID)})
@@ -235,24 +216,16 @@ func (s *state) _portDisconnected(peer *peer) {
 	// direction, so that nodes further along the path will learn that the
 	// path was broken.
 	for k, v := range s._table {
-		if v.Destination == peer || v.Source == peer {
-			s._sendTeardownForExistingPath(peer, k.PublicKey, k.PathID)
+		if v.Source == peer {
+			delete(s._table, k)
 		}
-	}
-
-	// If the ascending path was also lost because it went via the now-dead
-	// peering then clear that path (although we can't send a teardown) and
-	// then bootstrap again.
-	if asc := s._ascending; asc != nil && asc.Destination == peer {
-		s._teardownPath(s.r.local, asc.PublicKey, asc.PathID)
-		bootstrap = true
 	}
 
 	// If the descending path was lost because it went via the now-dead
 	// peering then clear that path (although we can't send a teardown) and
 	// wait for another incoming setup.
 	if desc := s._descending; desc != nil && desc.Source == peer {
-		s._teardownPath(s.r.local, desc.PublicKey, desc.PathID)
+		s._descending = nil
 	}
 
 	// If the peer that died was our chosen tree parent, then we will need to

@@ -18,7 +18,8 @@ const (
 	capabilityLengthenedRootInterval = iota + 1
 	capabilityCryptographicSetups
 	capabilitySetupACKs
+	capabilitySoftState
 )
 
 const ourVersion uint8 = 1
-const ourCapabilities uint32 = capabilityLengthenedRootInterval | capabilityCryptographicSetups | capabilitySetupACKs
+const ourCapabilities uint32 = capabilityLengthenedRootInterval | capabilityCryptographicSetups | capabilitySetupACKs | capabilitySoftState
