@@ -245,9 +245,9 @@ func TestSNEKNextHopSelection(t *testing.T) {
 			},
 			virtualSnakeTable{
 				virtualSnakeIndex{}: &virtualSnakeEntry{
-					Source:            peers[3],
-					LastSeen:          time.Now(),
-					Active:            true,
+					Source:   peers[3],
+					LastSeen: time.Now(),
+					//	Active:            true,
 					virtualSnakeIndex: &virtualSnakeIndex{PublicKey: destDownKey},
 				}},
 		}, peers[3]},
@@ -264,9 +264,9 @@ func TestSNEKNextHopSelection(t *testing.T) {
 			},
 			virtualSnakeTable{
 				virtualSnakeIndex{}: &virtualSnakeEntry{
-					Source:            peers[3],
-					LastSeen:          time.Now(),
-					Active:            true,
+					Source:   peers[3],
+					LastSeen: time.Now(),
+					//	Active:            true,
 					virtualSnakeIndex: &virtualSnakeIndex{PublicKey: destDownKey},
 				}},
 		}, peers[0]}, // handle a bootstrap received from a lower key node

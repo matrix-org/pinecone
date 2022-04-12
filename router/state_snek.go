@@ -39,11 +39,9 @@ type virtualSnakeIndex struct {
 type virtualSnakeEntry struct {
 	*virtualSnakeIndex
 	Origin   types.PublicKey `json:"origin"`
-	Target   types.PublicKey `json:"target"`
 	Source   *peer           `json:"source"`
 	LastSeen time.Time       `json:"last_seen"`
 	Root     types.Root      `json:"root"`
-	Active   bool            `json:"active"`
 }
 
 // valid returns true if the update hasn't expired, or false if it has. It is
@@ -260,9 +258,6 @@ func getNextHopSNEK(params virtualSnakeNextHopParams) *peer {
 		if !entry.Source.started.Load() || !entry.valid() || entry.Source == params.selfPeer {
 			continue
 		}
-		if !params.isBootstrap && !entry.Active {
-			continue
-		}
 		newCheckedCandidate(entry.PublicKey, entry.Source)
 	}
 
@@ -321,11 +316,9 @@ func (s *state) _handleBootstrap(from *peer, rx *types.Frame) error {
 	s._table[index] = &virtualSnakeEntry{
 		virtualSnakeIndex: &index,
 		Origin:            rx.DestinationKey,
-		Target:            rx.DestinationKey,
 		Source:            from,
 		LastSeen:          time.Now(),
 		Root:              bootstrap.Root,
-		Active:            true,
 	}
 
 	// Now let's see if this is a suitable ascending entry.

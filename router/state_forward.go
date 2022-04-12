@@ -49,7 +49,7 @@ func (s *state) _forward(p *peer, f *types.Frame) error {
 	}
 
 	nexthop := s._nextHopsFor(p, f)
-	deadend := nexthop == p.router.local
+	deadend := nexthop == nil || nexthop == p.router.local
 
 	switch f.Type {
 	case types.TypeTreeAnnouncement:
