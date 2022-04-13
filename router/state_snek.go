@@ -342,7 +342,7 @@ func (s *state) _handleBootstrap(from, to *peer, rx *types.Frame) bool {
 		switch {
 		case !existing.Root.EqualTo(&bootstrap.Root):
 			break // the root is different
-		case existing.Watermark.Sequence <= bootstrap.Sequence:
+		case bootstrap.Sequence <= existing.Watermark.Sequence:
 			// TODO: less than-equal to might not be the right thing to do
 			return false
 		}
