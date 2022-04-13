@@ -92,8 +92,16 @@ func (s *state) _maintainSnake() {
 	}
 }
 
+// _bootstrapSoon will reset the bootstrap timer so that we will bootstrap on
+// the next maintenance interval. This is better than calling _bootstrapNow
+// directly which might cause more protocol traffic than necessary.
+func (s *state) _bootstrapSoon() {
+	s._lastbootstrap = time.Now().Add(-virtualSnakeBootstrapInterval)
+}
+
 // _bootstrapNow is responsible for sending a bootstrap message to the network.
 func (s *state) _bootstrapNow() {
+	s.r.log.Println("Bootstrapping now")
 	// If we are the root node then there's no point in trying to bootstrap. We
 	// already have the highest public key on the network so a bootstrap won't be
 	// able to go anywhere in ascending order.
