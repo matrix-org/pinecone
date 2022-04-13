@@ -188,21 +188,22 @@ func getNextHopSNEK(params virtualSnakeNextHopParams) (*peer, *types.VirtualSnak
 	// candidate has to improve on our own key in order to forward the frame.
 	var bestPeer *peer
 	var bestAnn *rootAnnouncementWithTime
-	var bestWatermark *types.VirtualSnakeWatermark
 	if !params.isBootstrap {
 		bestPeer = params.selfPeer
 	}
 	bestKey := params.publicKey
 	destKey := params.destinationKey
+	bestWatermark := types.VirtualSnakeWatermark{
+		PublicKey: bestKey,
+		Sequence:  0,
+	}
 
 	// newCandidate updates the best key and best peer with new candidates.
 	newCandidate := func(key types.PublicKey, seq types.Varu64, p *peer) {
 		bestKey, bestPeer, bestAnn = key, p, params.peerAnnouncements[p]
-		if seq > 0 {
-			bestWatermark = &types.VirtualSnakeWatermark{
-				PublicKey: key,
-				Sequence:  seq,
-			}
+		bestWatermark = types.VirtualSnakeWatermark{
+			PublicKey: key,
+			Sequence:  seq,
 		}
 	}
 	// newCheckedCandidate performs some sanity checks on the candidate before
@@ -215,8 +216,6 @@ func getNextHopSNEK(params virtualSnakeNextHopParams) (*peer, *types.VirtualSnak
 			newCandidate(candidate, seq, p)
 		}
 	}
-
-	_ = bestAnn
 
 	// Check if we can use the path to the root via our parent as a starting
 	// point. We can't do this if we are the root node as there would be no
@@ -282,6 +281,7 @@ func getNextHopSNEK(params virtualSnakeNextHopParams) (*peer, *types.VirtualSnak
 
 	// Finally, be sure that we're using the best-looking path to our next-hop.
 	// Prefer faster link types and, if not, lower latencies to the root.
+	_ = bestAnn
 	/*
 		if bestPeer != nil && bestAnn != nil {
 			for p, ann := range params.peerAnnouncements {
@@ -300,7 +300,7 @@ func getNextHopSNEK(params virtualSnakeNextHopParams) (*peer, *types.VirtualSnak
 		}
 	*/
 
-	return bestPeer, bestWatermark
+	return bestPeer, &bestWatermark
 }
 
 // _handleBootstrap is called in response to receiving a bootstrap packet.
