@@ -49,7 +49,6 @@ type state struct {
 	_lastbootstrap time.Time          // When did we last bootstrap?
 	_waiting       bool               // Is the tree waiting to reparent?
 	_filterPacket  FilterFn           // Function called when forwarding packets
-	_sneksequence  types.Varu64       // Used to sequence our outgoing bootstrap messages
 }
 
 // _start resets the state and starts tree and virtual snake maintenance.

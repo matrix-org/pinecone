@@ -112,10 +112,9 @@ func (s *state) _bootstrapNow() {
 	ann := s._rootAnnouncement()
 	b := frameBufferPool.Get().(*[types.MaxFrameSize]byte)
 	defer frameBufferPool.Put(b)
-	s._sneksequence++
 	bootstrap := types.VirtualSnakeBootstrap{
 		Root:     ann.Root,
-		Sequence: s._sneksequence,
+		Sequence: types.Varu64(time.Now().UnixMilli()),
 	}
 	if s.r.secure {
 		// Sign the path key and path ID with our own key. This forms the "source
@@ -339,8 +338,14 @@ func (s *state) _handleBootstrap(from, to *peer, rx *types.Frame) bool {
 	index := virtualSnakeIndex{
 		PublicKey: rx.DestinationKey,
 	}
-	if existing, ok := s._table[index]; ok && existing.Watermark.Sequence == bootstrap.Sequence {
-		return false
+	if existing, ok := s._table[index]; ok {
+		switch {
+		case !existing.Root.EqualTo(&bootstrap.Root):
+			break // the root is different
+		case existing.Watermark.Sequence <= bootstrap.Sequence:
+			// TODO: less than-equal to might not be the right thing to do
+			return false
+		}
 	}
 	s._table[index] = &virtualSnakeEntry{
 		virtualSnakeIndex: &index,
