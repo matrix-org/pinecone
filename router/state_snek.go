@@ -16,7 +16,6 @@ package router
 
 import (
 	"crypto/ed25519"
-	"fmt"
 	"time"
 
 	"github.com/matrix-org/pinecone/types"
@@ -309,12 +308,13 @@ func getNextHopSNEK(params virtualSnakeNextHopParams) (*peer, *types.VirtualSnak
 }
 
 // _handleBootstrap is called in response to receiving a bootstrap packet.
-// This function will send a bootstrap ACK back to the sender.
-func (s *state) _handleBootstrap(from, to *peer, rx *types.Frame) error {
+// This function will send a bootstrap ACK back to the sender. Returns true
+// if the bootstrap was handled and false otherwise.
+func (s *state) _handleBootstrap(from, to *peer, rx *types.Frame) bool {
 	// Unmarshal the bootstrap.
 	var bootstrap types.VirtualSnakeBootstrap
 	if _, err := bootstrap.UnmarshalBinary(rx.Payload); err != nil {
-		return fmt.Errorf("bootstrap.UnmarshalBinary: %w", err)
+		return false
 	}
 	if s.r.secure {
 		// Check that the bootstrap message was signed by the node that claims
@@ -324,7 +324,7 @@ func (s *state) _handleBootstrap(from, to *peer, rx *types.Frame) error {
 			rx.DestinationKey[:], // TODO: sequence number
 			bootstrap.SourceSig[:],
 		) {
-			return nil
+			return false
 		}
 	}
 	// Check that the root key and sequence number in the update match our
@@ -332,12 +332,15 @@ func (s *state) _handleBootstrap(from, to *peer, rx *types.Frame) error {
 	// tree routing anyway. If they don't match, silently drop the bootstrap.
 	root := s._rootAnnouncement()
 	if !root.Root.EqualTo(&bootstrap.Root) {
-		return nil
+		return false
 	}
 
 	// Create a routing table entry.
 	index := virtualSnakeIndex{
 		PublicKey: rx.DestinationKey,
+	}
+	if existing, ok := s._table[index]; ok && existing.Watermark.Sequence == bootstrap.Sequence {
+		return false
 	}
 	s._table[index] = &virtualSnakeEntry{
 		virtualSnakeIndex: &index,
@@ -387,5 +390,5 @@ func (s *state) _handleBootstrap(from, to *peer, rx *types.Frame) error {
 	if update {
 		s._setDescendingNode(s._table[index])
 	}
-	return nil
+	return true
 }
