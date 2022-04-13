@@ -62,8 +62,7 @@ type Frame struct {
 	DestinationKey PublicKey
 	Source         Coordinates
 	SourceKey      PublicKey
-	WatermarkKey   PublicKey
-	WatermarkSeq   Varu64
+	Watermark      VirtualSnakeWatermark
 	Payload        []byte
 }
 
@@ -76,8 +75,7 @@ func (f *Frame) Reset() {
 	f.DestinationKey = PublicKey{}
 	f.Source = Coordinates{}
 	f.SourceKey = PublicKey{}
-	f.WatermarkKey = PublicKey{}
-	f.WatermarkSeq = 0
+	f.Watermark = VirtualSnakeWatermark{}
 	f.Payload = f.Payload[:0]
 }
 
@@ -92,8 +90,8 @@ func (f *Frame) MarshalBinary(buffer []byte) (int, error) {
 		binary.BigEndian.PutUint16(buffer[offset+0:offset+2], uint16(payloadLen))
 		offset += 2
 		offset += copy(buffer[offset:], f.DestinationKey[:ed25519.PublicKeySize])
-		offset += copy(buffer[offset:], f.WatermarkKey[:ed25519.PublicKeySize])
-		n, err := f.WatermarkSeq.MarshalBinary(buffer[offset:])
+		offset += copy(buffer[offset:], f.Watermark.PublicKey[:ed25519.PublicKeySize])
+		n, err := f.Watermark.Sequence.MarshalBinary(buffer[offset:])
 		if err != nil {
 			return 0, fmt.Errorf("f.WatermarkSeq.MarshalBinary: %w", err)
 		}
@@ -109,8 +107,8 @@ func (f *Frame) MarshalBinary(buffer []byte) (int, error) {
 		offset += 2
 		offset += copy(buffer[offset:], f.DestinationKey[:ed25519.PublicKeySize])
 		offset += copy(buffer[offset:], f.SourceKey[:ed25519.PublicKeySize])
-		offset += copy(buffer[offset:], f.WatermarkKey[:ed25519.PublicKeySize])
-		n, err := f.WatermarkSeq.MarshalBinary(buffer[offset:])
+		offset += copy(buffer[offset:], f.Watermark.PublicKey[:ed25519.PublicKeySize])
+		n, err := f.Watermark.Sequence.MarshalBinary(buffer[offset:])
 		if err != nil {
 			return 0, fmt.Errorf("f.WatermarkSeq.MarshalBinary: %w", err)
 		}
@@ -173,8 +171,8 @@ func (f *Frame) UnmarshalBinary(data []byte) (int, error) {
 		}
 		offset += 2
 		offset += copy(f.DestinationKey[:], data[offset:])
-		offset += copy(f.WatermarkKey[:], data[offset:])
-		n, err := f.WatermarkSeq.UnmarshalBinary(data[offset:])
+		offset += copy(f.Watermark.PublicKey[:], data[offset:])
+		n, err := f.Watermark.Sequence.UnmarshalBinary(data[offset:])
 		if err != nil {
 			return 0, fmt.Errorf("f.WatermarkSeq.UnmarshalBinary: %w", err)
 		}
@@ -191,8 +189,8 @@ func (f *Frame) UnmarshalBinary(data []byte) (int, error) {
 		offset += 2
 		offset += copy(f.DestinationKey[:], data[offset:])
 		offset += copy(f.SourceKey[:], data[offset:])
-		offset += copy(f.WatermarkKey[:], data[offset:])
-		n, err := f.WatermarkSeq.UnmarshalBinary(data[offset:])
+		offset += copy(f.Watermark.PublicKey[:], data[offset:])
+		n, err := f.Watermark.Sequence.UnmarshalBinary(data[offset:])
 		if err != nil {
 			return 0, fmt.Errorf("f.WatermarkSeq.UnmarshalBinary: %w", err)
 		}

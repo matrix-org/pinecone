@@ -21,9 +21,14 @@ func (a VirtualSnakePathID) CompareTo(b VirtualSnakePathID) int {
 }
 
 type VirtualSnakeBootstrap struct {
-	Sequence  Varu64
 	SourceSig VirtualSnakePathSig
+	Sequence  Varu64
 	Root
+}
+
+type VirtualSnakeWatermark struct {
+	PublicKey PublicKey
+	Sequence  Varu64
 }
 
 func (v *VirtualSnakeBootstrap) MarshalBinary(buf []byte) (int, error) {

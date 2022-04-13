@@ -91,7 +91,7 @@ func TestMarshalUnmarshalSNEKBootstrapFrame(t *testing.T) {
 		Payload: []byte{9, 9, 9, 9, 9},
 	}
 	copy(input.DestinationKey[:], pk)
-	copy(input.WatermarkKey[:], wpk)
+	copy(input.Watermark.PublicKey[:], wpk)
 	expected := []byte{
 		0x70, 0x69, 0x6e, 0x65, // magic bytes
 		0,                               // version 0
@@ -149,7 +149,7 @@ func TestMarshalUnmarshalSNEKFrame(t *testing.T) {
 	}
 	copy(input.SourceKey[:], pk1)
 	copy(input.DestinationKey[:], pk2)
-	copy(input.WatermarkKey[:], wpk)
+	copy(input.Watermark.PublicKey[:], wpk)
 	expected := []byte{
 		0x70, 0x69, 0x6e, 0x65, // magic bytes
 		0,                            // version 0

@@ -274,7 +274,7 @@ func TestSNEKNextHopSelection(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.desc, func(t *testing.T) {
-			actual, _, _ := getNextHopSNEK(tc.input)
+			actual, _ := getNextHopSNEK(tc.input)
 			actualString, expectedString := convertToString(actual, tc.expected, peers)
 
 			if actual != tc.expected {

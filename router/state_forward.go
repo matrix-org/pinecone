@@ -24,20 +24,19 @@ import (
 // _nextHopsFor returns the next-hop for the given frame. It will examine the packet
 // type and use the correct routing algorithm to determine the next-hop. It is possible
 // for this function to return `nil` if there is no suitable candidate.
-func (s *state) _nextHopsFor(from *peer, frame *types.Frame) (*peer, types.PublicKey, types.Varu64) {
+func (s *state) _nextHopsFor(from *peer, frame *types.Frame) (*peer, *types.VirtualSnakeWatermark) {
 	var nexthop *peer
-	var watermark types.PublicKey
-	var seq types.Varu64
+	var watermark *types.VirtualSnakeWatermark
 	switch frame.Type {
 	// SNEK routing
 	case types.TypeVirtualSnakeRouted, types.TypeVirtualSnakeBootstrap, types.TypeSNEKPing, types.TypeSNEKPong:
-		nexthop, watermark, seq = s._nextHopsSNEK(frame, frame.Type == types.TypeVirtualSnakeBootstrap)
+		nexthop, watermark = s._nextHopsSNEK(frame, frame.Type == types.TypeVirtualSnakeBootstrap)
 
 	// Tree routing
 	case types.TypeTreeRouted, types.TypeTreePing, types.TypeTreePong:
 		nexthop = s._nextHopsTree(from, frame)
 	}
-	return nexthop, watermark, seq
+	return nexthop, watermark
 }
 
 // _forward handles frames received from a given peer. In most cases, this function will
@@ -50,7 +49,7 @@ func (s *state) _forward(p *peer, f *types.Frame) error {
 		return nil
 	}
 
-	nexthop, watermark, wseq := s._nextHopsFor(p, f)
+	nexthop, watermark := s._nextHopsFor(p, f)
 	deadend := nexthop == nil || nexthop == p.router.local
 
 	switch f.Type {
@@ -90,7 +89,7 @@ func (s *state) _forward(p *peer, f *types.Frame) error {
 			f.DestinationKey = of.SourceKey
 			f.SourceKey = s.r.public
 			f.Extra = of.Extra
-			nexthop, watermark, wseq = s._nextHopsFor(s.r.local, f)
+			nexthop, watermark = s._nextHopsFor(s.r.local, f)
 		} else {
 			hops := binary.BigEndian.Uint16(f.Extra[:])
 			hops++
@@ -120,7 +119,7 @@ func (s *state) _forward(p *peer, f *types.Frame) error {
 			f.Destination = append(f.Destination[:0], of.Source...)
 			f.Source = append(f.Source[:0], s._coords()...)
 			f.Extra = of.Extra
-			nexthop, watermark, wseq = s._nextHopsFor(s.r.local, f)
+			nexthop, watermark = s._nextHopsFor(s.r.local, f)
 		} else {
 			hops := binary.BigEndian.Uint16(f.Extra[:])
 			hops++
@@ -144,20 +143,24 @@ func (s *state) _forward(p *peer, f *types.Frame) error {
 
 	// If the packet's watermark is higher than the previous one then we have
 	// looped somewhere, so drop the packet.
-	watermarkdiff := watermark.CompareTo(f.WatermarkKey)
-	switch {
-	case watermarkdiff > 0:
-		s.r.log.Println("Dropping packet because watermark", watermark, "is greater than", f.WatermarkKey)
-		return nil
-	case watermarkdiff == 0 && wseq < f.WatermarkSeq:
-		s.r.log.Println("Dropping packet because watermark", watermark, "has different sequence number")
-		return nil
+	empty := types.PublicKey{}
+	if watermark != nil && f.Watermark.PublicKey != empty {
+		watermarkdiff := watermark.PublicKey.CompareTo(f.Watermark.PublicKey)
+		switch {
+		case watermarkdiff > 0:
+			s.r.log.Println("Dropping packet because watermark", watermark, "is greater than", f.Watermark.PublicKey)
+			return nil
+		case watermarkdiff == 0 && watermark.Sequence < f.Watermark.Sequence:
+			s.r.log.Println("Dropping packet because of seq", watermark.Sequence, "is less than", f.Watermark.Sequence)
+			return nil
+		}
+
+		// If there's a suitable next-hop then try sending the packet. If we fail
+		// to queue up the packet then we will log it but there isn't an awful lot
+		// we can do at this point.
+		f.Watermark = *watermark
 	}
 
-	// If there's a suitable next-hop then try sending the packet. If we fail
-	// to queue up the packet then we will log it but there isn't an awful lot
-	// we can do at this point.
-	f.WatermarkKey = watermark
 	if nexthop != nil && !nexthop.send(f) {
 		s.r.log.Println("Dropping forwarded packet of type", f.Type)
 	}
