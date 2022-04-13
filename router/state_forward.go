@@ -138,15 +138,6 @@ func (s *state) _forward(p *peer, f *types.Frame) error {
 		}
 	}
 
-	f.Extra[0]++
-	if f.Extra[0] > 100 {
-		fmt.Println("From:", p)
-		fmt.Println("To:", nexthop)
-		fmt.Println("Old watermark:", f.Watermark)
-		fmt.Println("New watermark:", watermark)
-		panic("routing loop")
-	}
-
 	// If the packet's watermark is higher than the previous one then we have
 	// looped somewhere, so drop the packet.
 	if watermark != nil {
