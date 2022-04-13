@@ -17,6 +17,7 @@ package router
 import (
 	"crypto/ed25519"
 	"fmt"
+	"math"
 	"time"
 
 	"github.com/matrix-org/pinecone/types"
@@ -195,15 +196,17 @@ func getNextHopSNEK(params virtualSnakeNextHopParams) (*peer, *types.VirtualSnak
 	destKey := params.destinationKey
 	bestWatermark := types.VirtualSnakeWatermark{
 		PublicKey: bestKey,
-		Sequence:  0,
+		Sequence:  math.MaxInt64,
 	}
 
 	// newCandidate updates the best key and best peer with new candidates.
 	newCandidate := func(key types.PublicKey, seq types.Varu64, p *peer) {
 		bestKey, bestPeer, bestAnn = key, p, params.peerAnnouncements[p]
-		bestWatermark = types.VirtualSnakeWatermark{
-			PublicKey: key,
-			Sequence:  seq,
+		bestWatermark.PublicKey = key
+		if seq > 0 {
+			bestWatermark.Sequence = seq
+		} else {
+			bestWatermark.Sequence = math.MaxInt64
 		}
 	}
 	// newCheckedCandidate performs some sanity checks on the candidate before
