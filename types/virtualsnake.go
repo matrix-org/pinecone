@@ -21,19 +21,23 @@ func (a VirtualSnakePathID) CompareTo(b VirtualSnakePathID) int {
 }
 
 type VirtualSnakeBootstrap struct {
-	PathID    VirtualSnakePathID
+	Sequence  Varu64
 	SourceSig VirtualSnakePathSig
 	Root
 }
 
 func (v *VirtualSnakeBootstrap) MarshalBinary(buf []byte) (int, error) {
-	if len(buf) < VirtualSnakePathIDLength+v.Root.Length()+ed25519.SignatureSize {
+	if len(buf) < v.Sequence.Length()+v.Root.Length()+ed25519.SignatureSize {
 		return 0, fmt.Errorf("buffer too small")
 	}
 	offset := 0
-	offset += copy(buf[offset:], v.PathID[:])
+	n, err := v.Sequence.MarshalBinary(buf[offset:])
+	if err != nil {
+		return 0, fmt.Errorf("v.Sequence.MarshalBinary: %w", err)
+	}
+	offset += n
 	offset += copy(buf[offset:], v.RootPublicKey[:])
-	n, err := v.RootSequence.MarshalBinary(buf[offset:])
+	n, err = v.RootSequence.MarshalBinary(buf[offset:])
 	if err != nil {
 		return 0, fmt.Errorf("v.RootSequence.MarshalBinary: %w", err)
 	}
@@ -43,17 +47,21 @@ func (v *VirtualSnakeBootstrap) MarshalBinary(buf []byte) (int, error) {
 }
 
 func (v *VirtualSnakeBootstrap) UnmarshalBinary(buf []byte) (int, error) {
-	if len(buf) < VirtualSnakePathIDLength+v.Root.MinLength()+ed25519.SignatureSize {
+	if len(buf) < v.Sequence.MinLength()+v.Root.MinLength()+ed25519.SignatureSize {
 		return 0, fmt.Errorf("buffer too small")
 	}
 	offset := 0
-	offset += copy(v.PathID[:], buf[offset:])
+	n, err := v.Sequence.UnmarshalBinary(buf[offset:])
+	if err != nil {
+		return 0, fmt.Errorf("v.Sequence.UnmarshalBinary: %w", err)
+	}
+	offset += n
 	offset += copy(v.RootPublicKey[:], buf[offset:])
-	l, err := v.RootSequence.UnmarshalBinary(buf[offset:])
+	n, err = v.RootSequence.UnmarshalBinary(buf[offset:])
 	if err != nil {
 		return 0, fmt.Errorf("v.RootSequence.UnmarshalBinary: %w", err)
 	}
-	offset += l
+	offset += n
 	offset += copy(v.SourceSig[:], buf[offset:])
 	return offset, nil
 }
