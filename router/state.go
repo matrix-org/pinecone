@@ -176,8 +176,8 @@ func (s *state) _setDescendingNode(node *virtualSnakeEntry) {
 	switch {
 	case s._descending == nil || node == nil:
 		fallthrough
-	case s._descending != nil && s._descending.PublicKey != node.PublicKey:
-		defer s._bootstrapNow()
+	case s._descending != nil && node != nil && s._descending.PublicKey != node.PublicKey:
+		s._lastbootstrap = time.Now().Add(time.Second * -5)
 	}
 
 	s._descending = node
