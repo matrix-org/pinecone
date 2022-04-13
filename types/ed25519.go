@@ -40,6 +40,11 @@ var FullMask = PublicKey{
 	0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
 }
 
+func (a PublicKey) IsEmpty() bool {
+	empty := PublicKey{}
+	return a == empty
+}
+
 func (a PublicKey) EqualMaskTo(b, m PublicKey) bool {
 	for i := range a {
 		if (a[i] & m[i]) != (b[i] & m[i]) {

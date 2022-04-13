@@ -27,8 +27,13 @@ type VirtualSnakeBootstrap struct {
 }
 
 type VirtualSnakeWatermark struct {
-	PublicKey PublicKey
-	Sequence  Varu64
+	PublicKey PublicKey `json:"public_key"`
+	Sequence  Varu64    `json:"sequence"`
+}
+
+func (a *VirtualSnakeWatermark) WorseThan(b *VirtualSnakeWatermark) bool {
+	diff := a.PublicKey.CompareTo(b.PublicKey)
+	return diff > 0 || (diff == 0 && a.Sequence < b.Sequence)
 }
 
 func (v *VirtualSnakeBootstrap) MarshalBinary(buf []byte) (int, error) {

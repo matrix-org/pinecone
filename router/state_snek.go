@@ -17,7 +17,6 @@ package router
 import (
 	"crypto/ed25519"
 	"fmt"
-	"math"
 	"time"
 
 	"github.com/matrix-org/pinecone/types"
@@ -39,11 +38,11 @@ type virtualSnakeIndex struct {
 
 type virtualSnakeEntry struct {
 	*virtualSnakeIndex
-	Source      *peer        `json:"source"`
-	Destination *peer        `json:"destination"`
-	Sequence    types.Varu64 `json:"sequence"`
-	LastSeen    time.Time    `json:"last_seen"`
-	Root        types.Root   `json:"root"`
+	Source      *peer                       `json:"source"`
+	Destination *peer                       `json:"destination"`
+	Watermark   types.VirtualSnakeWatermark `json:"watermark"`
+	LastSeen    time.Time                   `json:"last_seen"`
+	Root        types.Root                  `json:"root"`
 }
 
 // valid returns true if the update hasn't expired, or false if it has. It is
@@ -155,6 +154,7 @@ type virtualSnakeNextHopParams struct {
 	isBootstrap       bool
 	destinationKey    types.PublicKey
 	publicKey         types.PublicKey
+	watermark         *types.VirtualSnakeWatermark
 	parentPeer        *peer
 	selfPeer          *peer
 	lastAnnouncement  *rootAnnouncementWithTime
@@ -170,6 +170,7 @@ func (s *state) _nextHopsSNEK(rx *types.Frame, bootstrap bool) (*peer, *types.Vi
 		rx.Type == types.TypeVirtualSnakeBootstrap,
 		rx.DestinationKey,
 		s.r.public,
+		&rx.Watermark,
 		s._parent,
 		s.r.local,
 		s._rootAnnouncement(),
@@ -189,24 +190,22 @@ func getNextHopSNEK(params virtualSnakeNextHopParams) (*peer, *types.VirtualSnak
 	// candidate has to improve on our own key in order to forward the frame.
 	var bestPeer *peer
 	var bestAnn *rootAnnouncementWithTime
+	var bestWatermark *types.VirtualSnakeWatermark
 	if !params.isBootstrap {
 		bestPeer = params.selfPeer
 	}
 	bestKey := params.publicKey
 	destKey := params.destinationKey
-	bestWatermark := types.VirtualSnakeWatermark{
-		PublicKey: bestKey,
-		Sequence:  math.MaxInt64,
-	}
 
 	// newCandidate updates the best key and best peer with new candidates.
 	newCandidate := func(key types.PublicKey, seq types.Varu64, p *peer) {
 		bestKey, bestPeer, bestAnn = key, p, params.peerAnnouncements[p]
-		bestWatermark.PublicKey = key
 		if seq > 0 {
+			if bestWatermark == nil {
+				bestWatermark = &types.VirtualSnakeWatermark{}
+			}
+			bestWatermark.PublicKey = key
 			bestWatermark.Sequence = seq
-		} else {
-			bestWatermark.Sequence = math.MaxInt64
 		}
 	}
 	// newCheckedCandidate performs some sanity checks on the candidate before
@@ -279,7 +278,10 @@ func getNextHopSNEK(params virtualSnakeNextHopParams) (*peer, *types.VirtualSnak
 		if !entry.Source.started.Load() || !entry.valid() {
 			continue
 		}
-		newCheckedCandidate(entry.PublicKey, entry.Sequence, entry.Source)
+		if entry.Watermark.WorseThan(params.watermark) {
+			continue
+		}
+		newCheckedCandidate(entry.PublicKey, entry.Watermark.Sequence, entry.Source)
 	}
 
 	// Finally, be sure that we're using the best-looking path to our next-hop.
@@ -303,7 +305,7 @@ func getNextHopSNEK(params virtualSnakeNextHopParams) (*peer, *types.VirtualSnak
 		}
 	*/
 
-	return bestPeer, &bestWatermark
+	return bestPeer, bestWatermark
 }
 
 // _handleBootstrap is called in response to receiving a bootstrap packet.
@@ -343,7 +345,10 @@ func (s *state) _handleBootstrap(from, to *peer, rx *types.Frame) error {
 		Destination:       to,
 		LastSeen:          time.Now(),
 		Root:              bootstrap.Root,
-		Sequence:          bootstrap.Sequence,
+		Watermark: types.VirtualSnakeWatermark{
+			PublicKey: index.PublicKey,
+			Sequence:  bootstrap.Sequence,
+		},
 	}
 
 	// Now let's see if this is a suitable ascending entry.
