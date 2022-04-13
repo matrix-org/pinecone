@@ -62,6 +62,7 @@ type Frame struct {
 	DestinationKey PublicKey
 	Source         Coordinates
 	SourceKey      PublicKey
+	WatermarkKey   PublicKey
 	Payload        []byte
 }
 
@@ -74,6 +75,7 @@ func (f *Frame) Reset() {
 	f.DestinationKey = PublicKey{}
 	f.Source = Coordinates{}
 	f.SourceKey = PublicKey{}
+	f.WatermarkKey = PublicKey{}
 	f.Payload = f.Payload[:0]
 }
 
@@ -87,12 +89,8 @@ func (f *Frame) MarshalBinary(buffer []byte) (int, error) {
 		payloadLen := len(f.Payload)
 		binary.BigEndian.PutUint16(buffer[offset+0:offset+2], uint16(payloadLen))
 		offset += 2
-		n, err := f.Source.MarshalBinary(buffer[offset:])
-		if err != nil {
-			return 0, fmt.Errorf("f.Source.MarshalBinary: %w", err)
-		}
-		offset += n
 		offset += copy(buffer[offset:], f.DestinationKey[:ed25519.PublicKeySize])
+		offset += copy(buffer[offset:], f.WatermarkKey[:ed25519.PublicKeySize])
 		if f.Payload != nil {
 			f.Payload = f.Payload[:payloadLen]
 			offset += copy(buffer[offset:], f.Payload[:payloadLen])
@@ -104,6 +102,7 @@ func (f *Frame) MarshalBinary(buffer []byte) (int, error) {
 		offset += 2
 		offset += copy(buffer[offset:], f.DestinationKey[:ed25519.PublicKeySize])
 		offset += copy(buffer[offset:], f.SourceKey[:ed25519.PublicKeySize])
+		offset += copy(buffer[offset:], f.WatermarkKey[:ed25519.PublicKeySize])
 		if f.Payload != nil {
 			f.Payload = f.Payload[:payloadLen]
 			offset += copy(buffer[offset:], f.Payload[:payloadLen])
@@ -160,12 +159,9 @@ func (f *Frame) UnmarshalBinary(data []byte) (int, error) {
 		if payloadLen > cap(f.Payload) {
 			return 0, fmt.Errorf("payload length exceeds frame capacity")
 		}
-		srcLen := int(binary.BigEndian.Uint16(data[offset+2 : offset+4]))
-		if _, err := f.Source.UnmarshalBinary(data[offset+2:]); err != nil {
-			return 0, fmt.Errorf("f.Source.UnmarshalBinary: %w", err)
-		}
-		offset += 4 + srcLen
+		offset += 2
 		offset += copy(f.DestinationKey[:], data[offset:])
+		offset += copy(f.WatermarkKey[:], data[offset:])
 		f.Payload = f.Payload[:payloadLen]
 		offset += copy(f.Payload, data[offset:])
 		return offset, nil
@@ -178,6 +174,7 @@ func (f *Frame) UnmarshalBinary(data []byte) (int, error) {
 		offset += 2
 		offset += copy(f.DestinationKey[:], data[offset:])
 		offset += copy(f.SourceKey[:], data[offset:])
+		offset += copy(f.WatermarkKey[:], data[offset:])
 		f.Payload = f.Payload[:payloadLen]
 		offset += copy(f.Payload, data[offset:])
 		return offset + payloadLen, nil

@@ -84,24 +84,24 @@ func TestMarshalUnmarshalFrame(t *testing.T) {
 
 func TestMarshalUnmarshalSNEKBootstrapFrame(t *testing.T) {
 	pk, _, _ := ed25519.GenerateKey(nil)
+	wpk, _, _ := ed25519.GenerateKey(nil)
 	input := Frame{
 		Version: Version0,
 		Type:    TypeVirtualSnakeBootstrap,
-		Source:  Coordinates{1, 2, 3, 4, 5},
 		Payload: []byte{9, 9, 9, 9, 9},
 	}
 	copy(input.DestinationKey[:], pk)
+	copy(input.WatermarkKey[:], wpk)
 	expected := []byte{
 		0x70, 0x69, 0x6e, 0x65, // magic bytes
 		0,                               // version 0
 		byte(TypeVirtualSnakeBootstrap), // type greedy
 		0, 0,                            // extra
-		0, 56, // frame length
+		0, 81, // frame length
 		0, 5, // payload length
-		0, 5, // source length
-		1, 2, 3, 4, 5, // source coordinates
 	}
 	expected = append(expected, pk...)
+	expected = append(expected, wpk...)
 	expected = append(expected, input.Payload...)
 	buf := make([]byte, 65535)
 	n, err := input.MarshalBinary(buf)
@@ -141,6 +141,7 @@ func TestMarshalUnmarshalSNEKBootstrapFrame(t *testing.T) {
 func TestMarshalUnmarshalSNEKFrame(t *testing.T) {
 	pk1, _, _ := ed25519.GenerateKey(nil)
 	pk2, _, _ := ed25519.GenerateKey(nil)
+	wpk, _, _ := ed25519.GenerateKey(nil)
 	input := Frame{
 		Version: Version0,
 		Type:    TypeVirtualSnakeRouted,
@@ -148,16 +149,18 @@ func TestMarshalUnmarshalSNEKFrame(t *testing.T) {
 	}
 	copy(input.SourceKey[:], pk1)
 	copy(input.DestinationKey[:], pk2)
+	copy(input.WatermarkKey[:], wpk)
 	expected := []byte{
 		0x70, 0x69, 0x6e, 0x65, // magic bytes
 		0,                            // version 0
 		byte(TypeVirtualSnakeRouted), // type greedy
 		0, 0,                         // extra
-		0, 82, // frame length
+		0, 114, // frame length
 		0, 6, // payload length
 	}
 	expected = append(expected, pk2...)
 	expected = append(expected, pk1...)
+	expected = append(expected, wpk...)
 	expected = append(expected, input.Payload...)
 	buf := make([]byte, 65535)
 	n, err := input.MarshalBinary(buf)

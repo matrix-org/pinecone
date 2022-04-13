@@ -135,7 +135,8 @@ func (s *state) _bootstrapNow() {
 	send.Payload = append(send.Payload[:0], b[:n]...)
 	// Bootstrap messages are routed using SNEK routing with special rules for
 	// bootstrap packets.
-	if p := s._nextHopsSNEK(send, true); p != nil && p.proto != nil {
+	if p, w := s._nextHopsSNEK(send, true); p != nil && p.proto != nil {
+		send.WatermarkKey = w
 		p.proto.push(send)
 	}
 	s._lastbootstrap = time.Now()
@@ -155,7 +156,7 @@ type virtualSnakeNextHopParams struct {
 // _nextHopsSNEK locates the best next-hop for a given SNEK-routed frame. The
 // bootstrap flag determines whether the frame should be routed using bootstrap
 // specific rules — this should only be used for VirtualSnakeBootstrap frames.
-func (s *state) _nextHopsSNEK(rx *types.Frame, bootstrap bool) *peer {
+func (s *state) _nextHopsSNEK(rx *types.Frame, bootstrap bool) (*peer, types.PublicKey) {
 	return getNextHopSNEK(virtualSnakeNextHopParams{
 		rx.Type == types.TypeVirtualSnakeBootstrap,
 		rx.DestinationKey,
@@ -168,11 +169,11 @@ func (s *state) _nextHopsSNEK(rx *types.Frame, bootstrap bool) *peer {
 	})
 }
 
-func getNextHopSNEK(params virtualSnakeNextHopParams) *peer {
+func getNextHopSNEK(params virtualSnakeNextHopParams) (*peer, types.PublicKey) {
 	// If the message isn't a bootstrap message and the destination is for our
 	// own public key, handle the frame locally — it's basically loopback.
 	if !params.isBootstrap && params.publicKey == params.destinationKey {
-		return params.selfPeer
+		return params.selfPeer, types.PublicKey{}
 	}
 
 	// We start off with our own key as the best key. Any suitable next-hop
@@ -280,7 +281,7 @@ func getNextHopSNEK(params virtualSnakeNextHopParams) *peer {
 		}
 	}
 
-	return bestPeer
+	return bestPeer, bestKey
 }
 
 // _handleBootstrap is called in response to receiving a bootstrap packet.
