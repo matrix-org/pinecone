@@ -100,6 +100,7 @@ func (r *Router) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 			frame := getFrame()
 			frame.Type = types.TypeVirtualSnakeRouted
 			frame.DestinationKey = ga
+			frame.WatermarkKey = types.FullMask
 			frame.SourceKey = r.public
 			frame.Payload = append(frame.Payload[:0], p...)
 			_ = r.state._forward(r.local, frame)
