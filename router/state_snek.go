@@ -101,7 +101,6 @@ func (s *state) _bootstrapSoon() {
 
 // _bootstrapNow is responsible for sending a bootstrap message to the network.
 func (s *state) _bootstrapNow() {
-	s.r.log.Println("Bootstrapping now")
 	// If we are the root node then there's no point in trying to bootstrap. We
 	// already have the highest public key on the network so a bootstrap won't be
 	// able to go anywhere in ascending order.
@@ -208,6 +207,8 @@ func getNextHopSNEK(params virtualSnakeNextHopParams) (*peer, types.PublicKey, t
 		}
 	}
 
+	_ = bestAnn
+
 	// Check if we can use the path to the root via our parent as a starting
 	// point. We can't do this if we are the root node as there would be no
 	// parent or ascending paths.
@@ -255,7 +256,7 @@ func getNextHopSNEK(params virtualSnakeNextHopParams) (*peer, types.PublicKey, t
 		if peerKey := p.public; bestKey == peerKey {
 			// We've seen this key already and we are directly peered, so use
 			// the peering instead of the previous selected port.
-			newCandidate(peerKey, 0, p)
+			newCandidate(peerKey, bestSeq, p)
 		}
 	}
 
