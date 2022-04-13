@@ -141,6 +141,10 @@ func (s *state) _bootstrapNow() {
 	// Bootstrap messages are routed using SNEK routing with special rules for
 	// bootstrap packets.
 	if p, _ := s._nextHopsSNEK(send, true); p != nil && p.proto != nil {
+		send.Watermark = types.VirtualSnakeWatermark{
+			PublicKey: types.FullMask,
+			Sequence:  0,
+		}
 		p.proto.push(send)
 	}
 	s._lastbootstrap = time.Now()

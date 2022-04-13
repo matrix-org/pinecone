@@ -143,15 +143,13 @@ func (s *state) _forward(p *peer, f *types.Frame) error {
 
 	// If the packet's watermark is higher than the previous one then we have
 	// looped somewhere, so drop the packet.
-	empty := types.PublicKey{}
-	if watermark != nil && f.Watermark.PublicKey != empty {
+	if watermark != nil {
 		watermarkdiff := watermark.PublicKey.CompareTo(f.Watermark.PublicKey)
 		switch {
 		case watermarkdiff > 0:
-			s.r.log.Println("Dropping packet because watermark", watermark, "is greater than", f.Watermark.PublicKey)
-			return nil
+			fallthrough
 		case watermarkdiff == 0 && watermark.Sequence < f.Watermark.Sequence:
-			s.r.log.Println("Dropping packet because of seq", watermark.Sequence, "is less than", f.Watermark.Sequence)
+			s.r.log.Println("Dropping packet because watermark", watermark, "worse than", f.Watermark)
 			return nil
 		}
 
