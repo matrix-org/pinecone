@@ -16,7 +16,6 @@ package router
 
 import (
 	"crypto/ed25519"
-	"fmt"
 	"time"
 
 	"github.com/matrix-org/pinecone/types"
@@ -168,7 +167,7 @@ type virtualSnakeNextHopParams struct {
 // bootstrap flag determines whether the frame should be routed using bootstrap
 // specific rules — this should only be used for VirtualSnakeBootstrap frames.
 func (s *state) _nextHopsSNEK(from *peer, rx *types.Frame, bootstrap bool) (*peer, types.VirtualSnakeWatermark) {
-	return s.getNextHopSNEK(virtualSnakeNextHopParams{
+	return getNextHopSNEK(virtualSnakeNextHopParams{
 		from,
 		rx,
 		rx.Type == types.TypeVirtualSnakeBootstrap,
@@ -183,7 +182,7 @@ func (s *state) _nextHopsSNEK(from *peer, rx *types.Frame, bootstrap bool) (*pee
 	})
 }
 
-func (s *state) getNextHopSNEK(params virtualSnakeNextHopParams) (*peer, types.VirtualSnakeWatermark) {
+func getNextHopSNEK(params virtualSnakeNextHopParams) (*peer, types.VirtualSnakeWatermark) {
 	// If the message isn't a bootstrap message and the destination is for our
 	// own public key, handle the frame locally — it's basically loopback.
 	if !params.isBootstrap && params.publicKey == params.destinationKey {
@@ -201,12 +200,13 @@ func (s *state) getNextHopSNEK(params virtualSnakeNextHopParams) (*peer, types.V
 	destKey := params.destinationKey
 
 	// newCandidate updates the best key and best peer with new candidates.
-	newCandidate := func(key types.PublicKey, seq types.Varu64, p *peer, reason string) {
-		if params.from != s.r.local && p == params.from {
-			//fmt.Println("Next-hop via", key, "for destination", params.destinationKey, "is a loop:", reason)
-			return
-		}
-		if seq > 0 {
+	newCandidate := func(key types.PublicKey, seq types.Varu64, p *peer) {
+		switch {
+		case params.isBootstrap && p == params.selfPeer:
+			return // bootstrap trying to route to self peer
+		case !params.isBootstrap && params.from != params.selfPeer && p == params.from:
+			return // packet trying to route back from source port
+		case seq > 0:
 			newWatermark := types.VirtualSnakeWatermark{
 				PublicKey: key,
 				Sequence:  seq,
@@ -220,12 +220,12 @@ func (s *state) getNextHopSNEK(params virtualSnakeNextHopParams) (*peer, types.V
 	}
 	// newCheckedCandidate performs some sanity checks on the candidate before
 	// passing it to newCandidate.
-	newCheckedCandidate := func(candidate types.PublicKey, seq types.Varu64, p *peer, reason string) {
+	newCheckedCandidate := func(candidate types.PublicKey, seq types.Varu64, p *peer) {
 		switch {
 		case !params.isBootstrap && candidate == destKey && bestKey != destKey:
-			newCandidate(candidate, seq, p, reason)
+			newCandidate(candidate, seq, p)
 		case util.DHTOrdered(destKey, candidate, bestKey):
-			newCandidate(candidate, seq, p, reason)
+			newCandidate(candidate, seq, p)
 		}
 	}
 
@@ -241,14 +241,14 @@ func (s *state) getNextHopSNEK(params virtualSnakeNextHopParams) (*peer, types.V
 		case util.DHTOrdered(bestKey, destKey, params.lastAnnouncement.RootPublicKey):
 			// The destination key is higher than our own key, so start using
 			// the path to the root as the first candidate.
-			newCandidate(params.lastAnnouncement.RootPublicKey, 0, params.parentPeer, "root")
+			newCandidate(params.lastAnnouncement.RootPublicKey, 0, params.parentPeer)
 		}
 
 		// Check our direct ancestors in the tree, that is, all nodes between
 		// ourselves and the root node via the parent port.
 		if ann := params.peerAnnouncements[params.parentPeer]; ann != nil {
 			for _, ancestor := range ann.Signatures {
-				newCheckedCandidate(ancestor.PublicKey, 0, params.parentPeer, "direct ancestor")
+				newCheckedCandidate(ancestor.PublicKey, 0, params.parentPeer)
 			}
 		}
 	}
@@ -260,7 +260,7 @@ func (s *state) getNextHopSNEK(params virtualSnakeNextHopParams) (*peer, types.V
 			continue
 		}
 		for _, hop := range ann.Signatures {
-			newCheckedCandidate(hop.PublicKey, 0, p, "peer ancestor")
+			newCheckedCandidate(hop.PublicKey, 0, p)
 		}
 	}
 
@@ -276,7 +276,7 @@ func (s *state) getNextHopSNEK(params virtualSnakeNextHopParams) (*peer, types.V
 		if peerKey := p.public; bestKey == peerKey {
 			// We've seen this key already and we are directly peered, so use
 			// the peering instead of the previous selected port.
-			newCandidate(bestKey, 0, p, "shortcut to peer")
+			newCandidate(bestKey, 0, p)
 		}
 	}
 
@@ -288,7 +288,7 @@ func (s *state) getNextHopSNEK(params virtualSnakeNextHopParams) (*peer, types.V
 		if !entry.Source.started.Load() || !entry.valid() {
 			continue
 		}
-		newCheckedCandidate(entry.PublicKey, entry.Watermark.Sequence, entry.Source, "DHT route")
+		newCheckedCandidate(entry.PublicKey, entry.Watermark.Sequence, entry.Source)
 	}
 
 	// Finally, be sure that we're using the best-looking path to our next-hop.
@@ -313,17 +313,8 @@ func (s *state) getNextHopSNEK(params virtualSnakeNextHopParams) (*peer, types.V
 	*/
 
 	if bestPeer == params.from {
-		fmt.Printf("frame: %+v\n", params.frame)
-		fmt.Println("public:", s.r.public)
-		fmt.Println("from:", params.from, params.destinationKey)
-		fmt.Println("next:", bestPeer, bestKey)
-		fmt.Println("bootstrap:", params.isBootstrap)
-		panic("should not happen")
 		return nil, params.watermark
 	}
-
-	fmt.Println("Next-hop", bestPeer)
-
 	return bestPeer, params.watermark
 }
 

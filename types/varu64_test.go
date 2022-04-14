@@ -22,6 +22,7 @@ import (
 func TestMarshalBinaryVaru64(t *testing.T) {
 	var bin [4]byte
 	for input, expected := range map[Varu64][]byte{
+		0:        {0},
 		1:        {1},
 		12:       {12},
 		123:      {123},
@@ -45,7 +46,8 @@ func TestMarshalBinaryVaru64(t *testing.T) {
 }
 
 func TestUnmarshalBinaryVaru64(t *testing.T) {
-	for input, expected := range map[[11]byte]Varu64{
+	for input, expected := range map[[7]byte]Varu64{
+		{0}:                          0,
 		{1}:                          1,
 		{12}:                         12,
 		{123}:                        123,
