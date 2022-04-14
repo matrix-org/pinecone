@@ -142,21 +142,18 @@ func (s *state) _forward(p *peer, f *types.Frame) error {
 		}
 	}
 
-	// If the packet's watermark is higher than the previous one then we have
-	// looped somewhere, so drop the packet.
-	if watermark.WorseThan(f.Watermark) {
-		return nil
-	}
-
-	// If the packet is obviously loopy then drop it.
-	if nexthop == p {
+	// If the packet's watermark is higher than the previous one or we are
+	// obviously looping, drop the packet.
+	if nexthop == p || watermark.WorseThan(f.Watermark) {
 		return nil
 	}
 
 	// If there's a suitable next-hop then try sending the packet. If we fail
 	// to queue up the packet then we will log it but there isn't an awful lot
 	// we can do at this point.
-	f.Watermark = watermark
+	if watermark.Sequence > 0 {
+		f.Watermark = watermark
+	}
 	if nexthop != nil && !nexthop.send(f) {
 		s.r.log.Println("Dropping forwarded packet of type", f.Type)
 	}

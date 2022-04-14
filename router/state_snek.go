@@ -297,13 +297,13 @@ func getNextHopSNEK(params virtualSnakeNextHopParams) (*peer, types.VirtualSnake
 		}
 	}
 
+	// Only SNEK paths will have a sequence number higher than 0, so
+	// it's a safe bet that if it's greater than 0, we have hit upon
+	// a newly watermarkable path.
 	if bestSeq > 0 {
 		watermark = types.VirtualSnakeWatermark{
 			PublicKey: bestKey,
 			Sequence:  bestSeq,
-		}
-		if watermark.WorseThan(params.watermark) {
-			return nil, params.watermark
 		}
 	}
 
