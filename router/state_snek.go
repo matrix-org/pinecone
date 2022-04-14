@@ -275,11 +275,6 @@ func getNextHopSNEK(params virtualSnakeNextHopParams) (*peer, types.VirtualSnake
 			continue
 		}
 		newCheckedCandidate(entry.PublicKey, entry.Watermark.Sequence, entry.Source)
-		if !params.isBootstrap {
-			for _, key := range entry.Signatures {
-				newCheckedCandidate(key, entry.Watermark.Sequence, entry.Source)
-			}
-		}
 	}
 
 	// Finally, be sure that we're using the best-looking path to our next-hop.
