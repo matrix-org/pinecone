@@ -24,13 +24,13 @@ import (
 // _nextHopsFor returns the next-hop for the given frame. It will examine the packet
 // type and use the correct routing algorithm to determine the next-hop. It is possible
 // for this function to return `nil` if there is no suitable candidate.
-func (s *state) _nextHopsFor(from *peer, frame *types.Frame) (*peer, *types.VirtualSnakeWatermark) {
+func (s *state) _nextHopsFor(from *peer, frame *types.Frame) (*peer, types.VirtualSnakeWatermark) {
 	var nexthop *peer
-	var watermark *types.VirtualSnakeWatermark
+	var watermark types.VirtualSnakeWatermark
 	switch frame.Type {
 	// SNEK routing
 	case types.TypeVirtualSnakeRouted, types.TypeVirtualSnakeBootstrap, types.TypeSNEKPing, types.TypeSNEKPong:
-		nexthop, watermark = s._nextHopsSNEK(frame, frame.Type == types.TypeVirtualSnakeBootstrap)
+		nexthop, watermark = s._nextHopsSNEK(from, frame, frame.Type == types.TypeVirtualSnakeBootstrap)
 
 	// Tree routing
 	case types.TypeTreeRouted, types.TypeTreePing, types.TypeTreePong:
@@ -86,6 +86,10 @@ func (s *state) _forward(p *peer, f *types.Frame) error {
 			f.DestinationKey = of.SourceKey
 			f.SourceKey = s.r.public
 			f.Extra = of.Extra
+			f.Watermark = types.VirtualSnakeWatermark{
+				PublicKey: types.FullMask,
+				Sequence:  0,
+			}
 			nexthop, watermark = s._nextHopsFor(s.r.local, f)
 		} else {
 			hops := binary.BigEndian.Uint16(f.Extra[:])
@@ -138,19 +142,22 @@ func (s *state) _forward(p *peer, f *types.Frame) error {
 		}
 	}
 
+	f.Extra[0]++
+	if f.Extra[0] > 100 {
+		panic("routing loop")
+	}
+
 	// If the packet's watermark is higher than the previous one then we have
 	// looped somewhere, so drop the packet.
-	if watermark != nil {
-		if watermark.WorseThan(&f.Watermark) {
-			s.r.log.Println("Dropping packet because watermark", watermark, "worse than", f.Watermark)
-			return nil
-		}
-		f.Watermark = *watermark
+	if watermark.WorseThan(f.Watermark) {
+		s.r.log.Println("Dropping packet because watermark", watermark, "worse than", f.Watermark)
+		return nil
 	}
 
 	// If there's a suitable next-hop then try sending the packet. If we fail
 	// to queue up the packet then we will log it but there isn't an awful lot
 	// we can do at this point.
+	f.Watermark = watermark
 	if nexthop != nil && !nexthop.send(f) {
 		s.r.log.Println("Dropping forwarded packet of type", f.Type)
 	}

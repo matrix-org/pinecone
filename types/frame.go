@@ -178,7 +178,7 @@ func (f *Frame) UnmarshalBinary(data []byte) (int, error) {
 		}
 		offset += n
 		f.Payload = f.Payload[:payloadLen]
-		offset += copy(f.Payload, data[offset:])
+		offset += copy(f.Payload[:payloadLen], data[offset:])
 		return offset, nil
 
 	case TypeVirtualSnakeRouted, TypeSNEKPing, TypeSNEKPong: // destination = key, source = key
@@ -196,8 +196,8 @@ func (f *Frame) UnmarshalBinary(data []byte) (int, error) {
 		}
 		offset += n
 		f.Payload = f.Payload[:payloadLen]
-		offset += copy(f.Payload, data[offset:])
-		return offset + payloadLen, nil
+		offset += copy(f.Payload[:payloadLen], data[offset:])
+		return offset, nil
 
 	case TypeKeepalive:
 		return offset, nil

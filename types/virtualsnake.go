@@ -31,7 +31,7 @@ type VirtualSnakeWatermark struct {
 	Sequence  Varu64    `json:"sequence"`
 }
 
-func (a *VirtualSnakeWatermark) WorseThan(b *VirtualSnakeWatermark) bool {
+func (a VirtualSnakeWatermark) WorseThan(b VirtualSnakeWatermark) bool {
 	diff := a.PublicKey.CompareTo(b.PublicKey)
 	return diff > 0 || (diff == 0 && a.Sequence < b.Sequence)
 }

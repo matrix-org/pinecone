@@ -89,25 +89,37 @@ func TestMarshalUnmarshalSNEKBootstrapFrame(t *testing.T) {
 		Version: Version0,
 		Type:    TypeVirtualSnakeBootstrap,
 		Payload: []byte{9, 9, 9, 9, 9},
+		Watermark: VirtualSnakeWatermark{
+			Sequence: 100,
+		},
 	}
 	copy(input.DestinationKey[:], pk)
 	copy(input.Watermark.PublicKey[:], wpk)
+	input.Watermark.Sequence = 100
 	expected := []byte{
 		0x70, 0x69, 0x6e, 0x65, // magic bytes
 		0,                               // version 0
 		byte(TypeVirtualSnakeBootstrap), // type greedy
 		0, 0,                            // extra
-		0, 81, // frame length
+		0, 82, // frame length
 		0, 5, // payload length
 	}
 	expected = append(expected, pk...)
 	expected = append(expected, wpk...)
-	expected = append(expected, input.Payload...)
-	buf := make([]byte, 65535)
-	n, err := input.MarshalBinary(buf)
+	var seq [4]byte
+	n, err := input.Watermark.Sequence.MarshalBinary(seq[:])
 	if err != nil {
 		t.Fatal(err)
 	}
+	expected = append(expected, seq[:n]...)
+	expected = append(expected, input.Payload...)
+	buf := make([]byte, 65535)
+	n, err = input.MarshalBinary(buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fmt.Println("Got", buf[:n])
+	fmt.Println("Want", expected)
 	if n != len(expected) {
 		t.Fatalf("wrong marshalled length, got %d, expected %d", n, len(expected))
 	}
@@ -146,6 +158,9 @@ func TestMarshalUnmarshalSNEKFrame(t *testing.T) {
 		Version: Version0,
 		Type:    TypeVirtualSnakeRouted,
 		Payload: []byte("HELLO!"),
+		Watermark: VirtualSnakeWatermark{
+			Sequence: 100,
+		},
 	}
 	copy(input.SourceKey[:], pk1)
 	copy(input.DestinationKey[:], pk2)
@@ -155,15 +170,21 @@ func TestMarshalUnmarshalSNEKFrame(t *testing.T) {
 		0,                            // version 0
 		byte(TypeVirtualSnakeRouted), // type greedy
 		0, 0,                         // extra
-		0, 114, // frame length
+		0, 115, // frame length
 		0, 6, // payload length
 	}
 	expected = append(expected, pk2...)
 	expected = append(expected, pk1...)
 	expected = append(expected, wpk...)
+	var seq [4]byte
+	n, err := input.Watermark.Sequence.MarshalBinary(seq[:])
+	if err != nil {
+		t.Fatal(err)
+	}
+	expected = append(expected, seq[:n]...)
 	expected = append(expected, input.Payload...)
 	buf := make([]byte, 65535)
-	n, err := input.MarshalBinary(buf)
+	n, err = input.MarshalBinary(buf)
 	if err != nil {
 		t.Fatal(err)
 	}

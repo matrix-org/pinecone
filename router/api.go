@@ -84,6 +84,10 @@ func (r *Router) Ping(ctx context.Context, a net.Addr) (uint16, time.Duration, e
 			frame.Type = types.TypeSNEKPing
 			frame.DestinationKey = dst
 			frame.SourceKey = r.public
+			frame.Watermark = types.VirtualSnakeWatermark{
+				PublicKey: types.FullMask,
+				Sequence:  0,
+			}
 			_ = r.state._forward(r.local, frame)
 		})
 

@@ -16,6 +16,7 @@ package router
 
 import (
 	"crypto/ed25519"
+	"fmt"
 	"time"
 
 	"github.com/matrix-org/pinecone/types"
@@ -136,23 +137,26 @@ func (s *state) _bootstrapNow() {
 	send.DestinationKey = s.r.public
 	send.Source = s._coords()
 	send.Payload = append(send.Payload[:0], b[:n]...)
+	send.Watermark = types.VirtualSnakeWatermark{
+		PublicKey: types.FullMask,
+		Sequence:  0,
+	}
 	// Bootstrap messages are routed using SNEK routing with special rules for
 	// bootstrap packets.
-	if p, _ := s._nextHopsSNEK(send, true); p != nil && p.proto != nil {
-		send.Watermark = types.VirtualSnakeWatermark{
-			PublicKey: types.FullMask,
-			Sequence:  0,
-		}
+	if p, w := s._nextHopsSNEK(s.r.local, send, true); p != nil && p.proto != nil {
+		send.Watermark = w
 		p.proto.push(send)
 	}
 	s._lastbootstrap = time.Now()
 }
 
 type virtualSnakeNextHopParams struct {
+	from              *peer
+	frame             *types.Frame
 	isBootstrap       bool
 	destinationKey    types.PublicKey
 	publicKey         types.PublicKey
-	watermark         *types.VirtualSnakeWatermark
+	watermark         types.VirtualSnakeWatermark
 	parentPeer        *peer
 	selfPeer          *peer
 	lastAnnouncement  *rootAnnouncementWithTime
@@ -163,12 +167,14 @@ type virtualSnakeNextHopParams struct {
 // _nextHopsSNEK locates the best next-hop for a given SNEK-routed frame. The
 // bootstrap flag determines whether the frame should be routed using bootstrap
 // specific rules — this should only be used for VirtualSnakeBootstrap frames.
-func (s *state) _nextHopsSNEK(rx *types.Frame, bootstrap bool) (*peer, *types.VirtualSnakeWatermark) {
-	return getNextHopSNEK(virtualSnakeNextHopParams{
+func (s *state) _nextHopsSNEK(from *peer, rx *types.Frame, bootstrap bool) (*peer, types.VirtualSnakeWatermark) {
+	return s.getNextHopSNEK(virtualSnakeNextHopParams{
+		from,
+		rx,
 		rx.Type == types.TypeVirtualSnakeBootstrap,
 		rx.DestinationKey,
 		s.r.public,
-		&rx.Watermark,
+		rx.Watermark,
 		s._parent,
 		s.r.local,
 		s._rootAnnouncement(),
@@ -177,18 +183,17 @@ func (s *state) _nextHopsSNEK(rx *types.Frame, bootstrap bool) (*peer, *types.Vi
 	})
 }
 
-func getNextHopSNEK(params virtualSnakeNextHopParams) (*peer, *types.VirtualSnakeWatermark) {
+func (s *state) getNextHopSNEK(params virtualSnakeNextHopParams) (*peer, types.VirtualSnakeWatermark) {
 	// If the message isn't a bootstrap message and the destination is for our
 	// own public key, handle the frame locally — it's basically loopback.
 	if !params.isBootstrap && params.publicKey == params.destinationKey {
-		return params.selfPeer, nil
+		return params.selfPeer, params.watermark
 	}
 
 	// We start off with our own key as the best key. Any suitable next-hop
 	// candidate has to improve on our own key in order to forward the frame.
 	var bestPeer *peer
 	var bestAnn *rootAnnouncementWithTime
-	var bestWatermark *types.VirtualSnakeWatermark
 	if !params.isBootstrap {
 		bestPeer = params.selfPeer
 	}
@@ -196,24 +201,31 @@ func getNextHopSNEK(params virtualSnakeNextHopParams) (*peer, *types.VirtualSnak
 	destKey := params.destinationKey
 
 	// newCandidate updates the best key and best peer with new candidates.
-	newCandidate := func(key types.PublicKey, seq types.Varu64, p *peer) {
-		bestKey, bestPeer, bestAnn = key, p, params.peerAnnouncements[p]
-		if seq > 0 {
-			if bestWatermark == nil {
-				bestWatermark = &types.VirtualSnakeWatermark{}
-			}
-			bestWatermark.PublicKey = key
-			bestWatermark.Sequence = seq
+	newCandidate := func(key types.PublicKey, seq types.Varu64, p *peer, reason string) {
+		if params.from != s.r.local && p == params.from {
+			//fmt.Println("Next-hop via", key, "for destination", params.destinationKey, "is a loop:", reason)
+			return
 		}
+		if seq > 0 {
+			newWatermark := types.VirtualSnakeWatermark{
+				PublicKey: key,
+				Sequence:  seq,
+			}
+			if newWatermark.WorseThan(params.watermark) {
+				return
+			}
+			params.watermark = newWatermark
+		}
+		bestKey, bestPeer, bestAnn = key, p, params.peerAnnouncements[p]
 	}
 	// newCheckedCandidate performs some sanity checks on the candidate before
 	// passing it to newCandidate.
-	newCheckedCandidate := func(candidate types.PublicKey, seq types.Varu64, p *peer) {
+	newCheckedCandidate := func(candidate types.PublicKey, seq types.Varu64, p *peer, reason string) {
 		switch {
 		case !params.isBootstrap && candidate == destKey && bestKey != destKey:
-			newCandidate(candidate, seq, p)
+			newCandidate(candidate, seq, p, reason)
 		case util.DHTOrdered(destKey, candidate, bestKey):
-			newCandidate(candidate, seq, p)
+			newCandidate(candidate, seq, p, reason)
 		}
 	}
 
@@ -229,14 +241,14 @@ func getNextHopSNEK(params virtualSnakeNextHopParams) (*peer, *types.VirtualSnak
 		case util.DHTOrdered(bestKey, destKey, params.lastAnnouncement.RootPublicKey):
 			// The destination key is higher than our own key, so start using
 			// the path to the root as the first candidate.
-			newCandidate(params.lastAnnouncement.RootPublicKey, 0, params.parentPeer)
+			newCandidate(params.lastAnnouncement.RootPublicKey, 0, params.parentPeer, "root")
 		}
 
 		// Check our direct ancestors in the tree, that is, all nodes between
 		// ourselves and the root node via the parent port.
 		if ann := params.peerAnnouncements[params.parentPeer]; ann != nil {
 			for _, ancestor := range ann.Signatures {
-				newCheckedCandidate(ancestor.PublicKey, 0, params.parentPeer)
+				newCheckedCandidate(ancestor.PublicKey, 0, params.parentPeer, "direct ancestor")
 			}
 		}
 	}
@@ -248,7 +260,7 @@ func getNextHopSNEK(params virtualSnakeNextHopParams) (*peer, *types.VirtualSnak
 			continue
 		}
 		for _, hop := range ann.Signatures {
-			newCheckedCandidate(hop.PublicKey, 0, p)
+			newCheckedCandidate(hop.PublicKey, 0, p, "peer ancestor")
 		}
 	}
 
@@ -264,7 +276,7 @@ func getNextHopSNEK(params virtualSnakeNextHopParams) (*peer, *types.VirtualSnak
 		if peerKey := p.public; bestKey == peerKey {
 			// We've seen this key already and we are directly peered, so use
 			// the peering instead of the previous selected port.
-			newCandidate(bestKey, 0, p)
+			newCandidate(bestKey, 0, p, "shortcut to peer")
 		}
 	}
 
@@ -276,10 +288,7 @@ func getNextHopSNEK(params virtualSnakeNextHopParams) (*peer, *types.VirtualSnak
 		if !entry.Source.started.Load() || !entry.valid() {
 			continue
 		}
-		if entry.Watermark.WorseThan(params.watermark) {
-			continue
-		}
-		newCheckedCandidate(entry.PublicKey, entry.Watermark.Sequence, entry.Source)
+		newCheckedCandidate(entry.PublicKey, entry.Watermark.Sequence, entry.Source, "DHT route")
 	}
 
 	// Finally, be sure that we're using the best-looking path to our next-hop.
@@ -303,7 +312,19 @@ func getNextHopSNEK(params virtualSnakeNextHopParams) (*peer, *types.VirtualSnak
 		}
 	*/
 
-	return bestPeer, bestWatermark
+	if bestPeer == params.from {
+		fmt.Printf("frame: %+v\n", params.frame)
+		fmt.Println("public:", s.r.public)
+		fmt.Println("from:", params.from, params.destinationKey)
+		fmt.Println("next:", bestPeer, bestKey)
+		fmt.Println("bootstrap:", params.isBootstrap)
+		panic("should not happen")
+		return nil, params.watermark
+	}
+
+	fmt.Println("Next-hop", bestPeer)
+
+	return bestPeer, params.watermark
 }
 
 // _handleBootstrap is called in response to receiving a bootstrap packet.

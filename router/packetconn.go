@@ -103,6 +103,10 @@ func (r *Router) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 			frame.Watermark.PublicKey = types.FullMask
 			frame.SourceKey = r.public
 			frame.Payload = append(frame.Payload[:0], p...)
+			frame.Watermark = types.VirtualSnakeWatermark{
+				PublicKey: types.FullMask,
+				Sequence:  0,
+			}
 			_ = r.state._forward(r.local, frame)
 		})
 		return len(p), nil
