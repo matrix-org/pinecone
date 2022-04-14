@@ -112,6 +112,9 @@ setupNetworkSelection();
 
 function selectTool(toolType) {
     switch(this.id) {
+    case "ping-start-stop":
+        handleToolPingStartStop(this);
+        break;
     case "scenario-new":
         handleToolScenarioNew(this);
         break;
@@ -136,6 +139,26 @@ function selectTool(toolType) {
     case "remove":
         handleToolRemove(this);
         break;
+    }
+}
+
+function handleToolPingStartStop(subtool) {
+    if (subtool.className.includes("active")) {
+        subtool.className = subtool.className.replace(" active", "");
+        let tooltip = subtool.getElementsByClassName("tooltiptext")[0];
+        tooltip.textContent = "Start Pings";
+
+        if (subtool.className.includes("sub-active")) {
+            subtool.className = subtool.className.replace(" sub-active", "");
+        }
+
+        // TODO : stop pings
+    } else {
+        subtool.className += " active";
+        // subtool.className += " sub-active";
+        let tooltip = subtool.getElementsByClassName("tooltiptext")[0];
+        tooltip.textContent = "Stop Pings";
+        // TODO : start pings
     }
 }
 
