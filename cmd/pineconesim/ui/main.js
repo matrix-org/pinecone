@@ -69,3 +69,17 @@ function handleSimMessage(msg) {
 };
 
 ConnectToServer({url: window.origin.replace("http", "ws") + '/ws'}, handleSimMessage);
+
+function selectStartingNetwork() {
+    let selectionTabs = document.getElementsByClassName("netselect");
+    var hash = window.location.hash.substr(1);
+    if (hash != "") {
+        for (let i = 0; i < selectionTabs.length; i++) {
+            if (selectionTabs[i].id.includes(hash)) {
+                selectionTabs[i].click();
+                break;
+            }
+        }
+    }
+}
+selectStartingNetwork();
