@@ -118,7 +118,7 @@ func (s *state) _bootstrapNow() {
 		Sequence: types.Varu64(time.Now().UnixMilli()),
 	}
 	if s.r.secure {
-		if err := bootstrap.Sign(s.r.private); err != nil {
+		if _, err := bootstrap.Sign(s.r.private); err != nil {
 			return
 		}
 	}
@@ -380,8 +380,10 @@ func (s *state) _handleBootstrap(from, to *peer, rx *types.Frame) bool {
 	s._table[index] = entry
 
 	// Append our signature.
-	if err = bootstrap.Sign(s.r.private); err != nil {
+	if sigbytes, err := bootstrap.Sign(s.r.private); err != nil {
 		return false
+	} else {
+		rx.Payload = append(rx.Payload, sigbytes...)
 	}
 
 	// Now let's see if this is a suitable ascending entry.

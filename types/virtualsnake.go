@@ -41,20 +41,22 @@ func (a VirtualSnakeWatermark) WorseThan(b VirtualSnakeWatermark) bool {
 	return diff > 0 || (diff == 0 && a.Sequence < b.Sequence)
 }
 
-func (v *VirtualSnakeBootstrap) Sign(private PrivateKey) error {
+func (v *VirtualSnakeBootstrap) Sign(private PrivateKey) ([]byte, error) {
 	// TODO: This probably creates quite a lot of allocations
 	// so we should do something about that.
 	edprivate := append(ed25519.PrivateKey{}, private[:]...)
-	var buffer [65535]byte
+	buffer := make([]byte, 65535)
 	n, err := v.MarshalBinary(buffer[:])
 	if err != nil {
-		return fmt.Errorf("v.MarshalBinary: %w", err)
+		return nil, fmt.Errorf("v.MarshalBinary: %w", err)
 	}
 	sig := VirtualSnakeBootstrapSignature{}
 	copy(sig.PublicKey[:], edprivate.Public().(ed25519.PublicKey))
 	copy(sig.Signature[:], ed25519.Sign(private[:], buffer[:n]))
 	v.Signatures = append(v.Signatures, sig)
-	return nil
+	var sigbytes [ed25519.PublicKeySize + ed25519.SignatureSize]byte
+	_, err = sig.MarshalBinary(sigbytes[:])
+	return sigbytes[:], err
 }
 
 func (v *VirtualSnakeBootstrap) MarshalBinary(buf []byte) (int, error) {
