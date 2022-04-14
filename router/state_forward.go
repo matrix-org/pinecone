@@ -142,18 +142,13 @@ func (s *state) _forward(p *peer, f *types.Frame) error {
 		}
 	}
 
-	f.Extra[0]++
-	if f.Extra[0] > 100 {
-		panic("routing loop")
-	}
-
 	// If the packet's watermark is higher than the previous one then we have
 	// looped somewhere, so drop the packet.
 	if watermark.WorseThan(f.Watermark) {
-		s.r.log.Println("Dropping packet because watermark", watermark, "worse than", f.Watermark)
 		return nil
 	}
 
+	// If the packet is obviously loopy then drop it.
 	if nexthop == p {
 		return nil
 	}

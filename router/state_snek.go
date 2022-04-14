@@ -273,29 +273,29 @@ func getNextHopSNEK(params virtualSnakeNextHopParams) (*peer, types.VirtualSnake
 		if !entry.Source.started.Load() || !entry.valid() {
 			continue
 		}
+		if entry.Watermark.WorseThan(watermark) {
+			continue
+		}
 		newCheckedCandidate(entry.PublicKey, entry.Watermark.Sequence, entry.Source)
 	}
 
 	// Finally, be sure that we're using the best-looking path to our next-hop.
 	// Prefer faster link types and, if not, lower latencies to the root.
-	_ = bestAnn
-	/*
-		if bestPeer != nil && bestAnn != nil {
-			for p, ann := range params.peerAnnouncements {
-				peerKey := p.public
-				switch {
-				case bestKey != peerKey:
-					continue
-				case p.peertype < bestPeer.peertype:
-					// Prefer faster classes of links if possible.
-					newCandidate(bestKey, 0, p)
-				case p.peertype == bestPeer.peertype && ann.receiveOrder < bestAnn.receiveOrder:
-					// Prefer links that have the lowest latency to the root.
-					newCandidate(bestKey, 0, p)
-				}
+	if bestPeer != nil && bestAnn != nil {
+		for p, ann := range params.peerAnnouncements {
+			peerKey := p.public
+			switch {
+			case bestKey != peerKey:
+				continue
+			case p.peertype < bestPeer.peertype:
+				// Prefer faster classes of links if possible.
+				newCandidate(bestKey, bestSeq, p)
+			case p.peertype == bestPeer.peertype && ann.receiveOrder < bestAnn.receiveOrder:
+				// Prefer links that have the lowest latency to the root.
+				newCandidate(bestKey, bestSeq, p)
 			}
 		}
-	*/
+	}
 
 	if bestSeq > 0 {
 		watermark = types.VirtualSnakeWatermark{
