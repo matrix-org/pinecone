@@ -198,14 +198,15 @@ func getNextHopSNEK(params virtualSnakeNextHopParams) (*peer, types.VirtualSnake
 	}
 	bestKey := params.publicKey
 	destKey := params.destinationKey
+	watermark := params.watermark
 
 	// newCandidate updates the best key and best peer with new candidates.
 	newCandidate := func(key types.PublicKey, seq types.Varu64, p *peer) {
 		switch {
-		case params.isBootstrap && p == params.selfPeer:
-			return // bootstrap trying to route to self peer
-		case !params.isBootstrap && params.from != params.selfPeer && p == params.from:
-			return // packet trying to route back from source port
+		//case params.isBootstrap && params.destinationKey == params.publicKey && p == params.selfPeer:
+		//	return // bootstrap trying to route to self peer
+		//case /*!params.isBootstrap && params.from != params.selfPeer &&*/ p == params.from:
+		//	return // packet trying to route back from source port
 		case seq > 0:
 			newWatermark := types.VirtualSnakeWatermark{
 				PublicKey: key,
@@ -214,7 +215,7 @@ func getNextHopSNEK(params virtualSnakeNextHopParams) (*peer, types.VirtualSnake
 			if newWatermark.WorseThan(params.watermark) {
 				return
 			}
-			params.watermark = newWatermark
+			watermark = newWatermark
 		}
 		bestKey, bestPeer, bestAnn = key, p, params.peerAnnouncements[p]
 	}
@@ -312,10 +313,7 @@ func getNextHopSNEK(params virtualSnakeNextHopParams) (*peer, types.VirtualSnake
 		}
 	*/
 
-	if bestPeer == params.from {
-		return nil, params.watermark
-	}
-	return bestPeer, params.watermark
+	return bestPeer, watermark
 }
 
 // _handleBootstrap is called in response to receiving a bootstrap packet.

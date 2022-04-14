@@ -154,6 +154,10 @@ func (s *state) _forward(p *peer, f *types.Frame) error {
 		return nil
 	}
 
+	if nexthop == p {
+		return nil
+	}
+
 	// If there's a suitable next-hop then try sending the packet. If we fail
 	// to queue up the packet then we will log it but there isn't an awful lot
 	// we can do at this point.
