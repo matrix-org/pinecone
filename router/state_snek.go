@@ -151,7 +151,6 @@ func (s *state) _bootstrapNow() {
 
 type virtualSnakeNextHopParams struct {
 	from              *peer
-	frame             *types.Frame
 	isBootstrap       bool
 	destinationKey    types.PublicKey
 	publicKey         types.PublicKey
@@ -169,7 +168,6 @@ type virtualSnakeNextHopParams struct {
 func (s *state) _nextHopsSNEK(from *peer, rx *types.Frame, bootstrap bool) (*peer, types.VirtualSnakeWatermark) {
 	return getNextHopSNEK(virtualSnakeNextHopParams{
 		from,
-		rx,
 		rx.Type == types.TypeVirtualSnakeBootstrap,
 		rx.DestinationKey,
 		s.r.public,
@@ -193,6 +191,7 @@ func getNextHopSNEK(params virtualSnakeNextHopParams) (*peer, types.VirtualSnake
 	// candidate has to improve on our own key in order to forward the frame.
 	var bestPeer *peer
 	var bestAnn *rootAnnouncementWithTime
+	var bestSeq types.Varu64
 	if !params.isBootstrap {
 		bestPeer = params.selfPeer
 	}
@@ -202,22 +201,7 @@ func getNextHopSNEK(params virtualSnakeNextHopParams) (*peer, types.VirtualSnake
 
 	// newCandidate updates the best key and best peer with new candidates.
 	newCandidate := func(key types.PublicKey, seq types.Varu64, p *peer) {
-		switch {
-		//case params.isBootstrap && params.destinationKey == params.publicKey && p == params.selfPeer:
-		//	return // bootstrap trying to route to self peer
-		//case /*!params.isBootstrap && params.from != params.selfPeer &&*/ p == params.from:
-		//	return // packet trying to route back from source port
-		case seq > 0:
-			newWatermark := types.VirtualSnakeWatermark{
-				PublicKey: key,
-				Sequence:  seq,
-			}
-			if newWatermark.WorseThan(params.watermark) {
-				return
-			}
-			watermark = newWatermark
-		}
-		bestKey, bestPeer, bestAnn = key, p, params.peerAnnouncements[p]
+		bestKey, bestSeq, bestPeer, bestAnn = key, seq, p, params.peerAnnouncements[p]
 	}
 	// newCheckedCandidate performs some sanity checks on the candidate before
 	// passing it to newCandidate.
@@ -312,6 +296,16 @@ func getNextHopSNEK(params virtualSnakeNextHopParams) (*peer, types.VirtualSnake
 			}
 		}
 	*/
+
+	if bestSeq > 0 {
+		watermark = types.VirtualSnakeWatermark{
+			PublicKey: bestKey,
+			Sequence:  bestSeq,
+		}
+		if watermark.WorseThan(params.watermark) {
+			return nil, params.watermark
+		}
+	}
 
 	return bestPeer, watermark
 }
