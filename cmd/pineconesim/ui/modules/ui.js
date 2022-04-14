@@ -80,20 +80,26 @@ function selectNetworkType(networkType) {
 
     this.className += " active";
 
+    let anchor = "";
     switch(this.id) {
     case "peerTopo":
-        graph.changeDataSet("peer");
+        anchor = "peer";
         break;
     case "snakeTopo":
-        graph.changeDataSet("snake");
+        anchor = "snake";
         break;
     case "treeTopo":
-        graph.changeDataSet("tree");
+        anchor = "tree";
         break;
     case "geographicTopo":
-        graph.changeDataSet("geographic");
+        anchor = "geographic";
         break;
+    default:
+        return;
     }
+
+    graph.changeDataSet(anchor);
+    window.location.href = "#" + anchor;
 }
 
 function setupNetworkSelection() {
