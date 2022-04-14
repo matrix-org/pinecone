@@ -42,7 +42,6 @@ type virtualSnakeEntry struct {
 	Watermark   types.VirtualSnakeWatermark `json:"watermark"`
 	LastSeen    time.Time                   `json:"last_seen"`
 	Root        types.Root                  `json:"root"`
-	Signatures  []types.PublicKey           `json:"signatures"`
 }
 
 // valid returns true if the update hasn't expired, or false if it has. It is
@@ -118,9 +117,14 @@ func (s *state) _bootstrapNow() {
 		Sequence: types.Varu64(time.Now().UnixMilli()),
 	}
 	if s.r.secure {
-		if _, err := bootstrap.Sign(s.r.private); err != nil {
+		protected, err := bootstrap.ProtectedPayload()
+		if err != nil {
 			return
 		}
+		copy(
+			bootstrap.Signature[:],
+			ed25519.Sign(s.r.private[:], protected),
+		)
 	}
 	n, err := bootstrap.MarshalBinary(b[:])
 	if err != nil {
@@ -314,28 +318,23 @@ func getNextHopSNEK(params virtualSnakeNextHopParams) (*peer, types.VirtualSnake
 func (s *state) _handleBootstrap(from, to *peer, rx *types.Frame) bool {
 	// Unmarshal the bootstrap.
 	var bootstrap types.VirtualSnakeBootstrap
-	_, sigoffset, err := bootstrap.UnmarshalBinary(rx.Payload)
+	_, err := bootstrap.UnmarshalBinary(rx.Payload)
 	if err != nil {
 		return false
 	}
 	if s.r.secure {
-		// Check that the bootstrap message was signed by the node that claims
+		// Check that the bootstrap message was protected by the node that claims
 		// to have sent it. Silently drop it if there's a signature problem.
-		if len(bootstrap.Signatures) == 0 {
+		protected, err := bootstrap.ProtectedPayload()
+		if err != nil {
 			return false
 		}
-		for i, sig := range bootstrap.Signatures {
-			if i == 0 && sig.PublicKey != rx.DestinationKey {
-				return false
-			}
-			if !ed25519.Verify(
-				sig.PublicKey[:],
-				rx.Payload[:sigoffset],
-				sig.Signature[:],
-			) {
-				return false
-			}
-			sigoffset += ed25519.PublicKeySize + ed25519.SignatureSize
+		if !ed25519.Verify(
+			rx.DestinationKey[:],
+			protected,
+			bootstrap.Signature[:],
+		) {
+			return false
 		}
 	}
 	// Check that the root key and sequence number in the update match our
@@ -359,7 +358,7 @@ func (s *state) _handleBootstrap(from, to *peer, rx *types.Frame) bool {
 			return false
 		}
 	}
-	entry := &virtualSnakeEntry{
+	s._table[index] = &virtualSnakeEntry{
 		virtualSnakeIndex: &index,
 		Source:            from,
 		Destination:       to,
@@ -369,18 +368,6 @@ func (s *state) _handleBootstrap(from, to *peer, rx *types.Frame) bool {
 			PublicKey: index.PublicKey,
 			Sequence:  bootstrap.Sequence,
 		},
-		Signatures: make([]types.PublicKey, 0, len(bootstrap.Signatures)),
-	}
-	for _, key := range bootstrap.Signatures {
-		entry.Signatures = append(entry.Signatures, key.PublicKey)
-	}
-	s._table[index] = entry
-
-	// Append our signature.
-	if sigbytes, err := bootstrap.Sign(s.r.private); err != nil {
-		return false
-	} else {
-		rx.Payload = append(rx.Payload, sigbytes...)
 	}
 
 	// Now let's see if this is a suitable ascending entry.
