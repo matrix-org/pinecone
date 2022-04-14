@@ -85,10 +85,11 @@ func TestSNEKNextHopSelection(t *testing.T) {
 		expected *peer // index into peer list
 	}{
 		{"TestNotBootstrapNoValidNextHop", virtualSnakeNextHopParams{
+			nil,
 			false,
-			//false,
 			destUpKey,
 			selfKey,
+			types.VirtualSnakeWatermark{PublicKey: types.FullMask, Sequence: 0},
 			peers[1],
 			peers[0],
 			&selfAnn,
@@ -98,10 +99,11 @@ func TestSNEKNextHopSelection(t *testing.T) {
 			virtualSnakeTable{},
 		}, peers[1]}, // default peer with no next hop is parent
 		{"TestBootstrapNoValidNextHop", virtualSnakeNextHopParams{
-			true,
-			//false,
+			nil,
+			false,
 			destUpKey,
 			selfKey,
+			types.VirtualSnakeWatermark{PublicKey: types.FullMask, Sequence: 0},
 			peers[1],
 			peers[0],
 			&selfAnn,
@@ -111,10 +113,11 @@ func TestSNEKNextHopSelection(t *testing.T) {
 			virtualSnakeTable{},
 		}, peers[1]}, // default bootstrap peer with no next hop is parent
 		{"TestNotBootstrapDestIsSelf", virtualSnakeNextHopParams{
+			nil,
 			false,
-			//false,
 			destUpKey,
 			destUpKey,
+			types.VirtualSnakeWatermark{PublicKey: types.FullMask, Sequence: 0},
 			peers[1],
 			peers[0],
 			&selfAnn,
@@ -125,10 +128,11 @@ func TestSNEKNextHopSelection(t *testing.T) {
 			virtualSnakeTable{},
 		}, peers[0]},
 		{"TestBootstrapDestIsSelf", virtualSnakeNextHopParams{
+			nil,
 			true,
-			//false,
 			destUpKey,
 			destUpKey,
+			types.VirtualSnakeWatermark{PublicKey: types.FullMask, Sequence: 0},
 			peers[1],
 			peers[0],
 			&selfAnn,
@@ -138,10 +142,11 @@ func TestSNEKNextHopSelection(t *testing.T) {
 			virtualSnakeTable{},
 		}, peers[1]}, // bootstraps always start working towards root via parent
 		{"TestNotBootstrapPeerIsDestination", virtualSnakeNextHopParams{
+			nil,
 			false,
-			//false,
 			destUpKey,
 			selfKey,
+			types.VirtualSnakeWatermark{PublicKey: types.FullMask, Sequence: 0},
 			peers[1],
 			peers[0],
 			&selfAnn,
@@ -152,10 +157,11 @@ func TestSNEKNextHopSelection(t *testing.T) {
 			virtualSnakeTable{},
 		}, peers[2]},
 		{"TestBootstrapPeerIsDestination", virtualSnakeNextHopParams{
+			nil,
 			true,
-			//false,
 			destUpKey,
 			selfKey,
+			types.VirtualSnakeWatermark{PublicKey: types.FullMask, Sequence: 0},
 			peers[1],
 			peers[0],
 			&selfAnn,
@@ -166,10 +172,11 @@ func TestSNEKNextHopSelection(t *testing.T) {
 			virtualSnakeTable{},
 		}, peers[1]}, // bootstraps work their way toward the root
 		{"TestNotBootstrapParentKnowsDestination", virtualSnakeNextHopParams{
+			nil,
 			false,
-			//false,
 			destUpKey,
 			selfKey,
+			types.VirtualSnakeWatermark{PublicKey: types.FullMask, Sequence: 0},
 			peers[1],
 			peers[0],
 			&selfAnn,
@@ -179,10 +186,11 @@ func TestSNEKNextHopSelection(t *testing.T) {
 			virtualSnakeTable{},
 		}, peers[1]},
 		{"TestNotBootstrapPeerKnowsDestination", virtualSnakeNextHopParams{
+			nil,
 			false,
-			//false,
 			destUpKey,
 			selfKey,
+			types.VirtualSnakeWatermark{PublicKey: types.FullMask, Sequence: 0},
 			peers[1],
 			peers[0],
 			&selfAnn,
@@ -193,10 +201,11 @@ func TestSNEKNextHopSelection(t *testing.T) {
 			virtualSnakeTable{},
 		}, peers[2]},
 		{"TestBootstrapPeerKnowsDestination", virtualSnakeNextHopParams{
+			nil,
 			true,
-			//false,
 			destUpKey,
 			selfKey,
+			types.VirtualSnakeWatermark{PublicKey: types.FullMask, Sequence: 0},
 			peers[1],
 			peers[0],
 			&selfAnn,
@@ -207,10 +216,11 @@ func TestSNEKNextHopSelection(t *testing.T) {
 			virtualSnakeTable{},
 		}, peers[1]}, // bootstraps work their way toward the root
 		{"TestNotBootstrapParentKnowsCloser", virtualSnakeNextHopParams{
+			nil,
 			false,
-			//false,
 			destUpKey,
 			selfKey,
+			types.VirtualSnakeWatermark{PublicKey: types.FullMask, Sequence: 0},
 			peers[1],
 			peers[0],
 			&selfAnn,
@@ -220,10 +230,11 @@ func TestSNEKNextHopSelection(t *testing.T) {
 			virtualSnakeTable{},
 		}, peers[1]},
 		{"TestBootstrapParentKnowsCloser", virtualSnakeNextHopParams{
+			nil,
 			true,
-			//false,
 			destUpKey,
 			selfKey,
+			types.VirtualSnakeWatermark{PublicKey: types.FullMask, Sequence: 0},
 			peers[1],
 			peers[0],
 			&selfAnn,
@@ -233,10 +244,11 @@ func TestSNEKNextHopSelection(t *testing.T) {
 			virtualSnakeTable{},
 		}, peers[1]},
 		{"TestNotBootstrapSnakeEntryIsDest", virtualSnakeNextHopParams{
+			nil,
 			false,
-			//false,
 			destDownKey,
 			selfKey,
+			types.VirtualSnakeWatermark{PublicKey: types.FullMask, Sequence: 0},
 			peers[1],
 			peers[0],
 			&selfAnn,
@@ -252,10 +264,11 @@ func TestSNEKNextHopSelection(t *testing.T) {
 				}},
 		}, peers[3]},
 		{"TestBootstrapSnakeEntryIsDest", virtualSnakeNextHopParams{
+			nil,
 			true,
-			//false,
 			destDownKey,
 			selfKey,
+			types.VirtualSnakeWatermark{PublicKey: types.FullMask, Sequence: 0},
 			peers[1],
 			peers[0],
 			&selfAnn,
@@ -274,7 +287,7 @@ func TestSNEKNextHopSelection(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.desc, func(t *testing.T) {
-			actual := getNextHopSNEK(tc.input)
+			actual, _ := getNextHopSNEK(tc.input)
 			actualString, expectedString := convertToString(actual, tc.expected, peers)
 
 			if actual != tc.expected {

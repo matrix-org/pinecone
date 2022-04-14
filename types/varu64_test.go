@@ -21,27 +21,49 @@ import (
 
 func TestMarshalBinaryVaru64(t *testing.T) {
 	var bin [4]byte
-	input := Varu64(12345678)
-	expected := []byte{133, 241, 194, 78}
-	if _, err := input.MarshalBinary(bin[:]); err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(bin[:], expected) {
-		t.Fatalf("expected %v, got %v", expected, bin)
-	}
-	if length := input.Length(); length != len(expected) {
-		t.Fatalf("expected length %d, got %d", length, len(expected))
+	for input, expected := range map[Varu64][]byte{
+		0:        {0},
+		1:        {1},
+		12:       {12},
+		123:      {123},
+		1234:     {137, 82},
+		12345:    {224, 57},
+		123456:   {135, 196, 64},
+		1234567:  {203, 173, 7},
+		12345678: {133, 241, 194, 78},
+	} {
+		n, err := input.MarshalBinary(bin[:])
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(bin[:n], expected) {
+			t.Fatalf("for %d expected %v, got %v", input, expected, bin[:n])
+		}
+		if length := input.Length(); length != len(expected) {
+			t.Fatalf("for %d expected length %d, got %d", input, length, len(expected))
+		}
 	}
 }
 
 func TestUnmarshalBinaryVaru64(t *testing.T) {
-	input := []byte{133, 241, 194, 78, 0, 1, 2, 3, 4, 5, 6}
-	expected := Varu64(12345678)
-	var num Varu64
-	if _, err := num.UnmarshalBinary(input); err != nil {
-		t.Fatal(err)
-	}
-	if num != expected {
-		t.Fatalf("expected %v, got %v", expected, num)
+	for input, expected := range map[[7]byte]Varu64{
+		{0}:                          0,
+		{1}:                          1,
+		{12}:                         12,
+		{123}:                        123,
+		{137, 82}:                    1234,
+		{224, 57}:                    12345,
+		{135, 196, 64}:               123456,
+		{203, 173, 7}:                1234567,
+		{133, 241, 194, 78}:          12345678,
+		{133, 241, 194, 78, 1, 2, 3}: 12345678,
+	} {
+		var num Varu64
+		if _, err := num.UnmarshalBinary(input[:]); err != nil {
+			t.Fatal(err)
+		}
+		if num != expected {
+			t.Fatalf("expected %v, got %v", expected, num)
+		}
 	}
 }

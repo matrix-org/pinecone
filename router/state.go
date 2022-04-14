@@ -175,8 +175,8 @@ func (s *state) _setDescendingNode(node *virtualSnakeEntry) {
 	switch {
 	case s._descending == nil || node == nil:
 		fallthrough
-	case s._descending != nil && s._descending.PublicKey != node.PublicKey:
-		defer s._bootstrapNow()
+	case s._descending != nil && node != nil && s._descending.PublicKey != node.PublicKey:
+		s._bootstrapSoon()
 	}
 
 	s._descending = node
@@ -240,6 +240,6 @@ func (s *state) _portDisconnected(peer *peer) {
 	// don't end up promoting ourselves to a root) then we will also need to
 	// send a new bootstrap into the network.
 	if s._parent == peer && s._selectNewParent() {
-		s._bootstrapNow()
+		s._bootstrapSoon()
 	}
 }
