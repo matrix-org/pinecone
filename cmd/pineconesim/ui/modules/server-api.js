@@ -33,6 +33,8 @@ export const APICommandID = {
     RemovePeer: 8,
     ConfigureAdversaryDefaults: 9,
     ConfigureAdversaryPeer: 10,
+    StartPings: 11,
+    StopPings: 12,
 };
 
 export const APINodeType = {

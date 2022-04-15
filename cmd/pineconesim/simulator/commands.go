@@ -251,6 +251,10 @@ func UnmarshalCommandJSON(command *SimCommandMsg) (SimCommand, error) {
 			err = fmt.Errorf("%sConfigureAdversaryPeer.DropRates field doesn't exist", FAILURE_PREAMBLE)
 		}
 		msg = ConfigureAdversaryPeer{node, peer, dropRates}
+	case SimStartPings:
+		msg = StartPings{}
+	case SimStopPings:
+		msg = StopPings{}
 	default:
 		err = fmt.Errorf("%sUnknown Event ID=%v", FAILURE_PREAMBLE, command.MsgID)
 	}
@@ -409,4 +413,28 @@ func (c ConfigureAdversaryPeer) Run(log *log.Logger, sim *Simulator) {
 
 func (c ConfigureAdversaryPeer) String() string {
 	return fmt.Sprintf("ConfigureAdversaryPeer{Node:%s, Peer:%s, DropRates:%v}", c.Node, c.Peer, c.DropRates)
+}
+
+type StartPings struct{}
+
+// Tag StartPings as a Command
+func (c StartPings) Run(log *log.Logger, sim *Simulator) {
+	log.Printf("Executing command %s", c)
+	sim.StartPings()
+}
+
+func (c StartPings) String() string {
+	return "StartPings{}"
+}
+
+type StopPings struct{}
+
+// Tag StopPings as a Command
+func (c StopPings) Run(log *log.Logger, sim *Simulator) {
+	log.Printf("Executing command %s", c)
+	sim.StopPings()
+}
+
+func (c StopPings) String() string {
+	return "StopPings{}"
 }

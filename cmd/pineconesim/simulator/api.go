@@ -55,6 +55,8 @@ const (
 	SimRemovePeer
 	SimConfigureAdversaryDefaults
 	SimConfigureAdversaryPeer
+	SimStartPings
+	SimStopPings
 )
 
 const (

@@ -235,6 +235,16 @@ func (sim *Simulator) Pause() {
 	sim.eventRunner.Pause()
 }
 
+func (sim *Simulator) StartPings() {
+	sim.ping = true
+	println("Ping state: %b", sim.ping)
+}
+
+func (sim *Simulator) StopPings() {
+	sim.ping = false
+	println("Ping state: %b", sim.ping)
+}
+
 func (sim *Simulator) AddToPlaylist(commands []SimCommand) {
 	// NOTE : Pass a list of commands instead of individual commands to enforce
 	// command sets being run without interleaving events from other command sets

@@ -143,6 +143,7 @@ function selectTool(toolType) {
 }
 
 function handleToolPingStartStop(subtool) {
+    let command = {"MsgID": APICommandID.Unknown, "Event": {}};
     if (subtool.className.includes("active")) {
         subtool.className = subtool.className.replace(" active", "");
         let tooltip = subtool.getElementsByClassName("tooltiptext")[0];
@@ -152,14 +153,17 @@ function handleToolPingStartStop(subtool) {
             subtool.className = subtool.className.replace(" sub-active", "");
         }
 
-        // TODO : stop pings
+        command.MsgID = APICommandID.StopPings;
     } else {
         subtool.className += " active";
         // subtool.className += " sub-active";
         let tooltip = subtool.getElementsByClassName("tooltiptext")[0];
         tooltip.textContent = "Stop Pings";
-        // TODO : start pings
+
+        command.MsgID = APICommandID.StartPings;
     }
+
+    SendToServer({"MsgID": APICommandMessageID.PlaySequence, "Events": [command]});
 }
 
 function handleToolScenarioNew(subtool) {
@@ -240,6 +244,8 @@ function validateEventSequence(content) {
         validSimCommands.set("RemovePeer", ["Node", "Peer"]);
         validSimCommands.set("ConfigureAdversaryDefaults", ["Node", "DropRates"]);
         validSimCommands.set("ConfigureAdversaryPeer", ["Node", "Peer", "DropRates"]);
+        validSimCommands.set("StartPings", []);
+        validSimCommands.set("StopPings", []);
 
         let validSubcommands = new Map();
         validSubcommands.set("DropRates", ["Overall", "Keepalive", "TreeAnnouncement", "TreeRouted", "VirtualSnakeBootstrap", "VirtualSnakeBootstrapACK", "VirtualSnakeSetup", "VirtualSnakeSetupACK", "VirtualSnakeTeardown", "VirtualSnakeRouted"]);
@@ -483,6 +489,10 @@ function convertCommandToID(command) {
     case "ConfigureAdversaryPeer":
         id = APICommandID.ConfigureAdversaryPeer;
         break;
+    case "StartPings":
+        id = APICommandID.StartPings;
+    case "StopPings":
+        id = APICommandID.StopPings;
     default:
         break;
     }
