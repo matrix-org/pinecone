@@ -18,6 +18,7 @@ import (
 	"crypto/ed25519"
 	"log"
 	"net"
+	"runtime"
 	"sync"
 	"time"
 
@@ -62,6 +63,8 @@ func (r *EventSequenceRunner) Run(sim *Simulator) {
 
 type RouterCreatorFn func(log *log.Logger, sk ed25519.PrivateKey, debug bool) SimRouter
 
+type pair struct{ from, to string }
+
 type Simulator struct {
 	log                      *log.Logger
 	sockets                  bool
@@ -86,13 +89,14 @@ type Simulator struct {
 	eventPlaylist            []SimCommand
 	eventRunner              *EventSequenceRunner
 	routerCreationMap        map[APINodeType]RouterCreatorFn
+	pingControlChannel       chan<- bool
 }
 
-func NewSimulator(log *log.Logger, sockets, ping bool, acceptCommands bool) *Simulator {
+func NewSimulator(log *log.Logger, sockets, acceptCommands bool) *Simulator {
 	sim := &Simulator{
 		log:                 log,
 		sockets:             sockets,
-		ping:                ping,
+		ping:                false,
 		AcceptCommands:      acceptCommands,
 		nodes:               make(map[string]*Node),
 		nodeRunnerChannels:  make(map[string][]chan<- bool),
@@ -105,6 +109,7 @@ func NewSimulator(log *log.Logger, sockets, ping bool, acceptCommands bool) *Sim
 		eventPlaylist:       []SimCommand{},
 		eventRunner:         &EventSequenceRunner{_playlist: make(chan []SimCommand)},
 		routerCreationMap:   make(map[APINodeType]RouterCreatorFn, 2),
+		pingControlChannel:  make(chan<- bool),
 	}
 
 	sim.routerCreationMap[DefaultNode] = createDefaultRouter
@@ -114,6 +119,63 @@ func NewSimulator(log *log.Logger, sockets, ping bool, acceptCommands bool) *Sim
 	sim.Play()
 
 	return sim
+}
+
+func (sim *Simulator) StartPinging(ping_period time.Duration) {
+	quit := make(chan bool)
+	go func(quit <-chan bool) {
+		for {
+			select {
+			case <-quit:
+				sim.log.Println("Stopping pings.")
+				return
+			default:
+				// TODO : Send ui pings running
+				sim.log.Println("Starting pings...")
+
+				tasks := make(chan pair, 2*(len(sim.nodes)*len(sim.nodes)))
+				for from := range sim.nodes {
+					for to := range sim.nodes {
+						tasks <- pair{from, to}
+					}
+				}
+				close(tasks)
+
+				numworkers := runtime.NumCPU() * 16
+				var wg sync.WaitGroup
+				wg.Add(numworkers)
+				for i := 0; i < numworkers; i++ {
+					go func() {
+						for pair := range tasks {
+							sim.log.Println("Tree ping from", pair.from, "to", pair.to)
+							if _, _, err := sim.PingTree(pair.from, pair.to); err != nil {
+								sim.log.Println("Tree ping from", pair.from, "to", pair.to, "failed:", err)
+							}
+							sim.log.Println("SNEK ping from", pair.from, "to", pair.to)
+							if _, _, err := sim.PingSNEK(pair.from, pair.to); err != nil {
+								sim.log.Println("SNEK ping from", pair.from, "to", pair.to, "failed:", err)
+							}
+						}
+						wg.Done()
+					}()
+				}
+
+				wg.Wait()
+
+				select {
+				case <-quit:
+					sim.log.Println("Stopping pings.")
+					return
+				default:
+					// TODO : Send ui pings waiting
+					sim.log.Println("All pings finished, repeating shortly...")
+					time.Sleep(ping_period)
+				}
+			}
+		}
+	}(quit)
+
+	sim.pingControlChannel = quit
 }
 
 func (sim *Simulator) PingingEnabled() bool {
@@ -221,6 +283,11 @@ func (sim *Simulator) handleTreeRootAnnUpdate(node string, root string, sequence
 	sim.State.Act(nil, func() { sim.State._updateTreeRootAnnouncement(node, rootName, sequence, time, coords) })
 }
 
+func (sim *Simulator) updatePingState(active bool) {
+	sim.ping = active
+	sim.State.Act(nil, func() { sim.State._publish(PingStateUpdate{Active: active}) })
+}
+
 type EventSequencePlayer interface {
 	Play()
 	Pause()
@@ -236,13 +303,20 @@ func (sim *Simulator) Pause() {
 }
 
 func (sim *Simulator) StartPings() {
-	sim.ping = true
-	println("Ping state: %b", sim.ping)
+	if !sim.ping {
+		sim.updatePingState(true)
+		sim.StartPinging(time.Second * 15)
+	}
 }
 
 func (sim *Simulator) StopPings() {
-	sim.ping = false
-	println("Ping state: %b", sim.ping)
+	if sim.ping {
+		sim.updatePingState(false)
+	}
+
+	go func() {
+		sim.pingControlChannel <- true
+	}()
 }
 
 func (sim *Simulator) AddToPlaylist(commands []SimCommand) {

@@ -93,6 +93,13 @@ type TreeRootAnnUpdate struct {
 // Tag TreeRootAnnUpdate as an Event
 func (e TreeRootAnnUpdate) isEvent() {}
 
+type PingStateUpdate struct {
+	Active bool
+}
+
+// Tag PingStateUpdate as an Event
+func (e PingStateUpdate) isEvent() {}
+
 type eventHandler struct {
 	node string
 	ch   <-chan events.Event
