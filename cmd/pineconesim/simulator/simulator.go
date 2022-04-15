@@ -124,6 +124,7 @@ func NewSimulator(log *log.Logger, sockets, acceptCommands bool) *Simulator {
 func (sim *Simulator) StartPinging(ping_period time.Duration) {
 	quit := make(chan bool)
 	go func(quit <-chan bool) {
+		defer sim.resetPingState()
 		for {
 			select {
 			case <-quit:
@@ -284,7 +285,6 @@ func (sim *Simulator) handleTreeRootAnnUpdate(node string, root string, sequence
 }
 
 func (sim *Simulator) updatePingState(active bool) {
-	sim.ping = active
 	sim.State.Act(nil, func() { sim.State._publish(PingStateUpdate{Active: active}) })
 }
 
@@ -305,14 +305,18 @@ func (sim *Simulator) Pause() {
 func (sim *Simulator) StartPings() {
 	if !sim.ping {
 		sim.updatePingState(true)
+		sim.ping = true
 		sim.StartPinging(time.Second * 15)
 	}
 }
 
+func (sim *Simulator) resetPingState() {
+	sim.updatePingState(false)
+	sim.ping = false
+}
+
 func (sim *Simulator) StopPings() {
 	if sim.ping {
-		sim.updatePingState(false)
-
 		go func() {
 			sim.pingControlChannel <- true
 		}()
