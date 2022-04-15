@@ -312,11 +312,11 @@ func (sim *Simulator) StartPings() {
 func (sim *Simulator) StopPings() {
 	if sim.ping {
 		sim.updatePingState(false)
-	}
 
-	go func() {
-		sim.pingControlChannel <- true
-	}()
+		go func() {
+			sim.pingControlChannel <- true
+		}()
+	}
 }
 
 func (sim *Simulator) AddToPlaylist(commands []SimCommand) {

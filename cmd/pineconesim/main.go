@@ -301,7 +301,7 @@ func userProxyReporter(conn *websocket.Conn, connID uint64, sim *simulator.Simul
 
 	// Send current ping state
 	if err := conn.WriteJSON(simulator.StateUpdateMsg{
-		MsgID: simulator.APIEventMessageID(simulator.SimPingStateUpdated),
+		MsgID: simulator.SimStateUpdate,
 		Event: simulator.SimEventMsg{
 			UpdateID: simulator.SimPingStateUpdated,
 			Event: simulator.PingStateUpdate{
@@ -339,6 +339,8 @@ func handleSimEvents(log *log.Logger, conn *websocket.Conn, ch <-chan simulator.
 			eventType = simulator.SimSnakeDescUpdated
 		case simulator.TreeRootAnnUpdate:
 			eventType = simulator.SimTreeRootAnnUpdated
+		case simulator.PingStateUpdate:
+			eventType = simulator.SimPingStateUpdated
 		}
 
 		if err := conn.WriteJSON(simulator.StateUpdateMsg{
