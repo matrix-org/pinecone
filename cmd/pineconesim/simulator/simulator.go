@@ -255,6 +255,8 @@ func (sim *Simulator) CalculateStretch() (tree float64, snek float64) {
 	if count > 0 {
 		treeRes, snekRes = treeSum/count, snekSum/count
 	}
+
+	sim.log.Printf("Network Stretch :: Tree=%.2f :: SNEK=%.2f", tree, snek)
 	return treeRes, snekRes
 }
 
