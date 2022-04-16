@@ -168,9 +168,9 @@ func (sim *Simulator) StartPinging(ping_period time.Duration) {
 				sim.State.Act(nil, func() {
 					sim.State._publish(
 						NetworkStatsUpdate{
-							TreePathConvergence:  1,
+							TreePathConvergence:  uint64(sim.CalculateTreePathConvergence()),
 							TreeAverageStretch:   2.3,
-							SnakePathConvergence: 4,
+							SnakePathConvergence: uint64(sim.CalculateSNEKPathConvergence()),
 							SnakeAverageStretch:  5.6,
 						})
 				})
@@ -238,6 +238,26 @@ func (sim *Simulator) SNEKPathConvergence() map[string]map[string]bool {
 	return mapcopy
 }
 
+func (sim *Simulator) CalculateSNEKPathConvergence() float64 {
+	count := 0
+	successCount := 0
+	for _, aa := range sim.SNEKPathConvergence() {
+		for _, bb := range aa {
+			count++
+			if bb {
+				successCount++
+			}
+		}
+	}
+
+	sim.log.Printf("Success: %d Count: %d", successCount, count)
+	result := 0.0
+	if count > 0 {
+		result = float64(successCount) / float64(count) * 100
+	}
+	return result
+}
+
 func (sim *Simulator) TreePathConvergence() map[string]map[string]bool {
 	sim.treePathConvergenceMutex.RLock()
 	defer sim.treePathConvergenceMutex.RUnlock()
@@ -251,6 +271,26 @@ func (sim *Simulator) TreePathConvergence() map[string]map[string]bool {
 		}
 	}
 	return mapcopy
+}
+
+func (sim *Simulator) CalculateTreePathConvergence() float64 {
+	count := 0
+	successCount := 0
+	for _, aa := range sim.TreePathConvergence() {
+		for _, bb := range aa {
+			count++
+			if bb {
+				successCount++
+			}
+		}
+	}
+
+	sim.log.Printf("Success: %d Count: %d", successCount, count)
+	result := 0.0
+	if count > 0 {
+		result = float64(successCount) / float64(count) * 100
+	}
+	return result
 }
 
 func (sim *Simulator) Uptime() time.Duration {

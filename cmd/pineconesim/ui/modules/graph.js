@@ -785,18 +785,20 @@ function handleStatsPanelUpdate() {
         "<hr><table>" +
         "<tr><td>Node Count:</td><td style=\"text-align: left;\">" + Nodes.size + "</td></tr>" +
         "<tr><td>Path Count:</td><td style=\"text-align: left;\">" + peerLinks / 2 + "</td></tr>" +
-        "<tr><td>Tree Path Convergence:</td><td style=\"text-align: left;\"><code><b>" +
+        "<tr><td>Tree Path Convergence:</td><td style=\"text-align: left;\">" +
         NetworkStats.TreePathConvergence +
-        "</b></code></td></tr>" +
-        "<tr><td>SNEK Path Convergence:</td><td style=\"text-align: left;\"><code><b>" +
+        "%</td></tr>" +
+        "<tr><td>SNEK Path Convergence:</td><td style=\"text-align: left;\">" +
         NetworkStats.SnakePathConvergence +
-        "</b></code></td></tr>" +
-        "<tr><td>Tree Average Stretch:</td><td><code><b>" +
-        NetworkStats.TreeAverageStretch +
-        "</b></code></td></tr>" +
-        "<tr><td>SNEK Average Stretch:</td><td><code><b>" +
-        NetworkStats.SnakeAverageStretch +
-        "</b></code></td></tr>" +
+        "%</td></tr>" +
+        "<tr><td>Tree Average Stretch:</td><td>" +
+        // NetworkStats.TreeAverageStretch +
+        "N/A" +
+        "</td></tr>" +
+        "<tr><td>SNEK Average Stretch:</td><td>" +
+        // NetworkStats.SnakeAverageStretch +
+        "N/A" +
+        "</td></tr>" +
         "</table>" +
         "<hr><h4><u>Node Summary</u></h4>" +
         "<table>" +

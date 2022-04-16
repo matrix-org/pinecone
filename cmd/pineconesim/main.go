@@ -321,9 +321,9 @@ func userProxyReporter(conn *websocket.Conn, connID uint64, sim *simulator.Simul
 		Event: simulator.SimEventMsg{
 			UpdateID: simulator.SimNetworkStatsUpdated,
 			Event: simulator.NetworkStatsUpdate{
-				TreePathConvergence:  9,
+				TreePathConvergence:  uint64(sim.CalculateTreePathConvergence()),
 				TreeAverageStretch:   9.9,
-				SnakePathConvergence: 9,
+				SnakePathConvergence: uint64(sim.CalculateSNEKPathConvergence()),
 				SnakeAverageStretch:  9.9,
 			}},
 	}); err != nil {
