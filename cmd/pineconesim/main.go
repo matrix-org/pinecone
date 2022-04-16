@@ -305,9 +305,27 @@ func userProxyReporter(conn *websocket.Conn, connID uint64, sim *simulator.Simul
 		Event: simulator.SimEventMsg{
 			UpdateID: simulator.SimPingStateUpdated,
 			Event: simulator.PingStateUpdate{
-				Active: sim.PingingEnabled(),
+				Enabled: sim.PingingEnabled(),
+				Active:  sim.PingingActive(),
 			},
 		},
+	}); err != nil {
+		log.Println(err)
+		return
+	}
+
+	// TODO : Fill with real data
+	// Send current network stats
+	if err := conn.WriteJSON(simulator.StateUpdateMsg{
+		MsgID: simulator.SimStateUpdate,
+		Event: simulator.SimEventMsg{
+			UpdateID: simulator.SimNetworkStatsUpdated,
+			Event: simulator.NetworkStatsUpdate{
+				TreePathConvergence:  9,
+				TreeAverageStretch:   9.9,
+				SnakePathConvergence: 9,
+				SnakeAverageStretch:  9.9,
+			}},
 	}); err != nil {
 		log.Println(err)
 		return
@@ -341,6 +359,8 @@ func handleSimEvents(log *log.Logger, conn *websocket.Conn, ch <-chan simulator.
 			eventType = simulator.SimTreeRootAnnUpdated
 		case simulator.PingStateUpdate:
 			eventType = simulator.SimPingStateUpdated
+		case simulator.NetworkStatsUpdate:
+			eventType = simulator.SimNetworkStatsUpdated
 		}
 
 		if err := conn.WriteJSON(simulator.StateUpdateMsg{

@@ -68,7 +68,8 @@ type pair struct{ from, to string }
 type Simulator struct {
 	log                      *log.Logger
 	sockets                  bool
-	ping                     bool
+	pingEnabled              bool
+	pingActive               bool
 	AcceptCommands           bool
 	nodes                    map[string]*Node
 	nodesMutex               sync.RWMutex
@@ -96,7 +97,8 @@ func NewSimulator(log *log.Logger, sockets, acceptCommands bool) *Simulator {
 	sim := &Simulator{
 		log:                 log,
 		sockets:             sockets,
-		ping:                false,
+		pingEnabled:         false,
+		pingActive:          false,
 		AcceptCommands:      acceptCommands,
 		nodes:               make(map[string]*Node),
 		nodeRunnerChannels:  make(map[string][]chan<- bool),
@@ -131,7 +133,6 @@ func (sim *Simulator) StartPinging(ping_period time.Duration) {
 				sim.log.Println("Stopping pings.")
 				return
 			default:
-				// TODO : Send ui pings running
 				sim.log.Println("Starting pings...")
 
 				tasks := make(chan pair, 2*(len(sim.nodes)*len(sim.nodes)))
@@ -163,14 +164,28 @@ func (sim *Simulator) StartPinging(ping_period time.Duration) {
 
 				wg.Wait()
 
+				// TODO : Send proper network stats update
+				sim.State.Act(nil, func() {
+					sim.State._publish(
+						NetworkStatsUpdate{
+							TreePathConvergence:  1,
+							TreeAverageStretch:   2.3,
+							SnakePathConvergence: 4,
+							SnakeAverageStretch:  5.6,
+						})
+				})
+
 				select {
 				case <-quit:
 					sim.log.Println("Stopping pings.")
 					return
 				default:
-					// TODO : Send ui pings waiting
+					sim.pingActive = false
+					sim.updatePingState(true, false)
 					sim.log.Println("All pings finished, repeating shortly...")
 					time.Sleep(ping_period)
+					sim.pingActive = true
+					sim.updatePingState(true, true)
 				}
 			}
 		}
@@ -180,7 +195,11 @@ func (sim *Simulator) StartPinging(ping_period time.Duration) {
 }
 
 func (sim *Simulator) PingingEnabled() bool {
-	return sim.ping
+	return sim.pingEnabled
+}
+
+func (sim *Simulator) PingingActive() bool {
+	return sim.pingActive
 }
 
 func (sim *Simulator) Nodes() map[string]*Node {
@@ -284,8 +303,13 @@ func (sim *Simulator) handleTreeRootAnnUpdate(node string, root string, sequence
 	sim.State.Act(nil, func() { sim.State._updateTreeRootAnnouncement(node, rootName, sequence, time, coords) })
 }
 
-func (sim *Simulator) updatePingState(active bool) {
-	sim.State.Act(nil, func() { sim.State._publish(PingStateUpdate{Active: active}) })
+func (sim *Simulator) updatePingState(enabled bool, active bool) {
+	sim.State.Act(nil, func() {
+		sim.State._publish(PingStateUpdate{
+			Enabled: enabled,
+			Active:  active,
+		})
+	})
 }
 
 type EventSequencePlayer interface {
@@ -303,20 +327,22 @@ func (sim *Simulator) Pause() {
 }
 
 func (sim *Simulator) StartPings() {
-	if !sim.ping {
-		sim.updatePingState(true)
-		sim.ping = true
+	if !sim.pingEnabled {
+		sim.updatePingState(true, true)
+		sim.pingEnabled = true
+		sim.pingActive = true
 		sim.StartPinging(time.Second * 15)
 	}
 }
 
 func (sim *Simulator) resetPingState() {
-	sim.updatePingState(false)
-	sim.ping = false
+	sim.updatePingState(false, false)
+	sim.pingEnabled = false
+	sim.pingActive = false
 }
 
 func (sim *Simulator) StopPings() {
-	if sim.ping {
+	if sim.pingEnabled {
 		go func() {
 			sim.pingControlChannel <- true
 		}()

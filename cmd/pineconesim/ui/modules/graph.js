@@ -19,6 +19,13 @@ let hoverNode = null;
 
 let Nodes = new Map();
 
+let NetworkStats = {
+    TreePathConvergence: 0,
+    TreeAverageStretch: 0.0,
+    SnakePathConvergence: 0,
+    SnakeAverageStretch: 0.0
+};
+
 class Graph {
     nodeIDs = [];
 
@@ -606,6 +613,14 @@ class Graph {
             this.network.moveNode(node, position.x + 0.1, position.y);
         }
     }
+
+    updateNetworkStats(treeConv, treeStretch, snakeConv, snakeStretch) {
+        NetworkStats.TreePathConvergence = treeConv;
+        NetworkStats.TreeAverageStretch = treeStretch;
+        NetworkStats.SnakePathConvergence = snakeConv;
+        NetworkStats.SnakeAverageStretch = snakeStretch;
+        handleStatsPanelUpdate();
+    }
 }
 
 export var graph = new Graph(document.getElementById("canvas"));
@@ -770,10 +785,18 @@ function handleStatsPanelUpdate() {
         "<hr><table>" +
         "<tr><td>Node Count:</td><td style=\"text-align: left;\">" + Nodes.size + "</td></tr>" +
         "<tr><td>Path Count:</td><td style=\"text-align: left;\">" + peerLinks / 2 + "</td></tr>" +
-        "<tr><td>Tree Path Convergence:</td><td style=\"text-align: left;\"><code><b>N/A</b></code></td></tr>" +
-        "<tr><td>SNEK Path Convergence:</td><td style=\"text-align: left;\"><code><b>N/A</b></code></td></tr>" +
-        "<tr><td>Tree Average Stretch:</td><td><code><b>N/A</b></code></td></tr>" +
-        "<tr><td>SNEK Average Stretch:</td><td><code><b>N/A</b></code></td></tr>" +
+        "<tr><td>Tree Path Convergence:</td><td style=\"text-align: left;\"><code><b>" +
+        NetworkStats.TreePathConvergence +
+        "</b></code></td></tr>" +
+        "<tr><td>SNEK Path Convergence:</td><td style=\"text-align: left;\"><code><b>" +
+        NetworkStats.SnakePathConvergence +
+        "</b></code></td></tr>" +
+        "<tr><td>Tree Average Stretch:</td><td><code><b>" +
+        NetworkStats.TreeAverageStretch +
+        "</b></code></td></tr>" +
+        "<tr><td>SNEK Average Stretch:</td><td><code><b>" +
+        NetworkStats.SnakeAverageStretch +
+        "</b></code></td></tr>" +
         "</table>" +
         "<hr><h4><u>Node Summary</u></h4>" +
         "<table>" +

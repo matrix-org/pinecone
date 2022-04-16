@@ -60,8 +60,13 @@ function handleSimMessage(msg) {
             break;
         case APIUpdateID.TreeRootAnnUpdated:
             graph.updateRootAnnouncement(event.Node, event.Root, event.Sequence, event.Time, event.Coords);
+            break;
         case APIUpdateID.PingStateUpdated:
-            SetPingToolState(event.Active);
+            SetPingToolState(event.Enabled, event.Active);
+            break;
+        case APIUpdateID.NetworkStatsUpdated:
+            graph.updateNetworkStats(event.TreePathConvergence, event.TreeAverageStretch, event.SnakePathConvergence, event.SnakeAverageStretch);
+            break;
         }
         break;
     default:

@@ -42,6 +42,7 @@ const (
 	SimSnakeDescUpdated
 	SimTreeRootAnnUpdated
 	SimPingStateUpdated
+	SimNetworkStatsUpdated
 )
 
 const (

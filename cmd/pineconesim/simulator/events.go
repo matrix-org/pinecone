@@ -94,11 +94,22 @@ type TreeRootAnnUpdate struct {
 func (e TreeRootAnnUpdate) isEvent() {}
 
 type PingStateUpdate struct {
-	Active bool
+	Enabled bool
+	Active  bool
 }
 
 // Tag PingStateUpdate as an Event
 func (e PingStateUpdate) isEvent() {}
+
+type NetworkStatsUpdate struct {
+	TreePathConvergence  uint64
+	TreeAverageStretch   float64
+	SnakePathConvergence uint64
+	SnakeAverageStretch  float64
+}
+
+// Tag NetworkStatsUpdate as an Event
+func (e NetworkStatsUpdate) isEvent() {}
 
 type eventHandler struct {
 	node string
