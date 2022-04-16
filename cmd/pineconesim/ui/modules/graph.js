@@ -615,10 +615,10 @@ class Graph {
     }
 
     updateNetworkStats(treeConv, treeStretch, snakeConv, snakeStretch) {
-        NetworkStats.TreePathConvergence = treeConv;
-        NetworkStats.TreeAverageStretch = treeStretch;
-        NetworkStats.SnakePathConvergence = snakeConv;
-        NetworkStats.SnakeAverageStretch = snakeStretch;
+        NetworkStats.TreePathConvergence = treeConv.toFixed(2);
+        NetworkStats.TreeAverageStretch = treeStretch.toFixed(2);
+        NetworkStats.SnakePathConvergence = snakeConv.toFixed(2);
+        NetworkStats.SnakeAverageStretch = snakeStretch.toFixed(2);
         handleStatsPanelUpdate();
     }
 }
@@ -792,12 +792,10 @@ function handleStatsPanelUpdate() {
         NetworkStats.SnakePathConvergence +
         "%</td></tr>" +
         "<tr><td>Tree Average Stretch:</td><td>" +
-        // NetworkStats.TreeAverageStretch +
-        "N/A" +
+        NetworkStats.TreeAverageStretch +
         "</td></tr>" +
         "<tr><td>SNEK Average Stretch:</td><td>" +
-        // NetworkStats.SnakeAverageStretch +
-        "N/A" +
+        NetworkStats.SnakeAverageStretch +
         "</td></tr>" +
         "</table>" +
         "<hr><h4><u>Node Summary</u></h4>" +

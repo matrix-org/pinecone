@@ -164,14 +164,14 @@ func (sim *Simulator) StartPinging(ping_period time.Duration) {
 
 				wg.Wait()
 
-				// TODO : Send proper network stats update
+				treeStretch, snekStretch := sim.CalculateStretch()
 				sim.State.Act(nil, func() {
 					sim.State._publish(
 						NetworkStatsUpdate{
 							TreePathConvergence:  uint64(sim.CalculateTreePathConvergence()),
-							TreeAverageStretch:   2.3,
+							TreeAverageStretch:   treeStretch,
 							SnakePathConvergence: uint64(sim.CalculateSNEKPathConvergence()),
-							SnakeAverageStretch:  5.6,
+							SnakeAverageStretch:  snekStretch,
 						})
 				})
 
@@ -221,6 +221,41 @@ func (sim *Simulator) Distances() map[string]map[string]*Distance {
 		}
 	}
 	return mapcopy
+}
+
+func (sim *Simulator) CalculateStretch() (tree float64, snek float64) {
+	count := 0.0
+	treeSum := 0.0
+	snekSum := 0.0
+	tree = 0.0
+	snek = 0.0
+
+	for _, aa := range sim.Distances() {
+		for _, bb := range aa {
+			if bb.Real == 0 {
+				// TODO : something is wrong with the distances. Real values of 0 exist...
+				continue
+			}
+			count += 1
+			treeStretch := float64(bb.ObservedTree) / float64(bb.Real)
+			treeSum += treeStretch
+			if treeStretch > tree {
+				tree = treeStretch
+			}
+
+			snekStretch := float64(bb.ObservedSNEK) / float64(bb.Real)
+			snekSum += snekStretch
+			if snekStretch > snek {
+				snek = snekStretch
+			}
+		}
+	}
+
+	treeRes, snekRes := 0.0, 0.0
+	if count > 0 {
+		treeRes, snekRes = treeSum/count, snekSum/count
+	}
+	return treeRes, snekRes
 }
 
 func (sim *Simulator) SNEKPathConvergence() map[string]map[string]bool {
