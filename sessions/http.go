@@ -1,4 +1,4 @@
-// Copyright 2021 The Matrix.org Foundation C.I.C.
+// Copyright 2022 The Matrix.org Foundation C.I.C.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -26,7 +26,7 @@ type HTTP struct {
 	httpClient    *http.Client
 }
 
-func (q *Sessions) HTTP() *HTTP {
+func (q *SessionProtocol) HTTP() *HTTP {
 	t := &http.Transport{
 		DisableKeepAlives:   true,
 		MaxIdleConnsPerHost: -1,
@@ -38,7 +38,9 @@ func (q *Sessions) HTTP() *HTTP {
 
 	h := &HTTP{
 		httpServer: &http.Server{
-			IdleTimeout: time.Second * 30,
+			IdleTimeout:  time.Second * 30,
+			ReadTimeout:  time.Second * 10,
+			WriteTimeout: time.Second * 10,
 		},
 		httpMux:       &http.ServeMux{},
 		httpTransport: t,

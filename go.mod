@@ -6,10 +6,10 @@ require (
 	github.com/Arceliar/phony v0.0.0-20210209235338-dde1a8dca979
 	github.com/RyanCarrier/dijkstra v1.0.0
 	github.com/gorilla/websocket v1.4.2
-	github.com/huandu/xstrings v1.2.0 // indirect
 	github.com/kr/text v0.2.0 // indirect
-	github.com/neilalexander/utp v0.1.1-0.20210622132614-ee9a34a30488
+	github.com/lucas-clemente/quic-go v0.26.0
 	github.com/niemeyer/pretty v0.0.0-20200227124842-a10e7caefd8e // indirect
+	github.com/stretchr/testify v1.7.0 // indirect
 	github.com/vishvananda/netlink v1.1.0
 	go.uber.org/atomic v1.7.0
 	golang.org/x/mobile v0.0.0-20220325161704-447654d348e3
