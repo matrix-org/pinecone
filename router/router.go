@@ -66,7 +66,7 @@ func NewRouter(logger *log.Logger, sk ed25519.PrivateKey, debug bool) *Router {
 		cancel:       cancel,
 		secure:       !insecure,
 		_subscribers: make(map[chan<- events.Event]*phony.Inbox),
-		scorePeers:   true,
+		scorePeers:   false,
 	}
 	// Populate the node keys from the supplied private key.
 	copy(r.private[:], sk)
@@ -87,8 +87,15 @@ func NewRouter(logger *log.Logger, sk ed25519.PrivateKey, debug bool) *Router {
 	return r
 }
 
-func (r *Router) DisablePeerScoring() {
-	r.scorePeers = false
+func (r *Router) EnablePeerScoring() {
+	r.scorePeers = true
+	r.state.assignResetNeglectTimer()
+
+	for _, p := range r.state._peers {
+		if p != nil {
+			r.state.assignPeerScoreAccumulatorTimer(p)
+		}
+	}
 }
 
 func (r *Router) InjectPacketFilter(fn FilterFn) {

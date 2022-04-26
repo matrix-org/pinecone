@@ -88,14 +88,28 @@ func (s *state) _start() {
 		})
 	}
 
+	if s.r.scorePeers {
+		s.assignResetNeglectTimer()
+	}
+
+	s._maintainTreeIn(0)
+	s._maintainSnakeIn(0)
+}
+
+func (s *state) assignResetNeglectTimer() {
 	if s._neglectReset == nil {
 		s._neglectReset = time.AfterFunc(0, func() {
 			s.Act(nil, s._resetNeglectedNodes)
 		})
 	}
+}
 
-	s._maintainTreeIn(0)
-	s._maintainSnakeIn(0)
+func (s *state) assignPeerScoreAccumulatorTimer(p *peer) {
+	if p.peerScoreAccumulator == nil {
+		p.peerScoreAccumulator = time.AfterFunc(peerScoreResetPeriod, func() {
+			s.Act(nil, func() { s._accumulatePeerScore(p) })
+		})
+	}
 }
 
 func (s *state) _resetNeglectedNodes() {
@@ -161,10 +175,9 @@ func (s *state) _addPeer(conn net.Conn, public types.PublicKey, uri ConnectionUR
 			traffic:              newFairFIFOQueue(trafficBuffer),
 			peerScoreAccumulator: nil,
 		}
-		if new.peerScoreAccumulator == nil {
-			new.peerScoreAccumulator = time.AfterFunc(peerScoreResetPeriod, func() {
-				s.Act(nil, func() { s._accumulatePeerScore(new) })
-			})
+
+		if s.r.scorePeers {
+			s.assignPeerScoreAccumulatorTimer(new)
 		}
 
 		s._peers[i] = new
