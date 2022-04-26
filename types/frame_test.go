@@ -34,9 +34,7 @@ func TestMarshalUnmarshalFrame(t *testing.T) {
 		0,                    // version 0
 		byte(TypeTreeRouted), // type greedy
 		0, 0,                 // extra
-		0, 37, // frame length
-		0, 8, // destination len
-		0, 6, // source len
+		0, 33, // frame length
 		0, 7, // payload len
 		0, 6, 1, 2, 3, 4, 167, 8, // destination (2+6 bytes but 5 ports!)
 		0, 4, 4, 3, 2, 1, // source (2+4 bytes)
