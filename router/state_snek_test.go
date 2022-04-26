@@ -282,7 +282,7 @@ func TestSNEKNextHopSelection(t *testing.T) {
 					//	Active:            true,
 					virtualSnakeIndex: &virtualSnakeIndex{PublicKey: destDownKey},
 				}},
-		}, peers[0]}, // handle a bootstrap received from a lower key node
+		}, nil}, // handle a bootstrap received from a lower key node
 	}
 
 	for _, tc := range cases {
