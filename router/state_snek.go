@@ -200,9 +200,7 @@ func (s *state) _bootstrapNow() {
 			ed25519.Sign(s.r.private[:], append(s.r.public[:], bootstrap.PathID[:]...)),
 		)
 	}
-	// if err := bootstrap.Sign(s.r.private[:]); err != nil {
-	// return
-	// }
+
 	n, err := bootstrap.MarshalBinary(b[:])
 	if err != nil {
 		return
