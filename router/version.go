@@ -15,7 +15,7 @@
 package router
 
 const (
-	capabilityLengthenedRootInterval = iota + 1
+	capabilityLengthenedRootInterval = 1 << iota
 	capabilityCryptographicSetups
 	capabilitySetupACKs
 	capabilityDedupedCoordinateInfo
