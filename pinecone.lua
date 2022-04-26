@@ -26,10 +26,10 @@ local frame_types = {
   [6] = "Setup ACK",
   [7] = "Teardown",
   [8] = "SNEK Routed",
-  [209] = "SNEK Ping",
-  [210] = "SNEK Pong",
-  [211] = "Tree Ping",
-  [212] = "Tree Pong",
+  [9] = "SNEK Ping",
+  [10] = "SNEK Pong",
+  [11] = "Tree Ping",
+  [12] = "Tree Pong",
 }
 
 header_size = 10
@@ -159,20 +159,16 @@ local function do_pinecone_dissect(buffer, pinfo, tree)
     elseif ftype == 4 then
       -- Bootstrap ACK
       local plen = buffer(f_payload_idx, 2):uint()
-      local dlen = buffer(f_payload_idx + 2, 2):uint()
-      local slen = buffer(f_payload_idx + 4, 2):uint()
-      local dstcoords = coords(buffer(f_payload_idx + 6 + 2, dlen - 2))
-      local srccoords = coords(buffer(f_payload_idx + 6 + dlen + 2, slen - 2))
       subtree:add(payload_len, buffer(f_payload_idx, 2), plen)
-      subtree:add(destination_len, buffer(f_payload_idx + 2, 2), dlen)
-      subtree:add(source_len, buffer(f_payload_idx + 4, 2), slen)
 
-      local dlen2 = buffer(f_payload_idx + 6, 2):uint()
-      local slen2 = buffer(f_payload_idx + 6 + 2 + dlen2, 2):uint()
-      subtree:add(destination_len, buffer(f_payload_idx + 6, 2), dlen2)
-      subtree:add(destination, buffer(f_payload_idx + 8, dlen2), dstcoords)
-      subtree:add(source_len, buffer(f_payload_idx + 8 + dlen2, 2), slen2)
-      subtree:add(source, buffer(f_payload_idx + 8 + dlen2 + 2, slen2), srccoords)
+      local dlen = buffer(f_payload_idx + 2, 2):uint()
+      local slen = buffer(f_payload_idx + 4 + dlen, 2):uint()
+      local dstcoords = coords(buffer(f_payload_idx + 2 + 2, dlen))
+      local srccoords = coords(buffer(f_payload_idx + 4 + dlen + 2, slen))
+      subtree:add(destination_len, buffer(f_payload_idx + 2, 2), dlen)
+      subtree:add(destination, buffer(f_payload_idx + 4, dlen), dstcoords)
+      subtree:add(source_len, buffer(f_payload_idx + 4 + dlen, 2), slen)
+      subtree:add(source, buffer(f_payload_idx + 4 + dlen + 2, slen), srccoords)
       subtree:add(destination_key, buffer(f_payload_idx + 6 + dlen + slen, 32))
       subtree:add(source_key, buffer(f_payload_idx + 6 + dlen + slen + 32, 32))
       local pload = buffer(f_payload_idx + 6 + dlen + slen + 64, plen)
@@ -248,7 +244,7 @@ local function do_pinecone_dissect(buffer, pinfo, tree)
       -- Info column
       pinfo.cols.info:set(frame_types[7])
       pinfo.cols.info:append(" → [" .. short_pk(dstkey:bytes():raw()) .. "]")
-    elseif (ftype == 8 or ftype == 209 or ftype == 210) then
+    elseif (ftype == 8 or ftype == 9 or ftype == 10) then
       -- SNEK Routed
       -- SNEK Ping
       -- SNEK Pong
@@ -271,13 +267,13 @@ local function do_pinecone_dissect(buffer, pinfo, tree)
           pinfo.cols.protocol:prepend(pinecone_protocol.name .. "-")
         end
         pinfo.cols.info:set(frame_types[8])
-      elseif (ftype == 209 or ftype == 210) then
-        if ftype == 209 then
+      elseif (ftype == 9 or ftype == 10) then
+        if ftype == 9 then
           -- SNEK Ping
-          pinfo.cols.info:set(frame_types[209])
-        elseif ftype == 210 then
+          pinfo.cols.info:set(frame_types[9])
+        elseif ftype == 10 then
           -- SNEK Pong
-          pinfo.cols.info:set(frame_types[210])
+          pinfo.cols.info:set(frame_types[10])
         end
         subtree:add(hop_count, buffer(f_extra_idx, 2), buffer(f_extra_idx, 2):uint())
       end
@@ -286,37 +282,34 @@ local function do_pinecone_dissect(buffer, pinfo, tree)
       pinfo.cols.info:append(" [" .. short_pk(srckey:string()) .. "] → [" ..
                              short_pk(dstkey:string()) .. "]")
     else
-        -- Tree Announcement
-        -- Tree Routed
-        -- Tree Ping
-        -- Tree Pong
-        local dlen = buffer(f_payload_idx, 2):uint()
-        local slen = buffer(f_payload_idx + 2, 2):uint()
-        local plen = buffer(f_payload_idx + 4, 2):uint()
-        local dstcoords = coords(buffer(f_payload_idx + 6 + 2, dlen - 2))
-        local srccoords = coords(buffer(f_payload_idx + 6 + dlen + 2, slen - 2))
-        subtree:add(destination_len, buffer(f_payload_idx, 2), dlen)
-        subtree:add(source_len, buffer(f_payload_idx + 2, 2), slen)
-        subtree:add(payload_len, buffer(f_payload_idx + 4, 2), plen)
+      -- Tree Announcement
+      -- Tree Routed
+      -- Tree Ping
+      -- Tree Pong
+      local plen = buffer(f_payload_idx, 2):uint()
+      subtree:add(payload_len, buffer(f_payload_idx, 2), plen)
 
-        local dlen2 = buffer(f_payload_idx + 6, 2):uint()
-        local slen2 = buffer(f_payload_idx + 6 + 2 + dlen2, 2):uint()
-        subtree:add(destination_len, buffer(f_payload_idx + 6, 2), dlen2)
-        subtree:add(destination, buffer(f_payload_idx + 8, dlen2), dstcoords)
-        subtree:add(source_len, buffer(f_payload_idx + 8 + dlen2, 2), slen2)
-        subtree:add(source, buffer(f_payload_idx + 8 + dlen2 + 2, slen2), srccoords)
-        local payload = buffer(f_payload_idx + 6 + dlen + slen, plen)
+      local dlen = buffer(f_payload_idx + 2, 2):uint()
+      local slen = buffer(f_payload_idx + 4 + dlen, 2):uint()
+      local dstcoords = coords(buffer(f_payload_idx + 2 + 2, dlen))
+      local srccoords = coords(buffer(f_payload_idx + 4 + dlen + 2, slen))
+      subtree:add(destination_len, buffer(f_payload_idx + 2, 2), dlen)
+      subtree:add(destination, buffer(f_payload_idx + 4, dlen), dstcoords)
+      subtree:add(source_len, buffer(f_payload_idx + 4 + dlen, 2), slen)
+      subtree:add(source, buffer(f_payload_idx + 4 + dlen + 2, slen), srccoords)
 
-        if ftype == 1 then
+      local payload = buffer(f_payload_idx + 6 + dlen + slen, plen)
+
+      if ftype == 1 then
           -- Tree Announcement
-          local dhsubtree = subtree:add(subtree, payload, "Root Announcement")
-          dhsubtree:add(rootkey, payload(0, 32))
-          local seq, offset = varu64(payload(32):bytes())
-          dhsubtree:add(rootseq, payload(0, offset), seq)
-          pinfo.cols.info:append(" Seq=" .. seq)
-          local tgt = dhsubtree:add(roottgt, payload, "None")
-          offset = offset + 32
-          local ports = {}
+        local dhsubtree = subtree:add(subtree, payload, "Root Announcement")
+        dhsubtree:add(rootkey, payload(0, 32))
+        local seq, offset = varu64(payload(32):bytes())
+        dhsubtree:add(rootseq, payload(0, offset), seq)
+        pinfo.cols.info:append(" Seq=" .. seq)
+        local tgt = dhsubtree:add(roottgt, payload, "None")
+        offset = offset + 32
+        local ports = {}
           while offset < payload:len() do
             local seq, o = varu64(payload(offset):bytes())
             local sigsubtree = dhsubtree:add(subtree, payload(offset, o),
@@ -339,29 +332,29 @@ local function do_pinecone_dissect(buffer, pinfo, tree)
                                  short_pk(payload(0, 32):bytes():raw()) .. "]")
           pinfo.cols.info:append(" Coords=[" .. table.concat(ports, " ") ..
                                  "]")
-        elseif (ftype == 2 or ftype == 211 or ftype == 212) then
-          if plen > 0 and ftype == 2 then
-            -- Tree Routed
-            quic_dissector = Dissector.get("quic")
-            quic_dissector:call(payload:tvb(), pinfo, tree)
-            if pinfo.cols.protocol ~= pinecone_protocol.name then
-              pinfo.cols.protocol:prepend(pinecone_protocol.name .. "-")
-            end
-            pinfo.cols.info:set(frame_types[2])
-          elseif (ftype == 211 or ftype == 212) then
-            if ftype == 211 then
-              -- Tree Ping
-              pinfo.cols.info:set(frame_types[211])
-            elseif ftype == 212 then
-              -- Tree Pong
-              pinfo.cols.info:set(frame_types[212])
-            end
-            subtree:add(hop_count, buffer(f_extra_idx, 2), buffer(f_extra_idx, 2):uint())
+      elseif (ftype == 2 or ftype == 11 or ftype == 12) then
+        if plen > 0 and ftype == 2 then
+          -- Tree Routed
+          quic_dissector = Dissector.get("quic")
+          quic_dissector:call(payload:tvb(), pinfo, tree)
+          if pinfo.cols.protocol ~= pinecone_protocol.name then
+            pinfo.cols.protocol:prepend(pinecone_protocol.name .. "-")
           end
-
-          -- Info column
-          pinfo.cols.info:append(srccoords .. " → " .. dstcoords)
+          pinfo.cols.info:set(frame_types[2])
+        elseif (ftype == 11 or ftype == 12) then
+          if ftype == 11 then
+            -- Tree Ping
+            pinfo.cols.info:set(frame_types[11])
+          elseif ftype == 12 then
+            -- Tree Pong
+            pinfo.cols.info:set(frame_types[12])
+          end
+          subtree:add(hop_count, buffer(f_extra_idx, 2), buffer(f_extra_idx, 2):uint())
         end
+
+        -- Info column
+        pinfo.cols.info:append(srccoords .. " → " .. dstcoords)
+      end
     end
 end
 
