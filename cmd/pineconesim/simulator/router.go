@@ -17,6 +17,7 @@ package simulator
 import (
 	"context"
 	"net"
+	"net/http"
 	"time"
 
 	"github.com/matrix-org/pinecone/cmd/pineconesim/simulator/adversary"
@@ -33,6 +34,7 @@ type SimRouter interface {
 	Coords() types.Coordinates
 	ConfigureFilterDefaults(rates adversary.DropRates)
 	ConfigureFilterPeer(peer types.PublicKey, rates adversary.DropRates)
+	ManholeHandler(w http.ResponseWriter, req *http.Request)
 }
 
 type DefaultRouter struct {
@@ -62,3 +64,7 @@ func (r *DefaultRouter) Coords() types.Coordinates {
 func (r *DefaultRouter) ConfigureFilterDefaults(rates adversary.DropRates) {}
 
 func (r *DefaultRouter) ConfigureFilterPeer(peer types.PublicKey, rates adversary.DropRates) {}
+
+func (r *DefaultRouter) ManholeHandler(w http.ResponseWriter, req *http.Request) {
+	r.rtr.ManholeHandler(w, req)
+}

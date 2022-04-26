@@ -19,6 +19,7 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io"
 	"math"
@@ -37,10 +38,11 @@ const peerKeepaliveInterval = time.Second * 3
 const peerKeepaliveTimeout = time.Second * 5
 const lowScoreThreshold = -100 // NOTE : peer scoring can go from -100 to 100
 
+// Lower numbers for these consts are typically faster connections.
 const ( // These need to be a simple int type for gobind/gomobile to export them...
 	PeerTypeMulticast int = iota
-	PeerTypeBluetooth
 	PeerTypeRemote
+	PeerTypeBluetooth
 )
 
 // peer contains information about a given active peering. There are two
@@ -155,6 +157,16 @@ func (p *peer) EvaluatePeerScoreForNode(node *neglectedNodeEntry) float64 {
 	}
 
 	return peerScore
+}
+
+func (p *peer) MarshalJSON() ([]byte, error) {
+	return json.Marshal(struct {
+		Port      types.SwitchPortID `json:"port"`
+		PublicKey types.PublicKey    `json:"public_key"`
+	}{
+		Port:      p.port,
+		PublicKey: p.public,
+	})
 }
 
 func (p *peer) String() string { // to make sim less ugly
@@ -288,14 +300,24 @@ func (p *peer) _write() {
 	case frame = <-p.proto.pop():
 		// A protocol packet is ready to send.
 		p.proto.ack()
-	case frame = <-p.traffic.pop():
-		// A protocol packet is ready to send.
-		p.traffic.ack()
-	case <-keepalive():
-		// Nothing else happened but we reached the keepalive interval, so
-		// we will generate a keepalive frame to send instead.
-		frame = getFrame()
-		frame.Type = types.TypeKeepalive
+	default:
+		select {
+		case <-p.context.Done():
+			// The peer context has been cancelled, which implies that the port
+			// has just been stopped.
+			return
+		case frame = <-p.proto.pop():
+			// A protocol packet is ready to send.
+			p.proto.ack()
+		case frame = <-p.traffic.pop():
+			// A protocol packet is ready to send.
+			p.traffic.ack()
+		case <-keepalive():
+			// Nothing else happened but we reached the keepalive interval, so
+			// we will generate a keepalive frame to send instead.
+			frame = getFrame()
+			frame.Type = types.TypeKeepalive
+		}
 	}
 	// If the frame is `nil` at this point, it's probably because the queues
 	// were reset. This *shouldn't* happen at this stage but the guard doesn't

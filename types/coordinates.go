@@ -85,6 +85,14 @@ func (p *Coordinates) UnmarshalBinary(b []byte) (int, error) {
 	return read, nil
 }
 
+func (p Coordinates) MarshalJSON() ([]byte, error) {
+	s := make([]string, 0, len(p))
+	for _, id := range p {
+		s = append(s, fmt.Sprintf("%d", id))
+	}
+	return []byte(`"[` + strings.Join(s, " ") + `]"`), nil
+}
+
 func (p Coordinates) EqualTo(o Coordinates) bool {
 	if len(p) != len(o) {
 		return false

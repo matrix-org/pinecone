@@ -35,12 +35,12 @@ import (
 	"go.uber.org/atomic"
 )
 
-const portCount = math.MaxUint8
-const trafficBuffer = math.MaxUint8
+const portCount = math.MaxUint8 - 1
+const trafficBuffer = math.MaxUint8 - 1
 
 type Router struct {
 	phony.Inbox
-	log          *log.Logger
+	log          types.Logger
 	context      context.Context
 	cancel       context.CancelFunc
 	public       types.PublicKey
@@ -54,7 +54,7 @@ type Router struct {
 	scorePeers   bool
 }
 
-func NewRouter(logger *log.Logger, sk ed25519.PrivateKey, debug bool) *Router {
+func NewRouter(logger types.Logger, sk ed25519.PrivateKey, debug bool) *Router {
 	if logger == nil {
 		logger = log.New(ioutil.Discard, "", 0)
 	}

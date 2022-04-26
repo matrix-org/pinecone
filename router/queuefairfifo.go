@@ -15,26 +15,30 @@
 package router
 
 import (
+	"encoding/json"
 	"math/rand"
 	"sync"
 
 	"github.com/matrix-org/pinecone/types"
 )
 
-const fairFIFOQueueCount = 128
 const fairFIFOQueueSize = 16
 
 type fairFIFOQueue struct {
-	queues map[uint8]chan *types.Frame // queue ID -> frame, map for randomness
-	count  int                         // how many queued items in total?
-	n      uint8                       // which queue did we last iterate on?
-	offset uint64                      // adds an element of randomness to queue assignment
-	mutex  sync.Mutex
+	queues  map[uint16]chan *types.Frame // queue ID -> frame, map for randomness
+	num     uint16                       // how many queues should we have?
+	count   int                          // how many queued items in total?
+	n       uint16                       // which queue did we last iterate on?
+	offset  uint64                       // adds an element of randomness to queue assignment
+	total   uint64                       // how many packets handled?
+	dropped uint64                       // how many packets dropped?
+	mutex   sync.Mutex
 }
 
-func newFairFIFOQueue(_ int) *fairFIFOQueue {
+func newFairFIFOQueue(num uint16) *fairFIFOQueue {
 	q := &fairFIFOQueue{
 		offset: rand.Uint64(),
+		num:    num,
 	}
 	q.reset()
 	return q
@@ -47,30 +51,34 @@ func (q *fairFIFOQueue) queuecount() int { // nolint:unused
 }
 
 func (q *fairFIFOQueue) queuesize() int { // nolint:unused
-	return fairFIFOQueueCount * fairFIFOQueueSize
+	return int(q.num) * fairFIFOQueueSize
 }
 
-func (q *fairFIFOQueue) hash(frame *types.Frame) uint8 {
+func (q *fairFIFOQueue) hash(frame *types.Frame) uint16 {
 	h := q.offset
-	for _, v := range frame.Source {
-		h += uint64(v)
+	switch frame.Type {
+	case types.TypeTreeRouted:
+		for _, v := range frame.Source {
+			h += uint64(v)
+		}
+		for _, v := range frame.Destination {
+			h += uint64(v)
+		}
+	case types.TypeVirtualSnakeRouted:
+		for _, v := range frame.SourceKey {
+			h += uint64(v)
+		}
+		for _, v := range frame.DestinationKey {
+			h += uint64(v)
+		}
 	}
-	for _, v := range frame.Destination {
-		h += uint64(v)
-	}
-	for _, v := range frame.SourceKey {
-		h += uint64(v)
-	}
-	for _, v := range frame.DestinationKey {
-		h += uint64(v)
-	}
-	return uint8(h) % fairFIFOQueueCount
+	return uint16(h % uint64(q.num))
 }
 
 func (q *fairFIFOQueue) push(frame *types.Frame) bool {
 	q.mutex.Lock()
 	defer q.mutex.Unlock()
-	var h uint8
+	var h uint16
 	if q.count > 0 {
 		h = q.hash(frame) + 1
 	}
@@ -81,16 +89,21 @@ func (q *fairFIFOQueue) push(frame *types.Frame) bool {
 	default:
 		// The queue is full - perform a head drop
 		<-q.queues[h]
+		q.dropped++
+		if q.count-1 == 0 {
+			h = 0
+		}
 		q.queues[h] <- frame
 	}
+	q.total++
 	return true
 }
 
 func (q *fairFIFOQueue) reset() {
 	q.mutex.Lock()
 	defer q.mutex.Unlock()
-	q.queues = make(map[uint8]chan *types.Frame, fairFIFOQueueCount+1)
-	for i := uint8(0); i <= fairFIFOQueueCount; i++ {
+	q.queues = make(map[uint16]chan *types.Frame, q.num+1)
+	for i := uint16(0); i <= q.num; i++ {
 		q.queues[i] = make(chan *types.Frame, fairFIFOQueueSize)
 	}
 }
@@ -109,8 +122,8 @@ func (q *fairFIFOQueue) pop() <-chan *types.Frame {
 		return q.queues[0]
 	default:
 		// Select the next queue that has something waiting.
-		for i := 0; i <= fairFIFOQueueCount; i++ {
-			if q.n = (q.n + 1) % (fairFIFOQueueCount + 1); q.n == 0 {
+		for i := uint16(0); i <= q.num; i++ {
+			if q.n = (q.n + 1) % (q.num + 1); q.n == 0 {
 				continue
 			}
 			if queue := q.queues[q.n]; len(queue) > 0 {
@@ -126,4 +139,28 @@ func (q *fairFIFOQueue) ack() {
 	q.mutex.Lock()
 	defer q.mutex.Unlock()
 	q.count--
+}
+
+func (q *fairFIFOQueue) MarshalJSON() ([]byte, error) {
+	q.mutex.Lock()
+	defer q.mutex.Unlock()
+	res := struct {
+		Count   int            `json:"count"`
+		Size    int            `json:"size"`
+		Queues  map[uint16]int `json:"queues"`
+		Total   uint64         `json:"packets_total"`
+		Dropped uint64         `json:"packets_dropped"`
+	}{
+		Count:   q.count,
+		Size:    int(q.num) * fairFIFOQueueSize,
+		Queues:  map[uint16]int{},
+		Total:   q.total,
+		Dropped: q.dropped,
+	}
+	for h, queue := range q.queues {
+		if c := len(queue); c > 0 {
+			res.Queues[h] = c
+		}
+	}
+	return json.Marshal(res)
 }

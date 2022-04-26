@@ -19,6 +19,7 @@ import (
 	"crypto/ed25519"
 	"log"
 	"net"
+	"net/http"
 	"time"
 
 	"github.com/matrix-org/pinecone/router"
@@ -152,6 +153,10 @@ func (a *AdversaryRouter) ConfigureFilterDefaults(rates DropRates) {
 
 func (a *AdversaryRouter) ConfigureFilterPeer(peer types.PublicKey, rates DropRates) {
 	a.dropSettings.peers[peer] = rates
+}
+
+func (a *AdversaryRouter) ManholeHandler(w http.ResponseWriter, req *http.Request) {
+	a.rtr.ManholeHandler(w, req)
 }
 
 func (a *AdversaryRouter) updatePacketCounts(from types.PublicKey, frameType types.FrameType) {
