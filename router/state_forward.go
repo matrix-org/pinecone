@@ -52,6 +52,8 @@ func (s *state) _forward(p *peer, f *types.Frame) error {
 	nexthop, watermark := s._nextHopsFor(p, f)
 	deadend := nexthop == nil || nexthop == p.router.local
 
+	allowLoop := false
+
 	switch f.Type {
 	case types.TypeTreeAnnouncement:
 		// Tree announcements are a special case. The _handleTreeAnnouncement function
@@ -91,6 +93,9 @@ func (s *state) _forward(p *peer, f *types.Frame) error {
 				Sequence:  0,
 			}
 			nexthop, watermark = s._nextHopsFor(s.r.local, f)
+			if nexthop == p {
+				allowLoop = true
+			}
 		} else {
 			hops := binary.BigEndian.Uint16(f.Extra[:])
 			hops++
@@ -121,6 +126,9 @@ func (s *state) _forward(p *peer, f *types.Frame) error {
 			f.Source = append(f.Source[:0], s._coords()...)
 			f.Extra = of.Extra
 			nexthop, watermark = s._nextHopsFor(s.r.local, f)
+			if nexthop == p {
+				allowLoop = true
+			}
 		} else {
 			hops := binary.BigEndian.Uint16(f.Extra[:])
 			hops++
@@ -144,7 +152,7 @@ func (s *state) _forward(p *peer, f *types.Frame) error {
 
 	// If the packet's watermark is higher than the previous one or we are
 	// obviously looping, drop the packet.
-	if nexthop == p || watermark.WorseThan(f.Watermark) {
+	if (nexthop == p && !allowLoop) || watermark.WorseThan(f.Watermark) {
 		return nil
 	}
 
