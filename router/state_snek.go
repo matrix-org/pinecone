@@ -18,6 +18,7 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"fmt"
+	"math"
 	"time"
 
 	"github.com/matrix-org/pinecone/types"
@@ -29,6 +30,13 @@ import (
 
 const virtualSnakeMaintainInterval = time.Second
 const virtualSnakeNeighExpiryPeriod = time.Hour
+const bootstrapAttemptResetPoint = math.MaxUint32               // TODO : Pick a more meaningful value
+const neglectedNodeTrackingPoint = 5                            // NOTE : Start tracking a neglected node's bootstraps when their attempt count reaches this number
+const maxNeglectedNodesToTrack = 10                             // NOTE : This prevents an attacker from flooding large amounts of sybils into the network to cause a lot of inappropriate peer disconnections or memory spikes
+const staleInformationPeriod = 3 * virtualSnakeMaintainInterval // Neglected node information older than this could be considered stale
+const peerScoreResetPeriod = 2 * staleInformationPeriod         // How long to wait before clearing peer scores
+const ackSettlingPeriod = time.Second * 2                       // TODO : Arrive at this value better
+// NOTE : Must be < staleInformationPeriod to prevent exploit
 
 type virtualSnakeTable map[virtualSnakeIndex]*virtualSnakeEntry
 
@@ -46,6 +54,32 @@ type virtualSnakeEntry struct {
 	LastSeen    time.Time       `json:"last_seen"`
 	Root        types.Root      `json:"root"`
 	Active      bool            `json:"active"`
+}
+
+type neglectedBootstrapData struct {
+	Acknowledged bool
+	ArrivalTime  time.Time
+	Prev         *peer
+	Next         *peer
+}
+
+type neglectedBootstrapTable map[types.VirtualSnakePathID]*neglectedBootstrapData
+
+type neglectedSetupData struct {
+	Acknowledged bool
+	ArrivalTime  time.Time
+	Prev         *peer
+	Next         *peer
+}
+
+type neglectedSetupTable map[types.VirtualSnakePathID]*neglectedSetupData
+
+type neglectedNodeTable map[types.PublicKey]*neglectedNodeEntry
+
+type neglectedNodeEntry struct {
+	HopCount         uint64                  // The hop count from the attempt when the entry was created
+	FailedBootstraps neglectedBootstrapTable // Map of failed bootstrap attempts
+	FailedSetups     neglectedSetupTable     // Map of failed setup attempts
 }
 
 // valid returns true if the update hasn't expired, or false if it has. It is
@@ -143,9 +177,17 @@ func (s *state) _bootstrapNow() {
 	// the same root node when processing the update.
 	b := frameBufferPool.Get().(*[types.MaxFrameSize]byte)
 	defer frameBufferPool.Put(b)
-	bootstrap := types.VirtualSnakeBootstrap{
-		Root: ann.Root,
+	failing := byte(0)
+	if s.r.scorePeers {
+		if s._bootstrapAttempt > neglectedNodeTrackingPoint {
+			failing = 1
+		}
 	}
+	bootstrap := types.VirtualSnakeBootstrap{
+		Root:    ann.Root,
+		Failing: failing,
+	}
+
 	// Generate a random path ID.
 	if _, err := rand.Read(bootstrap.PathID[:]); err != nil {
 		return
@@ -158,6 +200,7 @@ func (s *state) _bootstrapNow() {
 			ed25519.Sign(s.r.private[:], append(s.r.public[:], bootstrap.PathID[:]...)),
 		)
 	}
+
 	n, err := bootstrap.MarshalBinary(b[:])
 	if err != nil {
 		return
@@ -174,6 +217,14 @@ func (s *state) _bootstrapNow() {
 	// bootstrap packets.
 	if p := s._nextHopsSNEK(send, true); p != nil && p.proto != nil {
 		p.proto.push(send)
+
+		if s.r.scorePeers {
+			s._bootstrapAttempt++
+			if s._bootstrapAttempt >= bootstrapAttemptResetPoint {
+				s._bootstrapAttempt = 0
+				s.r.log.Println("Resetting bootstrap attempt count")
+			}
+		}
 	}
 }
 
@@ -326,12 +377,16 @@ func getNextHopSNEK(params virtualSnakeNextHopParams) *peer {
 
 // _handleBootstrap is called in response to receiving a bootstrap packet.
 // This function will send a bootstrap ACK back to the sender.
-func (s *state) _handleBootstrap(from *peer, rx *types.Frame) error {
+func (s *state) _handleBootstrap(from *peer, rx *types.Frame, nexthop *peer, deadend bool) error {
 	// Unmarshal the bootstrap.
 	var bootstrap types.VirtualSnakeBootstrap
 	if _, err := bootstrap.UnmarshalBinary(rx.Payload); err != nil {
 		return fmt.Errorf("bootstrap.UnmarshalBinary: %w", err)
 	}
+	if err := bootstrap.SanityCheck(from.public, s.r.public, rx.DestinationKey); err != nil {
+		return nil
+	}
+
 	if s.r.secure {
 		// Check that the bootstrap message was signed by the node that claims
 		// to have sent it. Silently drop it if there's a signature problem.
@@ -343,6 +398,141 @@ func (s *state) _handleBootstrap(from *peer, rx *types.Frame) error {
 			return nil
 		}
 	}
+
+	if !deadend {
+		var frame *types.Frame = nil
+		if s.r.scorePeers {
+			// NOTE : Only add additional signatures if the node is struggling
+			if bootstrap.Failing > 0 {
+				trackBootstrap := false
+				if node, ok := s._neglectedNodes[rx.DestinationKey]; ok {
+					trackBootstrap = true
+					if uint64(len(bootstrap.Signatures)) > node.HopCount {
+						node.HopCount = uint64(len(bootstrap.Signatures))
+					}
+				} else {
+					if len(s._neglectedNodes) < maxNeglectedNodesToTrack {
+						trackBootstrap = true
+						entry := &neglectedNodeEntry{
+							HopCount:         uint64(len(bootstrap.Signatures)),
+							FailedBootstraps: make(neglectedBootstrapTable),
+							FailedSetups:     make(neglectedSetupTable),
+						}
+						s._neglectedNodes[rx.DestinationKey] = entry
+					} else {
+						for key, node := range s._neglectedNodes {
+							replaceNode := false
+
+							latestArrival := time.UnixMicro(0)
+							for _, info := range node.FailedBootstraps {
+								if info.ArrivalTime.After(latestArrival) {
+									latestArrival = info.ArrivalTime
+								}
+							}
+							for _, info := range node.FailedSetups {
+								if info.ArrivalTime.After(latestArrival) {
+									latestArrival = info.ArrivalTime
+								}
+							}
+
+							if len(bootstrap.Signatures) > int(node.HopCount) {
+								replaceNode = true
+							} else if time.Since(latestArrival) > staleInformationPeriod {
+								// NOTE : This is to prevent attackers from filling the neglected
+								// node list with artificially high hop counts then not continuing
+								// to send frames.
+								s.r.log.Println("Replace stale node")
+								replaceNode = true
+							}
+
+							if replaceNode {
+								trackBootstrap = true
+								// NOTE : Reverse path routing guarantees still exist in this case.
+								// We just don't track this node for peer scoring purposes anymore.
+								cachePeerScoreHistory(node)
+								delete(s._neglectedNodes, key)
+								entry := &neglectedNodeEntry{
+									HopCount:         uint64(len(bootstrap.Signatures)),
+									FailedBootstraps: make(neglectedBootstrapTable),
+									FailedSetups:     make(neglectedSetupTable),
+								}
+								s._neglectedNodes[rx.DestinationKey] = entry
+								break
+							}
+						}
+					}
+				}
+
+				if trackBootstrap {
+					s._neglectedNodes[rx.DestinationKey].FailedBootstraps[bootstrap.PathID] = &neglectedBootstrapData{
+						Acknowledged: false,
+						ArrivalTime:  time.Now(),
+						Prev:         from,
+						Next:         nexthop,
+					}
+				}
+
+				score := nexthop.EvaluatePeerScore(s._neglectedNodes)
+				if score <= lowScoreThreshold {
+					if s.r.scorePeers {
+						nexthop.stop(fmt.Errorf("peer score below threshold: %d", score))
+					}
+				}
+
+				longestHopCount := 1
+				for _, node := range s._neglectedNodes {
+					if node.HopCount > uint64(longestHopCount) {
+						longestHopCount = int(node.HopCount)
+					}
+				}
+
+				s._neglectReset.Reset(peerScoreResetPeriod)
+				if nexthop.started.Load() {
+					nexthop.peerScoreAccumulator.Reset(peerScoreResetPeriod)
+				}
+			}
+
+			if s.r.public.CompareTo(rx.DestinationKey) > 0 {
+				switch {
+				case len(bootstrap.Signatures) == 0:
+					// Received a bootstrap with no signatures. Either it is directly
+					// from the originating node or the bootstrap hasn't passed by any
+					// bootstrap candidate. We are a candidate so sign the bootstrap.
+					fallthrough
+				case s.r.public.CompareTo(bootstrap.Signatures[len(bootstrap.Signatures)-1].PublicKey) < 0:
+					if s.r.scorePeers {
+						if err := bootstrap.Sign(s.r.private[:]); err != nil {
+							return fmt.Errorf("failed signing bootstrap: %w", err)
+						}
+					}
+					frame = getFrame()
+					frame.Type = types.TypeVirtualSnakeBootstrap
+					n, err := bootstrap.MarshalBinary(frame.Payload[:cap(frame.Payload)])
+					if err != nil {
+						panic("failed to marshal bootstrap: " + err.Error())
+					}
+					frame.Payload = frame.Payload[:n]
+				}
+			}
+		}
+
+		if frame != nil {
+			of := rx
+			defer framePool.Put(of)
+			frame.DestinationKey = of.DestinationKey
+			frame.SourceKey = of.SourceKey
+			frame.Destination = of.Destination
+			frame.Source = of.Source
+			frame.Version = of.Version
+			frame.Extra = of.Extra
+		} else {
+			frame = rx
+		}
+
+		nexthop.proto.push(frame)
+		return nil
+	}
+
 	// Check that the root key and sequence number in the update match our
 	// current root, otherwise we won't be able to route back to them using
 	// tree routing anyway. If they don't match, silently drop the bootstrap.
@@ -396,23 +586,15 @@ func (s *state) _handleBootstrap(from *peer, rx *types.Frame) error {
 // packet. This function will work out whether the remote node is a suitable
 // candidate to set up an outbound path to, and if so, will send path setup
 // packets to the network.
-func (s *state) _handleBootstrapACK(from *peer, rx *types.Frame) error {
+func (s *state) _handleBootstrapACK(from *peer, rx *types.Frame, nexthop *peer, deadend bool) error {
 	// Unmarshal the bootstrap ACK.
 	var bootstrapACK types.VirtualSnakeBootstrapACK
 	_, err := bootstrapACK.UnmarshalBinary(rx.Payload)
 	if err != nil {
 		return fmt.Errorf("bootstrapACK.UnmarshalBinary: %w", err)
 	}
+
 	if s.r.secure {
-		// Verify that the source signature hasn't been changed by the remote
-		// side. If it has then it won't validate using our own public key.
-		if !ed25519.Verify(
-			s.r.public[:],
-			append(s.r.public[:], bootstrapACK.PathID[:]...),
-			bootstrapACK.SourceSig[:],
-		) {
-			return nil
-		}
 		// Verify that the destination signature is OK, which allows us to confirm
 		// that the remote node accepted our bootstrap and that the remote node is
 		// who they claim to be.
@@ -424,6 +606,62 @@ func (s *state) _handleBootstrapACK(from *peer, rx *types.Frame) error {
 			return nil
 		}
 	}
+
+	if !deadend {
+		knownFailure := false
+		if s.r.scorePeers {
+			if node, ok := s._neglectedNodes[rx.SourceKey]; ok {
+				if data, ok := node.FailedSetups[bootstrapACK.PathID]; ok {
+					if data.Acknowledged {
+						// NOTE : This peer is sending us duplicate frames.
+						return nil
+					}
+
+					knownFailure = true
+					data.Prev.send(rx)
+					data.Acknowledged = true
+					score := data.Prev.EvaluatePeerScore(s._neglectedNodes)
+					if score <= lowScoreThreshold {
+						if s.r.scorePeers {
+							data.Prev.stop(fmt.Errorf("peer score below threshold: %d", score))
+						}
+					}
+
+					longestHopCount := 1
+					for _, node := range s._neglectedNodes {
+						if node.HopCount > uint64(longestHopCount) {
+							longestHopCount = int(node.HopCount)
+						}
+					}
+					s._neglectReset.Reset(peerScoreResetPeriod)
+					if data.Prev.started.Load() {
+						data.Prev.peerScoreAccumulator.Reset(peerScoreResetPeriod)
+					}
+				}
+			}
+		}
+
+		if !knownFailure {
+			if nexthop != nil && !nexthop.send(rx) {
+				s.r.log.Println("Dropping forwarded packet of type", rx.Type)
+			}
+		}
+
+		return nil
+	}
+
+	if s.r.secure {
+		// Verify that the source signature hasn't been changed by the remote
+		// side. If it has then it won't validate using our own public key.
+		if !ed25519.Verify(
+			s.r.public[:],
+			append(s.r.public[:], bootstrapACK.PathID[:]...),
+			bootstrapACK.SourceSig[:],
+		) {
+			return nil
+		}
+	}
+
 	root := s._rootAnnouncement()
 	update := false
 	asc := s._ascending
@@ -494,20 +732,20 @@ func (s *state) _handleBootstrapACK(from *peer, rx *types.Frame) error {
 	send.DestinationKey = rx.SourceKey
 	send.SourceKey = s.r.public
 	send.Payload = append(send.Payload[:0], b[:n]...)
-	nexthop := s.r.state._nextHopsTree(s.r.local, send)
+	setupNexthop := s.r.state._nextHopsTree(s.r.local, send)
 	// Importantly, we will only create a DHT entry if it appears as though our next
 	// hop has actually accepted the packet. Otherwise we'll create a path entry and
 	// the setup message won't go anywhere.
 	switch {
-	case nexthop == nil:
+	case setupNexthop == nil:
 		fallthrough // No peer was identified, which shouldn't happen.
-	case nexthop.local():
+	case setupNexthop.local():
 		fallthrough // The peer is local, which shouldn't happen.
-	case !nexthop.started.Load():
+	case !setupNexthop.started.Load():
 		fallthrough // The peer has shut down or errored.
-	case nexthop.proto == nil:
+	case setupNexthop.proto == nil:
 		fallthrough // The peer doesn't have a protocol queue for some reason.
-	case !nexthop.proto.push(send):
+	case !setupNexthop.proto.push(send):
 		return nil // We failed to push the message into the peer queue.
 	}
 	index := virtualSnakeIndex{
@@ -519,7 +757,7 @@ func (s *state) _handleBootstrapACK(from *peer, rx *types.Frame) error {
 		Origin:            rx.SourceKey,
 		Target:            rx.SourceKey,
 		Source:            s.r.local,
-		Destination:       nexthop,
+		Destination:       setupNexthop,
 		LastSeen:          time.Now(),
 		Root:              bootstrapACK.Root,
 	}
@@ -532,6 +770,7 @@ func (s *state) _handleBootstrapACK(from *peer, rx *types.Frame) error {
 			s._sendTeardownForExistingPath(s.r.local, dhtKey.PublicKey, dhtKey.PathID)
 		}
 	}
+
 	// Install the new route into the DHT.
 	s._table[index] = entry
 	s._candidate = entry
@@ -589,6 +828,47 @@ func (s *state) _handleSetup(from *peer, rx *types.Frame, nexthop *peer) error {
 		s._sendTeardownForRejectedPath(rx.SourceKey, setup.PathID, from)      // second call sends back to origin
 		return nil
 	}
+
+	if s.r.scorePeers {
+		// NOTE : If you only see setups and not bootstraps then you can conclude that you aren't
+		// attached to a malicious peer. Otherwise you would have been guaranteed to also see the
+		// corresponding bootstrap frames from that node.
+		// Other than this case, there are no firm conclusions that can be drawn.
+		if node, ok := s._neglectedNodes[rx.SourceKey]; ok {
+			if nexthop != nil {
+				if _, ok := node.FailedSetups[setup.PathID]; ok {
+					// NOTE : This peer is sending us duplicate frames.
+					return nil
+				}
+
+				node.FailedSetups[setup.PathID] = &neglectedSetupData{
+					Acknowledged: false,
+					ArrivalTime:  time.Now(),
+					Prev:         from,
+					Next:         nexthop,
+				}
+
+				score := nexthop.EvaluatePeerScore(s._neglectedNodes)
+				if score <= lowScoreThreshold {
+					if s.r.scorePeers {
+						nexthop.stop(fmt.Errorf("peer score below threshold: %d", score))
+					}
+				}
+
+				longestHopCount := 1
+				for _, node := range s._neglectedNodes {
+					if node.HopCount > uint64(longestHopCount) {
+						longestHopCount = int(node.HopCount)
+					}
+				}
+				s._neglectReset.Reset(peerScoreResetPeriod)
+				if nexthop.started.Load() {
+					nexthop.peerScoreAccumulator.Reset(peerScoreResetPeriod)
+				}
+			}
+		}
+	}
+
 	// If we're at the destination of the setup then update our predecessor
 	// with information from the bootstrap.
 	if rx.DestinationKey == s.r.public {
@@ -624,6 +904,7 @@ func (s *state) _handleSetup(from *peer, rx *types.Frame, nexthop *peer) error {
 			// there's a node out there that hasn't converged to a closer node
 			// yet, so we'll just ignore the bootstrap.
 		}
+
 		if !update {
 			s._sendTeardownForRejectedPath(rx.SourceKey, setup.PathID, from)
 			return nil
@@ -723,10 +1004,43 @@ func (s *state) _handleSetupACK(from *peer, rx *types.Frame, nexthop *peer) erro
 				continue
 			}
 			if v.Source.local() || v.Source.send(rx) {
+				if s.r.scorePeers {
+					if node, ok := s._neglectedNodes[rx.SourceKey]; ok {
+						if data, ok := node.FailedSetups[setup.PathID]; ok {
+							if data.Acknowledged {
+								// NOTE : This peer is sending us duplicate frames.
+								continue
+							}
+							data.Acknowledged = true
+							score := data.Prev.EvaluatePeerScore(s._neglectedNodes)
+							if score <= lowScoreThreshold {
+								if s.r.scorePeers {
+									data.Prev.stop(fmt.Errorf("peer score below threshold: %d", score))
+								}
+							}
+
+							longestHopCount := 1
+							for _, node := range s._neglectedNodes {
+								if node.HopCount > uint64(longestHopCount) {
+									longestHopCount = int(node.HopCount)
+								}
+							}
+							s._neglectReset.Reset(peerScoreResetPeriod)
+							if data.Prev.started.Load() {
+								data.Prev.peerScoreAccumulator.Reset(peerScoreResetPeriod)
+							}
+						}
+					}
+				}
+
 				v.Active = true
 				if v == s._candidate {
 					s._setAscendingNode(v)
 					s._candidate = nil
+
+					if s.r.scorePeers {
+						s._bootstrapAttempt = 0
+					}
 				}
 			}
 		}

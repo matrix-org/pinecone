@@ -94,6 +94,10 @@ func defaultFrameCount() PeerFrameCount {
 	frameCount[types.TypeVirtualSnakeTeardown] = atomic.NewUint64(0)
 	frameCount[types.TypeTreeRouted] = atomic.NewUint64(0)
 	frameCount[types.TypeVirtualSnakeRouted] = atomic.NewUint64(0)
+	frameCount[types.TypeTreePing] = atomic.NewUint64(0)
+	frameCount[types.TypeTreePong] = atomic.NewUint64(0)
+	frameCount[types.TypeSNEKPing] = atomic.NewUint64(0)
+	frameCount[types.TypeSNEKPong] = atomic.NewUint64(0)
 
 	peerFrameCount := PeerFrameCount{
 		frameCount: frameCount,
@@ -123,8 +127,8 @@ func NewAdversaryRouter(log *log.Logger, sk ed25519.PrivateKey, debug bool) *Adv
 	return adversary
 }
 
-func (a *AdversaryRouter) Subscribe(ch chan events.Event) {
-	a.rtr.Subscribe(ch)
+func (a *AdversaryRouter) Subscribe(ch chan events.Event) router.NodeState {
+	return a.rtr.Subscribe(ch)
 }
 
 func (a *AdversaryRouter) PublicKey() types.PublicKey {

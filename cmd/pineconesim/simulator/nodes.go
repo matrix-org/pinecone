@@ -35,6 +35,15 @@ func (sim *Simulator) Node(t string) *Node {
 }
 
 func (sim *Simulator) CreateNode(t string, nodeType APINodeType) error {
+	_, sk, err := ed25519.GenerateKey(nil)
+	if err != nil {
+		return fmt.Errorf("ed25519.GenerateKey: %w", err)
+	}
+
+	return sim.CreateNodeWithKey(t, nodeType, sk)
+}
+
+func (sim *Simulator) CreateNodeWithKey(t string, nodeType APINodeType, privKey ed25519.PrivateKey) error {
 	if _, ok := sim.nodes[t]; ok {
 		return fmt.Errorf("%s already exists!", t)
 	}
@@ -56,16 +65,12 @@ func (sim *Simulator) CreateNode(t string, nodeType APINodeType) error {
 			return fmt.Errorf("net.Listen: %w", err)
 		}
 	}
-	_, sk, err := ed25519.GenerateKey(nil)
-	if err != nil {
-		return fmt.Errorf("ed25519.GenerateKey: %w", err)
-	}
 	crc := crc32.ChecksumIEEE([]byte(t))
 	color := 31 + (crc % 6)
 	logger := log.New(sim.log.Writer(), fmt.Sprintf("\033[%dmNode %s:\033[0m ", color, t), 0)
 
 	n := &Node{
-		SimRouter:  sim.routerCreationMap[nodeType](logger, sk, true),
+		SimRouter:  sim.routerCreationMap[nodeType](logger, privKey, true),
 		l:          l,
 		ListenAddr: tcpaddr,
 	}
@@ -118,14 +123,14 @@ func (sim *Simulator) StartNodeEventHandler(t string, nodeType APINodeType) {
 	ch := make(chan events.Event)
 	handler := eventHandler{node: t, ch: ch}
 	quit := make(chan bool)
-	go handler.Run(quit, sim)
-	sim.nodes[t].Subscribe(ch)
+	nodeState := sim.nodes[t].Subscribe(ch)
 
 	sim.nodeRunnerChannelsMutex.Lock()
 	sim.nodeRunnerChannels[t] = append(sim.nodeRunnerChannels[t], quit)
 	sim.nodeRunnerChannelsMutex.Unlock()
 
-	phony.Block(sim.State, func() { sim.State._addNode(t, sim.nodes[t].PublicKey().String(), nodeType) })
+	phony.Block(sim.State, func() { sim.State._addNode(t, sim.nodes[t].PublicKey().String(), nodeType, nodeState) })
+	go handler.Run(quit, sim)
 }
 
 func (sim *Simulator) RemoveNode(node string) {

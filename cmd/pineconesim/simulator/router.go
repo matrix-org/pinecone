@@ -29,7 +29,7 @@ import (
 type SimRouter interface {
 	PublicKey() types.PublicKey
 	Connect(conn net.Conn, options ...router.ConnectionOption) (types.SwitchPortID, error)
-	Subscribe(ch chan events.Event)
+	Subscribe(ch chan events.Event) router.NodeState
 	Ping(ctx context.Context, a net.Addr) (uint16, time.Duration, error)
 	Coords() types.Coordinates
 	ConfigureFilterDefaults(rates adversary.DropRates)
@@ -41,8 +41,8 @@ type DefaultRouter struct {
 	rtr *router.Router
 }
 
-func (r *DefaultRouter) Subscribe(ch chan events.Event) {
-	r.rtr.Subscribe(ch)
+func (r *DefaultRouter) Subscribe(ch chan events.Event) router.NodeState {
+	return r.rtr.Subscribe(ch)
 }
 
 func (r *DefaultRouter) PublicKey() types.PublicKey {

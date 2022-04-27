@@ -70,6 +70,7 @@ func (sim *Simulator) PingSNEK(from, to string) (uint16, time.Duration, error) {
 	}
 
 	success = true
+	sim.log.Printf("Successful ping from %s to %s", from, to)
 	sim.ReportDistance(from, to, int64(hops), true)
 	return hops, rtt, nil
 }

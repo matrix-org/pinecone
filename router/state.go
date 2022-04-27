@@ -32,23 +32,32 @@ type FilterFn func(from types.PublicKey, f *types.Frame) bool
 // NOTE: Functions prefixed with an underscore (_) are only safe to be called
 // from the actor that owns them, in order to prevent data races.
 
+type PeerScoreTable map[*peer]*PeerScore
+
+type PeerScore struct {
+	BootstrapFailures uint
+}
+
 // state is an actor that owns all of the mutable state for the Pinecone router.
 type state struct {
 	phony.Inbox
-	r              *Router
-	_peers         []*peer            // All switch ports, connected and disconnected
-	_ascending     *virtualSnakeEntry // Next ascending node in keyspace
-	_descending    *virtualSnakeEntry // Next descending node in keyspace
-	_candidate     *virtualSnakeEntry // Candidate to replace the ascending node
-	_parent        *peer              // Our chosen parent in the tree
-	_announcements announcementTable  // Announcements received from our peers
-	_table         virtualSnakeTable  // Virtual snake DHT entries
-	_ordering      uint64             // Used to order incoming tree announcements
-	_sequence      uint64             // Used to sequence our root tree announcements
-	_treetimer     *time.Timer        // Tree maintenance timer
-	_snaketimer    *time.Timer        // Virtual snake maintenance timer
-	_waiting       bool               // Is the tree waiting to reparent?
-	_filterPacket  FilterFn           // Function called when forwarding packets
+	r                 *Router
+	_peers            []*peer            // All switch ports, connected and disconnected
+	_ascending        *virtualSnakeEntry // Next ascending node in keyspace
+	_descending       *virtualSnakeEntry // Next descending node in keyspace
+	_candidate        *virtualSnakeEntry // Candidate to replace the ascending node
+	_parent           *peer              // Our chosen parent in the tree
+	_announcements    announcementTable  // Announcements received from our peers
+	_table            virtualSnakeTable  // Virtual snake DHT entries
+	_neglectedNodes   neglectedNodeTable // Nodes that are struggling to bootstrap
+	_bootstrapAttempt uint64             // Count of bootstrap attempts since last success
+	_ordering         uint64             // Used to order incoming tree announcements
+	_sequence         uint64             // Used to sequence our root tree announcements
+	_treetimer        *time.Timer        // Tree maintenance timer
+	_snaketimer       *time.Timer        // Virtual snake maintenance timer
+	_waiting          bool               // Is the tree waiting to reparent?
+	_filterPacket     FilterFn           // Function called when forwarding packets
+	_neglectReset     *time.Timer
 }
 
 // _start resets the state and starts tree and virtual snake maintenance.
@@ -64,6 +73,9 @@ func (s *state) _start() {
 	s._announcements = make(announcementTable, portCount)
 	s._table = virtualSnakeTable{}
 
+	s._bootstrapAttempt = 0
+	s._neglectedNodes = make(neglectedNodeTable)
+
 	if s._treetimer == nil {
 		s._treetimer = time.AfterFunc(announcementInterval, func() {
 			s.Act(nil, s._maintainTree)
@@ -71,13 +83,47 @@ func (s *state) _start() {
 	}
 
 	if s._snaketimer == nil {
-		s._snaketimer = time.AfterFunc(time.Second, func() {
+		s._snaketimer = time.AfterFunc(virtualSnakeMaintainInterval, func() {
 			s.Act(nil, s._maintainSnake)
 		})
 	}
 
+	if s.r.scorePeers {
+		s.assignResetNeglectTimer()
+	}
+
 	s._maintainTreeIn(0)
 	s._maintainSnakeIn(0)
+}
+
+func (s *state) assignResetNeglectTimer() {
+	if s._neglectReset == nil {
+		s._neglectReset = time.AfterFunc(0, func() {
+			s.Act(nil, s._resetNeglectedNodes)
+		})
+	}
+}
+
+func (s *state) assignPeerScoreAccumulatorTimer(p *peer) {
+	if p.peerScoreAccumulator == nil {
+		p.peerScoreAccumulator = time.AfterFunc(peerScoreResetPeriod, func() {
+			s.Act(nil, func() { s._accumulatePeerScore(p) })
+		})
+	}
+}
+
+func (s *state) _resetNeglectedNodes() {
+	for pk := range s._neglectedNodes {
+		delete(s._neglectedNodes, pk)
+	}
+}
+
+func (s *state) _accumulatePeerScore(p *peer) {
+	if p != nil && p.scoreCache < 100 {
+		p.scoreCache += 5
+	}
+
+	p.peerScoreAccumulator.Reset(peerScoreResetPeriod)
 }
 
 // _maintainTreeIn resets the tree maintenance timer to the specified
@@ -119,19 +165,25 @@ func (s *state) _addPeer(conn net.Conn, public types.PublicKey, uri ConnectionUR
 			queues = 16
 		}
 		new = &peer{
-			router:     s.r,
-			port:       types.SwitchPortID(i),
-			conn:       conn,
-			public:     public,
-			uri:        uri,
-			zone:       zone,
-			peertype:   peertype,
-			keepalives: keepalives,
-			context:    ctx,
-			cancel:     cancel,
-			proto:      newFIFOQueue(fifoNoMax),
-			traffic:    newFairFIFOQueue(queues),
+			router:               s.r,
+			port:                 types.SwitchPortID(i),
+			conn:                 conn,
+			public:               public,
+			uri:                  uri,
+			zone:                 zone,
+			peertype:             peertype,
+			keepalives:           keepalives,
+			context:              ctx,
+			cancel:               cancel,
+			proto:                newFIFOQueue(fifoNoMax),
+			traffic:              newFairFIFOQueue(queues),
+			peerScoreAccumulator: nil,
 		}
+
+		if s.r.scorePeers {
+			s.assignPeerScoreAccumulatorTimer(new)
+		}
+
 		s._peers[i] = new
 		s.r.log.Println("Connected to peer", new.public.String(), "on port", new.port)
 		v, _ := s.r.active.LoadOrStore(hex.EncodeToString(new.public[:])+string(zone), atomic.NewUint64(0))

@@ -376,6 +376,9 @@ func (sim *Simulator) handleTreeRootAnnUpdate(node string, root string, sequence
 	rootName := ""
 	if peerNode, err := sim.State.GetNodeName(root); err == nil {
 		rootName = peerNode
+	} else {
+		log.Printf("Cannot convert %s to root for %s", root, node)
+		rootName = "UNKNOWN"
 	}
 	sim.State.Act(nil, func() { sim.State._updateTreeRootAnnouncement(node, rootName, sequence, time, coords) })
 }

@@ -52,8 +52,14 @@ func (s *state) _nextHopsFor(from *peer, frame *types.Frame) *peer {
 // teardowns, special handling will be done before forwarding if needed.
 func (s *state) _forward(p *peer, f *types.Frame) error {
 	if s._filterPacket != nil && s._filterPacket(p.public, f) {
-		s.r.log.Printf("Packet of type %s destined for port %d [%s] was dropped due to filter rules", f.Type.String(), p.port, p.public.String()[:8])
+		s.r.log.Printf("Packet of type %s destined for port %d [%s] from node %s [%s] was dropped due to filter rules", f.Type.String(), p.port, p.public.String()[:8], f.Source.String(), f.SourceKey.String()[:8])
 		return nil
+	}
+
+	if s._ascending != nil {
+		if f.SourceKey.CompareTo(s.r.public) > 0 && f.SourceKey.CompareTo(s._ascending.PublicKey) < 0 {
+			s.r.log.Printf("Node detected that is a better ascending neighbour...")
+		}
 	}
 
 	nexthop := s._nextHopsFor(p, f)
@@ -73,24 +79,21 @@ func (s *state) _forward(p *peer, f *types.Frame) error {
 		return nil
 
 	case types.TypeVirtualSnakeBootstrap:
-		// Bootstrap messages are only handled specially when they reach a dead end.
-		// Otherwise they are forwarded normally by falling through.
-		if deadend {
-			if err := s._handleBootstrap(p, f); err != nil {
-				return fmt.Errorf("s._handleBootstrap (port %d): %w", p.port, err)
-			}
-			return nil
+		// Bootstrap messages are handled at each node on the path. _handleBootstrap
+		// determines whether to respond to the bootstrap or further it along to the
+		// next hop so the packet is not forwarded here.
+		if err := s._handleBootstrap(p, f, nexthop, deadend); err != nil {
+			return fmt.Errorf("s._handleBootstrap (port %d): %w", p.port, err)
 		}
+		return nil
 
 	case types.TypeVirtualSnakeBootstrapACK:
 		// Bootstrap ACK messages are only handled specially when they reach a dead end.
 		// Otherwise they are forwarded normally by falling through.
-		if deadend {
-			if err := s._handleBootstrapACK(p, f); err != nil {
-				return fmt.Errorf("s._handleBootstrapACK (port %d): %w", p.port, err)
-			}
-			return nil
+		if err := s._handleBootstrapACK(p, f, nexthop, deadend); err != nil {
+			return fmt.Errorf("s._handleBootstrapACK (port %d): %w", p.port, err)
 		}
+		return nil
 
 	case types.TypeVirtualSnakeSetup:
 		// Setup messages are handled at each node on the path. Since the _handleSetup

@@ -22,6 +22,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"net"
 	"time"
 
@@ -35,6 +36,7 @@ import (
 
 const peerKeepaliveInterval = time.Second * 3
 const peerKeepaliveTimeout = time.Second * 5
+const lowScoreThreshold = -100 // NOTE : peer scoring can go from -100 to 100
 
 // Lower numbers for these consts are typically faster connections.
 const ( // These need to be a simple int type for gobind/gomobile to export them...
@@ -49,21 +51,112 @@ const ( // These need to be a simple int type for gobind/gomobile to export them
 // the peering). Having separate actors allows reads and writes to take
 // place concurrently.
 type peer struct {
-	reader     phony.Inbox
-	writer     phony.Inbox
-	router     *Router
-	port       types.SwitchPortID // Not mutated after peer setup.
-	context    context.Context    // Not mutated after peer setup.
-	cancel     context.CancelFunc // Not mutated after peer setup.
-	conn       net.Conn           // Not mutated after peer setup.
-	uri        ConnectionURI      // Not mutated after peer setup.
-	zone       ConnectionZone     // Not mutated after peer setup.
-	peertype   ConnectionPeerType // Not mutated after peer setup.
-	public     types.PublicKey    // Not mutated after peer setup.
-	keepalives bool               // Not mutated after peer setup.
-	started    atomic.Bool        // Thread-safe toggle for marking a peer as down.
-	proto      *fifoQueue         // Thread-safe queue for outbound protocol messages.
-	traffic    *fairFIFOQueue     // Thread-safe queue for outbound traffic messages.
+	reader               phony.Inbox
+	writer               phony.Inbox
+	router               *Router
+	port                 types.SwitchPortID // Not mutated after peer setup.
+	context              context.Context    // Not mutated after peer setup.
+	cancel               context.CancelFunc // Not mutated after peer setup.
+	conn                 net.Conn           // Not mutated after peer setup.
+	uri                  ConnectionURI      // Not mutated after peer setup.
+	zone                 ConnectionZone     // Not mutated after peer setup.
+	peertype             ConnectionPeerType // Not mutated after peer setup.
+	public               types.PublicKey    // Not mutated after peer setup.
+	keepalives           bool               // Not mutated after peer setup.
+	started              atomic.Bool        // Thread-safe toggle for marking a peer as down.
+	proto                *fifoQueue         // Thread-safe queue for outbound protocol messages.
+	traffic              *fairFIFOQueue     // Thread-safe queue for outbound traffic messages.
+	scoreCache           float64            // Tracks peer score information from replaced sources
+	peerScoreAccumulator *time.Timer        // Accumulates peer merit points over time.
+}
+
+func (p *peer) EvaluatePeerScore(bootstraps neglectedNodeTable) int {
+	peerScore := 0.0
+	// NOTE : more failing nodes through me lower peer score - no, this could result
+	// in a scenario where multiple attackers across the network aim to cause nodes
+	// near the center of the network to begin cutting off their peers.
+	// Distance truly is the best measure for proper attack isolation in this case.
+	// And the distance factor needs to grow exponentially to really ensure that
+	// central nodes don't inadvertently cutoff peers.
+
+	for _, node := range bootstraps {
+		peerScore += p.EvaluatePeerScoreForNode(node)
+	}
+
+	peerScore += float64(p.scoreCache)
+
+	p.router.log.Printf("PeerScore: %s --- %f", p.public.String()[:8], peerScore)
+	return int(peerScore)
+}
+
+func scoreMissingAck(hopCount uint64) float64 {
+	// TODO : Refine this
+	// NOTE : Gives exponential weighting the higher the hop count as that implies being closer to the problem
+	return -(0.5 + 0.01*math.Pow(float64(hopCount), 4))
+}
+
+func scoreAck(hopCount uint64) float64 {
+	// TODO : Better equation. Haven't refined this at all
+	return -(1 + 6/float64(hopCount-3))
+}
+
+func cachePeerScoreHistory(node *neglectedNodeEntry) {
+	for _, bootstrap := range node.FailedBootstraps {
+		if time.Since(bootstrap.ArrivalTime) > ackSettlingPeriod {
+			// NOTE : Cannot know which peer is suspect if an ACK was received.
+			// Since there isn't guaranteed to be a matching setup pair due to the forwarding
+			// logic being different for the setup frames, we have no way of guaranteeing
+			// if a setup frame was sent in response to the bootstrap ack.
+			if !bootstrap.Acknowledged {
+				bootstrap.Next.scoreCache += scoreMissingAck(node.HopCount)
+			}
+		}
+	}
+
+	for _, setup := range node.FailedSetups {
+		if time.Since(setup.ArrivalTime) > ackSettlingPeriod {
+			if setup.Acknowledged {
+				setup.Prev.scoreCache += scoreAck(node.HopCount)
+			} else if !setup.Acknowledged {
+				setup.Next.scoreCache += scoreMissingAck(node.HopCount)
+			}
+		}
+	}
+}
+
+func (p *peer) EvaluatePeerScoreForNode(node *neglectedNodeEntry) float64 {
+	peerScore := 0.0
+
+	for _, bootstrap := range node.FailedBootstraps {
+		if time.Since(bootstrap.ArrivalTime) > ackSettlingPeriod {
+			// NOTE : Cannot know which peer is suspect if an ACK was received.
+			// Since there isn't guaranteed to be a matching setup pair due to the forwarding
+			// logic being different for the setup frames, we have no way of guaranteeing
+			// if a setup frame was sent in response to the bootstrap ack.
+			if !bootstrap.Acknowledged && bootstrap.Next == p {
+				// NOTE : 1 for each new infraction
+				peerScore += scoreMissingAck(node.HopCount)
+			}
+		} else {
+			// NOTE : Ignoring this datapoint for scoring purposes
+		}
+	}
+
+	for _, setup := range node.FailedSetups {
+		if time.Since(setup.ArrivalTime) > ackSettlingPeriod {
+			if setup.Acknowledged && setup.Prev == p {
+				// NOTE : 1 for each new infraction
+				peerScore += scoreAck(node.HopCount)
+			} else if !setup.Acknowledged && setup.Next == p {
+				// NOTE : 1 for each new infraction
+				peerScore += scoreMissingAck(node.HopCount)
+			}
+		} else {
+			// NOTE : Ignoring this datapoint for scoring purposes
+		}
+	}
+
+	return peerScore
 }
 
 func (p *peer) MarshalJSON() ([]byte, error) {

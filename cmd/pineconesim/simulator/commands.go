@@ -15,6 +15,7 @@
 package simulator
 
 import (
+	"crypto/ed25519"
 	"fmt"
 	"log"
 	"strconv"
@@ -47,6 +48,8 @@ func UnmarshalCommandJSON(command *SimCommandMsg) (SimCommand, error) {
 	case SimAddNode:
 		name := ""
 		nodeType := UnknownType
+		privKeyStr := ""
+		var privKey *ed25519.PrivateKey = nil
 		if val, ok := command.Event.(map[string]interface{})["Name"]; ok {
 			name = val.(string)
 		} else {
@@ -58,7 +61,16 @@ func UnmarshalCommandJSON(command *SimCommandMsg) (SimCommand, error) {
 		} else {
 			err = fmt.Errorf("%sAddNode.NodeType field doesn't exist", FAILURE_PREAMBLE)
 		}
-		msg = AddNode{name, nodeType}
+
+		if val, ok := command.Event.(map[string]interface{})["PrivKey"]; ok {
+			privKeyStr = val.(string)
+			if len(privKeyStr) == ed25519.PrivateKeySize {
+				newPrivKey := ed25519.PrivateKey{}
+				copy(newPrivKey[:], privKeyStr)
+				privKey = &newPrivKey
+			}
+		}
+		msg = AddNode{name, nodeType, privKey}
 	case SimRemoveNode:
 		name := ""
 		if val, ok := command.Event.(map[string]interface{})["Name"]; ok {
@@ -319,21 +331,29 @@ func (c Delay) String() string {
 type AddNode struct {
 	Node     string
 	NodeType APINodeType
+	PrivKey  *ed25519.PrivateKey
 }
 
 // Tag AddNode as a Command
 func (c AddNode) Run(log *log.Logger, sim *Simulator) {
 	log.Printf("Executing command %s", c)
-	if err := sim.CreateNode(c.Node, c.NodeType); err != nil {
-		log.Printf("Failed creating new node %s: %s", c.Node, err)
-		return
+	if c.PrivKey != nil {
+		if err := sim.CreateNodeWithKey(c.Node, c.NodeType, *c.PrivKey); err != nil {
+			log.Printf("Failed creating new node %s: %s", c.Node, err)
+			return
+		}
+	} else {
+		if err := sim.CreateNode(c.Node, c.NodeType); err != nil {
+			log.Printf("Failed creating new node %s: %s", c.Node, err)
+			return
+		}
 	}
 
 	sim.StartNodeEventHandler(c.Node, c.NodeType)
 }
 
 func (c AddNode) String() string {
-	return fmt.Sprintf("AddNode{Name:%s}", c.Node)
+	return fmt.Sprintf("AddNode{Name:%s, Type:%d, Private Key:%v}", c.Node, c.NodeType, c.PrivKey)
 }
 
 type RemoveNode struct {

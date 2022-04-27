@@ -20,6 +20,11 @@ type SimEvent interface {
 	isEvent()
 }
 
+type NullEvent struct{}
+
+// Tag NullEvent as an Event
+func (e NullEvent) isEvent() {}
+
 type NodeAdded struct {
 	Node      string
 	PublicKey string
