@@ -52,6 +52,8 @@ func (s *state) _forward(p *peer, f *types.Frame) error {
 	nexthop, watermark := s._nextHopsFor(p, f)
 	deadend := nexthop == nil || nexthop == p.router.local
 
+	isInitialPongResponse := false
+
 	switch f.Type {
 	case types.TypeTreeAnnouncement:
 		// Tree announcements are a special case. The _handleTreeAnnouncement function
@@ -79,6 +81,7 @@ func (s *state) _forward(p *peer, f *types.Frame) error {
 
 	case types.TypeSNEKPing:
 		if f.DestinationKey == s.r.public {
+			isInitialPongResponse = true
 			of := f
 			defer framePool.Put(of)
 			f = getFrame()
@@ -113,6 +116,7 @@ func (s *state) _forward(p *peer, f *types.Frame) error {
 
 	case types.TypeTreePing:
 		if deadend {
+			isInitialPongResponse = true
 			of := f
 			defer framePool.Put(of)
 			f = getFrame()
@@ -144,7 +148,9 @@ func (s *state) _forward(p *peer, f *types.Frame) error {
 
 	// If the packet's watermark is higher than the previous one or we are
 	// obviously looping, drop the packet.
-	if nexthop == p || watermark.WorseThan(f.Watermark) {
+	// In the case of initial pong response frames, they are routed back to
+	// the peer we received the ping from so the "loop" is desired.
+	if (nexthop == p && !isInitialPongResponse) || watermark.WorseThan(f.Watermark) {
 		return nil
 	}
 
