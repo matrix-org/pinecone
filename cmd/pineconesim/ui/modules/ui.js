@@ -112,6 +112,9 @@ setupNetworkSelection();
 
 function selectTool(toolType) {
     switch(this.id) {
+    case "ping-start-stop":
+        handleToolPingStartStop(this);
+        break;
     case "scenario-new":
         handleToolScenarioNew(this);
         break;
@@ -137,6 +140,43 @@ function selectTool(toolType) {
         handleToolRemove(this);
         break;
     }
+}
+
+export function SetPingToolState(enabled, active) {
+    let subtool = document.getElementById("ping-start-stop");
+
+    if (!enabled && subtool.className.includes("active")) {
+        subtool.className = subtool.className.replace(" active", "");
+        let tooltip = subtool.getElementsByClassName("tooltiptext")[0];
+        tooltip.textContent = "Start Pings";
+
+        if (subtool.className.includes("sub-active")) {
+            subtool.className = subtool.className.replace(" sub-active", "");
+        }
+    } else if (enabled) {
+        if (!subtool.className.includes("active")) {
+            subtool.className += " active";
+            let tooltip = subtool.getElementsByClassName("tooltiptext")[0];
+            tooltip.textContent = "Stop Pings";
+        }
+
+        if (active && !subtool.className.includes("sub-active")) {
+            subtool.className += " sub-active";
+        } else if (!active && subtool.className.includes("sub-active")) {
+            subtool.className = subtool.className.replace(" sub-active", "");
+        }
+    }
+}
+
+function handleToolPingStartStop(subtool) {
+    let command = {"MsgID": APICommandID.Unknown, "Event": {}};
+    if (subtool.className.includes("active")) {
+        command.MsgID = APICommandID.StopPings;
+    } else {
+        command.MsgID = APICommandID.StartPings;
+    }
+
+    SendToServer({"MsgID": APICommandMessageID.PlaySequence, "Events": [command]});
 }
 
 function handleToolScenarioNew(subtool) {
@@ -217,6 +257,8 @@ function validateEventSequence(content) {
         validSimCommands.set("RemovePeer", ["Node", "Peer"]);
         validSimCommands.set("ConfigureAdversaryDefaults", ["Node", "DropRates"]);
         validSimCommands.set("ConfigureAdversaryPeer", ["Node", "Peer", "DropRates"]);
+        validSimCommands.set("StartPings", []);
+        validSimCommands.set("StopPings", []);
 
         let validSubcommands = new Map();
         validSubcommands.set("DropRates", ["Overall", "Keepalive", "TreeAnnouncement", "TreeRouted", "VirtualSnakeBootstrap", "VirtualSnakeBootstrapACK", "VirtualSnakeSetup", "VirtualSnakeSetupACK", "VirtualSnakeTeardown", "VirtualSnakeRouted"]);
@@ -460,6 +502,10 @@ function convertCommandToID(command) {
     case "ConfigureAdversaryPeer":
         id = APICommandID.ConfigureAdversaryPeer;
         break;
+    case "StartPings":
+        id = APICommandID.StartPings;
+    case "StopPings":
+        id = APICommandID.StopPings;
     default:
         break;
     }

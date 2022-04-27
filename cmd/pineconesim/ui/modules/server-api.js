@@ -19,6 +19,8 @@ export const APIUpdateID = {
     SnakeAscUpdated: 6,
     SnakeDescUpdated: 7,
     TreeRootAnnUpdated: 8,
+    PingStateUpdated: 9,
+    NetworkStatsUpdated: 10,
 };
 
 export const APICommandID = {
@@ -33,6 +35,8 @@ export const APICommandID = {
     RemovePeer: 8,
     ConfigureAdversaryDefaults: 9,
     ConfigureAdversaryPeer: 10,
+    StartPings: 11,
+    StopPings: 12,
 };
 
 export const APINodeType = {

@@ -41,6 +41,8 @@ const (
 	SimSnakeAscUpdated
 	SimSnakeDescUpdated
 	SimTreeRootAnnUpdated
+	SimPingStateUpdated
+	SimNetworkStatsUpdated
 )
 
 const (
@@ -55,6 +57,8 @@ const (
 	SimRemovePeer
 	SimConfigureAdversaryDefaults
 	SimConfigureAdversaryPeer
+	SimStartPings
+	SimStopPings
 )
 
 const (

@@ -1,7 +1,7 @@
 import { graph } from "./modules/graph.js";
 import { APIEventMessageID, APICommandMessageID, APIUpdateID, APICommandID,
          ConnectToServer, SendToServer } from "./modules/server-api.js";
-import "./modules/ui.js";
+import { SetPingToolState } from "./modules/ui.js";
 
 function handleSimMessage(msg) {
     // console.log(msg.data);
@@ -60,10 +60,17 @@ function handleSimMessage(msg) {
             break;
         case APIUpdateID.TreeRootAnnUpdated:
             graph.updateRootAnnouncement(event.Node, event.Root, event.Sequence, event.Time, event.Coords);
+            break;
+        case APIUpdateID.PingStateUpdated:
+            SetPingToolState(event.Enabled, event.Active);
+            break;
+        case APIUpdateID.NetworkStatsUpdated:
+            graph.updateNetworkStats(event.TreePathConvergence, event.TreeAverageStretch, event.SnakePathConvergence, event.SnakeAverageStretch);
+            break;
         }
         break;
     default:
-        console.log("Unhandled message ID");
+        console.log("Unhandled message ID: " + msg.data.MsgID);
         break;
     }
 };

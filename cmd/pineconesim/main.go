@@ -21,9 +21,7 @@ import (
 	"log"
 	"math/rand"
 	"os"
-	"runtime"
 	"strings"
-	"sync"
 	"text/template"
 	"time"
 
@@ -37,8 +35,6 @@ import (
 	_ "net/http/pprof"
 )
 
-type pair struct{ from, to string }
-
 const maxBatchSize int = 50
 
 var ConnUID atomic.Uint64 = atomic.Uint64{}
@@ -51,7 +47,6 @@ func main() {
 	filename := flag.String("filename", "cmd/pineconesim/graphs/empty.txt", "the file that describes the simulated topology")
 	sockets := flag.Bool("sockets", false, "use real TCP sockets to connect simulated nodes")
 	chaos := flag.Int("chaos", 0, "randomly connect and disconnect a certain number of links")
-	ping := flag.Bool("ping", false, "test end-to-end reachability between all nodes")
 	acceptCommands := flag.Bool("acceptCommands", true, "whether the sim can be commanded from the ui")
 	flag.Parse()
 
@@ -84,7 +79,7 @@ func main() {
 	}
 
 	log := log.New(os.Stdout, "\u001b[36m***\u001b[0m ", 0)
-	sim := simulator.NewSimulator(log, *sockets, *ping, *acceptCommands)
+	sim := simulator.NewSimulator(log, *sockets, *acceptCommands)
 	configureHTTPRouting(log, sim)
 	sim.CalculateShortestPaths(nodes, wires)
 
@@ -160,45 +155,6 @@ func main() {
 	}
 
 	log.Println("Configuring HTTP listener")
-
-	if ping != nil && *ping {
-		go func() {
-			for {
-				time.Sleep(time.Second * 15)
-				log.Println("Starting pings...")
-
-				tasks := make(chan pair, 2*(len(nodes)*len(nodes)))
-				for from := range nodes {
-					for to := range nodes {
-						tasks <- pair{from, to}
-					}
-				}
-				close(tasks)
-
-				numworkers := runtime.NumCPU() * 16
-				var wg sync.WaitGroup
-				wg.Add(numworkers)
-				for i := 0; i < numworkers; i++ {
-					go func() {
-						for pair := range tasks {
-							log.Println("Tree ping from", pair.from, "to", pair.to)
-							if _, _, err := sim.PingTree(pair.from, pair.to); err != nil {
-								log.Println("Tree ping from", pair.from, "to", pair.to, "failed:", err)
-							}
-							log.Println("SNEK ping from", pair.from, "to", pair.to)
-							if _, _, err := sim.PingSNEK(pair.from, pair.to); err != nil {
-								log.Println("SNEK ping from", pair.from, "to", pair.to, "failed:", err)
-							}
-						}
-						wg.Done()
-					}()
-				}
-
-				wg.Wait()
-				log.Println("All pings finished, repeating shortly...")
-			}
-		}()
-	}
 
 	select {}
 }
@@ -343,6 +299,38 @@ func userProxyReporter(conn *websocket.Conn, connID uint64, sim *simulator.Simul
 		}
 	}
 
+	// Send current ping state
+	if err := conn.WriteJSON(simulator.StateUpdateMsg{
+		MsgID: simulator.SimStateUpdate,
+		Event: simulator.SimEventMsg{
+			UpdateID: simulator.SimPingStateUpdated,
+			Event: simulator.PingStateUpdate{
+				Enabled: sim.PingingEnabled(),
+				Active:  sim.PingingActive(),
+			},
+		},
+	}); err != nil {
+		log.Println(err)
+		return
+	}
+
+	// Send current network stats
+	treeStretch, snekStretch := sim.CalculateStretch()
+	if err := conn.WriteJSON(simulator.StateUpdateMsg{
+		MsgID: simulator.SimStateUpdate,
+		Event: simulator.SimEventMsg{
+			UpdateID: simulator.SimNetworkStatsUpdated,
+			Event: simulator.NetworkStatsUpdate{
+				TreePathConvergence:  uint64(sim.CalculateTreePathConvergence()),
+				TreeAverageStretch:   treeStretch,
+				SnakePathConvergence: uint64(sim.CalculateSNEKPathConvergence()),
+				SnakeAverageStretch:  snekStretch,
+			}},
+	}); err != nil {
+		log.Println(err)
+		return
+	}
+
 	// Start event handler for future sim events
 	handleSimEvents(log, conn, ch)
 	log.Printf("Closing WsSimReporter::%d\n", connID)
@@ -369,6 +357,10 @@ func handleSimEvents(log *log.Logger, conn *websocket.Conn, ch <-chan simulator.
 			eventType = simulator.SimSnakeDescUpdated
 		case simulator.TreeRootAnnUpdate:
 			eventType = simulator.SimTreeRootAnnUpdated
+		case simulator.PingStateUpdate:
+			eventType = simulator.SimPingStateUpdated
+		case simulator.NetworkStatsUpdate:
+			eventType = simulator.SimNetworkStatsUpdated
 		}
 
 		if err := conn.WriteJSON(simulator.StateUpdateMsg{
