@@ -87,6 +87,7 @@ func (q *fairFIFOQueue) push(frame *types.Frame) bool {
 		// There is space in the queue
 		q.count++
 	default:
+		println("Queue is full - dropping a frame from the head of the queue")
 		// The queue is full - perform a head drop
 		<-q.queues[h]
 		q.dropped++
