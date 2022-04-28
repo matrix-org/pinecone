@@ -41,8 +41,8 @@ func (s *state) _nextHopsFor(from *peer, frame *types.Frame) (*peer, types.Virtu
 
 // _forward handles frames received from a given peer. In most cases, this function will
 // look up the best next-hop for a given frame and forward it to the appropriate peer
-// queue if possible. In some special cases, like tree announcements, path setups and
-// teardowns, special handling will be done before forwarding if needed.
+// queue if possible. In some special cases, like tree announcements,
+// special handling will be done before forwarding if needed.
 func (s *state) _forward(p *peer, f *types.Frame) error {
 	if s._filterPacket != nil && s._filterPacket(p.public, f) {
 		s.r.log.Printf("Packet of type %s destined for port %d [%s] was dropped due to filter rules", f.Type.String(), p.port, p.public.String()[:8])

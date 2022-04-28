@@ -77,8 +77,7 @@ func (s *state) _maintainSnake() {
 		}
 	}
 
-	// Clean up any paths that were installed more than 5 seconds ago but haven't
-	// been activated by a setup ACK.
+	// Clean up any paths that are older than the expiry period.
 	for k, v := range s._table {
 		if !v.valid() {
 			delete(s._table, k)
@@ -130,6 +129,7 @@ func (s *state) _bootstrapNow() {
 	if err != nil {
 		return
 	}
+
 	// Construct the frame. We set the destination key to be our own public key. As
 	// the bootstrap routing defaults to routing towards higher keys, this should
 	// mean that the message gets forwarded up to the next highest key from ours.
@@ -312,8 +312,7 @@ func getNextHopSNEK(params virtualSnakeNextHopParams) (*peer, types.VirtualSnake
 }
 
 // _handleBootstrap is called in response to receiving a bootstrap packet.
-// This function will send a bootstrap ACK back to the sender. Returns true
-// if the bootstrap was handled and false otherwise.
+// Returns true if the bootstrap was handled and false otherwise.
 func (s *state) _handleBootstrap(from, to *peer, rx *types.Frame) bool {
 	// Unmarshal the bootstrap.
 	var bootstrap types.VirtualSnakeBootstrap
@@ -336,6 +335,7 @@ func (s *state) _handleBootstrap(from, to *peer, rx *types.Frame) bool {
 			return false
 		}
 	}
+
 	// Check that the root key and sequence number in the update match our
 	// current root, otherwise we won't be able to route back to them using
 	// tree routing anyway. If they don't match, silently drop the bootstrap.
@@ -369,14 +369,13 @@ func (s *state) _handleBootstrap(from, to *peer, rx *types.Frame) bool {
 		},
 	}
 
-	// Now let's see if this is a suitable ascending entry.
+	// Now let's see if this is a suitable descending entry.
 	update := false
 	desc := s._descending
 	switch {
 	case !root.Root.EqualTo(&bootstrap.Root):
-		// The root key in the bootstrap ACK doesn't match our own key, or the
-		// sequence doesn't match, so it is quite possible that routing setup packets
-		// using tree routing would fail.
+		// The root key in the bootstrap doesn't match our own key
+		// so it is quite possible that tree routing would fail.
 	case !util.LessThan(rx.DestinationKey, s.r.public):
 		// The bootstrapping key should be less than ours but it isn't.
 	case desc != nil && desc.valid():
@@ -384,7 +383,7 @@ func (s *state) _handleBootstrap(from, to *peer, rx *types.Frame) bool {
 		switch {
 		case desc.PublicKey == rx.DestinationKey:
 			// We've received another bootstrap from our direct descending node.
-			// Send back an acknowledgement as this is OK.
+			// Accept the update as this is OK.
 			update = true
 		case util.DHTOrdered(desc.PublicKey, rx.DestinationKey, s.r.public):
 			// The bootstrapping node is closer to us than our previous descending

@@ -218,10 +218,8 @@ func (s *state) _portDisconnected(peer *peer) {
 	// Delete the last tree announcement that we received from this peer.
 	delete(s._announcements, peer)
 
-	// Scan the local DHT table for any routes that transited this now-dead
-	// peering. If we find any then we need to send teardowns in the opposite
-	// direction, so that nodes further along the path will learn that the
-	// path was broken.
+	// Scan the local routing table for any routes that transited this now-dead
+	// peering and remove them from the routing table.
 	for k, v := range s._table {
 		if v.Source == peer || v.Destination == peer {
 			delete(s._table, k)
@@ -229,8 +227,7 @@ func (s *state) _portDisconnected(peer *peer) {
 	}
 
 	// If the descending path was lost because it went via the now-dead
-	// peering then clear that path (although we can't send a teardown) and
-	// wait for another incoming setup.
+	// peering then clear that path and wait for another incoming setup.
 	if desc := s._descending; desc != nil && desc.Source == peer {
 		s._setDescendingNode(nil)
 	}
