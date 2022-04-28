@@ -142,9 +142,10 @@ func (s *state) _bootstrapNow() {
 		PublicKey: types.FullMask,
 		Sequence:  0,
 	}
+
 	// Bootstrap messages are routed using SNEK routing with special rules for
 	// bootstrap packets.
-	if p, w := s._nextHopsSNEK(s.r.local, send, true); p != nil && p.proto != nil {
+	if p, w := s._nextHopsSNEK(s.r.local, send); p != nil && p.proto != nil {
 		send.Watermark = w
 		p.proto.push(send)
 	}
@@ -164,10 +165,8 @@ type virtualSnakeNextHopParams struct {
 	snakeRoutes       virtualSnakeTable
 }
 
-// _nextHopsSNEK locates the best next-hop for a given SNEK-routed frame. The
-// bootstrap flag determines whether the frame should be routed using bootstrap
-// specific rules — this should only be used for VirtualSnakeBootstrap frames.
-func (s *state) _nextHopsSNEK(from *peer, rx *types.Frame, bootstrap bool) (*peer, types.VirtualSnakeWatermark) {
+// _nextHopsSNEK locates the best next-hop for a given SNEK-routed frame.
+func (s *state) _nextHopsSNEK(from *peer, rx *types.Frame) (*peer, types.VirtualSnakeWatermark) {
 	return getNextHopSNEK(virtualSnakeNextHopParams{
 		from,
 		rx.Type == types.TypeVirtualSnakeBootstrap,

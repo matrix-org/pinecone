@@ -30,7 +30,7 @@ func (s *state) _nextHopsFor(from *peer, frame *types.Frame) (*peer, types.Virtu
 	switch frame.Type {
 	// SNEK routing
 	case types.TypeVirtualSnakeRouted, types.TypeVirtualSnakeBootstrap, types.TypeSNEKPing, types.TypeSNEKPong:
-		nexthop, watermark = s._nextHopsSNEK(from, frame, frame.Type == types.TypeVirtualSnakeBootstrap)
+		nexthop, watermark = s._nextHopsSNEK(from, frame)
 
 	// Tree routing
 	case types.TypeTreeRouted, types.TypeTreePing, types.TypeTreePong:
