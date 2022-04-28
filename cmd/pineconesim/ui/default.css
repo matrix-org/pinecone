@@ -16,13 +16,14 @@ body {
     --color-switch-blue: #6d8bac;
     --color-ems-purple: #7e69ff;
     --topo-panel-width: 150px;
-    --tool-panel-width: 187.5px;
     --topnav-height: 0px;
     --toggle-box-size: 35px;
     --toggle-box-margin: 10px;
-    --tool-panel-count: 5;
-    --topo-panel-count: 4;
+    --tool-panel-count: 6;
+    --tool-icon-width: 37.5px;
+    --tool-panel-width: calc(var(--tool-panel-count) * var(--tool-icon-width));
     --tool-icon-size: calc(var(--tool-panel-width) / var(--tool-panel-count));
+    --topo-panel-count: 4;
     --topo-icon-size: calc(var(--topo-panel-width) / var(--topo-panel-count));
 }
 
@@ -215,6 +216,10 @@ body {
 .netselect.active, .toolselect.active, .dropup:hover .dropup-button {
     color: var(--color-dull-grey);
     background-color: var(--color-logo-green); /* Add an active/current color */
+}
+
+.toolselect.sub-active {
+    color: var(--color-dark-red);
 }
 
 .toolselect:active, .netselect:active, .netselect.active:active, .toolselect.active:active, .dropup-content:active, .dropup-content button:active {
