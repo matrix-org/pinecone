@@ -31,7 +31,6 @@ import (
 
 type NeighbourInfo struct {
 	PublicKey types.PublicKey
-	PathID    types.VirtualSnakePathID
 }
 
 type PeerInfo struct {
