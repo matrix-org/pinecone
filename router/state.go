@@ -38,7 +38,6 @@ type state struct {
 	r              *Router
 	_peers         []*peer            // All switch ports, connected and disconnected
 	_descending    *virtualSnakeEntry // Next descending node in keyspace
-	_candidate     *virtualSnakeEntry // Candidate to replace the ascending node
 	_parent        *peer              // Our chosen parent in the tree
 	_announcements announcementTable  // Announcements received from our peers
 	_table         virtualSnakeTable  // Virtual snake DHT entries
@@ -56,7 +55,6 @@ func (s *state) _start() {
 	s._setParent(nil)
 	s._setDescendingNode(nil)
 
-	s._candidate = nil
 	s._ordering = 0
 	s._waiting = false
 
