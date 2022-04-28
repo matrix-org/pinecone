@@ -38,7 +38,6 @@ const (
 	SimPeerAdded
 	SimPeerRemoved
 	SimTreeParentUpdated
-	SimSnakeAscUpdated
 	SimSnakeDescUpdated
 	SimTreeRootAnnUpdated
 )
@@ -64,15 +63,12 @@ const (
 )
 
 type InitialNodeState struct {
-	PublicKey     string
-	NodeType      APINodeType
-	RootState     RootState
-	Peers         []PeerInfo
-	TreeParent    string
-	SnakeAsc      string
-	SnakeAscPath  string
-	SnakeDesc     string
-	SnakeDescPath string
+	PublicKey  string
+	NodeType   APINodeType
+	RootState  RootState
+	Peers      []PeerInfo
+	TreeParent string
+	SnakeDesc  string
 }
 
 type RootState struct {

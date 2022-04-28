@@ -305,12 +305,9 @@ func userProxyReporter(conn *websocket.Conn, connID uint64, sim *simulator.Simul
 				AnnTime:     node.Announcement.Time,
 				Coords:      node.Coords,
 			},
-			Peers:         peerConns,
-			TreeParent:    node.Parent,
-			SnakeAsc:      node.AscendingPeer,
-			SnakeAscPath:  node.AscendingPathID,
-			SnakeDesc:     node.DescendingPeer,
-			SnakeDescPath: node.DescendingPathID,
+			Peers:      peerConns,
+			TreeParent: node.Parent,
+			SnakeDesc:  node.DescendingPeer,
 		}
 
 		if batchSize == int(maxBatchSize) || end {
@@ -363,8 +360,6 @@ func handleSimEvents(log *log.Logger, conn *websocket.Conn, ch <-chan simulator.
 			eventType = simulator.SimPeerRemoved
 		case simulator.TreeParentUpdate:
 			eventType = simulator.SimTreeParentUpdated
-		case simulator.SnakeAscUpdate:
-			eventType = simulator.SimSnakeAscUpdated
 		case simulator.SnakeDescUpdate:
 			eventType = simulator.SimSnakeDescUpdated
 		case simulator.TreeRootAnnUpdate:

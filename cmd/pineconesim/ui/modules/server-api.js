@@ -16,9 +16,8 @@ export const APIUpdateID = {
     PeerAdded: 3,
     PeerRemoved: 4,
     TreeParentUpdated: 5,
-    SnakeAscUpdated: 6,
-    SnakeDescUpdated: 7,
-    TreeRootAnnUpdated: 8,
+    SnakeDescUpdated: 6,
+    TreeRootAnnUpdated: 7,
 };
 
 export const APICommandID = {

@@ -307,22 +307,7 @@ class Graph {
         }
     }
 
-    setSnekAsc(id, asc, prev, path) {
-        this.removeEdge("snake", id, prev);
-        if (asc != "") {
-            this.addEdge("snake", id, asc);
-        }
-
-        if (Nodes.has(id)) {
-            let node = Nodes.get(id);
-            node.snekAsc = asc;
-            node.snekAscPath = path.replace(/\"/g, "").toUpperCase();
-
-            this.updateUI(id);
-        }
-    }
-
-    setSnekDesc(id, desc, prev, path) {
+    setSnekDesc(id, desc, prev) {
         this.removeEdge("snake", id, prev);
         if (desc != "") {
             this.addEdge("snake", id, desc);
@@ -331,7 +316,6 @@ class Graph {
         if (Nodes.has(id)) {
             let node = Nodes.get(id);
             node.snekDesc = desc;
-            node.snekDescPath = path.replace(/\"/g, "").toUpperCase();
 
             this.updateUI(id);
         }
@@ -622,10 +606,7 @@ function newNode(key, type) {
         peers: [],
         key: key,
         treeParent: "",
-        snekAsc: "",
-        snekAscPath: "",
         snekDesc: "",
-        snekDescPath: "",
     };
 }
 
@@ -659,7 +640,6 @@ function handleNodeHoverUpdate() {
             "<br>Coords: [" + node.coords + "]" +
             "<br>Tree Parent: " + node.treeParent +
             "<br>SNEK Desc: " + node.snekDesc +
-            "<br>SNEK Asc: " + node.snekAsc +
             "<br><br><u>Announcement</u>" +
             "<br>Root: Node " + node.announcement.root +
             "<br>Sequence: " + node.announcement.sequence +
@@ -722,9 +702,6 @@ function handleNodePanelUpdate() {
                 "<tr><td>Root Key:</td><td><code>" + getNodeKey(node.announcement.root).slice(0, 16).replace(/\"/g, "").toUpperCase() + "</code></td></tr>" +
                 "<tr><td>Tree Parent:</td><td><code>" + node.treeParent + "</code></td></tr>" +
                 "<tr><td>Descending Node:</td><td><code>" + node.snekDesc + "</code></td></tr>" +
-                "<tr><td>Descending Path:</td><td><code>" + node.snekDescPath + "</code></td></tr>" +
-                "<tr><td>Ascending Node:</td><td><code>" + node.snekAsc + "</code></td></tr>" +
-                "<tr><td>Ascending Path:</td><td><code>" + node.snekAscPath + "</code></td></tr>" +
                 "</table>" +
                 "<hr><h4><u>Peers</u></h4>" +
                 "<table>" +
@@ -733,8 +710,8 @@ function handleNodePanelUpdate() {
                 "</table>" +
                 "<hr><h4><u>SNEK Routes</u></h4>" +
                 "<table>" +
-                "<tr><th>Public Key</th><th>Path ID</th><th>Src</th><th>Dst</th><th>Seq</th></tr>" +
-                "<tr><td><code><b>N/A</b></code></td><td><code><b>N/A</b></code></td><td><code><b>N/A</b></code></td><td><code><b>N/A</b></code></td><td><code><b>N/A</b></code></td></tr>" +
+                "<tr><th>Public Key</th><th>Src</th><th>Dst</th><th>Seq</th></tr>" +
+                "<tr><td><code><b>N/A</b></code></td><td><code><b>N/A</b></code></td><td><code><b>N/A</b></code></td><td><code><b>N/A</b></code></td></tr>" +
                 "</table><hr><br>";
         }
     }
@@ -750,7 +727,7 @@ function handleStatsPanelUpdate() {
 
     if (graph && graph.isStarted()) {
         for (const [key, value] of Nodes.entries()) {
-            nodeTable += "<tr><td><code>" + key + "</code></td><td><code>[" + value.coords + "]</code></td><td><code>" + value.announcement.root + "</code></td><td><code>" + getNodeKey(value.snekDesc).slice(0, 4).replace(/\"/g, "").toUpperCase() + "</code></td><td><code>" + value.key.slice(0, 4).replace(/\"/g, "").toUpperCase() + "</code></td><td><code>" + getNodeKey(value.snekAsc).slice(0, 4).replace(/\"/g, "").toUpperCase() + "</code></td></tr>";
+            nodeTable += "<tr><td><code>" + key + "</code></td><td><code>[" + value.coords + "]</code></td><td><code>" + value.announcement.root + "</code></td><td><code>" + getNodeKey(value.snekDesc).slice(0, 4).replace(/\"/g, "").toUpperCase() + "</code></td><td><code>" + value.key.slice(0, 4).replace(/\"/g, "").toUpperCase();
 
             peerLinks += value.peers.length;
             if (rootConvergence.has(value.announcement.root)) {
@@ -777,7 +754,7 @@ function handleStatsPanelUpdate() {
         "</table>" +
         "<hr><h4><u>Node Summary</u></h4>" +
         "<table>" +
-        "<tr><th>Name</th><th>Coords</th><th>Root</th><th>↓</th><th>Key</th><th>↑</th></tr>" +
+        "<tr><th>Name</th><th>Coords</th><th>Root</th><th>↓</th><th>Key</th></tr>" +
         nodeTable +
         "</table>" +
         "<hr><h4><u>Tree Building</u></h4>" +

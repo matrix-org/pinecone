@@ -30,7 +30,6 @@ type manholeResponse struct {
 	Parent *peer                    `json:"parent"`
 	Peers  map[string][]manholePeer `json:"peers"`
 	SNEK   struct {
-		Ascending  *virtualSnakeEntry   `json:"ascending"`
 		Descending *virtualSnakeEntry   `json:"descending"`
 		Paths      []*virtualSnakeEntry `json:"paths"`
 	} `json:"snek"`

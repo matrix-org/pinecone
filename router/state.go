@@ -181,15 +181,11 @@ func (s *state) _setDescendingNode(node *virtualSnakeEntry) {
 
 	s.r.Act(nil, func() {
 		peerID := ""
-		pathID := []byte{}
 		if node != nil {
 			peerID = node.PublicKey.String()
-			/*if node.virtualSnakeIndex != nil {
-				pathID, _ = node.PathID.MarshalJSON()
-			}*/
 		}
 
-		s.r._publish(events.SnakeDescUpdate{PeerID: peerID, PathID: string(pathID)})
+		s.r._publish(events.SnakeDescUpdate{PeerID: peerID})
 	})
 }
 
