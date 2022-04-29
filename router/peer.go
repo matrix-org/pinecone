@@ -62,8 +62,8 @@ type peer struct {
 	public     types.PublicKey    // Not mutated after peer setup.
 	keepalives bool               // Not mutated after peer setup.
 	started    atomic.Bool        // Thread-safe toggle for marking a peer as down.
-	proto      *fifoQueue         // Thread-safe queue for outbound protocol messages.
-	traffic    *fairFIFOQueue     // Thread-safe queue for outbound traffic messages.
+	proto      queue              // Thread-safe queue for outbound protocol messages.
+	traffic    queue              // Thread-safe queue for outbound traffic messages.
 }
 
 func (p *peer) MarshalJSON() ([]byte, error) {

@@ -42,8 +42,8 @@ type manholePeer struct {
 	PeerType     ConnectionPeerType `json:"type,omitempty"`
 	PeerZone     ConnectionZone     `json:"zone,omitempty"`
 	PeerURI      ConnectionURI      `json:"uri,omitempty"`
-	ProtoQueue   *fifoQueue         `json:"proto_queue"`
-	TrafficQueue *fairFIFOQueue     `json:"traffic_queue"`
+	ProtoQueue   queue              `json:"proto_queue"`
+	TrafficQueue queue              `json:"traffic_queue"`
 }
 
 func (r *Router) ManholeHandler(w http.ResponseWriter, req *http.Request) {
