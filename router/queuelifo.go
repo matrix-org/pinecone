@@ -79,6 +79,10 @@ func (q *lifoQueue) pop() (*types.Frame, bool) { // nolint:unused
 	return frame, true
 }
 
+func (q *lifoQueue) ack() { // nolint:unused
+	// no-op on this queue type
+}
+
 func (q *lifoQueue) reset() { // nolint:unused
 	q.mutex.Lock()
 	defer q.mutex.Unlock()

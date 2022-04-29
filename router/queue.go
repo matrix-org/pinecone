@@ -1,4 +1,4 @@
-// Copyright 2021 The Matrix.org Foundation C.I.C.
+// Copyright 2022 The Matrix.org Foundation C.I.C.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,12 +14,13 @@
 
 package router
 
-const (
-	capabilityLengthenedRootInterval = 1 << iota
-	capabilityCryptographicSetups
-	capabilitySetupACKs // nolint:deadcode,varcheck
-	capabilityDedupedCoordinateInfo
-)
+import "github.com/matrix-org/pinecone/types"
 
-const ourVersion uint8 = 1
-const ourCapabilities uint32 = capabilityLengthenedRootInterval | capabilityCryptographicSetups | capabilitySetupACKs | capabilityDedupedCoordinateInfo
+type queue interface {
+	queuecount() int
+	queuesize() int
+	push(frame *types.Frame) bool
+	pop() <-chan *types.Frame
+	ack()
+	reset()
+}
