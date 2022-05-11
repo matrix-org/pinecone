@@ -34,7 +34,7 @@ func (r *Router) newLocalPeer() *peer {
 		zone:     "local",
 		peertype: 0,
 		public:   r.public,
-		traffic:  newFairFIFOQueue(trafficBuffer),
+		traffic:  newFairFIFOQueue(trafficBuffer, r.log),
 	}
 	return peer
 }
