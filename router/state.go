@@ -268,7 +268,7 @@ func (s *state) _portDisconnected(peer *peer) {
 	}
 }
 
-func (s *state) _lookupPeer(addr net.Addr) *peer {
+func (s *state) _lookupPeerForAddr(addr net.Addr) *peer {
 	var result *peer
 
 	for _, p := range s._peers {

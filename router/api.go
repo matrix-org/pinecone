@@ -74,7 +74,7 @@ func (r *Router) NextHop(from net.Addr, frameType types.FrameType, dest net.Addr
 	var nexthop net.Addr
 	if from != nil {
 		phony.Block(r.state, func() {
-			fromPeer = r.state._lookupPeer(from)
+			fromPeer = r.state._lookupPeerForAddr(from)
 		})
 
 		if fromPeer == nil {
