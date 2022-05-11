@@ -363,8 +363,11 @@ func (p *peer) _read() {
 
 func (p *peer) _coords() (types.Coordinates, error) {
 	var err error
-	coords := p.router.state._coords()
-	if p != p.router.local {
+	var coords types.Coordinates
+
+	if p == p.router.local {
+		coords = p.router.state._coords()
+	} else {
 		if announcement, ok := p.router.state._announcements[p]; ok {
 			coords = announcement.PeerCoords()
 		} else {
