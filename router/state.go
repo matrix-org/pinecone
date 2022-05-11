@@ -268,6 +268,8 @@ func (s *state) _portDisconnected(peer *peer) {
 	}
 }
 
+// _lookupPeerForAddr finds and returns the peer corresponding to the provided
+// net.Addr if such a peer exists.
 func (s *state) _lookupPeerForAddr(addr net.Addr) *peer {
 	var result *peer
 
