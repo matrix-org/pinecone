@@ -25,6 +25,7 @@ import (
 const fairFIFOQueueSize = 16
 
 type fairFIFOQueue struct {
+	log     types.Logger
 	queues  map[uint16]chan *types.Frame // queue ID -> frame, map for randomness
 	num     uint16                       // how many queues should we have?
 	count   int                          // how many queued items in total?
@@ -35,8 +36,9 @@ type fairFIFOQueue struct {
 	mutex   sync.Mutex
 }
 
-func newFairFIFOQueue(num uint16) *fairFIFOQueue {
+func newFairFIFOQueue(num uint16, log types.Logger) *fairFIFOQueue {
 	q := &fairFIFOQueue{
+		log:    log,
 		offset: rand.Uint64(),
 		num:    num,
 	}
@@ -87,7 +89,7 @@ func (q *fairFIFOQueue) push(frame *types.Frame) bool {
 		// There is space in the queue
 		q.count++
 	default:
-		println("Queue is full - dropping a frame from the head of the queue")
+		q.log.Println("Queue is full - dropping a frame from the head of the queue")
 		// The queue is full - perform a head drop
 		<-q.queues[h]
 		q.dropped++
