@@ -65,9 +65,9 @@ func (s *state) _forward(p *peer, f *types.Frame) error {
 	var nexthop *peer
 	switch f.Type {
 	case types.TypeTreeRouted, types.TypeVirtualSnakeBootstrapACK, types.TypeVirtualSnakeSetup:
-		nexthop = s._nextHopsFor(p, f.Type, net.Addr(f.Destination))
+		nexthop = s._nextHopsFor(p, f.Type, f.Destination)
 	case types.TypeVirtualSnakeBootstrap, types.TypeVirtualSnakeRouted, types.TypeVirtualSnakeTeardown:
-		nexthop = s._nextHopsFor(p, f.Type, net.Addr(f.DestinationKey))
+		nexthop = s._nextHopsFor(p, f.Type, f.DestinationKey)
 	}
 	deadend := nexthop == p.router.local
 

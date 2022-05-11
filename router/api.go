@@ -69,12 +69,12 @@ func (r *Router) Peers() []PeerInfo {
 	return infos
 }
 
-func (r *Router) NextHop(from *net.Addr, frameType types.FrameType, dest net.Addr) *net.Addr {
+func (r *Router) NextHop(from net.Addr, frameType types.FrameType, dest net.Addr) net.Addr {
 	var fromPeer *peer
-	var nexthop *net.Addr
+	var nexthop net.Addr
 	if from != nil {
 		phony.Block(r.state, func() {
-			fromPeer = r.state._lookupPeer(*from)
+			fromPeer = r.state._lookupPeer(from)
 		})
 
 		if fromPeer == nil {
@@ -98,15 +98,13 @@ func (r *Router) NextHop(from *net.Addr, frameType types.FrameType, dest net.Add
 			})
 
 			if err != nil {
-				r.log.Println("failed retrieving coords for nexthop: %w", err)
+				r.log.Println("failed retrieving coords for nexthop: %w")
 				return nil
 			}
 
-			coordsAddr := net.Addr(coords)
-			nexthop = &coordsAddr
+			nexthop = coords
 		case types.PublicKey:
-			key := net.Addr(nextPeer.public)
-			nexthop = &key
+			nexthop = nextPeer.public
 		}
 	}
 

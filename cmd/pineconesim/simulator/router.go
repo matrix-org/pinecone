@@ -106,7 +106,7 @@ func (r *DefaultRouter) Ping(ctx context.Context, a net.Addr) (uint16, time.Dura
 		return 0, 0, fmt.Errorf("failed marshalling ping payload: %w", err)
 	}
 
-	_, writeErr := r.rtr.WriteTo(p, *nexthop)
+	_, writeErr := r.rtr.WriteTo(p, nexthop)
 	if writeErr != nil {
 		return 0, 0, fmt.Errorf("failed sending ping to node: %w", writeErr)
 	}
@@ -204,8 +204,8 @@ func (r *DefaultRouter) OverlayReadHandler(quit <-chan bool) {
 			continue
 		}
 
-		var fromAddr *net.Addr
-		fromAddr = &addr
+		var fromAddr net.Addr
+		fromAddr = addr
 		if payload.pingType == TreePing || payload.pingType == SNEKPing {
 			if !pingAtDest {
 				payload.hops++
@@ -224,7 +224,7 @@ func (r *DefaultRouter) OverlayReadHandler(quit <-chan bool) {
 			continue
 		}
 
-		var nexthop *net.Addr
+		var nexthop net.Addr
 		if payload.pingType == TreePing || payload.pingType == SNEKPing {
 			nexthop = r.rtr.NextHop(fromAddr, frameType, payload.destination)
 		} else {
@@ -234,7 +234,7 @@ func (r *DefaultRouter) OverlayReadHandler(quit <-chan bool) {
 			continue
 		}
 
-		_, writeErr := r.rtr.WriteTo(buf, *nexthop)
+		_, writeErr := r.rtr.WriteTo(buf, nexthop)
 		if writeErr != nil {
 			continue
 		}
