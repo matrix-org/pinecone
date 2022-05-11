@@ -267,3 +267,31 @@ func (s *state) _portDisconnected(peer *peer) {
 		s._bootstrapNow()
 	}
 }
+
+// _lookupPeerForAddr finds and returns the peer corresponding to the provided
+// net.Addr if such a peer exists.
+func (s *state) _lookupPeerForAddr(addr net.Addr) *peer {
+	var result *peer
+
+	for _, p := range s._peers {
+		if p == nil || !p.started.Load() {
+			continue
+		}
+
+		switch fromAddr := addr.(type) {
+		case types.Coordinates:
+			coords, err := p._coords()
+			if err == nil && fromAddr.EqualTo(coords) {
+				result = p
+				break
+			}
+		case types.PublicKey:
+			if fromAddr == p.public {
+				result = p
+				break
+			}
+		}
+	}
+
+	return result
+}

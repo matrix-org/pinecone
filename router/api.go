@@ -18,11 +18,8 @@
 package router
 
 import (
-	"context"
 	"encoding/hex"
-	"fmt"
 	"net"
-	"time"
 
 	"github.com/Arceliar/phony"
 	"github.com/matrix-org/pinecone/router/events"
@@ -72,50 +69,44 @@ func (r *Router) Peers() []PeerInfo {
 	return infos
 }
 
-func (r *Router) Ping(ctx context.Context, a net.Addr) (uint16, time.Duration, error) {
-	id := a.String()
-	switch dst := a.(type) {
-	case types.PublicKey:
-		if dst == r.public {
-			return 0, 0, nil
-		}
+func (r *Router) NextHop(from net.Addr, frameType types.FrameType, dest net.Addr) net.Addr {
+	var fromPeer *peer
+	var nexthop net.Addr
+	if from != nil {
 		phony.Block(r.state, func() {
-			frame := getFrame()
-			frame.Type = types.TypeSNEKPing
-			frame.DestinationKey = dst
-			frame.SourceKey = r.public
-			_ = r.state._forward(r.local, frame)
+			fromPeer = r.state._lookupPeerForAddr(from)
 		})
 
-	case types.Coordinates:
-		if dst.EqualTo(r.state.coords()) {
-			return 0, 0, nil
+		if fromPeer == nil {
+			r.log.Println("could not find peer info for previous peer")
+			return nil
 		}
-		phony.Block(r.state, func() {
-			frame := getFrame()
-			frame.Type = types.TypeTreePing
-			frame.Destination = dst
-			frame.Source = r.state._coords()
-			_ = r.state._forward(r.local, frame)
-		})
+	}
 
-	default:
-		return 0, 0, &net.AddrError{
-			Err:  "unexpected address type",
-			Addr: a.String(),
+	var nextPeer *peer
+	phony.Block(r.state, func() {
+		nextPeer = r.state._nextHopsFor(fromPeer, frameType, dest)
+	})
+
+	if nextPeer != nil {
+		switch (dest).(type) {
+		case types.Coordinates:
+			var err error
+			coords := types.Coordinates{}
+			phony.Block(r.state, func() {
+				coords, err = nextPeer._coords()
+			})
+
+			if err != nil {
+				r.log.Println("failed retrieving coords for nexthop: %w")
+				return nil
+			}
+
+			nexthop = coords
+		case types.PublicKey:
+			nexthop = nextPeer.public
 		}
 	}
-	start := time.Now()
-	v, existing := r.pings.LoadOrStore(id, make(chan uint16))
-	if existing {
-		return 0, 0, fmt.Errorf("a ping to this node is already in progress")
-	}
-	defer r.pings.Delete(id)
-	ch := v.(chan uint16)
-	select {
-	case <-ctx.Done():
-		return 0, 0, fmt.Errorf("ping timed out")
-	case hops := <-ch:
-		return hops, time.Since(start), nil
-	}
+
+	return nexthop
 }

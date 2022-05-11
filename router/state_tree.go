@@ -193,9 +193,9 @@ type treeNextHopParams struct {
 // _nextHopsTree returns the best next-hop candidate for a given frame. The
 // "from" peer must be supplied in order to prevent routing loops. It is
 // possible for this function to return nil if no next best-hop is available.
-func (s *state) _nextHopsTree(from *peer, f *types.Frame) *peer {
+func (s *state) _nextHopsTree(from *peer, dest types.Coordinates) *peer {
 	nextHopParams := treeNextHopParams{
-		f.Destination,
+		dest,
 		s._coords(),
 		from,
 		s.r.local,

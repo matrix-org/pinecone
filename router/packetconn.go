@@ -85,23 +85,23 @@ func (r *Router) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 
 	switch ga := addr.(type) {
 	case types.Coordinates:
+		frame := getFrame()
+		frame.Type = types.TypeTreeRouted
+		frame.Destination = ga
+		frame.Source = r.state.coords()
+		frame.Payload = append(frame.Payload[:0], p...)
 		phony.Block(r.state, func() {
-			frame := getFrame()
-			frame.Type = types.TypeTreeRouted
-			frame.Destination = append(frame.Destination[:0], ga...)
-			frame.Source = append(frame.Source[:0], r.state.coords()...)
-			frame.Payload = append(frame.Payload[:0], p...)
 			_ = r.state._forward(r.local, frame)
 		})
 		return len(p), nil
 
 	case types.PublicKey:
+		frame := getFrame()
+		frame.Type = types.TypeVirtualSnakeRouted
+		frame.DestinationKey = ga
+		frame.SourceKey = r.public
+		frame.Payload = append(frame.Payload[:0], p...)
 		phony.Block(r.state, func() {
-			frame := getFrame()
-			frame.Type = types.TypeVirtualSnakeRouted
-			frame.DestinationKey = ga
-			frame.SourceKey = r.public
-			frame.Payload = append(frame.Payload[:0], p...)
 			_ = r.state._forward(r.local, frame)
 		})
 		return len(p), nil
