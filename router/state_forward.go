@@ -15,8 +15,8 @@
 package router
 
 import (
-	"encoding/binary"
 	"fmt"
+	"net"
 
 	"github.com/matrix-org/pinecone/types"
 )
@@ -24,9 +24,9 @@ import (
 // _nextHopsFor returns the next-hop for the given frame. It will examine the packet
 // type and use the correct routing algorithm to determine the next-hop. It is possible
 // for this function to return `nil` if there is no suitable candidate.
-func (s *state) _nextHopsFor(from *peer, frame *types.Frame) *peer {
+func (s *state) _nextHopsFor(from *peer, frameType types.FrameType, dest net.Addr) *peer {
 	var nexthop *peer
-	switch frame.Type {
+	switch frameType {
 	case types.TypeVirtualSnakeTeardown:
 		// Teardowns have their own logic so we do nothing with them
 		return nil
@@ -36,12 +36,18 @@ func (s *state) _nextHopsFor(from *peer, frame *types.Frame) *peer {
 		return nil
 
 	// SNEK routing
-	case types.TypeVirtualSnakeRouted, types.TypeVirtualSnakeBootstrap, types.TypeSNEKPing, types.TypeSNEKPong:
-		nexthop = s._nextHopsSNEK(frame, frame.Type == types.TypeVirtualSnakeBootstrap)
+	case types.TypeVirtualSnakeRouted, types.TypeVirtualSnakeBootstrap:
+		switch dest := (dest).(type) {
+		case types.PublicKey:
+			nexthop = s._nextHopsSNEK(dest, frameType)
+		}
 
 	// Tree routing
-	case types.TypeTreeRouted, types.TypeVirtualSnakeBootstrapACK, types.TypeVirtualSnakeSetup, types.TypeTreePing, types.TypeTreePong:
-		nexthop = s._nextHopsTree(from, frame)
+	case types.TypeTreeRouted, types.TypeVirtualSnakeBootstrapACK, types.TypeVirtualSnakeSetup:
+		switch dest := (dest).(type) {
+		case types.Coordinates:
+			nexthop = s._nextHopsTree(from, dest)
+		}
 	}
 	return nexthop
 }
@@ -56,7 +62,13 @@ func (s *state) _forward(p *peer, f *types.Frame) error {
 		return nil
 	}
 
-	nexthop := s._nextHopsFor(p, f)
+	var nexthop *peer
+	switch f.Type {
+	case types.TypeTreeRouted, types.TypeVirtualSnakeBootstrapACK, types.TypeVirtualSnakeSetup:
+		nexthop = s._nextHopsFor(p, f.Type, net.Addr(f.Destination))
+	case types.TypeVirtualSnakeBootstrap, types.TypeVirtualSnakeRouted, types.TypeVirtualSnakeTeardown:
+		nexthop = s._nextHopsFor(p, f.Type, net.Addr(f.DestinationKey))
+	}
 	deadend := nexthop == p.router.local
 
 	switch f.Type {
@@ -128,66 +140,6 @@ func (s *state) _forward(p *peer, f *types.Frame) error {
 		// Traffic type packets are forwarded normally by falling through. There
 		// are no special rules to apply to these packets, regardless of whether
 		// they are SNEK-routed or tree-routed.
-
-	case types.TypeSNEKPing:
-		if f.DestinationKey == s.r.public {
-			of := f
-			defer framePool.Put(of)
-			f = getFrame()
-			f.Type = types.TypeSNEKPong
-			f.DestinationKey = of.SourceKey
-			f.SourceKey = s.r.public
-			f.Extra = of.Extra
-			nexthop = s._nextHopsFor(s.r.local, f)
-		} else {
-			hops := binary.BigEndian.Uint16(f.Extra[:])
-			hops++
-			binary.BigEndian.PutUint16(f.Extra[:], hops)
-		}
-
-	case types.TypeSNEKPong:
-		if f.DestinationKey == s.r.public {
-			id := f.SourceKey.String()
-			v, ok := s.r.pings.Load(id)
-			if !ok {
-				return nil
-			}
-			ch := v.(chan uint16)
-			ch <- binary.BigEndian.Uint16(f.Extra[:])
-			close(ch)
-			s.r.pings.Delete(id)
-			return nil
-		}
-
-	case types.TypeTreePing:
-		if deadend {
-			of := f
-			defer framePool.Put(of)
-			f = getFrame()
-			f.Type = types.TypeTreePong
-			f.Destination = append(f.Destination[:0], of.Source...)
-			f.Source = append(f.Source[:0], s._coords()...)
-			f.Extra = of.Extra
-			nexthop = s._nextHopsFor(s.r.local, f)
-		} else {
-			hops := binary.BigEndian.Uint16(f.Extra[:])
-			hops++
-			binary.BigEndian.PutUint16(f.Extra[:], hops)
-		}
-
-	case types.TypeTreePong:
-		if deadend {
-			id := f.Source.String()
-			v, ok := s.r.pings.Load(id)
-			if !ok {
-				return nil
-			}
-			ch := v.(chan uint16)
-			ch <- binary.BigEndian.Uint16(f.Extra[:])
-			close(ch)
-			s.r.pings.Delete(id)
-			return nil
-		}
 	}
 
 	// If there's a suitable next-hop then try sending the packet. If we fail

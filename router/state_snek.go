@@ -172,7 +172,7 @@ func (s *state) _bootstrapNow() {
 	send.Payload = append(send.Payload[:0], b[:n]...)
 	// Bootstrap messages are routed using SNEK routing with special rules for
 	// bootstrap packets.
-	if p := s._nextHopsSNEK(send, true); p != nil && p.proto != nil {
+	if p := s._nextHopsSNEK(send.DestinationKey, types.TypeVirtualSnakeBootstrap); p != nil && p.proto != nil {
 		p.proto.push(send)
 	}
 }
@@ -192,11 +192,11 @@ type virtualSnakeNextHopParams struct {
 // _nextHopsSNEK locates the best next-hop for a given SNEK-routed frame. The
 // bootstrap flag determines whether the frame should be routed using bootstrap
 // specific rules — this should only be used for VirtualSnakeBootstrap frames.
-func (s *state) _nextHopsSNEK(rx *types.Frame, bootstrap bool) *peer {
+func (s *state) _nextHopsSNEK(dest types.PublicKey, frameType types.FrameType) *peer {
 	return getNextHopSNEK(virtualSnakeNextHopParams{
-		bootstrap,
-		rx.Type == types.TypeVirtualSnakeRouted || rx.Type == types.TypeTreeRouted,
-		rx.DestinationKey,
+		frameType == types.TypeVirtualSnakeBootstrap,
+		frameType == types.TypeVirtualSnakeRouted || frameType == types.TypeTreeRouted,
+		dest,
 		s.r.public,
 		s._parent,
 		s.r.local,
@@ -386,7 +386,7 @@ func (s *state) _handleBootstrap(from *peer, rx *types.Frame) error {
 	send.Source = s._coords()
 	send.SourceKey = s.r.public
 	send.Payload = append(send.Payload[:0], b[:n]...)
-	if p := s._nextHopsTree(s.r.local, send); p != nil && p.proto != nil {
+	if p := s._nextHopsTree(s.r.local, send.Destination); p != nil && p.proto != nil {
 		p.proto.push(send)
 	}
 	return nil
@@ -494,7 +494,7 @@ func (s *state) _handleBootstrapACK(from *peer, rx *types.Frame) error {
 	send.DestinationKey = rx.SourceKey
 	send.SourceKey = s.r.public
 	send.Payload = append(send.Payload[:0], b[:n]...)
-	nexthop := s.r.state._nextHopsTree(s.r.local, send)
+	nexthop := s.r.state._nextHopsTree(s.r.local, send.Destination)
 	// Importantly, we will only create a DHT entry if it appears as though our next
 	// hop has actually accepted the packet. Otherwise we'll create a path entry and
 	// the setup message won't go anywhere.

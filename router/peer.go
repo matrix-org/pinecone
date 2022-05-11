@@ -115,8 +115,6 @@ func (p *peer) send(f *types.Frame) bool {
 
 	// Traffic messages
 	case types.TypeVirtualSnakeRouted, types.TypeTreeRouted:
-		fallthrough
-	case types.TypeSNEKPing, types.TypeSNEKPong, types.TypeTreePing, types.TypeTreePong:
 		return p.traffic.push(f)
 	}
 
@@ -361,4 +359,18 @@ func (p *peer) _read() {
 	// This is effectively a recursive call to queue up the next read into
 	// the actor inbox.
 	p.reader.Act(nil, p._read)
+}
+
+func (p *peer) _coords() (types.Coordinates, error) {
+	var err error
+	coords := p.router.state._coords()
+	if p != p.router.local {
+		if announcement, ok := p.router.state._announcements[p]; ok {
+			coords = announcement.PeerCoords()
+		} else {
+			err = fmt.Errorf("no root announcement found for peer")
+		}
+	}
+
+	return coords, err
 }
