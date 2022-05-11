@@ -43,10 +43,6 @@ const (
 	TypeVirtualSnakeSetupACK                      // protocol frame, forwarded using special rules
 	TypeVirtualSnakeTeardown                      // protocol frame, forwarded using special rules
 	TypeVirtualSnakeRouted                        // traffic frame, forwarded using SNEK
-	TypeSNEKPing                                  // traffic frame, forwarded using SNEK
-	TypeSNEKPong                                  // traffic frame, forwarded using SNEK
-	TypeTreePing                                  // traffic frame, forwarded using tree
-	TypeTreePong                                  // traffic frame, forwarded using tree
 )
 
 const (
@@ -156,7 +152,7 @@ func (f *Frame) MarshalBinary(buffer []byte) (int, error) {
 			offset += copy(buffer[offset:], f.Payload[:payloadLen])
 		}
 
-	case TypeVirtualSnakeRouted, TypeSNEKPing, TypeSNEKPong: // destination = key, source = key
+	case TypeVirtualSnakeRouted: // destination = key, source = key
 		payloadLen := len(f.Payload)
 		binary.BigEndian.PutUint16(buffer[offset+0:offset+2], uint16(payloadLen))
 		offset += 2
@@ -288,7 +284,7 @@ func (f *Frame) UnmarshalBinary(data []byte) (int, error) {
 		offset += copy(f.Payload, data[offset:])
 		return offset, nil
 
-	case TypeVirtualSnakeRouted, TypeSNEKPing, TypeSNEKPong: // destination = key, source = key
+	case TypeVirtualSnakeRouted: // destination = key, source = key
 		payloadLen := int(binary.BigEndian.Uint16(data[offset+0 : offset+2]))
 		if payloadLen > cap(f.Payload) {
 			return 0, fmt.Errorf("payload length exceeds frame capacity")
@@ -348,14 +344,6 @@ func (t FrameType) String() string {
 		return "VirtualSnakeTeardown"
 	case TypeKeepalive:
 		return "Keepalive"
-	case TypeSNEKPing:
-		return "SNEKPing"
-	case TypeSNEKPong:
-		return "SNEKPong"
-	case TypeTreePing:
-		return "TreePing"
-	case TypeTreePong:
-		return "TreePong"
 	default:
 		return "Unknown"
 	}

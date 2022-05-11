@@ -46,7 +46,6 @@ type Router struct {
 	public       types.PublicKey
 	private      types.PrivateKey
 	active       sync.Map
-	pings        sync.Map // types.PublicKey -> chan struct{}
 	local        *peer
 	state        *state
 	secure       bool
