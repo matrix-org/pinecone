@@ -17,6 +17,7 @@ package simulator
 import (
 	"crypto/ed25519"
 	"log"
+	"math"
 	"net"
 	"runtime"
 	"sync"
@@ -61,7 +62,7 @@ func (r *EventSequenceRunner) Run(sim *Simulator) {
 	}
 }
 
-type RouterCreatorFn func(log *log.Logger, sk ed25519.PrivateKey, debug bool) SimRouter
+type RouterCreatorFn func(log *log.Logger, sk ed25519.PrivateKey, debug bool, quit <-chan bool) SimRouter
 
 type pair struct{ from, to string }
 
@@ -143,10 +144,10 @@ func (sim *Simulator) StartPinging(ping_period time.Duration) {
 				}
 				close(tasks)
 
-				numworkers := runtime.NumCPU() * 16
+				numWorkers := int(math.Min(12, float64(runtime.NumCPU())))
 				var wg sync.WaitGroup
-				wg.Add(numworkers)
-				for i := 0; i < numworkers; i++ {
+				wg.Add(numWorkers)
+				for i := 0; i < numWorkers; i++ {
 					go func() {
 						for pair := range tasks {
 							sim.log.Println("Tree ping from", pair.from, "to", pair.to)

@@ -15,8 +15,8 @@
 package router
 
 import (
-	"encoding/binary"
 	"fmt"
+	"net"
 
 	"github.com/matrix-org/pinecone/types"
 )
@@ -24,19 +24,25 @@ import (
 // _nextHopsFor returns the next-hop for the given frame. It will examine the packet
 // type and use the correct routing algorithm to determine the next-hop. It is possible
 // for this function to return `nil` if there is no suitable candidate.
-func (s *state) _nextHopsFor(from *peer, frame *types.Frame) (*peer, types.VirtualSnakeWatermark) {
+func (s *state) _nextHopsFor(from *peer, frameType types.FrameType, dest net.Addr, watermark types.VirtualSnakeWatermark) (*peer, types.VirtualSnakeWatermark) {
 	var nexthop *peer
-	var watermark types.VirtualSnakeWatermark
-	switch frame.Type {
+	var newWatermark types.VirtualSnakeWatermark
+	switch frameType {
 	// SNEK routing
-	case types.TypeVirtualSnakeRouted, types.TypeVirtualSnakeBootstrap, types.TypeSNEKPing, types.TypeSNEKPong:
-		nexthop, watermark = s._nextHopsSNEK(from, frame)
+	case types.TypeVirtualSnakeRouted, types.TypeVirtualSnakeBootstrap:
+		switch dest := (dest).(type) {
+		case types.PublicKey:
+			nexthop, newWatermark = s._nextHopsSNEK(dest, frameType, watermark)
+		}
 
 	// Tree routing
-	case types.TypeTreeRouted, types.TypeTreePing, types.TypeTreePong:
-		nexthop = s._nextHopsTree(from, frame)
+	case types.TypeTreeRouted:
+		switch dest := (dest).(type) {
+		case types.Coordinates:
+			nexthop = s._nextHopsTree(from, dest)
+		}
 	}
-	return nexthop, watermark
+	return nexthop, newWatermark
 }
 
 // _forward handles frames received from a given peer. In most cases, this function will
@@ -49,10 +55,23 @@ func (s *state) _forward(p *peer, f *types.Frame) error {
 		return nil
 	}
 
-	nexthop, watermark := s._nextHopsFor(p, f)
-	deadend := nexthop == nil || nexthop == p.router.local
+	// Allow overlay loopback traffic by directly forwarding it to the local router.
+	isTreeLoopback := f.Type == types.TypeTreeRouted && f.Destination.EqualTo(s._coords())
+	isSnakeLoopback := f.Type == types.TypeVirtualSnakeRouted && f.DestinationKey == s.r.public
+	if isTreeLoopback || isSnakeLoopback {
+		s.r.local.send(f)
+		return nil
+	}
 
-	isInitialPongResponse := false
+	var nexthop *peer
+	var watermark types.VirtualSnakeWatermark
+	switch f.Type {
+	case types.TypeTreeRouted:
+		nexthop, watermark = s._nextHopsFor(p, f.Type, f.Destination, f.Watermark)
+	case types.TypeVirtualSnakeBootstrap, types.TypeVirtualSnakeRouted:
+		nexthop, watermark = s._nextHopsFor(p, f.Type, f.DestinationKey, f.Watermark)
+	}
+	deadend := nexthop == nil || nexthop == p.router.local
 
 	switch f.Type {
 	case types.TypeTreeAnnouncement:
@@ -77,79 +96,13 @@ func (s *state) _forward(p *peer, f *types.Frame) error {
 		// Traffic type packets are forwarded normally by falling through. There
 		// are no special rules to apply to these packets, regardless of whether
 		// they are SNEK-routed or tree-routed.
-
-	case types.TypeSNEKPing:
-		if f.DestinationKey == s.r.public {
-			isInitialPongResponse = true
-			of := f
-			defer framePool.Put(of)
-			f = getFrame()
-			f.Type = types.TypeSNEKPong
-			f.DestinationKey = of.SourceKey
-			f.SourceKey = s.r.public
-			f.Extra = of.Extra
-			f.Watermark = types.VirtualSnakeWatermark{
-				PublicKey: types.FullMask,
-				Sequence:  0,
-			}
-			nexthop, watermark = s._nextHopsFor(s.r.local, f)
-		} else {
-			hops := binary.BigEndian.Uint16(f.Extra[:])
-			hops++
-			binary.BigEndian.PutUint16(f.Extra[:], hops)
-		}
-
-	case types.TypeSNEKPong:
-		if f.DestinationKey == s.r.public {
-			id := f.SourceKey.String()
-			v, ok := s.r.pings.Load(id)
-			if !ok {
-				return nil
-			}
-			ch := v.(chan uint16)
-			ch <- binary.BigEndian.Uint16(f.Extra[:])
-			close(ch)
-			s.r.pings.Delete(id)
-			return nil
-		}
-
-	case types.TypeTreePing:
-		if deadend {
-			isInitialPongResponse = true
-			of := f
-			defer framePool.Put(of)
-			f = getFrame()
-			f.Type = types.TypeTreePong
-			f.Destination = append(f.Destination[:0], of.Source...)
-			f.Source = append(f.Source[:0], s._coords()...)
-			f.Extra = of.Extra
-			nexthop, watermark = s._nextHopsFor(s.r.local, f)
-		} else {
-			hops := binary.BigEndian.Uint16(f.Extra[:])
-			hops++
-			binary.BigEndian.PutUint16(f.Extra[:], hops)
-		}
-
-	case types.TypeTreePong:
-		if deadend {
-			id := f.Source.String()
-			v, ok := s.r.pings.Load(id)
-			if !ok {
-				return nil
-			}
-			ch := v.(chan uint16)
-			ch <- binary.BigEndian.Uint16(f.Extra[:])
-			close(ch)
-			s.r.pings.Delete(id)
-			return nil
-		}
 	}
 
 	// If the packet's watermark is higher than the previous one or we are
 	// obviously looping, drop the packet.
 	// In the case of initial pong response frames, they are routed back to
 	// the peer we received the ping from so the "loop" is desired.
-	if (nexthop == p && !isInitialPongResponse) || watermark.WorseThan(f.Watermark) {
+	if nexthop == p || watermark.WorseThan(f.Watermark) {
 		return nil
 	}
 

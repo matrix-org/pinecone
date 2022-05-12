@@ -22,6 +22,7 @@ import (
 )
 
 type fifoQueue struct {
+	log     types.Logger
 	max     int
 	entries []chan *types.Frame
 	mutex   sync.Mutex
@@ -29,8 +30,9 @@ type fifoQueue struct {
 
 const fifoNoMax = 0
 
-func newFIFOQueue(max int) *fifoQueue {
+func newFIFOQueue(max int, log types.Logger) *fifoQueue {
 	q := &fifoQueue{
+		log: log,
 		max: max,
 	}
 	q.reset()
