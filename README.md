@@ -1,3 +1,5 @@
+[![License](https://img.shields.io/badge/License-Apache%202.0-yellowgreen.svg?style=flat-square)](https://opensource.org/licenses/Apache-2.0)
+[![#p2p](https://img.shields.io/badge/matrix-%23p2p-blue?style=flat-square)](https://matrix.to/#/#p2p:matrix.org)
 [![Docs](https://img.shields.io/badge/docs-main-blue.svg?style=flat-square)](https://matrix-org.github.io/pinecone/)
 
 # Pinecone
