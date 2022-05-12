@@ -1,0 +1,72 @@
+<h1 id="root-announcements">Root Announcements</h1>
+
+<p>It is necessary for the functioning of a Pinecone network for all nodes to hear an announcement from the same root node so that all nodes can agree on the same tree-space coordinate system for routing bootstrap and setup messages.</p>
+
+<p>A root announcement contains the following fields:</p>
+
+<table>
+  <tr>
+   <td colspan="2">Root public key
+   </td>
+  </tr>
+  <tr>
+   <td colspan="2">Root sequence
+   </td>
+  </tr>
+  <tr>
+   <td rowspan="3">Signature 1
+   </td>
+   <td>Signing public key
+   </td>
+  </tr>
+  <tr>
+   <td>Destination port number
+   </td>
+  </tr>
+  <tr>
+   <td>Signature covering all fields upto this signature
+   </td>
+  </tr>
+  <tr>
+   <td rowspan="3">Signature 2
+   </td>
+   <td>Signing public key
+   </td>
+  </tr>
+  <tr>
+   <td>Destination port number
+   </td>
+  </tr>
+  <tr>
+   <td>Signature covering all fields upto this signature
+   </td>
+  </tr>
+  <tr>
+   <td rowspan="3">Signature …n
+   </td>
+   <td>Signing public key
+   </td>
+  </tr>
+  <tr>
+   <td>Destination port number
+   </td>
+  </tr>
+  <tr>
+   <td>Signature covering all fields upto this signature
+   </td>
+  </tr>
+</table>
+
+<h4 id="sequence-number">Sequence number</h4>
+
+<p>The sequence number is a monotonically increasing unsigned integer, starting at 0. Since root announcements are flooded through the network, it is the goal for all nodes to eventually agree on the same <strong>Root public key</strong> and <strong>Sequence number</strong> following a root update.</p>
+
+<p>The sequence number <strong>must</strong> be increased when the root node wishes to send out a new root announcement by reaching the announcement time interval.</p>
+
+<p>The sequence number <strong>must not</strong> be increased when repeating the previous update to peers for any other reason, and must not be increased by any node that is not the root node before repeating the updates to their peers.</p>
+
+<h4 id="signatures">Signatures</h4>
+
+<p>Before sending the root announcement to a peer, it should sign the update, appending the signature to the end of the announcement. Doing so allows any node receiving an root announcement to ensure that none of the ancestors have forged earlier signatures within the update, and to more reliably detect loops within the tree (if a signature incorrectly appears within a given update more than once).</p>
+
+<p>Note that the <strong>Destination port number</strong> field must include the port number of the peer that the update is being sent to. Therefore if you are repeating the update to 6 peers, you will need to create 6 separate signed updates.</p>

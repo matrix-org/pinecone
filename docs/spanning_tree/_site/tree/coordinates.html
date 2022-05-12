@@ -1,0 +1,9 @@
+<h1 id="coordinates">Coordinates</h1>
+
+<p>A node’s coordinates describe the location of the node on the spanning tree. In effect, the coordinates are the path from the root node down to a given node, with each number representing the downward port number at each hop.</p>
+
+<p>For example, coordinates <code class="language-plaintext highlighter-rouge">[1 4 2 4]</code> describe the following path: starting via the root node’s port 1, followed by the next node’s port 4, followed by the next node’s port 2 and then, finally, the destination node’s parent’s port 4.</p>
+
+<p>The coordinates of the node are calculated by taking the chosen parent’s last root announcement and concatenating all of the <strong>Destination port number</strong> values in order.</p>
+
+<p>With that in mind, a root node, which has no chosen parent, will have a zero-length set of coordinates <code class="language-plaintext highlighter-rouge">[]</code> and a node’s coordinates will change each time it either selects a new parent, or receives a root announcement update from the parent with a different path described in the signatures.</p>
