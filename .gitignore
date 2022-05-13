@@ -1,3 +1,6 @@
 .DS_Store
 /pinecone
 .exe
+
+# Stuff from GitHub Pages
+docs/_site
