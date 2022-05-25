@@ -289,7 +289,9 @@ func getNextHopSNEK(params virtualSnakeNextHopParams) (*peer, types.VirtualSnake
 			case p.peertype < bestPeer.peertype:
 				// Prefer faster classes of links if possible.
 				newCandidate(bestKey, bestSeq, p)
-			case p.peertype == bestPeer.peertype && ann.receiveOrder < bestAnn.receiveOrder:
+			case p.peertype == bestPeer.peertype &&
+				ann.RootSequence == bestAnn.RootSequence &&
+				ann.receiveOrder < bestAnn.receiveOrder:
 				// Prefer links that have the lowest latency to the root.
 				newCandidate(bestKey, bestSeq, p)
 			}
