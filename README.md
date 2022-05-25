@@ -20,7 +20,7 @@ Go 1.14 or later.
 
 ### Is there any documentation?
 
-The best documentation today is the code itself, which is reasonably well commented. There is also some documentation on how the protocol works in the [Pinecone Wiki on GitHub](https://github.com/matrix-org/pinecone/wiki). 
+The best documentation today is the code itself, which is reasonably well commented. There is also some documentation on how the protocol works [here](https://matrix-org.github.io/pinecone/).
 
 ### Does Pinecone perform well?
 
