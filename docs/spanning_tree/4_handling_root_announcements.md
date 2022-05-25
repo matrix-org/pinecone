@@ -29,6 +29,14 @@ The following sanity checks must be performed on all incoming root announcement 
 
 If any of these conditions fail, the update is considered to be invalid, the update should be dropped and the peer that sent us this announcement should be disconnected as a result of the error.
 
+## Storing root announcements
+
+When storing a root announcement for a given peer, the following information should be kept:
+
+- The announcement itself;
+- The time the announcement was received;
+- The order in which the announcement was received;
+
 ## Deciding to re-parent
 
 Once the sanity checks have passed, if the update came from the currently selected parent, perform the following checks in order:
