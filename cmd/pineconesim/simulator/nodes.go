@@ -69,6 +69,7 @@ func (sim *Simulator) CreateNode(t string, nodeType APINodeType) error {
 		SimRouter:  sim.routerCreationMap[nodeType](logger, sk, true, quit),
 		l:          l,
 		ListenAddr: tcpaddr,
+		Type:       nodeType,
 	}
 	sim.nodeRunnerChannelsMutex.Lock()
 	sim.nodeRunnerChannels[t] = append(sim.nodeRunnerChannels[t], quit)
