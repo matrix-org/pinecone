@@ -63,7 +63,7 @@ These rules slightly differ based on whether the frame is considered to be a “
         2. If the **Best candidate** has the same peer connection type as the connected peer, the same root sequence number and a higher receive order number for it's tree root announcement than the connected peer:
             - Set the best candidate to the connected peer from the entry;
 
-A **Watermark** should be returned with the **Best candidate** from the next-hop algorithm. There are two cases to consider for what the watermark should be:
+A **Watermark** should be returned with the **Best candidate** from the next-hop algorithm as it is used to update the packet before forwarding. There are two cases to consider for what the watermark should be:
 
 1. If the **Best sequence number** is 0, then the **Watermark** returned should be the same as the existing watermark on the packet;
 2. If the **Best sequence number** is higher than 0, then the **Watermark** returned should contain the **Best key** and **Best sequence number** information;

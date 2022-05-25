@@ -36,6 +36,7 @@ When storing a root announcement for a given peer, the following information sho
 - The announcement itself;
 - The time the announcement was received;
 - The order in which the announcement was received;
+  - The order of received root announcements must be global across all peers;
 
 ## Deciding to re-parent
 
