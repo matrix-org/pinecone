@@ -117,6 +117,9 @@ func (sim *Simulator) CreateNode(t string, nodeType APINodeType) error {
 	} else {
 		sim.log.Printf("Created node %q\n", t)
 	}
+
+	sim.CalculateShortestPaths()
+
 	return nil
 }
 
@@ -151,6 +154,8 @@ func (sim *Simulator) RemoveNode(node string) {
 	sim.nodesMutex.Unlock()
 
 	phony.Block(sim.State, func() { sim.State._removeNode(node) })
+
+	sim.CalculateShortestPaths()
 }
 
 func (sim *Simulator) ConfigureFilterDefaults(node string, rates adversary.DropRates) {
