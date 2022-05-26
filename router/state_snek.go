@@ -125,15 +125,11 @@ func (s *state) _bootstrapNow() {
 		// packet to all peers instead of just to the identified next-hop. This is
 		// done so that all peers learn about a path that ascends through keyspace.
 		s._flood(s.r.local, send)
-	} else {
+	} else if p, w := s._nextHopsSNEK(send.DestinationKey, types.TypeVirtualSnakeBootstrap, send.Watermark); p != nil && p.proto != nil {
 		// Bootstrap messages are routed using SNEK routing with special rules for
 		// bootstrap packets.
-		if p, w := s._nextHopsSNEK(send.DestinationKey, types.TypeVirtualSnakeBootstrap, send.Watermark); p != nil && p.proto != nil {
-			send.Watermark = w
-			p.proto.push(send)
-		} else {
-			s.r.log.Println("No next-hop identified")
-		}
+		send.Watermark = w
+		p.proto.push(send)
 	}
 	s._lastbootstrap = time.Now()
 }
@@ -327,7 +323,20 @@ func (s *state) _handleBootstrap(from, to *peer, rx *types.Frame) bool {
 
 	// If this is a higher key than that which we've seen, update our
 	// highest entry with it.
-	if highest := s._getHighest(); index.PublicKey.CompareTo(highest.PublicKey) >= 0 {
+	highest := s._getHighest()
+	diff := index.PublicKey.CompareTo(highest.PublicKey)
+	switch {
+	case diff < 0:
+		// The bootstrap is for a path with a key lower then our
+		// currently known highest key.
+		break
+	case diff == 0 && bootstrap.Sequence < highest.Watermark.Sequence:
+		// The bootstrap is for the same path but the bootstrap
+		// number is out of date.
+		break
+	default:
+		// The bootstrap is for a stronger key, or for the same key
+		// but a newer sequence number.
 		s._highest = s._table[index]
 		s._flood(from, rx)
 	}
