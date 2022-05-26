@@ -51,6 +51,7 @@ func (s *state) _start() {
 	s._setDescendingNode(nil)
 
 	s._waiting = false
+	s._highest = s._getHighest()
 
 	s._table = virtualSnakeTable{}
 
@@ -61,6 +62,21 @@ func (s *state) _start() {
 	}
 
 	s._maintainSnakeIn(0)
+}
+
+// _getHighest returns the highest key that we know about. If it has
+// since expired then we'll return ourselves.
+func (s *state) _getHighest() *virtualSnakeEntry {
+	if s._highest != nil && s._highest.valid() {
+		return s._highest
+	}
+	return &virtualSnakeEntry{
+		virtualSnakeIndex: &virtualSnakeIndex{
+			PublicKey: s.r.public,
+		},
+		LastSeen: time.Now(),
+		Source:   s.r.local,
+	}
 }
 
 // _maintainSnakeIn resets the virtual snake maintenance timer to the

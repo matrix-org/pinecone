@@ -41,7 +41,6 @@ type virtualSnakeEntry struct {
 	Destination *peer                       `json:"destination"`
 	Watermark   types.VirtualSnakeWatermark `json:"watermark"`
 	LastSeen    time.Time                   `json:"last_seen"`
-	Root        types.Root                  `json:"root"`
 }
 
 // valid returns true if the update hasn't expired, or false if it has. It is
@@ -88,9 +87,7 @@ func (s *state) _bootstrapSoon() {
 
 // _bootstrapNow is responsible for sending a bootstrap message to the network.
 func (s *state) _bootstrapNow() {
-	// Construct the bootstrap packet. We will include our root key and sequence
-	// number in the update so that the remote side can determine if we are both using
-	// the same root node when processing the update.
+	// Construct the bootstrap packet.
 	b := frameBufferPool.Get().(*[types.MaxFrameSize]byte)
 	defer frameBufferPool.Put(b)
 	bootstrap := types.VirtualSnakeBootstrap{
@@ -123,11 +120,20 @@ func (s *state) _bootstrapNow() {
 		Sequence:  0,
 	}
 
-	// Bootstrap messages are routed using SNEK routing with special rules for
-	// bootstrap packets.
-	if p, w := s._nextHopsSNEK(send.DestinationKey, types.TypeVirtualSnakeBootstrap, send.Watermark); p != nil && p.proto != nil {
-		send.Watermark = w
-		p.proto.push(send)
+	if highest := s._getHighest(); highest.PublicKey == s.r.public {
+		// If we believe we're the highest key in the network then send our bootstrap
+		// packet to all peers instead of just to the identified next-hop. This is
+		// done so that all peers learn about a path that ascends through keyspace.
+		s._flood(send)
+	} else {
+		// Bootstrap messages are routed using SNEK routing with special rules for
+		// bootstrap packets.
+		if p, w := s._nextHopsSNEK(send.DestinationKey, types.TypeVirtualSnakeBootstrap, send.Watermark); p != nil && p.proto != nil {
+			send.Watermark = w
+			p.proto.push(send)
+		} else {
+			s.r.log.Println("No next-hop identified")
+		}
 	}
 	s._lastbootstrap = time.Now()
 }
@@ -135,6 +141,7 @@ func (s *state) _bootstrapNow() {
 type virtualSnakeNextHopParams struct {
 	isBootstrap    bool
 	peers          []*peer
+	highest        *virtualSnakeEntry
 	destinationKey types.PublicKey
 	publicKey      types.PublicKey
 	watermark      types.VirtualSnakeWatermark
@@ -147,6 +154,7 @@ func (s *state) _nextHopsSNEK(dest types.PublicKey, frameType types.FrameType, w
 	return getNextHopSNEK(virtualSnakeNextHopParams{
 		frameType == types.TypeVirtualSnakeBootstrap,
 		s._peers,
+		s._getHighest(),
 		dest,
 		s.r.public,
 		watermark,
@@ -188,29 +196,26 @@ func getNextHopSNEK(params virtualSnakeNextHopParams) (*peer, types.VirtualSnake
 		}
 	}
 
-	// Check all of the ancestors of our direct peers too, that is, all nodes
-	// between our direct peer and the root node.
+	// Start off with a path to the highest key that we know of.
+	if params.highest != nil {
+		switch {
+		case params.isBootstrap && bestKey == destKey:
+			// Bootstraps always start working towards our highest key so they
+			// go somewhere instead of getting stuck.
+			fallthrough
+		case util.DHTOrdered(bestKey, destKey, params.highest.PublicKey):
+			// The destination key is higher than our own key, so start using
+			// the path to the highest key as the first candidate.
+			newCandidate(params.highest.PublicKey, 0, params.highest.Source)
+		}
+	}
+
+	// Check all of our direct peers, in case any of them provide a better path.
 	for _, p := range params.peers {
 		if p == nil || !p.started.Load() {
 			continue
 		}
 		newCheckedCandidate(p.public, 0, p)
-	}
-
-	// Check whether our current best candidate is actually a direct peer.
-	// This might happen if we spotted the node in our direct ancestors for
-	// example, only in this case it would make more sense to route directly
-	// to the peer via our peering with them as opposed to routing via our
-	// parent port.
-	for _, p := range params.peers {
-		if p == nil || !p.started.Load() {
-			continue
-		}
-		if peerKey := p.public; bestKey == peerKey {
-			// We've seen this key already and we are directly peered, so use
-			// the peering instead of the previous selected port.
-			newCandidate(bestKey, 0, p)
-		}
 	}
 
 	// Check our DHT entries. In particular, we are only looking at the source
@@ -319,5 +324,13 @@ func (s *state) _handleBootstrap(from, to *peer, rx *types.Frame) bool {
 	if update {
 		s._setDescendingNode(s._table[index])
 	}
+
+	// If this is a higher key than that which we've seen, update our
+	// highest entry with it.
+	if highest := s._getHighest(); index.PublicKey.CompareTo(highest.PublicKey) >= 0 {
+		s._highest = s._table[index]
+		s._flood(rx)
+	}
+
 	return true
 }
