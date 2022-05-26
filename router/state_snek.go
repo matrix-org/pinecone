@@ -124,7 +124,7 @@ func (s *state) _bootstrapNow() {
 		// If we believe we're the highest key in the network then send our bootstrap
 		// packet to all peers instead of just to the identified next-hop. This is
 		// done so that all peers learn about a path that ascends through keyspace.
-		s._flood(send)
+		s._flood(s.r.local, send)
 	} else {
 		// Bootstrap messages are routed using SNEK routing with special rules for
 		// bootstrap packets.
@@ -329,7 +329,7 @@ func (s *state) _handleBootstrap(from, to *peer, rx *types.Frame) bool {
 	// highest entry with it.
 	if highest := s._getHighest(); index.PublicKey.CompareTo(highest.PublicKey) >= 0 {
 		s._highest = s._table[index]
-		s._flood(rx)
+		s._flood(from, rx)
 	}
 
 	return true

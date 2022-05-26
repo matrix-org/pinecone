@@ -172,7 +172,7 @@ func (r *DefaultRouter) OverlayReadHandler(quit <-chan bool) {
 
 		var fromAddr net.Addr
 		fromAddr = addr
-		if payload.pingType == TreePing || payload.pingType == SNEKPing {
+		if payload.pingType == SNEKPing {
 			if !pingAtDest {
 				payload.hops++
 			} else {
@@ -187,7 +187,7 @@ func (r *DefaultRouter) OverlayReadHandler(quit <-chan bool) {
 		}
 
 		var nexthop net.Addr
-		if payload.pingType == TreePing || payload.pingType == SNEKPing {
+		if payload.pingType == SNEKPing {
 			nexthop = r.rtr.NextHop(fromAddr, frameType, payload.destination)
 		} else {
 			nexthop = r.rtr.NextHop(fromAddr, frameType, payload.origin)

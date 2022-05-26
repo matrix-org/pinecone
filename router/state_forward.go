@@ -39,9 +39,12 @@ func (s *state) _nextHopsFor(from *peer, frameType types.FrameType, dest net.Add
 
 // _flood sends a frame to all of our connected peers. This is typically used for
 // flooding the bootstrap for the highest key to all of our direct peers.
-func (s *state) _flood(f *types.Frame) {
+func (s *state) _flood(from *peer, f *types.Frame) {
 	for _, p := range s._peers {
-		if p == s.r.local || p == nil || p.proto == nil || !p.started.Load() {
+		if p == nil || p.proto == nil || !p.started.Load() {
+			continue
+		}
+		if p == from || p == s.r.local {
 			continue
 		}
 		if s._filterPacket != nil && s._filterPacket(p.public, f) {

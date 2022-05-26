@@ -25,7 +25,6 @@ import (
 
 type manholeResponse struct {
 	Public types.PublicKey          `json:"public_key"`
-	Coords types.Coordinates        `json:"coords"`
 	Peers  map[string][]manholePeer `json:"peers"`
 	SNEK   struct {
 		Descending *virtualSnakeEntry   `json:"descending"`
