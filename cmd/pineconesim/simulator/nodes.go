@@ -139,6 +139,7 @@ func (sim *Simulator) StartNodeEventHandler(t string, nodeType APINodeType) {
 
 func (sim *Simulator) RemoveNode(node string) {
 	// Stop all the goroutines running for this node
+
 	sim.nodeRunnerChannelsMutex.Lock()
 	for _, quitChan := range sim.nodeRunnerChannels[node] {
 		quitChan <- true
@@ -187,5 +188,9 @@ func createDefaultRouter(log *log.Logger, sk ed25519.PrivateKey, debug bool, qui
 }
 
 func createAdversaryRouter(log *log.Logger, sk ed25519.PrivateKey, debug bool, quit <-chan bool) SimRouter {
-	return adversary.NewAdversaryRouter(log, sk, debug)
+	rtr := adversary.NewAdversaryRouter(log, sk, debug)
+
+	go rtr.OverlayReadHandler(quit)
+
+	return rtr
 }

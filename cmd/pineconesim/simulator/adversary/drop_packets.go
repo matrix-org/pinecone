@@ -139,6 +139,10 @@ func (a *AdversaryRouter) Ping(ctx context.Context, addr net.Addr) (uint16, time
 	return 0, 0, nil
 }
 
+func (a *AdversaryRouter) OverlayReadHandler(quit <-chan bool) {
+	<-quit
+}
+
 func (a *AdversaryRouter) Coords() types.Coordinates {
 	return a.rtr.Coords()
 }

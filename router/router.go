@@ -49,6 +49,7 @@ type Router struct {
 	local        *peer
 	state        *state
 	secure       bool
+	readDeadline time.Time
 	_subscribers map[chan<- events.Event]*phony.Inbox
 }
 
