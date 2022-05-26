@@ -3,7 +3,7 @@ import { ConvertNodeTypeToString, APINodeType } from "./server-api.js";
 
 // You can supply an element as your title.
 var titleElement = document.createElement("div");
-titleElement.style.height = "15em";
+titleElement.style.height = "16em";
 // titleElement.style.minWidth = "10em";
 titleElement.style.width = "max-content";
 titleElement.style.color = getComputedStyle(document.documentElement)
@@ -694,6 +694,7 @@ function handleNodeHoverUpdate() {
             "<br>Tree Parent: " + node.treeParent +
             "<br>SNEK Desc: " + node.snekDesc +
             "<br>SNEK Asc: " + node.snekAsc +
+            "<br>Table Size: " + node.snekEntries.size +
             "<br><br><u>Announcement</u>" +
             "<br>Root: Node " + node.announcement.root +
             "<br>Sequence: " + node.announcement.sequence +
