@@ -51,7 +51,9 @@ func (s *state) _flood(from *peer, f *types.Frame) {
 			s.r.log.Printf("Packet of type %s destined for port %d [%s] was dropped due to filter rules", f.Type.String(), p.port, p.public.String()[:8])
 			continue
 		}
-		p.proto.push(f)
+		frame := framePool.Get().(*types.Frame)
+		f.CopyInto(frame)
+		p.proto.push(frame)
 	}
 }
 

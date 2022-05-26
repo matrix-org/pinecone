@@ -120,14 +120,15 @@ func (s *state) _bootstrapNow() {
 		Sequence:  0,
 	}
 
+	// If we think we're the highest key in the network then we'll send our bootstrap
+	// out to all peers and tell them all of our existence. If they also believe us
+	// to be the highest key on the network then they will repeat it to their peers.
+	// Otherwise, we expect to be told from our peers that we're not the highest, in
+	// which case we'll just bootstrap normally.
 	if highest := s._getHighest(); highest.PublicKey == s.r.public {
-		// If we believe we're the highest key in the network then send our bootstrap
-		// packet to all peers instead of just to the identified next-hop. This is
-		// done so that all peers learn about a path that ascends through keyspace.
 		s._flood(s.r.local, send)
+		framePool.Put(send)
 	} else if p, w := s._nextHopsSNEK(send.DestinationKey, types.TypeVirtualSnakeBootstrap, send.Watermark); p != nil && p.proto != nil {
-		// Bootstrap messages are routed using SNEK routing with special rules for
-		// bootstrap packets.
 		send.Watermark = w
 		p.proto.push(send)
 	}
@@ -270,12 +271,9 @@ func (s *state) _handleBootstrap(from, to *peer, rx *types.Frame) bool {
 	index := virtualSnakeIndex{
 		PublicKey: rx.DestinationKey,
 	}
-	if existing, ok := s._table[index]; ok {
-		switch {
-		case bootstrap.Sequence <= existing.Watermark.Sequence:
-			// TODO: less than-equal to might not be the right thing to do
-			return false
-		}
+	if existing, ok := s._table[index]; ok && bootstrap.Sequence <= existing.Watermark.Sequence {
+		// TODO: less than-equal to might not be the right thing to do
+		return false
 	}
 	s._table[index] = &virtualSnakeEntry{
 		virtualSnakeIndex: &index,
