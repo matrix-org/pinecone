@@ -15,7 +15,6 @@
 package router
 
 import (
-	"fmt"
 	"net"
 
 	"github.com/matrix-org/pinecone/types"
@@ -34,13 +33,6 @@ func (s *state) _nextHopsFor(from *peer, frameType types.FrameType, dest net.Add
 		case types.PublicKey:
 			nexthop, newWatermark = s._nextHopsSNEK(dest, frameType, watermark)
 		}
-
-	// Tree routing
-	case types.TypeTreeRouted:
-		switch dest := (dest).(type) {
-		case types.Coordinates:
-			nexthop = s._nextHopsTree(from, dest)
-		}
 	}
 	return nexthop, newWatermark
 }
@@ -56,9 +48,8 @@ func (s *state) _forward(p *peer, f *types.Frame) error {
 	}
 
 	// Allow overlay loopback traffic by directly forwarding it to the local router.
-	isTreeLoopback := f.Type == types.TypeTreeRouted && f.Destination.EqualTo(s._coords())
 	isSnakeLoopback := f.Type == types.TypeVirtualSnakeRouted && f.DestinationKey == s.r.public
-	if isTreeLoopback || isSnakeLoopback {
+	if isSnakeLoopback {
 		s.r.local.send(f)
 		return nil
 	}
@@ -66,22 +57,12 @@ func (s *state) _forward(p *peer, f *types.Frame) error {
 	var nexthop *peer
 	var watermark types.VirtualSnakeWatermark
 	switch f.Type {
-	case types.TypeTreeRouted:
-		nexthop, watermark = s._nextHopsFor(p, f.Type, f.Destination, f.Watermark)
 	case types.TypeVirtualSnakeBootstrap, types.TypeVirtualSnakeRouted:
 		nexthop, watermark = s._nextHopsFor(p, f.Type, f.DestinationKey, f.Watermark)
 	}
 	deadend := nexthop == nil || nexthop == p.router.local
 
 	switch f.Type {
-	case types.TypeTreeAnnouncement:
-		// Tree announcements are a special case. The _handleTreeAnnouncement function
-		// will generate new tree announcements and send them to peers if needed.
-		if err := s._handleTreeAnnouncement(p, f); err != nil {
-			return fmt.Errorf("s._handleTreeAnnouncement (port %d): %w", p.port, err)
-		}
-		return nil
-
 	case types.TypeKeepalive:
 		// Keepalives are sent on a peering and are never forwarded.
 		return nil
@@ -92,7 +73,7 @@ func (s *state) _forward(p *peer, f *types.Frame) error {
 			return nil
 		}
 
-	case types.TypeVirtualSnakeRouted, types.TypeTreeRouted:
+	case types.TypeVirtualSnakeRouted:
 		// Traffic type packets are forwarded normally by falling through. There
 		// are no special rules to apply to these packets, regardless of whether
 		// they are SNEK-routed or tree-routed.

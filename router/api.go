@@ -45,10 +45,6 @@ func (r *Router) Subscribe(ch chan<- events.Event) {
 	})
 }
 
-func (r *Router) Coords() types.Coordinates {
-	return r.state.coords()
-}
-
 func (r *Router) Peers() []PeerInfo {
 	var infos []PeerInfo
 	phony.Block(r.state, func() {
@@ -89,19 +85,6 @@ func (r *Router) NextHop(from net.Addr, frameType types.FrameType, dest net.Addr
 
 	if nextPeer != nil {
 		switch (dest).(type) {
-		case types.Coordinates:
-			var err error
-			coords := types.Coordinates{}
-			phony.Block(r.state, func() {
-				coords, err = nextPeer._coords()
-			})
-
-			if err != nil {
-				r.log.Println("failed retrieving coords for nexthop: %w")
-				return nil
-			}
-
-			nexthop = coords
 		case types.PublicKey:
 			nexthop = nextPeer.public
 		}

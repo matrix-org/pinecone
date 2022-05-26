@@ -19,7 +19,6 @@ import (
 	"crypto/ed25519"
 	"encoding/binary"
 	"fmt"
-	"math"
 )
 
 // MaxPayloadSize is the maximum size that a single frame can contain
@@ -35,8 +34,6 @@ type FrameType uint8
 
 const (
 	TypeKeepalive             FrameType = iota // protocol frame, direct to peers only
-	TypeTreeAnnouncement                       // protocol frame, bypasses queues
-	TypeTreeRouted                             // traffic frame, forwarded using tree routing
 	TypeVirtualSnakeBootstrap                  // protocol frame, forwarded using SNEK
 	TypeVirtualSnakeRouted                     // traffic frame, forwarded using SNEK
 )
@@ -54,9 +51,7 @@ type Frame struct {
 	Version        FrameVersion
 	Type           FrameType
 	Extra          [2]byte
-	Destination    Coordinates
 	DestinationKey PublicKey
-	Source         Coordinates
 	SourceKey      PublicKey
 	Watermark      VirtualSnakeWatermark
 	Payload        []byte
@@ -67,9 +62,7 @@ func (f *Frame) Reset() {
 	for i := range f.Extra {
 		f.Extra[i] = 0
 	}
-	f.Destination = Coordinates{}
 	f.DestinationKey = PublicKey{}
-	f.Source = Coordinates{}
 	f.SourceKey = PublicKey{}
 	f.Watermark = VirtualSnakeWatermark{}
 	f.Payload = f.Payload[:0]
@@ -116,25 +109,8 @@ func (f *Frame) MarshalBinary(buffer []byte) (int, error) {
 
 	case TypeKeepalive:
 
-	default: // destination = coords, source = coords
-		payloadLen := len(f.Payload)
-		binary.BigEndian.PutUint16(buffer[offset+0:offset+2], uint16(payloadLen))
-		dn, err := f.Destination.MarshalBinary(buffer[offset+2:])
-		if err != nil {
-			return 0, fmt.Errorf("f.Destination.MarshalBinary: %w", err)
-		}
-		sn, err := f.Source.MarshalBinary(buffer[offset+2+dn:])
-		if err != nil {
-			return 0, fmt.Errorf("f.Source.MarshalBinary: %w", err)
-		}
-		if dn > math.MaxUint16 || sn > math.MaxUint16 || payloadLen > math.MaxUint16 {
-			return 0, fmt.Errorf("frame contents too large")
-		}
-		offset += 2 + dn + sn
-		if f.Payload != nil {
-			f.Payload = f.Payload[:payloadLen]
-			offset += copy(buffer[offset:], f.Payload[:payloadLen])
-		}
+	default:
+		return offset, fmt.Errorf("unknown frame type")
 	}
 
 	binary.BigEndian.PutUint16(buffer[FrameHeaderLength-2:FrameHeaderLength], uint16(offset))
@@ -196,37 +172,13 @@ func (f *Frame) UnmarshalBinary(data []byte) (int, error) {
 	case TypeKeepalive:
 		return offset, nil
 
-	default: // destination = coords, source = coords
-		payloadLen := int(binary.BigEndian.Uint16(data[offset+0 : offset+2]))
-		if payloadLen > cap(f.Payload) {
-			return 0, fmt.Errorf("payload length exceeds frame capacity")
-		}
-		offset += 2
-		dstLen, dstErr := f.Destination.UnmarshalBinary(data[offset:])
-		if dstErr != nil {
-			return 0, fmt.Errorf("f.Destination.UnmarshalBinary: %w", dstErr)
-		}
-		offset += dstLen
-		srcLen, srcErr := f.Source.UnmarshalBinary(data[offset:])
-		if srcErr != nil {
-			return 0, fmt.Errorf("f.Source.UnmarshalBinary: %w", srcErr)
-		}
-		offset += srcLen
-		if size := offset + payloadLen; len(data) != int(size) {
-			return 0, fmt.Errorf("frame expecting %d total bytes, got %d bytes", size, len(data))
-		}
-		f.Payload = f.Payload[:payloadLen]
-		offset += copy(f.Payload, data[offset:])
-		return offset + payloadLen, nil
+	default:
+		return offset, fmt.Errorf("unknown frame type")
 	}
 }
 
 func (t FrameType) String() string {
 	switch t {
-	case TypeTreeAnnouncement:
-		return "TreeAnnouncement"
-	case TypeTreeRouted:
-		return "TreeRouted"
 	case TypeVirtualSnakeBootstrap:
 		return "VirtualSnakeBootstrap"
 	case TypeVirtualSnakeRouted:

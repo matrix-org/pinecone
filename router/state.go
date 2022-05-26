@@ -37,13 +37,9 @@ type state struct {
 	phony.Inbox
 	r              *Router
 	_peers         []*peer            // All switch ports, connected and disconnected
+	_highest       *virtualSnakeEntry // The highest entry we've seen recently
 	_descending    *virtualSnakeEntry // Next descending node in keyspace
-	_parent        *peer              // Our chosen parent in the tree
-	_announcements announcementTable  // Announcements received from our peers
 	_table         virtualSnakeTable  // Virtual snake DHT entries
-	_ordering      uint64             // Used to order incoming tree announcements
-	_sequence      uint64             // Used to sequence our root tree announcements
-	_treetimer     *time.Timer        // Tree maintenance timer
 	_snaketimer    *time.Timer        // Virtual snake maintenance timer
 	_lastbootstrap time.Time          // When did we last bootstrap?
 	_waiting       bool               // Is the tree waiting to reparent?
@@ -52,20 +48,11 @@ type state struct {
 
 // _start resets the state and starts tree and virtual snake maintenance.
 func (s *state) _start() {
-	s._setParent(nil)
 	s._setDescendingNode(nil)
 
-	s._ordering = 0
 	s._waiting = false
 
-	s._announcements = make(announcementTable, portCount)
 	s._table = virtualSnakeTable{}
-
-	if s._treetimer == nil {
-		s._treetimer = time.AfterFunc(announcementInterval, func() {
-			s.Act(nil, s._maintainTree)
-		})
-	}
 
 	if s._snaketimer == nil {
 		s._snaketimer = time.AfterFunc(time.Second, func() {
@@ -73,20 +60,7 @@ func (s *state) _start() {
 		})
 	}
 
-	s._maintainTreeIn(0)
 	s._maintainSnakeIn(0)
-}
-
-// _maintainTreeIn resets the tree maintenance timer to the specified
-// duration.
-func (s *state) _maintainTreeIn(d time.Duration) {
-	if !s._treetimer.Stop() {
-		select {
-		case <-s._treetimer.C:
-		default:
-		}
-	}
-	s._treetimer.Reset(d)
 }
 
 // _maintainSnakeIn resets the virtual snake maintenance timer to the
@@ -133,7 +107,6 @@ func (s *state) _addPeer(conn net.Conn, public types.PublicKey, uri ConnectionUR
 		s.r.log.Println("Connected to peer", new.public.String(), "on port", new.port)
 		v, _ := s.r.active.LoadOrStore(hex.EncodeToString(new.public[:])+string(zone), atomic.NewUint64(0))
 		v.(*atomic.Uint64).Inc()
-		new.proto.push(s.r.state._rootAnnouncement().forPeer(new))
 		new.started.Store(true)
 		new.reader.Act(nil, new._read)
 		new.writer.Act(nil, new._write)
@@ -153,19 +126,6 @@ func (s *state) _removePeer(port types.SwitchPortID) {
 	s._peers[port] = nil
 	s.r.Act(nil, func() {
 		s.r._publish(events.PeerRemoved{Port: port, PeerID: peerID})
-	})
-}
-
-func (s *state) _setParent(peer *peer) {
-	s._parent = peer
-
-	s.r.Act(nil, func() {
-		peerID := ""
-		if peer != nil {
-			peerID = peer.public.String()
-		}
-
-		s.r._publish(events.TreeParentUpdate{PeerID: peerID})
 	})
 }
 
@@ -209,9 +169,6 @@ func (s *state) _portDisconnected(peer *peer) {
 		return
 	}
 
-	// Delete the last tree announcement that we received from this peer.
-	delete(s._announcements, peer)
-
 	// Scan the local routing table for any routes that transited this now-dead
 	// peering and remove them from the routing table.
 	for k, v := range s._table {
@@ -224,14 +181,6 @@ func (s *state) _portDisconnected(peer *peer) {
 	// peering then clear that path and wait for another incoming setup.
 	if desc := s._descending; desc != nil && desc.Source == peer {
 		s._setDescendingNode(nil)
-	}
-
-	// If the peer that died was our chosen tree parent, then we will need to
-	// select a new parent. If we successfully choose a new parent (as in, we
-	// don't end up promoting ourselves to a root) then we will also need to
-	// send a new bootstrap into the network.
-	if s._parent == peer && s._selectNewParent() {
-		s._bootstrapSoon()
 	}
 }
 
@@ -246,12 +195,6 @@ func (s *state) _lookupPeerForAddr(addr net.Addr) *peer {
 		}
 
 		switch fromAddr := addr.(type) {
-		case types.Coordinates:
-			coords, err := p._coords()
-			if err == nil && fromAddr.EqualTo(coords) {
-				result = p
-				break
-			}
 		case types.PublicKey:
 			if fromAddr == p.public {
 				result = p

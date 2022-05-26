@@ -59,13 +59,6 @@ func (q *fairFIFOQueue) queuesize() int { // nolint:unused
 func (q *fairFIFOQueue) hash(frame *types.Frame) uint16 {
 	h := q.offset
 	switch frame.Type {
-	case types.TypeTreeRouted:
-		for _, v := range frame.Source {
-			h += uint64(v)
-		}
-		for _, v := range frame.Destination {
-			h += uint64(v)
-		}
 	case types.TypeVirtualSnakeRouted:
 		for _, v := range frame.SourceKey {
 			h += uint64(v)

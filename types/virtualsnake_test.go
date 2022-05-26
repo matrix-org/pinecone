@@ -22,15 +22,10 @@ import (
 )
 
 func TestMarshalUnmarshalBootstrap(t *testing.T) {
-	pkr, _, _ := ed25519.GenerateKey(nil)
 	_, sk1, _ := ed25519.GenerateKey(nil)
 	input := &VirtualSnakeBootstrap{
 		Sequence: 7,
-		Root: Root{
-			RootSequence: 1,
-		},
 	}
-	copy(input.RootPublicKey[:], pkr)
 	var err error
 	protected, err := input.ProtectedPayload()
 	if err != nil {
@@ -55,16 +50,6 @@ func TestMarshalUnmarshalBootstrap(t *testing.T) {
 		fmt.Println("expected:", input.Sequence)
 		fmt.Println("got:", output.Sequence)
 		t.Fatalf("bootstrap sequence doesn't match")
-	}
-	if !bytes.Equal(pkr, output.RootPublicKey[:]) {
-		fmt.Println("expected:", pkr)
-		fmt.Println("got:", output.RootPublicKey)
-		t.Fatalf("root public key doesn't match")
-	}
-	if output.RootSequence != input.RootSequence {
-		fmt.Println("expected:", input.RootSequence)
-		fmt.Println("got:", output.RootSequence)
-		t.Fatalf("root sequence doesn't match")
 	}
 	if !bytes.Equal(input.Signature[:], output.Signature[:]) {
 		fmt.Println("expected:", input.Signature)

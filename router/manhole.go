@@ -26,8 +26,6 @@ import (
 type manholeResponse struct {
 	Public types.PublicKey          `json:"public_key"`
 	Coords types.Coordinates        `json:"coords"`
-	Root   *types.Root              `json:"root"`
-	Parent *peer                    `json:"parent"`
 	Peers  map[string][]manholePeer `json:"peers"`
 	SNEK   struct {
 		Descending *virtualSnakeEntry   `json:"descending"`
@@ -36,8 +34,6 @@ type manholeResponse struct {
 }
 
 type manholePeer struct {
-	Coords       types.Coordinates  `json:"coords,omitempty"`
-	Order        uint64             `json:"order,omitempty"`
 	Port         types.SwitchPortID `json:"port"`
 	PeerType     ConnectionPeerType `json:"type,omitempty"`
 	PeerZone     ConnectionZone     `json:"zone,omitempty"`
@@ -53,11 +49,6 @@ func (r *Router) ManholeHandler(w http.ResponseWriter, req *http.Request) {
 	}
 	phony.Block(r.state, func() {
 		response.Public = r.public
-		response.Coords = r.state._coords()
-		response.Parent = r.state._parent
-		if rootAnn := r.state._rootAnnouncement(); rootAnn != nil {
-			response.Root = &rootAnn.Root
-		}
 		for _, p := range r.state._peers {
 			if p == nil || !p.started.Load() {
 				continue
@@ -70,10 +61,6 @@ func (r *Router) ManholeHandler(w http.ResponseWriter, req *http.Request) {
 				ProtoQueue:   p.proto,
 				TrafficQueue: p.traffic,
 			}
-			if ann := r.state._announcements[p]; ann != nil {
-				info.Coords = ann.Coords()
-				info.Order = ann.receiveOrder
-			}
 			public := p.public.String()
 			response.Peers[public] = append(response.Peers[public], info)
 		}
@@ -82,11 +69,6 @@ func (r *Router) ManholeHandler(w http.ResponseWriter, req *http.Request) {
 			response.SNEK.Paths = append(response.SNEK.Paths, p)
 		}
 	})
-	for _, p := range response.Peers {
-		sort.Slice(p, func(i, j int) bool {
-			return p[i].Order < p[j].Order
-		})
-	}
 	sort.Slice(response.SNEK.Paths, func(i, j int) bool {
 		return response.SNEK.Paths[i].PublicKey.CompareTo(response.SNEK.Paths[j].PublicKey) < 0
 	})

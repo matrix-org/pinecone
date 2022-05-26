@@ -150,10 +150,6 @@ func (sim *Simulator) StartPinging(ping_period time.Duration) {
 				for i := 0; i < numWorkers; i++ {
 					go func() {
 						for pair := range tasks {
-							sim.log.Println("Tree ping from", pair.from, "to", pair.to)
-							if _, _, err := sim.PingTree(pair.from, pair.to); err != nil {
-								sim.log.Println("Tree ping from", pair.from, "to", pair.to, "failed:", err)
-							}
 							sim.log.Println("SNEK ping from", pair.from, "to", pair.to)
 							if _, _, err := sim.PingSNEK(pair.from, pair.to); err != nil {
 								sim.log.Println("SNEK ping from", pair.from, "to", pair.to, "failed:", err)
