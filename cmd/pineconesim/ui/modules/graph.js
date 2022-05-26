@@ -278,6 +278,24 @@ class Graph {
         }
     }
 
+    addSnakeEntry(id, entry, peer) {
+        if (Nodes.has(id)) {
+            let node = Nodes.get(id);
+            node.snekEntries.set(entry, peer);
+
+            this.updateUI(id);
+        }
+    }
+
+    removeSnakeEntry(id, entry) {
+        if (Nodes.has(id)) {
+            let node = Nodes.get(id);
+            node.snekEntries.delete(entry);
+
+            this.updateUI(id);
+        }
+    }
+
     addPeer(id, peer, port) {
         this.addEdge("peer", id, peer);
         if (Nodes.has(id)) {
@@ -641,6 +659,7 @@ function newNode(key, type) {
         snekAscPath: "",
         snekDesc: "",
         snekDescPath: "",
+        snekEntries: new Map(),
     };
 }
 
@@ -726,6 +745,13 @@ function handleNodePanelUpdate() {
             peerTable += "<tr><td><code>" + peers[i].id + "</code></td><td><code>" + key.slice(0, 8) + "</code></td><td><code>" + peers[i].port + "</code></td><td><code>" + root + "</code></td></tr>";
         }
 
+        let routes = node.snekEntries;
+        let snekTable = "";
+        for (var [entry, peer] of routes.entries()) {
+            snekTable += "<tr><td><code>" + entry + "</code></td><td><code>" + peer + "</code></td></tr>";
+        }
+
+
         if (nodePanel) {
             nodePanel.innerHTML +=
                 "<h3>Node " + nodeID + "</h3>" +
@@ -741,15 +767,15 @@ function handleNodePanelUpdate() {
                 "<tr><td>Ascending Node:</td><td><code>" + node.snekAsc + "</code></td></tr>" +
                 "<tr><td>Ascending Path:</td><td><code>" + node.snekAscPath + "</code></td></tr>" +
                 "</table>" +
-                "<hr><h4><u>Peers</u></h4>" +
+                "<hr><h4><u>Peers (" + peers.length + ")</u></h4>" +
                 "<table>" +
                 "<tr><th>Name</th><th>Public Key</th><th>Port</th><th>Root</th></tr>" +
                 peerTable +
                 "</table>" +
-                "<hr><h4><u>SNEK Routes</u></h4>" +
+                "<hr><h4><u>SNEK Routes (" + routes.size + ")</u></h4>" +
                 "<table>" +
-                "<tr><th>Public Key</th><th>Path ID</th><th>Src</th><th>Dst</th><th>Seq</th></tr>" +
-                "<tr><td><code><b>N/A</b></code></td><td><code><b>N/A</b></code></td><td><code><b>N/A</b></code></td><td><code><b>N/A</b></code></td><td><code><b>N/A</b></code></td></tr>" +
+                "<tr><th>Name</th><th>Peer</th></tr>" +
+                snekTable +
                 "</table><hr><br>";
         }
     }
@@ -780,6 +806,24 @@ function handleStatsPanelUpdate() {
         }
     }
 
+    let totalEntrySum = 0;
+    let minTableSize = Number.MAX_VALUE;
+    let maxTableSize = 0;
+    for (var [key, node] of Nodes.entries()) {
+        let tableSize = node.snekEntries.size;
+        totalEntrySum += tableSize;
+
+        if (tableSize > maxTableSize) {
+            maxTableSize = tableSize;
+        } else if (tableSize < minTableSize) {
+            minTableSize = tableSize;
+        }
+    }
+    let avgTableSize = 0;
+    if (Nodes.size > 0) {
+        avgTableSize = totalEntrySum / Nodes.size;
+    }
+
     statsPanel.innerHTML =
         "<div class=\"shift-right\"><h3>Statistics</h3></div>" +
         "<hr><table>" +
@@ -796,6 +840,15 @@ function handleStatsPanelUpdate() {
         "</td></tr>" +
         "<tr><td>SNEK Average Stretch:</td><td>" +
         NetworkStats.SnakeAverageStretch +
+        "</td></tr>" +
+        "<tr><td>SNEK Table Size (Avg):</td><td>" +
+        avgTableSize.toFixed(2) +
+        "</td></tr>" +
+        "<tr><td>SNEK Table Size (Min):</td><td>" +
+        minTableSize +
+        "</td></tr>" +
+        "<tr><td>SNEK Table Size (Max):</td><td>" +
+        maxTableSize +
         "</td></tr>" +
         "</table>" +
         "<hr><h4><u>Node Summary</u></h4>" +

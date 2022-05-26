@@ -206,6 +206,22 @@ func (s *state) _setDescendingNode(node *virtualSnakeEntry) {
 	})
 }
 
+func (s *state) _addRouteEntry(index virtualSnakeIndex, entry *virtualSnakeEntry) {
+	s._table[index] = entry
+
+	s.r.Act(nil, func() {
+		s.r._publish(events.SnakeEntryAdded{EntryID: index.PublicKey.String(), PeerID: entry.Source.public.String()})
+	})
+}
+
+func (s *state) _removeRouteEntry(index virtualSnakeIndex) {
+	delete(s._table, index)
+
+	s.r.Act(nil, func() {
+		s.r._publish(events.SnakeEntryRemoved{EntryID: index.PublicKey.String()})
+	})
+}
+
 // _portDisconnected is called when a peer disconnects.
 func (s *state) _portDisconnected(peer *peer) {
 	peercount := 0
