@@ -42,6 +42,7 @@ type virtualSnakeEntry struct {
 	Destination *peer                       `json:"destination"`
 	Watermark   types.VirtualSnakeWatermark `json:"watermark"`
 	LastSeen    time.Time                   `json:"last_seen"`
+	Ordering    uint64                      `json:"ordering"`
 }
 
 // valid returns true if the update hasn't expired, or false if it has. It is
@@ -274,15 +275,25 @@ func (s *state) _handleBootstrap(from, to *peer, rx *types.Frame) bool {
 		}
 	}
 
-	// Create a routing table entry.
 	index := virtualSnakeIndex{
 		PublicKey: rx.DestinationKey,
 	}
-	if existing, ok := s._table[index]; ok && bootstrap.Sequence <= existing.Watermark.Sequence {
-		// TODO: less than-equal to might not be the right thing to do
-		return false
+
+	// If there's an existing entry then make sure that we aren't being misled
+	// by someone replaying an update we've already seen or by flooding us with
+	// updates more quickly than they should really happen.
+	if existing, ok := s._table[index]; ok && existing.valid() {
+		switch {
+		case bootstrap.Sequence <= existing.Watermark.Sequence:
+			return false
+		case time.Since(existing.LastSeen) < virtualSnakeMaintainInterval:
+			return false
+		}
 	}
-	s._table[index] = &virtualSnakeEntry{
+
+	// Create and install the new routing table entry.
+	s._ordering++
+	entry := &virtualSnakeEntry{
 		virtualSnakeIndex: &index,
 		Source:            from,
 		Destination:       to,
@@ -291,7 +302,9 @@ func (s *state) _handleBootstrap(from, to *peer, rx *types.Frame) bool {
 			PublicKey: index.PublicKey,
 			Sequence:  bootstrap.Sequence,
 		},
+		Ordering: s._ordering,
 	}
+	s._table[index] = entry
 
 	// Now let's see if this is a suitable descending entry.
 	update := false
@@ -326,24 +339,32 @@ func (s *state) _handleBootstrap(from, to *peer, rx *types.Frame) bool {
 		s._setDescendingNode(s._table[index])
 	}
 
-	// If this is a higher key than that which we've seen, update our
-	// highest entry with it.
-	highest := s._getHighest()
-	diff := index.PublicKey.CompareTo(highest.PublicKey)
-	switch {
-	case diff < 0:
-		// The bootstrap is for a path with a key lower then our
-		// currently known highest key.
-		break
-	case diff == 0 && bootstrap.Sequence <= highest.Watermark.Sequence:
-		// The bootstrap is for the same path but the bootstrap
-		// number is out of date.
-		break
-	default:
-		// The bootstrap is for a stronger key, or for the same key
-		// but a newer sequence number.
-		s._highest = s._table[index]
-		s._flood(from, rx)
+	// Update our entry for the highest public key we've seen via this peer.
+	// If we haven't got an entry then we'll accept it as long as it's stronger
+	// than our own key. If we have got an entry then we'll accept it if the
+	// sequence number is higher or the key is stronger. If the chosen update
+	// ends up being our best highest entry, we'll flood it to all of our peers.
+	if highest, ok := s._highest[from]; !ok {
+		diff := index.PublicKey.CompareTo(s.r.public)
+		switch {
+		case diff <= 0:
+			break
+		default:
+			s._highest[from] = entry
+		}
+	} else {
+		diff := index.PublicKey.CompareTo(highest.PublicKey)
+		switch {
+		case diff < 0:
+			break
+		case diff == 0 && bootstrap.Sequence <= highest.Watermark.Sequence:
+			break
+		default:
+			s._highest[from] = entry
+		}
+	}
+	if s._getHighest() == entry {
+		defer s._flood(from, rx)
 	}
 
 	return true
