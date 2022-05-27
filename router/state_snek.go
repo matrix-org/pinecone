@@ -340,7 +340,7 @@ func (s *state) _handleBootstrap(from, to *peer, rx *types.Frame) bool {
 
 	// Install the new routing table entry.
 	s._table[index] = entry
-	s._updateDescending(rx, index)
+	s._updateDescending(rx, &bootstrap, index)
 	if changed && s._getHighest() == entry {
 		defer s._flood(from, rx)
 	}
@@ -348,7 +348,7 @@ func (s *state) _handleBootstrap(from, to *peer, rx *types.Frame) bool {
 	return true
 }
 
-func (s *state) _updateDescending(rx *types.Frame, index virtualSnakeIndex) {
+func (s *state) _updateDescending(rx *types.Frame, bootstrap *types.VirtualSnakeBootstrap, index virtualSnakeIndex) {
 	update := false
 	desc := s._descending
 	switch {
@@ -357,7 +357,7 @@ func (s *state) _updateDescending(rx *types.Frame, index virtualSnakeIndex) {
 	case desc != nil && desc.valid():
 		// We already have a descending entry and it hasn't expired.
 		switch {
-		case desc.PublicKey == rx.DestinationKey:
+		case desc.PublicKey == rx.DestinationKey && bootstrap.Sequence > desc.Watermark.Sequence:
 			// We've received another bootstrap from our direct descending node.
 			// Accept the update as this is OK.
 			update = true
@@ -379,5 +379,6 @@ func (s *state) _updateDescending(rx *types.Frame, index virtualSnakeIndex) {
 	}
 	if update {
 		s._setDescendingNode(s._table[index])
+		s._bootstrapSoon()
 	}
 }
