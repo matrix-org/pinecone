@@ -40,17 +40,17 @@ const trafficBuffer = math.MaxUint8 - 1
 
 type Router struct {
 	phony.Inbox
-	log          types.Logger
-	context      context.Context
-	cancel       context.CancelFunc
-	public       types.PublicKey
-	private      types.PrivateKey
-	active       sync.Map
-	local        *peer
-	state        *state
-	secure       bool
-	readDeadline time.Time
-	_subscribers map[chan<- events.Event]*phony.Inbox
+	log           types.Logger
+	context       context.Context
+	cancel        context.CancelFunc
+	public        types.PublicKey
+	private       types.PrivateKey
+	active        sync.Map
+	local         *peer
+	state         *state
+	secure        bool
+	_readDeadline time.Time
+	_subscribers  map[chan<- events.Event]*phony.Inbox
 }
 
 func NewRouter(logger types.Logger, sk ed25519.PrivateKey, debug bool) *Router {
@@ -60,12 +60,12 @@ func NewRouter(logger types.Logger, sk ed25519.PrivateKey, debug bool) *Router {
 	ctx, cancel := context.WithCancel(context.Background())
 	_, insecure := os.LookupEnv("PINECONE_DISABLE_SIGNATURES")
 	r := &Router{
-		log:          logger,
-		context:      ctx,
-		cancel:       cancel,
-		secure:       !insecure,
-		readDeadline: time.Now().Add(time.Hour * 24 * 365 * 100), // ~100 years
-		_subscribers: make(map[chan<- events.Event]*phony.Inbox),
+		log:           logger,
+		context:       ctx,
+		cancel:        cancel,
+		secure:        !insecure,
+		_readDeadline: time.Now().Add(time.Hour * 24 * 365 * 100), // ~100 years
+		_subscribers:  make(map[chan<- events.Event]*phony.Inbox),
 	}
 	// Populate the node keys from the supplied private key.
 	copy(r.private[:], sk)

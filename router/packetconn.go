@@ -46,11 +46,15 @@ func (r *Router) newLocalPeer() *peer {
 // was delivered using tree routing).
 func (r *Router) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
 	var frame *types.Frame
+	readDeadline := time.Time{}
+	phony.Block(r, func() {
+		readDeadline = r._readDeadline
+	})
 	select {
 	case <-r.local.context.Done():
 		r.local.stop(nil)
 		return
-	case <-time.After(time.Until(r.readDeadline)):
+	case <-time.After(time.Until(readDeadline)):
 		return
 	case frame = <-r.local.traffic.pop():
 		// A protocol packet is ready to send.
@@ -131,7 +135,9 @@ func (r *Router) SetDeadline(t time.Time) error {
 
 // SetReadDeadline is not implemented.
 func (r *Router) SetReadDeadline(t time.Time) error {
-	r.readDeadline = t
+	phony.Block(r, func() {
+		r._readDeadline = t
+	})
 	return nil
 }
 
