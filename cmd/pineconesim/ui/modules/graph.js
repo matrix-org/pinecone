@@ -1,4 +1,4 @@
-import { openRightPanel, closeRightPanel } from "./ui.js";
+import { openRightPanel, closeRightPanel, updateRoutingTableChart } from "./ui.js";
 import { ConvertNodeTypeToString, APINodeType } from "./server-api.js";
 
 // You can supply an element as your title.
@@ -275,6 +275,7 @@ class Graph {
             node.coords = coords;
 
             this.updateUI(id);
+            updateRoutingTableChart(this.getRoutingTableSizes());
         }
     }
 
@@ -284,7 +285,22 @@ class Graph {
             node.snekEntries.set(entry, peer);
 
             this.updateUI(id);
+            updateRoutingTableChart(this.getRoutingTableSizes());
         }
+    }
+
+    getRoutingTableSizes() {
+        let tableSizes = new Map();
+        for (const node of Nodes.values()) {
+            if (tableSizes.has(node.snekEntries.size)) {
+                let entry = tableSizes.get(node.snekEntries.size);
+                tableSizes.set(node.snekEntries.size, entry + 1);
+            } else {
+                tableSizes.set(node.snekEntries.size, 1);
+            }
+        }
+
+        return tableSizes;
     }
 
     removeSnakeEntry(id, entry) {
