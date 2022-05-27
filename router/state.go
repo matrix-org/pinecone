@@ -37,11 +37,13 @@ type state struct {
 	phony.Inbox
 	r              *Router
 	_peers         []*peer            // All switch ports, connected and disconnected
+	_peercount     int                // Number of connected peerings in total
 	_highest       *virtualSnakeEntry // The highest entry we've seen recently
 	_descending    *virtualSnakeEntry // Next descending node in keyspace
 	_table         virtualSnakeTable  // Virtual snake DHT entries
 	_snaketimer    *time.Timer        // Virtual snake maintenance timer
 	_lastbootstrap time.Time          // When did we last bootstrap?
+	_interval      time.Duration      // How often should we send bootstraps?
 	_filterPacket  FilterFn           // Function called when forwarding packets
 }
 
@@ -50,7 +52,7 @@ func (s *state) _start() {
 	s._setDescendingNode(nil)
 
 	s._highest = s._getHighest()
-
+	s._interval = virtualSnakeBootstrapMinInterval
 	s._table = virtualSnakeTable{}
 
 	if s._snaketimer == nil {
@@ -118,13 +120,16 @@ func (s *state) _addPeer(conn net.Conn, public types.PublicKey, uri ConnectionUR
 			traffic:    newFairFIFOQueue(queues, s.r.log),
 		}
 		s._peers[i] = new
+		s._peercount++
 		s.r.log.Println("Connected to peer", new.public.String(), "on port", new.port)
 		v, _ := s.r.active.LoadOrStore(hex.EncodeToString(new.public[:])+string(zone), atomic.NewUint64(0))
 		v.(*atomic.Uint64).Inc()
 		new.started.Store(true)
 		new.reader.Act(nil, new._read)
 		new.writer.Act(nil, new._write)
-
+		if s._peercount == 1 {
+			s._interval = virtualSnakeBootstrapMinInterval
+		}
 		s.r.Act(nil, func() {
 			s.r._publish(events.PeerAdded{Port: types.SwitchPortID(i), PeerID: new.public.String()})
 		})
@@ -138,6 +143,7 @@ func (s *state) _addPeer(conn net.Conn, public types.PublicKey, uri ConnectionUR
 func (s *state) _removePeer(port types.SwitchPortID) {
 	peerID := s._peers[port].public.String()
 	s._peers[port] = nil
+	s._peercount--
 	s.r.Act(nil, func() {
 		s.r._publish(events.PeerRemoved{Port: port, PeerID: peerID})
 	})
