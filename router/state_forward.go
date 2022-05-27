@@ -47,6 +47,9 @@ func (s *state) _flood(from *peer, f *types.Frame) {
 		if p == from || p == s.r.local {
 			continue
 		}
+		if p.public.CompareTo(s.r.public) > 0 {
+			continue
+		}
 		if s._filterPacket != nil && s._filterPacket(p.public, f) {
 			s.r.log.Printf("Packet of type %s destined for port %d [%s] was dropped due to filter rules", f.Type.String(), p.port, p.public.String()[:8])
 			continue
