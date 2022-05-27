@@ -324,7 +324,6 @@ func (s *state) _handleBootstrap(from, to *peer, rx *types.Frame) bool {
 	}
 	if update {
 		s._setDescendingNode(s._table[index])
-		s._bootstrapSoon()
 	}
 
 	// If this is a higher key than that which we've seen, update our
