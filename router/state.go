@@ -82,7 +82,9 @@ func (s *state) _getHighest() *virtualSnakeEntry {
 			continue
 		case diff < 0:
 			continue
-		case diff == 0 && highest.Ordering >= candidate.Ordering:
+		case diff == 0 && candidate.Watermark.Sequence < highest.Watermark.Sequence:
+			continue
+		case diff == 0 && candidate.Ordering > highest.Ordering:
 			continue
 		default:
 			highest = candidate

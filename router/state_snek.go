@@ -287,8 +287,43 @@ func (s *state) _handleBootstrap(from, to *peer, rx *types.Frame) bool {
 		}
 	}
 
+	// Prepare the new routing table entry.
+	s._ordering++
 	index := virtualSnakeIndex{
 		PublicKey: rx.DestinationKey,
+	}
+	entry := &virtualSnakeEntry{
+		virtualSnakeIndex: &index,
+		Source:            from,
+		Destination:       to,
+		LastSeen:          time.Now(),
+		Watermark: types.VirtualSnakeWatermark{
+			PublicKey: index.PublicKey,
+			Sequence:  bootstrap.Sequence,
+		},
+		Ordering: s._ordering,
+	}
+
+	// Update our entry for the highest public key we've seen via this peer.
+	// If we haven't got an entry then we'll accept it as long as it's stronger
+	// than our own key. If we have got an entry then we'll accept it if the
+	// sequence number is higher or the key is stronger. If the chosen update
+	// ends up being our best highest entry, we'll flood it to all of our peers.
+	changed := false
+	if highest, ok := s._highest[from]; ok && highest.valid() {
+		diff := index.PublicKey.CompareTo(highest.PublicKey)
+		switch {
+		case diff > 0:
+			fallthrough
+		case diff == 0 && bootstrap.Sequence > highest.Watermark.Sequence:
+			s._highest[from] = entry
+			changed = true
+		}
+	} else {
+		if index.PublicKey.CompareTo(s.r.public) > 0 {
+			s._highest[from] = entry
+			changed = true
+		}
 	}
 
 	// If there's an existing entry then make sure that we aren't being misled
@@ -303,22 +338,17 @@ func (s *state) _handleBootstrap(from, to *peer, rx *types.Frame) bool {
 		}
 	}
 
-	// Create and install the new routing table entry.
-	s._ordering++
-	entry := &virtualSnakeEntry{
-		virtualSnakeIndex: &index,
-		Source:            from,
-		Destination:       to,
-		LastSeen:          time.Now(),
-		Watermark: types.VirtualSnakeWatermark{
-			PublicKey: index.PublicKey,
-			Sequence:  bootstrap.Sequence,
-		},
-		Ordering: s._ordering,
-	}
+	// Install the new routing table entry.
 	s._table[index] = entry
+	s._updateDescending(rx, index)
+	if changed && s._getHighest() == entry {
+		defer s._flood(from, rx)
+	}
 
-	// Now let's see if this is a suitable descending entry.
+	return true
+}
+
+func (s *state) _updateDescending(rx *types.Frame, index virtualSnakeIndex) {
 	update := false
 	desc := s._descending
 	switch {
@@ -350,34 +380,4 @@ func (s *state) _handleBootstrap(from, to *peer, rx *types.Frame) bool {
 	if update {
 		s._setDescendingNode(s._table[index])
 	}
-
-	// Update our entry for the highest public key we've seen via this peer.
-	// If we haven't got an entry then we'll accept it as long as it's stronger
-	// than our own key. If we have got an entry then we'll accept it if the
-	// sequence number is higher or the key is stronger. If the chosen update
-	// ends up being our best highest entry, we'll flood it to all of our peers.
-	if highest, ok := s._highest[from]; !ok || !highest.valid() {
-		diff := index.PublicKey.CompareTo(s.r.public)
-		switch {
-		case diff <= 0:
-			break
-		default:
-			s._highest[from] = entry
-		}
-	} else if s._highest[from].valid() {
-		diff := index.PublicKey.CompareTo(highest.PublicKey)
-		switch {
-		case diff < 0:
-			break
-		case diff == 0 && bootstrap.Sequence <= highest.Watermark.Sequence:
-			break
-		default:
-			s._highest[from] = entry
-		}
-	}
-	if s._getHighest() == entry {
-		defer s._flood(from, rx)
-	}
-
-	return true
 }
