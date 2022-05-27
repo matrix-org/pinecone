@@ -42,7 +42,6 @@ type state struct {
 	_table         virtualSnakeTable  // Virtual snake DHT entries
 	_snaketimer    *time.Timer        // Virtual snake maintenance timer
 	_lastbootstrap time.Time          // When did we last bootstrap?
-	_waiting       bool               // Is the tree waiting to reparent?
 	_filterPacket  FilterFn           // Function called when forwarding packets
 }
 
@@ -50,7 +49,6 @@ type state struct {
 func (s *state) _start() {
 	s._setDescendingNode(nil)
 
-	s._waiting = false
 	s._highest = s._getHighest()
 
 	s._table = virtualSnakeTable{}
