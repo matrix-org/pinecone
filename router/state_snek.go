@@ -49,7 +49,8 @@ type virtualSnakeEntry struct {
 // required for updates to time out eventually, in the case that paths don't get
 // torn down properly for some reason.
 func (e *virtualSnakeEntry) valid() bool {
-	return time.Since(e.LastSeen) < virtualSnakeNeighExpiryPeriod
+	return e.Source.started.Load() &&
+		time.Since(e.LastSeen) < virtualSnakeNeighExpiryPeriod
 }
 
 // _maintainSnake is responsible for working out if we need to send bootstraps
@@ -60,9 +61,6 @@ func (s *state) _maintainSnake() {
 		return
 	default:
 		defer s._maintainSnakeIn(virtualSnakeMaintainInterval)
-		if s._peercount == 0 {
-			return
-		}
 	}
 
 	// The descending node is the node with the next lowest key.
@@ -75,6 +73,20 @@ func (s *state) _maintainSnake() {
 		if !v.valid() {
 			delete(s._table, k)
 		}
+	}
+
+	// Clean up any highest entries that are older than the expiry
+	// period.
+	for k, v := range s._highest {
+		if !v.valid() {
+			delete(s._highest, k)
+		}
+	}
+
+	// If there are no connected peers then there's nothing else
+	// to do, since we can't send bootstraps anywhere.
+	if s._peercount == 0 {
+		return
 	}
 
 	// Send a new bootstrap.
@@ -344,7 +356,7 @@ func (s *state) _handleBootstrap(from, to *peer, rx *types.Frame) bool {
 	// than our own key. If we have got an entry then we'll accept it if the
 	// sequence number is higher or the key is stronger. If the chosen update
 	// ends up being our best highest entry, we'll flood it to all of our peers.
-	if highest, ok := s._highest[from]; !ok {
+	if highest, ok := s._highest[from]; !ok || !highest.valid() {
 		diff := index.PublicKey.CompareTo(s.r.public)
 		switch {
 		case diff <= 0:
@@ -362,8 +374,6 @@ func (s *state) _handleBootstrap(from, to *peer, rx *types.Frame) bool {
 		default:
 			s._highest[from] = entry
 		}
-	} else {
-		s._highest[from] = entry
 	}
 	if s._getHighest() == entry {
 		defer s._flood(from, rx)
