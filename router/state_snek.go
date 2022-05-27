@@ -27,7 +27,7 @@ import (
 
 const virtualSnakeMaintainInterval = time.Second / 2
 const virtualSnakeBootstrapMinInterval = time.Second
-const virtualSnakeBootstrapInterval = virtualSnakeBootstrapMinInterval * 5
+const virtualSnakeBootstrapInterval = virtualSnakeBootstrapMinInterval * 2
 const virtualSnakeNeighExpiryPeriod = virtualSnakeBootstrapInterval * 2
 
 type virtualSnakeTable map[virtualSnakeIndex]*virtualSnakeEntry
@@ -81,7 +81,7 @@ func (s *state) _maintainSnake() {
 		s._bootstrapNow()
 	}
 	if s._interval < virtualSnakeBootstrapInterval {
-		s._interval += time.Second
+		s._interval += time.Second / 2
 	}
 }
 
