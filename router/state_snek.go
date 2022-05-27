@@ -304,7 +304,7 @@ func (s *state) _handleBootstrap(from, to *peer, rx *types.Frame) bool {
 		switch {
 		case desc.PublicKey == rx.DestinationKey:
 			// We've received another bootstrap from our direct descending node.
-			// Accept the update as this is OK.
+			// Accept the update if the sequence number is higher only.
 			update = bootstrap.Sequence > desc.Watermark.Sequence
 		case util.DHTOrdered(desc.PublicKey, rx.DestinationKey, s.r.public):
 			// The bootstrapping node is closer to us than our previous descending
