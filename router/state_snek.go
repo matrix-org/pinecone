@@ -328,7 +328,7 @@ func (s *state) _handleBootstrap(from, to *peer, rx *types.Frame) bool {
 		// The bootstrap is for a path with a key lower then our
 		// currently known highest key.
 		break
-	case diff == 0 && bootstrap.Sequence < highest.Watermark.Sequence:
+	case diff == 0 && bootstrap.Sequence <= highest.Watermark.Sequence:
 		// The bootstrap is for the same path but the bootstrap
 		// number is out of date.
 		break
