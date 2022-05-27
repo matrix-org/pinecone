@@ -352,7 +352,7 @@ func (s *state) _handleBootstrap(from, to *peer, rx *types.Frame) bool {
 		default:
 			s._highest[from] = entry
 		}
-	} else {
+	} else if s._highest[from].valid() {
 		diff := index.PublicKey.CompareTo(highest.PublicKey)
 		switch {
 		case diff < 0:
@@ -362,6 +362,8 @@ func (s *state) _handleBootstrap(from, to *peer, rx *types.Frame) bool {
 		default:
 			s._highest[from] = entry
 		}
+	} else {
+		s._highest[from] = entry
 	}
 	if s._getHighest() == entry {
 		defer s._flood(from, rx)
