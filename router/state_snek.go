@@ -227,20 +227,12 @@ func getNextHopSNEK(params virtualSnakeNextHopParams) (*peer, types.VirtualSnake
 		}
 	}
 
-	// Check all of our direct peers, in case any of them provide a better path.
-	for _, p := range params.peers {
-		if p == nil || !p.started.Load() {
-			continue
-		}
-		newCheckedCandidate(p.public, 0, p)
-	}
-
 	// Check our DHT entries. In particular, we are only looking at the source
 	// side of the DHT paths. Since setups travel from the lower key to the
 	// higher one, this is effectively looking for paths that descend through
 	// keyspace toward lower keys rather than ascend toward higher ones.
 	for _, entry := range params.snakeRoutes {
-		if !entry.Source.started.Load() || !entry.valid() {
+		if !entry.valid() {
 			continue
 		}
 		if entry.Watermark.WorseThan(watermark) {
@@ -327,13 +319,9 @@ func (s *state) _handleBootstrap(from, to *peer, rx *types.Frame) bool {
 	}
 
 	// If there's an existing entry then make sure that we aren't being misled
-	// by someone replaying an update we've already seen or by flooding us with
-	// updates more quickly than they should really happen.
+	// by someone replaying an update we've already seen.
 	if existing, ok := s._table[index]; ok && existing.valid() {
-		switch {
-		case bootstrap.Sequence <= existing.Watermark.Sequence:
-			return false
-		case time.Since(existing.LastSeen) < virtualSnakeMaintainInterval:
+		if bootstrap.Sequence <= existing.Watermark.Sequence {
 			return false
 		}
 	}
@@ -342,7 +330,7 @@ func (s *state) _handleBootstrap(from, to *peer, rx *types.Frame) bool {
 	s._table[index] = entry
 	s._updateDescending(rx, &bootstrap, index)
 	if changed && s._getHighest() == entry {
-		defer s._flood(from, rx)
+		s._flood(from, rx)
 	}
 
 	return true
