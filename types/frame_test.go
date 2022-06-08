@@ -21,65 +21,6 @@ import (
 	"testing"
 )
 
-func TestMarshalUnmarshalFrame(t *testing.T) {
-	input := Frame{
-		Version:     Version0,
-		Type:        TypeTreeRouted,
-		Destination: Coordinates{1, 2, 3, 4, 5000},
-		Source:      Coordinates{4, 3, 2, 1},
-		Payload:     []byte("ABCDEFG"),
-	}
-	expected := []byte{
-		0x70, 0x69, 0x6e, 0x65, // magic bytes
-		0,                    // version 0
-		byte(TypeTreeRouted), // type greedy
-		0, 0,                 // extra
-		0, 33, // frame length
-		0, 7, // payload len
-		0, 6, 1, 2, 3, 4, 167, 8, // destination (2+6 bytes but 5 ports!)
-		0, 4, 4, 3, 2, 1, // source (2+4 bytes)
-		65, 66, 67, 68, 69, 70, 71, // payload (7 bytes)
-	}
-	buf := make([]byte, 65535)
-	n, err := input.MarshalBinary(buf)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if n != len(expected) {
-		t.Fatalf("wrong marshalled length, got %d, expected %d", n, len(expected))
-	}
-	if !bytes.Equal(buf[:n], expected) {
-		t.Fatalf("wrong marshalled output, got %v, expected %v", buf[:n], expected)
-	}
-	output := Frame{
-		Payload: make([]byte, 0, MaxPayloadSize),
-	}
-	if _, err := output.UnmarshalBinary(buf[:n]); err != nil {
-		t.Fatal(err)
-	}
-	if output.Version != input.Version {
-		t.Fatal("wrong version")
-	}
-	if output.Type != input.Type {
-		t.Fatal("wrong version")
-	}
-	if l := len(output.Destination); l != 5 {
-		t.Fatalf("wrong destination length (got %d, expected 5)", l)
-	}
-	if l := len(output.Source); l != 4 {
-		t.Fatalf("wrong source length (got %d, expected 4)", l)
-	}
-	if l := len(output.Payload); l != 7 {
-		t.Fatalf("wrong payload length (got %d, expected 7)", l)
-	}
-	if !output.Destination.EqualTo(input.Destination) {
-		t.Fatal("wrong path")
-	}
-	if !bytes.Equal(input.Payload, output.Payload) {
-		t.Fatal("wrong payload")
-	}
-}
-
 func TestMarshalUnmarshalSNEKBootstrapFrame(t *testing.T) {
 	pk, _, _ := ed25519.GenerateKey(nil)
 	wpk, _, _ := ed25519.GenerateKey(nil)
@@ -139,9 +80,6 @@ func TestMarshalUnmarshalSNEKBootstrapFrame(t *testing.T) {
 	}
 	if output.Type != input.Type {
 		t.Fatal("wrong version")
-	}
-	if !output.Destination.EqualTo(input.Destination) {
-		t.Fatal("wrong path")
 	}
 	if !bytes.Equal(input.Payload, output.Payload) {
 		t.Fatal("wrong payload")
@@ -206,9 +144,6 @@ func TestMarshalUnmarshalSNEKFrame(t *testing.T) {
 	}
 	if output.Type != input.Type {
 		t.Fatal("wrong version")
-	}
-	if !output.Destination.EqualTo(input.Destination) {
-		t.Fatal("wrong path")
 	}
 	if !bytes.Equal(input.Payload, output.Payload) {
 		fmt.Println("want: ", input.Payload)

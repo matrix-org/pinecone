@@ -86,9 +86,7 @@ func NewPacketsReceived() PacketsReceived {
 func defaultFrameCount() PeerFrameCount {
 	frameCount := make(FrameCounts, 9)
 	frameCount[types.TypeKeepalive] = atomic.NewUint64(0)
-	frameCount[types.TypeTreeAnnouncement] = atomic.NewUint64(0)
 	frameCount[types.TypeVirtualSnakeBootstrap] = atomic.NewUint64(0)
-	frameCount[types.TypeTreeRouted] = atomic.NewUint64(0)
 	frameCount[types.TypeVirtualSnakeRouted] = atomic.NewUint64(0)
 
 	peerFrameCount := PeerFrameCount{
@@ -133,10 +131,6 @@ func (a *AdversaryRouter) Connect(conn net.Conn, options ...router.ConnectionOpt
 
 func (a *AdversaryRouter) Ping(ctx context.Context, addr net.Addr) (uint16, time.Duration, error) {
 	return 0, 0, nil
-}
-
-func (a *AdversaryRouter) Coords() types.Coordinates {
-	return a.rtr.Coords()
 }
 
 func (a *AdversaryRouter) ConfigureFilterDefaults(rates DropRates) {

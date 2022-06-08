@@ -94,8 +94,8 @@ func (p *peer) String() string { // to make sim less ugly
 func (p *peer) send(f *types.Frame) bool {
 	switch f.Type {
 	// Protocol messages
-	case types.TypeTreeAnnouncement, types.TypeKeepalive:
-		fallthrough
+	case types.TypeKeepalive:
+		panic("trying to forward keepalive")
 	case types.TypeVirtualSnakeBootstrap:
 		if p.proto == nil {
 			// The local peer doesn't have a protocol queue so we should check
@@ -105,7 +105,7 @@ func (p *peer) send(f *types.Frame) bool {
 		return p.proto.push(f)
 
 	// Traffic messages
-	case types.TypeVirtualSnakeRouted, types.TypeTreeRouted:
+	case types.TypeVirtualSnakeRouted:
 		return p.traffic.push(f)
 	}
 
@@ -222,7 +222,7 @@ func (p *peer) _write() {
 		p.stop(fmt.Errorf("queue reset"))
 		return
 	}
-	defer framePool.Put(frame)
+	defer putFrame(frame)
 	// We might have been waiting for a little while for one of the above
 	// cases to happen, so let's check one more time that the peering wasn't
 	// stopped before we try to marshal and send the frame.
@@ -350,21 +350,4 @@ func (p *peer) _read() {
 	// This is effectively a recursive call to queue up the next read into
 	// the actor inbox.
 	p.reader.Act(nil, p._read)
-}
-
-func (p *peer) _coords() (types.Coordinates, error) {
-	var err error
-	var coords types.Coordinates
-
-	if p == p.router.local {
-		coords = p.router.state._coords()
-	} else {
-		if announcement, ok := p.router.state._announcements[p]; ok {
-			coords = announcement.PeerCoords()
-		} else {
-			err = fmt.Errorf("no root announcement found for peer")
-		}
-	}
-
-	return coords, err
 }

@@ -6,8 +6,7 @@ import (
 )
 
 type VirtualSnakeBootstrap struct {
-	Sequence Varu64
-	Root
+	Sequence  Varu64
 	Signature [ed25519.SignatureSize]byte
 }
 
@@ -27,16 +26,11 @@ func (v *VirtualSnakeBootstrap) ProtectedPayload() ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("v.Sequence.MarshalBinary: %w", err)
 	}
-	rn := copy(buffer[:sn], v.RootPublicKey[:])
-	rsn, err := v.RootSequence.MarshalBinary(buffer[sn+rn:])
-	if err != nil {
-		return nil, fmt.Errorf("v.Sequence.MarshalBinary: %w", err)
-	}
-	return buffer[:sn+rn+rsn], nil
+	return buffer[:sn], nil
 }
 
 func (v *VirtualSnakeBootstrap) MarshalBinary(buf []byte) (int, error) {
-	if len(buf) < v.Sequence.Length()+v.Root.Length()+ed25519.SignatureSize {
+	if len(buf) < v.Sequence.Length()+ed25519.SignatureSize {
 		return 0, fmt.Errorf("buffer too small")
 	}
 	offset := 0
@@ -45,30 +39,18 @@ func (v *VirtualSnakeBootstrap) MarshalBinary(buf []byte) (int, error) {
 		return 0, fmt.Errorf("v.Sequence.MarshalBinary: %w", err)
 	}
 	offset += n
-	offset += copy(buf[offset:], v.RootPublicKey[:])
-	n, err = v.RootSequence.MarshalBinary(buf[offset:])
-	if err != nil {
-		return 0, fmt.Errorf("v.RootSequence.MarshalBinary: %w", err)
-	}
-	offset += n
 	offset += copy(buf[offset:], v.Signature[:])
 	return offset, nil
 }
 
 func (v *VirtualSnakeBootstrap) UnmarshalBinary(buf []byte) (int, error) {
-	if len(buf) < v.Sequence.MinLength()+v.Root.MinLength()+ed25519.SignatureSize {
+	if len(buf) < v.Sequence.MinLength()+ed25519.SignatureSize {
 		return 0, fmt.Errorf("buffer too small")
 	}
 	offset := 0
 	n, err := v.Sequence.UnmarshalBinary(buf[offset:])
 	if err != nil {
 		return 0, fmt.Errorf("v.Sequence.UnmarshalBinary: %w", err)
-	}
-	offset += n
-	offset += copy(v.RootPublicKey[:], buf[offset:])
-	n, err = v.RootSequence.UnmarshalBinary(buf[offset:])
-	if err != nil {
-		return 0, fmt.Errorf("v.RootSequence.UnmarshalBinary: %w", err)
 	}
 	offset += n
 	offset += copy(v.Signature[:], buf[offset:])

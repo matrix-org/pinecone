@@ -25,8 +25,9 @@ import (
 // NOTE: Functions prefixed with an underscore (_) are only safe to be called
 // from the actor that owns them, in order to prevent data races.
 
-const virtualSnakeMaintainInterval = time.Second
-const virtualSnakeBootstrapInterval = time.Second * 5
+const virtualSnakeMaintainInterval = time.Second / 2
+const virtualSnakeBootstrapMinInterval = time.Second
+const virtualSnakeBootstrapInterval = virtualSnakeBootstrapMinInterval * 2
 const virtualSnakeNeighExpiryPeriod = virtualSnakeBootstrapInterval * 2
 
 type virtualSnakeTable map[virtualSnakeIndex]*virtualSnakeEntry
@@ -41,7 +42,11 @@ type virtualSnakeEntry struct {
 	Destination *peer                       `json:"destination"`
 	Watermark   types.VirtualSnakeWatermark `json:"watermark"`
 	LastSeen    time.Time                   `json:"last_seen"`
-	Root        types.Root                  `json:"root"`
+}
+
+type virtualSnakeHighest struct {
+	*virtualSnakeEntry
+	*types.Frame
 }
 
 // valid returns true if the update hasn't expired, or false if it has. It is
@@ -59,22 +64,14 @@ func (s *state) _maintainSnake() {
 		return
 	default:
 		defer s._maintainSnakeIn(virtualSnakeMaintainInterval)
+		if s._peercount == 0 {
+			return
+		}
 	}
 
-	// Work out if we are able to bootstrap. If we are the root node then
-	// we don't send bootstraps, since there's nowhere for them to go —
-	// bootstraps are sent up to the next ascending node, but as the root,
-	// we already have the highest key on the network.
-	rootAnn := s._rootAnnouncement()
-
 	// The descending node is the node with the next lowest key.
-	if desc := s._descending; desc != nil {
-		switch {
-		case !desc.valid():
-			fallthrough
-		case !desc.Root.EqualTo(&rootAnn.Root):
-			s._setDescendingNode(nil)
-		}
+	if desc := s._descending; desc != nil && !desc.valid() {
+		s._setDescendingNode(nil)
 	}
 
 	// Clean up any paths that are older than the expiry period.
@@ -85,8 +82,11 @@ func (s *state) _maintainSnake() {
 	}
 
 	// Send a new bootstrap.
-	if time.Since(s._lastbootstrap) >= virtualSnakeBootstrapInterval {
+	if time.Since(s._lastbootstrap) >= s._interval {
 		s._bootstrapNow()
+	}
+	if s._interval < virtualSnakeBootstrapInterval {
+		s._interval += time.Second / 2
 	}
 }
 
@@ -99,20 +99,10 @@ func (s *state) _bootstrapSoon() {
 
 // _bootstrapNow is responsible for sending a bootstrap message to the network.
 func (s *state) _bootstrapNow() {
-	// If we are the root node then there's no point in trying to bootstrap. We
-	// already have the highest public key on the network so a bootstrap won't be
-	// able to go anywhere in ascending order.
-	if s._parent == nil {
-		return
-	}
-	// Construct the bootstrap packet. We will include our root key and sequence
-	// number in the update so that the remote side can determine if we are both using
-	// the same root node when processing the update.
-	ann := s._rootAnnouncement()
+	// Construct the bootstrap packet.
 	b := frameBufferPool.Get().(*[types.MaxFrameSize]byte)
 	defer frameBufferPool.Put(b)
 	bootstrap := types.VirtualSnakeBootstrap{
-		Root:     ann.Root,
 		Sequence: types.Varu64(time.Now().UnixMilli()),
 	}
 	if s.r.secure {
@@ -136,45 +126,47 @@ func (s *state) _bootstrapNow() {
 	send := getFrame()
 	send.Type = types.TypeVirtualSnakeBootstrap
 	send.DestinationKey = s.r.public
-	send.Source = s._coords()
 	send.Payload = append(send.Payload[:0], b[:n]...)
 	send.Watermark = types.VirtualSnakeWatermark{
 		PublicKey: types.FullMask,
 		Sequence:  0,
 	}
 
-	// Bootstrap messages are routed using SNEK routing with special rules for
-	// bootstrap packets.
-	if p, w := s._nextHopsSNEK(send.DestinationKey, types.TypeVirtualSnakeBootstrap, send.Watermark); p != nil && p.proto != nil {
+	// If we think we're the highest key in the network then we'll send our bootstrap
+	// out to all peers and tell them all of our existence. If they also believe us
+	// to be the highest key on the network then they will repeat it to their peers.
+	// Otherwise, we expect to be told from our peers that we're not the highest, in
+	// which case we'll just bootstrap normally.
+	if highest := s._getHighest(); highest.PublicKey == s.r.public {
+		s._flood(s.r.local, send)
+	} else if p, w := s._nextHopsSNEK(send.DestinationKey, types.TypeVirtualSnakeBootstrap, send.Watermark); p != nil && p.proto != nil {
 		send.Watermark = w
-		p.proto.push(send)
+		p.send(send)
 	}
 	s._lastbootstrap = time.Now()
 }
 
 type virtualSnakeNextHopParams struct {
-	isBootstrap       bool
-	destinationKey    types.PublicKey
-	publicKey         types.PublicKey
-	watermark         types.VirtualSnakeWatermark
-	parentPeer        *peer
-	selfPeer          *peer
-	lastAnnouncement  *rootAnnouncementWithTime
-	peerAnnouncements announcementTable
-	snakeRoutes       virtualSnakeTable
+	isBootstrap    bool
+	peers          []*peer
+	highest        *virtualSnakeEntry
+	destinationKey types.PublicKey
+	publicKey      types.PublicKey
+	watermark      types.VirtualSnakeWatermark
+	selfPeer       *peer
+	snakeRoutes    virtualSnakeTable
 }
 
 // _nextHopsSNEK locates the best next-hop for a given SNEK-routed frame.
 func (s *state) _nextHopsSNEK(dest types.PublicKey, frameType types.FrameType, watermark types.VirtualSnakeWatermark) (*peer, types.VirtualSnakeWatermark) {
 	return getNextHopSNEK(virtualSnakeNextHopParams{
 		frameType == types.TypeVirtualSnakeBootstrap,
+		s._peers,
+		s._getHighest(),
 		dest,
 		s.r.public,
 		watermark,
-		s._parent,
 		s.r.local,
-		s._rootAnnouncement(),
-		s._announcements,
 		s._table,
 	})
 }
@@ -189,7 +181,6 @@ func getNextHopSNEK(params virtualSnakeNextHopParams) (*peer, types.VirtualSnake
 	// We start off with our own key as the best key. Any suitable next-hop
 	// candidate has to improve on our own key in order to forward the frame.
 	var bestPeer *peer
-	var bestAnn *rootAnnouncementWithTime
 	var bestSeq types.Varu64
 	if !params.isBootstrap {
 		bestPeer = params.selfPeer
@@ -200,7 +191,7 @@ func getNextHopSNEK(params virtualSnakeNextHopParams) (*peer, types.VirtualSnake
 
 	// newCandidate updates the best key and best peer with new candidates.
 	newCandidate := func(key types.PublicKey, seq types.Varu64, p *peer) {
-		bestKey, bestSeq, bestPeer, bestAnn = key, seq, p, params.peerAnnouncements[p]
+		bestKey, bestSeq, bestPeer = key, seq, p
 	}
 	// newCheckedCandidate performs some sanity checks on the candidate before
 	// passing it to newCandidate.
@@ -213,55 +204,26 @@ func getNextHopSNEK(params virtualSnakeNextHopParams) (*peer, types.VirtualSnake
 		}
 	}
 
-	// Check if we can use the path to the root via our parent as a starting
-	// point. We can't do this if we are the root node as there would be no
-	// parent or ascending paths.
-	if params.parentPeer != nil && params.parentPeer.started.Load() {
+	// Start off with a path to the highest key that we know of.
+	if params.highest != nil {
 		switch {
 		case params.isBootstrap && bestKey == destKey:
-			// Bootstraps always start working towards thear root so that they
-			// go somewhere rather than getting stuck.
+			// Bootstraps always start working towards our highest key so they
+			// go somewhere instead of getting stuck.
 			fallthrough
-		case util.DHTOrdered(bestKey, destKey, params.lastAnnouncement.RootPublicKey):
+		case util.DHTOrdered(bestKey, destKey, params.highest.PublicKey):
 			// The destination key is higher than our own key, so start using
-			// the path to the root as the first candidate.
-			newCandidate(params.lastAnnouncement.RootPublicKey, 0, params.parentPeer)
-		}
-
-		// Check our direct ancestors in the tree, that is, all nodes between
-		// ourselves and the root node via the parent port.
-		if ann := params.peerAnnouncements[params.parentPeer]; ann != nil {
-			for _, ancestor := range ann.Signatures {
-				newCheckedCandidate(ancestor.PublicKey, 0, params.parentPeer)
-			}
+			// the path to the highest key as the first candidate.
+			newCandidate(params.highest.PublicKey, 0, params.highest.Source)
 		}
 	}
 
-	// Check all of the ancestors of our direct peers too, that is, all nodes
-	// between our direct peer and the root node.
-	for p, ann := range params.peerAnnouncements {
-		if !p.started.Load() {
+	// Check all of our direct peers, in case any of them provide a better path.
+	for _, p := range params.peers {
+		if p == nil || !p.started.Load() {
 			continue
 		}
-		for _, hop := range ann.Signatures {
-			newCheckedCandidate(hop.PublicKey, 0, p)
-		}
-	}
-
-	// Check whether our current best candidate is actually a direct peer.
-	// This might happen if we spotted the node in our direct ancestors for
-	// example, only in this case it would make more sense to route directly
-	// to the peer via our peering with them as opposed to routing via our
-	// parent port.
-	for p := range params.peerAnnouncements {
-		if !p.started.Load() {
-			continue
-		}
-		if peerKey := p.public; bestKey == peerKey {
-			// We've seen this key already and we are directly peered, so use
-			// the peering instead of the previous selected port.
-			newCandidate(bestKey, 0, p)
-		}
+		newCheckedCandidate(p.public, 0, p)
 	}
 
 	// Check our DHT entries. In particular, we are only looking at the source
@@ -276,26 +238,6 @@ func getNextHopSNEK(params virtualSnakeNextHopParams) (*peer, types.VirtualSnake
 			continue
 		}
 		newCheckedCandidate(entry.PublicKey, entry.Watermark.Sequence, entry.Source)
-	}
-
-	// Finally, be sure that we're using the best-looking path to our next-hop.
-	// Prefer faster link types and, if not, lower latencies to the root.
-	if bestPeer != nil && bestAnn != nil {
-		for p, ann := range params.peerAnnouncements {
-			peerKey := p.public
-			switch {
-			case bestKey != peerKey:
-				continue
-			case p.peertype < bestPeer.peertype:
-				// Prefer faster classes of links if possible.
-				newCandidate(bestKey, bestSeq, p)
-			case p.peertype == bestPeer.peertype &&
-				ann.RootSequence == bestAnn.RootSequence &&
-				ann.receiveOrder < bestAnn.receiveOrder:
-				// Prefer links that have the lowest latency to the root.
-				newCandidate(bestKey, bestSeq, p)
-			}
-		}
 	}
 
 	// Only SNEK paths will have a sequence number higher than 0, so
@@ -336,33 +278,19 @@ func (s *state) _handleBootstrap(from, to *peer, rx *types.Frame) bool {
 		}
 	}
 
-	// Check that the root key and sequence number in the update match our
-	// current root, otherwise we won't be able to route back to them using
-	// tree routing anyway. If they don't match, silently drop the bootstrap.
-	root := s._rootAnnouncement()
-	if !root.Root.EqualTo(&bootstrap.Root) {
-		return false
-	}
-
 	// Create a routing table entry.
 	index := virtualSnakeIndex{
 		PublicKey: rx.DestinationKey,
 	}
-	if existing, ok := s._table[index]; ok {
-		switch {
-		case !existing.Root.EqualTo(&bootstrap.Root):
-			break // the root is different
-		case bootstrap.Sequence <= existing.Watermark.Sequence:
-			// TODO: less than-equal to might not be the right thing to do
-			return false
-		}
+	if existing, ok := s._table[index]; ok && bootstrap.Sequence <= existing.Watermark.Sequence {
+		// TODO: less than-equal to might not be the right thing to do
+		return false
 	}
 	s._table[index] = &virtualSnakeEntry{
 		virtualSnakeIndex: &index,
 		Source:            from,
 		Destination:       to,
 		LastSeen:          time.Now(),
-		Root:              bootstrap.Root,
 		Watermark: types.VirtualSnakeWatermark{
 			PublicKey: index.PublicKey,
 			Sequence:  bootstrap.Sequence,
@@ -373,9 +301,6 @@ func (s *state) _handleBootstrap(from, to *peer, rx *types.Frame) bool {
 	update := false
 	desc := s._descending
 	switch {
-	case !root.Root.EqualTo(&bootstrap.Root):
-		// The root key in the bootstrap doesn't match our own key
-		// so it is quite possible that tree routing would fail.
 	case !util.LessThan(rx.DestinationKey, s.r.public):
 		// The bootstrapping key should be less than ours but it isn't.
 	case desc != nil && desc.valid():
@@ -383,8 +308,8 @@ func (s *state) _handleBootstrap(from, to *peer, rx *types.Frame) bool {
 		switch {
 		case desc.PublicKey == rx.DestinationKey:
 			// We've received another bootstrap from our direct descending node.
-			// Accept the update as this is OK.
-			update = true
+			// Accept the update if the sequence number is higher only.
+			update = bootstrap.Sequence > desc.Watermark.Sequence
 		case util.DHTOrdered(desc.PublicKey, rx.DestinationKey, s.r.public):
 			// The bootstrapping node is closer to us than our previous descending
 			// node was.
@@ -404,5 +329,30 @@ func (s *state) _handleBootstrap(from, to *peer, rx *types.Frame) bool {
 	if update {
 		s._setDescendingNode(s._table[index])
 	}
+
+	// If this is a higher key than that which we've seen, update our
+	// highest entry with it.
+	highest := s._getHighest()
+	diff := index.PublicKey.CompareTo(highest.PublicKey)
+	switch {
+	case diff < 0:
+		// The bootstrap is for a path with a key lower then our
+		// currently known highest key.
+		break
+	case diff == 0 && bootstrap.Sequence <= highest.Watermark.Sequence:
+		// The bootstrap is for the same path but the bootstrap
+		// number is out of date.
+		break
+	default:
+		// The bootstrap is for a stronger key, or for the same key
+		// but a newer sequence number.
+		s._highest = &virtualSnakeHighest{
+			virtualSnakeEntry: s._table[index],
+			Frame:             getFrame(),
+		}
+		rx.CopyInto(s._highest.Frame)
+		s._flood(from, s._highest.Frame)
+	}
+
 	return true
 }

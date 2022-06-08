@@ -33,7 +33,6 @@ type SimRouter interface {
 	Connect(conn net.Conn, options ...router.ConnectionOption) (types.SwitchPortID, error)
 	Subscribe(ch chan events.Event)
 	Ping(ctx context.Context, a net.Addr) (uint16, time.Duration, error)
-	Coords() types.Coordinates
 	ConfigureFilterDefaults(rates adversary.DropRates)
 	ConfigureFilterPeer(peer types.PublicKey, rates adversary.DropRates)
 	ManholeHandler(w http.ResponseWriter, req *http.Request)
@@ -56,10 +55,6 @@ func (r *DefaultRouter) Connect(conn net.Conn, options ...router.ConnectionOptio
 	return r.rtr.Connect(conn, options...)
 }
 
-func (r *DefaultRouter) Coords() types.Coordinates {
-	return r.rtr.Coords()
-}
-
 func (r *DefaultRouter) ConfigureFilterDefaults(rates adversary.DropRates) {}
 
 func (r *DefaultRouter) ConfigureFilterPeer(peer types.PublicKey, rates adversary.DropRates) {}
@@ -76,10 +71,6 @@ func (r *DefaultRouter) Ping(ctx context.Context, a net.Addr) (uint16, time.Dura
 	var pingType PingType
 
 	switch a.(type) {
-	case types.Coordinates:
-		origin = r.Coords()
-		frameType = types.TypeTreeRouted
-		pingType = TreePing
 	case types.PublicKey:
 		origin = r.PublicKey()
 		frameType = types.TypeVirtualSnakeRouted
@@ -150,31 +141,6 @@ func (r *DefaultRouter) OverlayReadHandler(quit <-chan bool) {
 		pingAtDest := false
 		var frameType types.FrameType
 		switch payload.pingType {
-		case TreePing:
-			switch dest := (payload.destination).(type) {
-			case types.Coordinates:
-				frameType = types.TypeTreeRouted
-				if dest.EqualTo(r.Coords()) {
-					pingAtDest = true
-				}
-			}
-		case TreePong:
-			switch orig := (payload.origin).(type) {
-			case types.Coordinates:
-				frameType = types.TypeTreeRouted
-				if orig.EqualTo(r.Coords()) {
-					id := payload.destination.String()
-					v, ok := r.pings.Load(id)
-					if !ok {
-						continue
-					}
-					ch := v.(chan uint16)
-					ch <- payload.hops
-					close(ch)
-					r.pings.Delete(id)
-					continue
-				}
-			}
 		case SNEKPing:
 			switch dest := (payload.destination).(type) {
 			case types.PublicKey:
@@ -206,16 +172,12 @@ func (r *DefaultRouter) OverlayReadHandler(quit <-chan bool) {
 
 		var fromAddr net.Addr
 		fromAddr = addr
-		if payload.pingType == TreePing || payload.pingType == SNEKPing {
+		if payload.pingType == SNEKPing {
 			if !pingAtDest {
 				payload.hops++
 			} else {
 				fromAddr = nil
-				if frameType == types.TypeTreeRouted {
-					payload.pingType = TreePong
-				} else {
-					payload.pingType = SNEKPong
-				}
+				payload.pingType = SNEKPong
 			}
 		}
 
@@ -225,7 +187,7 @@ func (r *DefaultRouter) OverlayReadHandler(quit <-chan bool) {
 		}
 
 		var nexthop net.Addr
-		if payload.pingType == TreePing || payload.pingType == SNEKPing {
+		if payload.pingType == SNEKPing {
 			nexthop = r.rtr.NextHop(fromAddr, frameType, payload.destination)
 		} else {
 			nexthop = r.rtr.NextHop(fromAddr, frameType, payload.origin)

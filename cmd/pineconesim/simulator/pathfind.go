@@ -20,33 +20,6 @@ import (
 	"time"
 )
 
-func (sim *Simulator) PingTree(from, to string) (uint16, time.Duration, error) {
-	fromnode := sim.nodes[from]
-	tonode := sim.nodes[to]
-	success := false
-
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
-	defer cancel()
-
-	defer func() {
-		sim.treePathConvergenceMutex.Lock()
-		if _, ok := sim.treePathConvergence[from]; !ok {
-			sim.treePathConvergence[from] = map[string]bool{}
-		}
-		sim.treePathConvergence[from][to] = success
-		sim.treePathConvergenceMutex.Unlock()
-	}()
-
-	hops, rtt, err := fromnode.Ping(ctx, tonode.Coords())
-	if err != nil {
-		return 0, 0, fmt.Errorf("fromnode.TreePing: %w", err)
-	}
-
-	success = true
-	sim.ReportDistance(from, to, int64(hops), false)
-	return hops, rtt, nil
-}
-
 func (sim *Simulator) PingSNEK(from, to string) (uint16, time.Duration, error) {
 	fromnode := sim.nodes[from]
 	tonode := sim.nodes[to]

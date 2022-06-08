@@ -119,18 +119,6 @@ func UnmarshalCommandJSON(command *SimCommandMsg) (SimCommand, error) {
 			} else {
 				err = fmt.Errorf("%sConfigureAdversaryDefaults.DropRates.Keepalive field doesn't exist", FAILURE_PREAMBLE)
 			}
-			if subVal, subOk := val.(map[string]interface{})["TreeAnnouncement"]; subOk {
-				intVal, _ := strconv.Atoi(subVal.(string))
-				dropRates.Frames[types.TypeTreeAnnouncement] = uint64(intVal)
-			} else {
-				err = fmt.Errorf("%sConfigureAdversaryDefaults.DropRates.TreeAnnouncement field doesn't exist", FAILURE_PREAMBLE)
-			}
-			if subVal, subOk := val.(map[string]interface{})["TreeRouted"]; subOk {
-				intVal, _ := strconv.Atoi(subVal.(string))
-				dropRates.Frames[types.TypeTreeRouted] = uint64(intVal)
-			} else {
-				err = fmt.Errorf("%sConfigureAdversaryDefaults.DropRates.TreeRouted field doesn't exist", FAILURE_PREAMBLE)
-			}
 			if subVal, subOk := val.(map[string]interface{})["VirtualSnakeBootstrap"]; subOk {
 				intVal, _ := strconv.Atoi(subVal.(string))
 				dropRates.Frames[types.TypeVirtualSnakeBootstrap] = uint64(intVal)
@@ -174,18 +162,6 @@ func UnmarshalCommandJSON(command *SimCommandMsg) (SimCommand, error) {
 				dropRates.Frames[types.TypeKeepalive] = uint64(intVal)
 			} else {
 				err = fmt.Errorf("%sConfigureAdversaryPeer.DropRates.Keepalive field doesn't exist", FAILURE_PREAMBLE)
-			}
-			if subVal, subOk := val.(map[string]interface{})["TreeAnnouncement"]; subOk {
-				intVal, _ := strconv.Atoi(subVal.(string))
-				dropRates.Frames[types.TypeTreeAnnouncement] = uint64(intVal)
-			} else {
-				err = fmt.Errorf("%sConfigureAdversaryPeer.DropRates.TreeAnnouncement field doesn't exist", FAILURE_PREAMBLE)
-			}
-			if subVal, subOk := val.(map[string]interface{})["TreeRouted"]; subOk {
-				intVal, _ := strconv.Atoi(subVal.(string))
-				dropRates.Frames[types.TypeTreeRouted] = uint64(intVal)
-			} else {
-				err = fmt.Errorf("%sConfigureAdversaryPeer.DropRates.TreeRouted field doesn't exist", FAILURE_PREAMBLE)
 			}
 			if subVal, subOk := val.(map[string]interface{})["VirtualSnakeBootstrap"]; subOk {
 				intVal, _ := strconv.Atoi(subVal.(string))
