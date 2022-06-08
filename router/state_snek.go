@@ -352,9 +352,6 @@ func (s *state) _handleBootstrap(from, to *peer, rx *types.Frame) bool {
 		}
 		rx.CopyInto(s._highest.Frame)
 		s._flood(from, s._highest.Frame)
-		if s._highest.Frame.Type != types.TypeVirtualSnakeBootstrap {
-			panic("THIS IS NOT RIGHT!")
-		}
 	}
 
 	return true

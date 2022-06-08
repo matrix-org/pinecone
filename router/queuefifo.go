@@ -82,7 +82,7 @@ func (q *fifoQueue) push(frame *types.Frame) bool {
 		q.entries = append(q.entries, make(chan *types.Frame, 1))
 		return true
 	default:
-		panic("incorrect double push")
+		panic("queue channel unexpectedly populated already")
 	}
 }
 
@@ -101,10 +101,9 @@ func (q *fifoQueue) pop() <-chan *types.Frame {
 func (q *fifoQueue) ack() {
 	q.mutex.Lock()
 	defer q.mutex.Unlock()
-	q.entries = q.entries[1:]
-	//copy(q.entries, q.entries[1:])
-	//q.entries[len(q.entries)-1] = make(chan *types.Frame, 1)
-	if q.max == 0 && len(q.entries) == 0 {
+	copy(q.entries, q.entries[1:])
+	q.entries = q.entries[:len(q.entries)-1]
+	if q.max == 0 && len(q.entries) == 0 && cap(q.entries) > 16 {
 		q._initialise()
 	}
 }

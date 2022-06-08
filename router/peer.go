@@ -188,7 +188,6 @@ func (p *peer) _write() {
 		return time.After(peerKeepaliveInterval)
 	}
 	// Wait for some work to do.
-	source := "unknown"
 	select {
 	case <-p.context.Done():
 		// The peer context has been cancelled, which implies that the port
@@ -197,7 +196,6 @@ func (p *peer) _write() {
 	case frame = <-p.proto.pop():
 		// A protocol packet is ready to send.
 		p.proto.ack()
-		source = fmt.Sprintf("proto queue %p", p.proto)
 	default:
 		select {
 		case <-p.context.Done():
@@ -207,17 +205,14 @@ func (p *peer) _write() {
 		case frame = <-p.proto.pop():
 			// A protocol packet is ready to send.
 			p.proto.ack()
-			source = fmt.Sprintf("proto queue %p", p.proto)
 		case frame = <-p.traffic.pop():
 			// A protocol packet is ready to send.
 			p.traffic.ack()
-			source = fmt.Sprintf("traffic queue %p", p.traffic)
 		case <-keepalive():
 			// Nothing else happened but we reached the keepalive interval, so
 			// we will generate a keepalive frame to send instead.
 			frame = getFrame()
 			frame.Type = types.TypeKeepalive
-			source = "new keepalive"
 		}
 	}
 	// If the frame is `nil` at this point, it's probably because the queues
@@ -227,7 +222,7 @@ func (p *peer) _write() {
 		p.stop(fmt.Errorf("queue reset"))
 		return
 	}
-	defer putFrame(frame, fmt.Sprintf("writing %p (from %s) to port %d in", frame, source, p.port))
+	defer putFrame(frame)
 	// We might have been waiting for a little while for one of the above
 	// cases to happen, so let's check one more time that the peering wasn't
 	// stopped before we try to marshal and send the frame.

@@ -133,7 +133,9 @@ func (s *state) _addPeer(conn net.Conn, public types.PublicKey, uri ConnectionUR
 			s._bootstrapNow()
 		} else if s._highest != nil && s._highest.valid() {
 			if tx := s._highest.Frame; tx != nil && tx.Type == types.TypeVirtualSnakeBootstrap {
-				new.send(tx)
+				frame := getFrame()
+				tx.CopyInto(frame)
+				new.send(frame)
 			}
 		}
 		s.r.Act(nil, func() {
