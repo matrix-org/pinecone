@@ -19,6 +19,8 @@ import (
 	"crypto/ed25519"
 	"encoding/binary"
 	"fmt"
+
+	"go.uber.org/atomic"
 )
 
 // MaxPayloadSize is the maximum size that a single frame can contain
@@ -48,6 +50,7 @@ var FrameMagicBytes = []byte{0x70, 0x69, 0x6e, 0x65}
 const FrameHeaderLength = 10
 
 type Frame struct {
+	Refs           atomic.Int32
 	Version        FrameVersion
 	Type           FrameType
 	Extra          [2]byte

@@ -95,7 +95,7 @@ func (p *peer) send(f *types.Frame) bool {
 	switch f.Type {
 	// Protocol messages
 	case types.TypeKeepalive:
-		fallthrough
+		panic("trying to forward keepalive")
 	case types.TypeVirtualSnakeBootstrap:
 		if p.proto == nil {
 			// The local peer doesn't have a protocol queue so we should check
@@ -222,7 +222,7 @@ func (p *peer) _write() {
 		p.stop(fmt.Errorf("queue reset"))
 		return
 	}
-	defer framePool.Put(frame)
+	defer putFrame(frame)
 	// We might have been waiting for a little while for one of the above
 	// cases to happen, so let's check one more time that the peering wasn't
 	// stopped before we try to marshal and send the frame.

@@ -38,6 +38,16 @@ var framePool = &sync.Pool{
 
 func getFrame() *types.Frame {
 	f := framePool.Get().(*types.Frame)
+	if f.Refs.Inc() > 1 {
+		panic("frame retrieved from pool has unexpected references")
+	}
 	f.Reset()
 	return f
+}
+
+func putFrame(f *types.Frame, info ...string) {
+	if f.Refs.Dec() > 0 {
+		panic("frame still has unexpected references after returning to pool")
+	}
+	framePool.Put(f)
 }

@@ -139,10 +139,9 @@ func (s *state) _bootstrapNow() {
 	// which case we'll just bootstrap normally.
 	if highest := s._getHighest(); highest.PublicKey == s.r.public {
 		s._flood(s.r.local, send)
-		framePool.Put(send)
 	} else if p, w := s._nextHopsSNEK(send.DestinationKey, types.TypeVirtualSnakeBootstrap, send.Watermark); p != nil && p.proto != nil {
 		send.Watermark = w
-		p.proto.push(send)
+		p.send(send)
 	}
 	s._lastbootstrap = time.Now()
 }
@@ -349,10 +348,10 @@ func (s *state) _handleBootstrap(from, to *peer, rx *types.Frame) bool {
 		// but a newer sequence number.
 		s._highest = &virtualSnakeHighest{
 			virtualSnakeEntry: s._table[index],
-			Frame:             framePool.Get().(*types.Frame),
+			Frame:             getFrame(),
 		}
 		rx.CopyInto(s._highest.Frame)
-		s._flood(from, rx)
+		s._flood(from, s._highest.Frame)
 	}
 
 	return true
