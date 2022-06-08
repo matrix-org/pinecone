@@ -1,9 +1,9 @@
-import { openRightPanel, closeRightPanel } from "./ui.js";
+import { openRightPanel, closeRightPanel, updateRoutingTableChart } from "./ui.js";
 import { ConvertNodeTypeToString, APINodeType } from "./server-api.js";
 
 // You can supply an element as your title.
 var titleElement = document.createElement("div");
-titleElement.style.height = "15em";
+titleElement.style.height = "16em";
 // titleElement.style.minWidth = "10em";
 titleElement.style.width = "max-content";
 titleElement.style.color = getComputedStyle(document.documentElement)
@@ -273,6 +273,40 @@ class Graph {
             node.announcement.sequence = sequence;
             node.announcement.time = time;
             node.coords = coords;
+
+            this.updateUI(id);
+            updateRoutingTableChart(this.getRoutingTableSizes());
+        }
+    }
+
+    addSnakeEntry(id, entry, peer) {
+        if (Nodes.has(id)) {
+            let node = Nodes.get(id);
+            node.snekEntries.set(entry, peer);
+
+            this.updateUI(id);
+            updateRoutingTableChart(this.getRoutingTableSizes());
+        }
+    }
+
+    getRoutingTableSizes() {
+        let tableSizes = new Map();
+        for (const node of Nodes.values()) {
+            if (tableSizes.has(node.snekEntries.size)) {
+                let entry = tableSizes.get(node.snekEntries.size);
+                tableSizes.set(node.snekEntries.size, entry + 1);
+            } else {
+                tableSizes.set(node.snekEntries.size, 1);
+            }
+        }
+
+        return tableSizes;
+    }
+
+    removeSnakeEntry(id, entry) {
+        if (Nodes.has(id)) {
+            let node = Nodes.get(id);
+            node.snekEntries.delete(entry);
 
             this.updateUI(id);
         }
@@ -641,6 +675,7 @@ function newNode(key, type) {
         snekAscPath: "",
         snekDesc: "",
         snekDescPath: "",
+        snekEntries: new Map(),
     };
 }
 
@@ -675,6 +710,7 @@ function handleNodeHoverUpdate() {
             "<br>Tree Parent: " + node.treeParent +
             "<br>SNEK Desc: " + node.snekDesc +
             "<br>SNEK Asc: " + node.snekAsc +
+            "<br>Table Size: " + node.snekEntries.size +
             "<br><br><u>Announcement</u>" +
             "<br>Root: Node " + node.announcement.root +
             "<br>Sequence: " + node.announcement.sequence +
@@ -726,6 +762,13 @@ function handleNodePanelUpdate() {
             peerTable += "<tr><td><code>" + peers[i].id + "</code></td><td><code>" + key.slice(0, 8) + "</code></td><td><code>" + peers[i].port + "</code></td><td><code>" + root + "</code></td></tr>";
         }
 
+        let routes = node.snekEntries;
+        let snekTable = "";
+        for (var [entry, peer] of routes.entries()) {
+            snekTable += "<tr><td><code>" + entry + "</code></td><td><code>" + peer + "</code></td></tr>";
+        }
+
+
         if (nodePanel) {
             nodePanel.innerHTML +=
                 "<h3>Node " + nodeID + "</h3>" +
@@ -741,15 +784,15 @@ function handleNodePanelUpdate() {
                 "<tr><td>Ascending Node:</td><td><code>" + node.snekAsc + "</code></td></tr>" +
                 "<tr><td>Ascending Path:</td><td><code>" + node.snekAscPath + "</code></td></tr>" +
                 "</table>" +
-                "<hr><h4><u>Peers</u></h4>" +
+                "<hr><h4><u>Peers (" + peers.length + ")</u></h4>" +
                 "<table>" +
                 "<tr><th>Name</th><th>Public Key</th><th>Port</th><th>Root</th></tr>" +
                 peerTable +
                 "</table>" +
-                "<hr><h4><u>SNEK Routes</u></h4>" +
+                "<hr><h4><u>SNEK Routes (" + routes.size + ")</u></h4>" +
                 "<table>" +
-                "<tr><th>Public Key</th><th>Path ID</th><th>Src</th><th>Dst</th><th>Seq</th></tr>" +
-                "<tr><td><code><b>N/A</b></code></td><td><code><b>N/A</b></code></td><td><code><b>N/A</b></code></td><td><code><b>N/A</b></code></td><td><code><b>N/A</b></code></td></tr>" +
+                "<tr><th>Name</th><th>Peer</th></tr>" +
+                snekTable +
                 "</table><hr><br>";
         }
     }
@@ -780,6 +823,24 @@ function handleStatsPanelUpdate() {
         }
     }
 
+    let totalEntrySum = 0;
+    let minTableSize = Number.MAX_VALUE;
+    let maxTableSize = 0;
+    for (var [key, node] of Nodes.entries()) {
+        let tableSize = node.snekEntries.size;
+        totalEntrySum += tableSize;
+
+        if (tableSize > maxTableSize) {
+            maxTableSize = tableSize;
+        } else if (tableSize < minTableSize) {
+            minTableSize = tableSize;
+        }
+    }
+    let avgTableSize = 0;
+    if (Nodes.size > 0) {
+        avgTableSize = totalEntrySum / Nodes.size;
+    }
+
     statsPanel.innerHTML =
         "<div class=\"shift-right\"><h3>Statistics</h3></div>" +
         "<hr><table>" +
@@ -796,6 +857,15 @@ function handleStatsPanelUpdate() {
         "</td></tr>" +
         "<tr><td>SNEK Average Stretch:</td><td>" +
         NetworkStats.SnakeAverageStretch +
+        "</td></tr>" +
+        "<tr><td>SNEK Table Size (Avg):</td><td>" +
+        avgTableSize.toFixed(2) +
+        "</td></tr>" +
+        "<tr><td>SNEK Table Size (Min):</td><td>" +
+        minTableSize +
+        "</td></tr>" +
+        "<tr><td>SNEK Table Size (Max):</td><td>" +
+        maxTableSize +
         "</td></tr>" +
         "</table>" +
         "<hr><h4><u>Node Summary</u></h4>" +

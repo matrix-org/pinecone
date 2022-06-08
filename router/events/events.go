@@ -18,22 +18,7 @@ import (
 	"github.com/matrix-org/pinecone/types"
 )
 
-/* API Events:
-DONE:
-   Peer Added
-   Peer Removed
-   Tree Parent Changed
-   Snake Descending Node Changed
-   Snake Ascending Node Changed
-   Tree Root Announcement Changed
-
-TODO:
-   Snake Table Entry Added
-   Snake Table Entry Removed
-
-NOTE:
-   Events need to be processed in FIFO order.
-*/
+// NOTE: Events need to be processed in FIFO order to ensure correct state.
 
 type Event interface {
 	isEvent()
@@ -87,3 +72,18 @@ type TreeRootAnnUpdate struct {
 
 // Tag TreeRootAnnUpdate as an Event
 func (e TreeRootAnnUpdate) isEvent() {}
+
+type SnakeEntryAdded struct {
+	EntryID string
+	PeerID  string
+}
+
+// Tag SnakeEntryAdded as an Event
+func (e SnakeEntryAdded) isEvent() {}
+
+type SnakeEntryRemoved struct {
+	EntryID string
+}
+
+// Tag SnakeEntryRemoved as an Event
+func (e SnakeEntryRemoved) isEvent() {}

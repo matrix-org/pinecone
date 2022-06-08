@@ -27,6 +27,12 @@ function handleSimMessage(msg) {
             if (value.TreeParent) {
                 graph.setTreeParent(key, value.TreeParent, "");
             }
+
+            if (value.SnakeEntries) {
+                for (let i = 0; i < value.SnakeEntries.length; i++) {
+                    graph.addSnakeEntry(key, value.SnakeEntries[i].EntryID, value.SnakeEntries[i].PeerID);
+                }
+            }
         }
 
         if (msg.data.End === true) {
@@ -60,6 +66,12 @@ function handleSimMessage(msg) {
             break;
         case APIUpdateID.TreeRootAnnUpdated:
             graph.updateRootAnnouncement(event.Node, event.Root, event.Sequence, event.Time, event.Coords);
+            break;
+        case APIUpdateID.SnakeEntryAdded:
+            graph.addSnakeEntry(event.Node, event.EntryID, event.PeerID);
+            break;
+        case APIUpdateID.SnakeEntryRemoved:
+            graph.removeSnakeEntry(event.Node, event.EntryID);
             break;
         case APIUpdateID.PingStateUpdated:
             SetPingToolState(event.Enabled, event.Active);

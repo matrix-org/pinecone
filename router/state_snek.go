@@ -533,7 +533,7 @@ func (s *state) _handleBootstrapACK(from *peer, rx *types.Frame) error {
 		}
 	}
 	// Install the new route into the DHT.
-	s._table[index] = entry
+	s._addRouteEntry(index, entry)
 	s._candidate = entry
 	return nil
 }
@@ -641,7 +641,7 @@ func (s *state) _handleSetup(from *peer, rx *types.Frame, nexthop *peer) error {
 			LastSeen:          time.Now(),
 			Root:              setup.Root,
 		}
-		s._table[index] = entry
+		s._addRouteEntry(index, entry)
 		s._setDescendingNode(entry)
 		// Send back a setup ACK to the remote side.
 		setupACK := types.VirtualSnakeSetupACK{
@@ -688,7 +688,7 @@ func (s *state) _handleSetup(from *peer, rx *types.Frame, nexthop *peer) error {
 	}
 	// Add a new routing table entry as we are intermediate to
 	// the path.
-	s._table[index] = &virtualSnakeEntry{
+	entry := &virtualSnakeEntry{
 		virtualSnakeIndex: &index,
 		Origin:            rx.SourceKey,
 		Target:            rx.DestinationKey,
@@ -697,6 +697,7 @@ func (s *state) _handleSetup(from *peer, rx *types.Frame, nexthop *peer) error {
 		Source:            from,    // node with lower of the two keys
 		Destination:       nexthop, // node with higher of the two keys
 	}
+	s._addRouteEntry(index, entry)
 	return nil
 }
 
@@ -796,7 +797,7 @@ func (s *state) _teardownPath(from *peer, pathKey types.PublicKey, pathID types.
 			fallthrough
 		case from == asc.Destination: // from network
 			s._setAscendingNode(nil)
-			delete(s._table, virtualSnakeIndex{asc.PublicKey, asc.PathID})
+			s._removeRouteEntry(virtualSnakeIndex{asc.PublicKey, asc.PathID})
 			return []*peer{asc.Destination}
 		}
 	}
@@ -806,7 +807,7 @@ func (s *state) _teardownPath(from *peer, pathKey types.PublicKey, pathID types.
 			fallthrough
 		case from.local(): // originated locally
 			s._setDescendingNode(nil)
-			delete(s._table, virtualSnakeIndex{desc.PublicKey, desc.PathID})
+			s._removeRouteEntry(virtualSnakeIndex{desc.PublicKey, desc.PathID})
 			return []*peer{desc.Source}
 		}
 	}
@@ -814,13 +815,13 @@ func (s *state) _teardownPath(from *peer, pathKey types.PublicKey, pathID types.
 		if k.PublicKey == pathKey && k.PathID == pathID {
 			switch {
 			case from.local(): // happens when we're tearing down an existing duplicate path
-				delete(s._table, k)
+				s._removeRouteEntry(k)
 				return []*peer{v.Destination, v.Source}
 			case from == v.Source: // from network, return the opposite direction
-				delete(s._table, k)
+				s._removeRouteEntry(k)
 				return []*peer{v.Destination}
 			case from == v.Destination: // from network, return the opposite direction
-				delete(s._table, k)
+				s._removeRouteEntry(k)
 				return []*peer{v.Source}
 			}
 		}
