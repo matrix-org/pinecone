@@ -19,6 +19,7 @@ import (
 	"crypto/ed25519"
 	"encoding/binary"
 	"fmt"
+	"sync"
 )
 
 // MaxPayloadSize is the maximum size that a single frame can contain
@@ -48,6 +49,8 @@ var FrameMagicBytes = []byte{0x70, 0x69, 0x6e, 0x65}
 const FrameHeaderLength = 10
 
 type Frame struct {
+	sync.Mutex
+	Returns        [][]byte
 	Version        FrameVersion
 	Type           FrameType
 	Extra          [2]byte
@@ -69,6 +72,8 @@ func (f *Frame) Reset() {
 }
 
 func (f *Frame) CopyInto(t *Frame) {
+	f.Lock()
+	defer f.Unlock()
 	t.Version = f.Version
 	t.Type = f.Type
 	t.Extra = f.Extra
@@ -80,6 +85,8 @@ func (f *Frame) CopyInto(t *Frame) {
 }
 
 func (f *Frame) MarshalBinary(buffer []byte) (int, error) {
+	f.Lock()
+	defer f.Unlock()
 	copy(buffer[:4], FrameMagicBytes)
 	buffer[4], buffer[5] = byte(f.Version), byte(f.Type)
 	copy(buffer[6:], f.Extra[:])
@@ -130,6 +137,8 @@ func (f *Frame) MarshalBinary(buffer []byte) (int, error) {
 }
 
 func (f *Frame) UnmarshalBinary(data []byte) (int, error) {
+	f.Lock()
+	defer f.Unlock()
 	f.Reset()
 	if len(data) < FrameHeaderLength {
 		return 0, fmt.Errorf("frame is not long enough to include metadata")

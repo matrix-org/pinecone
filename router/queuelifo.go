@@ -89,7 +89,7 @@ func (q *lifoQueue) reset() { // nolint:unused
 	q.count = 0
 	for i := range q.frames {
 		if q.frames[i] != nil {
-			framePool.Put(q.frames[i])
+			putFrame(q.frames[i])
 			q.frames[i] = nil
 		}
 	}

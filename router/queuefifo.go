@@ -76,7 +76,11 @@ func (q *fifoQueue) push(frame *types.Frame) bool {
 		return false
 	}
 	ch := q.entries[len(q.entries)-1]
-	ch <- frame
+	select {
+	case ch <- frame:
+	default:
+		panic("incorrect double push")
+	}
 	close(ch)
 	q.entries = append(q.entries, make(chan *types.Frame, 1))
 	return true
@@ -89,7 +93,7 @@ func (q *fifoQueue) reset() {
 		select {
 		case frame := <-ch:
 			if frame != nil {
-				framePool.Put(frame)
+				//	putFrame(frame)
 			}
 		default:
 		}
@@ -106,7 +110,8 @@ func (q *fifoQueue) pop() <-chan *types.Frame {
 func (q *fifoQueue) ack() {
 	q.mutex.Lock()
 	defer q.mutex.Unlock()
-	q.entries = q.entries[1:]
+	copy(q.entries, q.entries[1:])
+	q.entries[len(q.entries)-1] = make(chan *types.Frame, 1)
 	if q.max == 0 && len(q.entries) == 0 {
 		q._initialise()
 	}

@@ -15,6 +15,8 @@
 package router
 
 import (
+	"fmt"
+	"runtime/debug"
 	"sync"
 
 	"github.com/matrix-org/pinecone/types"
@@ -36,8 +38,40 @@ var framePool = &sync.Pool{
 	},
 }
 
+var lastFrame *types.Frame
+
 func getFrame() *types.Frame {
-	f := framePool.Get().(*types.Frame)
+	f := &types.Frame{
+		Payload: make([]byte, 0, types.MaxPayloadSize),
+	}
+	if f == lastFrame {
+		panic("allocated same memory")
+	}
+	lastFrame = f
+	return f
+	/*f := framePool.Get().(*types.Frame)
+	f.Returns = f.Returns[:0]
 	f.Reset()
 	return f
+	*/
+}
+
+func putFrame(f *types.Frame, info ...string) {
+	f.Lock()
+	defer f.Unlock()
+	f.Reset()
+	var trace []byte
+	for _, i := range info {
+		trace = append(trace, []byte(i)...)
+		trace = append(trace, ' ')
+	}
+	trace = append(trace, debug.Stack()...)
+	f.Returns = append(f.Returns, trace)
+	if len(f.Returns) > 1 {
+		for _, r := range f.Returns {
+			fmt.Println("***", string(r))
+		}
+		panic(fmt.Sprintf("multiple putFrame calls for %p type %q", f, f.Type))
+	}
+	//framePool.Put(f)
 }

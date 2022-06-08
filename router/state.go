@@ -132,8 +132,8 @@ func (s *state) _addPeer(conn net.Conn, public types.PublicKey, uri ConnectionUR
 		if s._peercount == 1 {
 			s._bootstrapNow()
 		} else if s._highest != nil && s._highest.valid() {
-			if tx := s._highest.Frame; tx != nil {
-				new.proto.push(tx)
+			if tx := s._highest.Frame; tx != nil && tx.Type == types.TypeVirtualSnakeBootstrap {
+				new.send(tx)
 			}
 		}
 		s.r.Act(nil, func() {
