@@ -29,6 +29,7 @@ var frameBufferPool = &sync.Pool{
 	},
 }
 
+/*
 var framePool = &sync.Pool{
 	New: func() interface{} {
 		f := &types.Frame{
@@ -37,18 +38,12 @@ var framePool = &sync.Pool{
 		return f
 	},
 }
-
-var lastFrame *types.Frame
+*/
 
 func getFrame() *types.Frame {
-	f := &types.Frame{
+	return &types.Frame{
 		Payload: make([]byte, 0, types.MaxPayloadSize),
 	}
-	if f == lastFrame {
-		panic("allocated same memory")
-	}
-	lastFrame = f
-	return f
 	/*f := framePool.Get().(*types.Frame)
 	f.Returns = f.Returns[:0]
 	f.Reset()
@@ -59,7 +54,7 @@ func getFrame() *types.Frame {
 func putFrame(f *types.Frame, info ...string) {
 	f.Lock()
 	defer f.Unlock()
-	f.Reset()
+	//f.Reset()
 	var trace []byte
 	for _, i := range info {
 		trace = append(trace, []byte(i)...)

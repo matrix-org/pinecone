@@ -197,9 +197,6 @@ func (p *peer) _write() {
 	case frame = <-p.proto.pop():
 		// A protocol packet is ready to send.
 		p.proto.ack()
-		if frame.Type == types.TypeKeepalive {
-			panic("keepalive shouldn't come from here")
-		}
 		source = fmt.Sprintf("proto queue %p", p.proto)
 	default:
 		select {
@@ -210,16 +207,10 @@ func (p *peer) _write() {
 		case frame = <-p.proto.pop():
 			// A protocol packet is ready to send.
 			p.proto.ack()
-			if frame.Type == types.TypeKeepalive {
-				panic("keepalive shouldn't come from here")
-			}
 			source = fmt.Sprintf("proto queue %p", p.proto)
 		case frame = <-p.traffic.pop():
 			// A protocol packet is ready to send.
 			p.traffic.ack()
-			if frame.Type == types.TypeKeepalive {
-				panic("keepalive shouldn't come from here")
-			}
 			source = fmt.Sprintf("traffic queue %p", p.traffic)
 		case <-keepalive():
 			// Nothing else happened but we reached the keepalive interval, so
@@ -236,9 +227,7 @@ func (p *peer) _write() {
 		p.stop(fmt.Errorf("queue reset"))
 		return
 	}
-	defer func() {
-		putFrame(frame, fmt.Sprintf("writing %p (from %s) to port %d in", frame, source, p.port))
-	}()
+	defer putFrame(frame, fmt.Sprintf("writing %p (from %s) to port %d in", frame, source, p.port))
 	// We might have been waiting for a little while for one of the above
 	// cases to happen, so let's check one more time that the peering wasn't
 	// stopped before we try to marshal and send the frame.
