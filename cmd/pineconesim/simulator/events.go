@@ -21,9 +21,10 @@ type SimEvent interface {
 }
 
 type NodeAdded struct {
-	Node      string
-	PublicKey string
-	NodeType  int
+	Node       string
+	PublicKey  string
+	NodeType   int
+	RouteCount int
 }
 
 // Tag NodeAdded as an Event
@@ -111,6 +112,23 @@ type NetworkStatsUpdate struct {
 // Tag NetworkStatsUpdate as an Event
 func (e NetworkStatsUpdate) isEvent() {}
 
+type SnakeEntryAdded struct {
+	Node    string
+	EntryID string
+	PeerID  string
+}
+
+// Tag SnakeEntryAdded as an Event
+func (e SnakeEntryAdded) isEvent() {}
+
+type SnakeEntryRemoved struct {
+	Node    string
+	EntryID string
+}
+
+// Tag SnakeEntryRemoved as an Event
+func (e SnakeEntryRemoved) isEvent() {}
+
 type eventHandler struct {
 	node string
 	ch   <-chan events.Event
@@ -135,6 +153,10 @@ func (h eventHandler) Run(quit <-chan bool, sim *Simulator) {
 				sim.handleSnakeDescUpdate(h.node, e.PeerID, e.PathID)
 			case events.TreeRootAnnUpdate:
 				sim.handleTreeRootAnnUpdate(h.node, e.Root, e.Sequence, e.Time, e.Coords)
+			case events.SnakeEntryAdded:
+				sim.handleSnakeEntryAdded(h.node, e.EntryID, e.PeerID)
+			case events.SnakeEntryRemoved:
+				sim.handleSnakeEntryRemoved(h.node, e.EntryID)
 			default:
 				sim.log.Println("Unhandled event!")
 			}

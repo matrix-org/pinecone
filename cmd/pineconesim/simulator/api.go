@@ -41,6 +41,8 @@ const (
 	SimSnakeAscUpdated
 	SimSnakeDescUpdated
 	SimTreeRootAnnUpdated
+	SimSnakeEntryAdded
+	SimSnakeEntryRemoved
 	SimPingStateUpdated
 	SimNetworkStatsUpdated
 )
@@ -77,6 +79,7 @@ type InitialNodeState struct {
 	SnakeAscPath  string
 	SnakeDesc     string
 	SnakeDescPath string
+	SnakeEntries  []SnakeRouteEntry
 }
 
 type RootState struct {
@@ -89,6 +92,11 @@ type RootState struct {
 type PeerInfo struct {
 	ID   string
 	Port int
+}
+
+type SnakeRouteEntry struct {
+	EntryID string
+	PeerID  string
 }
 
 type SimEventMsg struct {

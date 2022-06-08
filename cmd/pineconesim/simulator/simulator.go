@@ -381,6 +381,28 @@ func (sim *Simulator) handleTreeRootAnnUpdate(node string, root string, sequence
 	sim.State.Act(nil, func() { sim.State._updateTreeRootAnnouncement(node, rootName, sequence, time, coords) })
 }
 
+func (sim *Simulator) handleSnakeEntryAdded(node string, entryID string, peerID string) {
+	entryName := ""
+	if entryNode, err := sim.State.GetNodeName(entryID); err == nil {
+		entryName = entryNode
+	}
+	peerName := ""
+	if peerNode, err := sim.State.GetNodeName(peerID); err == nil {
+		peerName = peerNode
+	}
+
+	sim.State.Act(nil, func() { sim.State._addSnakeEntry(node, entryName, peerName) })
+}
+
+func (sim *Simulator) handleSnakeEntryRemoved(node string, entryID string) {
+	entryName := ""
+	if entryNode, err := sim.State.GetNodeName(entryID); err == nil {
+		entryName = entryNode
+	}
+
+	sim.State.Act(nil, func() { sim.State._removeSnakeEntry(node, entryName) })
+}
+
 func (sim *Simulator) updatePingState(enabled bool, active bool) {
 	sim.State.Act(nil, func() {
 		sim.State._publish(PingStateUpdate{

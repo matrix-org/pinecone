@@ -38,6 +38,7 @@ type NodeState struct {
 	AscendingPathID  string
 	DescendingPeer   string
 	DescendingPathID string
+	SnakeEntries     map[string]string
 }
 
 func NewNodeState(peerID string, nodeType APINodeType) *NodeState {
@@ -52,6 +53,7 @@ func NewNodeState(peerID string, nodeType APINodeType) *NodeState {
 		AscendingPathID:  "",
 		DescendingPeer:   "",
 		DescendingPathID: "",
+		SnakeEntries:     make(map[string]string),
 	}
 	return node
 }
@@ -236,4 +238,18 @@ func (s *StateAccessor) _updateTreeRootAnnouncement(node string, root string, se
 			Time:     time,
 			Coords:   coords})
 	}
+}
+
+func (s *StateAccessor) _addSnakeEntry(node string, entryID string, peerID string) {
+	if _, ok := s._state.Nodes[node]; ok {
+		s._state.Nodes[node].SnakeEntries[entryID] = peerID
+	}
+	s._publish(SnakeEntryAdded{Node: node, EntryID: entryID, PeerID: peerID})
+}
+
+func (s *StateAccessor) _removeSnakeEntry(node string, entryID string) {
+	if _, ok := s._state.Nodes[node]; ok {
+		delete(s._state.Nodes[node].SnakeEntries, entryID)
+	}
+	s._publish(SnakeEntryRemoved{Node: node, EntryID: entryID})
 }
