@@ -44,6 +44,11 @@ type virtualSnakeEntry struct {
 	LastSeen    time.Time                   `json:"last_seen"`
 }
 
+type virtualSnakeHighest struct {
+	*virtualSnakeEntry
+	*types.Frame
+}
+
 // valid returns true if the update hasn't expired, or false if it has. It is
 // required for updates to time out eventually, in the case that paths don't get
 // torn down properly for some reason.
@@ -342,7 +347,11 @@ func (s *state) _handleBootstrap(from, to *peer, rx *types.Frame) bool {
 	default:
 		// The bootstrap is for a stronger key, or for the same key
 		// but a newer sequence number.
-		s._highest = s._table[index]
+		s._highest = &virtualSnakeHighest{
+			virtualSnakeEntry: s._table[index],
+			Frame:             framePool.Get().(*types.Frame),
+		}
+		rx.CopyInto(s._highest.Frame)
 		s._flood(from, rx)
 	}
 

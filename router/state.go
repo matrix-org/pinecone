@@ -36,22 +36,24 @@ type FilterFn func(from types.PublicKey, f *types.Frame) bool
 type state struct {
 	phony.Inbox
 	r              *Router
-	_peers         []*peer            // All switch ports, connected and disconnected
-	_peercount     int                // Number of connected peerings in total
-	_highest       *virtualSnakeEntry // The highest entry we've seen recently
-	_descending    *virtualSnakeEntry // Next descending node in keyspace
-	_table         virtualSnakeTable  // Virtual snake DHT entries
-	_snaketimer    *time.Timer        // Virtual snake maintenance timer
-	_lastbootstrap time.Time          // When did we last bootstrap?
-	_interval      time.Duration      // How often should we send bootstraps?
-	_filterPacket  FilterFn           // Function called when forwarding packets
+	_peers         []*peer              // All switch ports, connected and disconnected
+	_peercount     int                  // Number of connected peerings in total
+	_highest       *virtualSnakeHighest // The highest entry we've seen recently
+	_descending    *virtualSnakeEntry   // Next descending node in keyspace
+	_table         virtualSnakeTable    // Virtual snake DHT entries
+	_snaketimer    *time.Timer          // Virtual snake maintenance timer
+	_lastbootstrap time.Time            // When did we last bootstrap?
+	_interval      time.Duration        // How often should we send bootstraps?
+	_filterPacket  FilterFn             // Function called when forwarding packets
 }
 
 // _start resets the state and starts tree and virtual snake maintenance.
 func (s *state) _start() {
 	s._setDescendingNode(nil)
 
-	s._highest = s._getHighest()
+	s._highest = &virtualSnakeHighest{
+		virtualSnakeEntry: s._getHighest(),
+	}
 	s._interval = virtualSnakeBootstrapMinInterval
 	s._table = virtualSnakeTable{}
 
@@ -68,7 +70,7 @@ func (s *state) _start() {
 // since expired then we'll return ourselves.
 func (s *state) _getHighest() *virtualSnakeEntry {
 	if s._highest != nil && s._highest.valid() {
-		return s._highest
+		return s._highest.virtualSnakeEntry
 	}
 	return &virtualSnakeEntry{
 		virtualSnakeIndex: &virtualSnakeIndex{
@@ -128,7 +130,11 @@ func (s *state) _addPeer(conn net.Conn, public types.PublicKey, uri ConnectionUR
 		new.reader.Act(nil, new._read)
 		new.writer.Act(nil, new._write)
 		if s._peercount == 1 {
-			s._interval = virtualSnakeBootstrapMinInterval
+			s._bootstrapNow()
+		} else if s._highest != nil && s._highest.valid() {
+			if tx := s._highest.Frame; tx != nil {
+				new.proto.push(tx)
+			}
 		}
 		s.r.Act(nil, func() {
 			s.r._publish(events.PeerAdded{Port: types.SwitchPortID(i), PeerID: new.public.String()})
@@ -144,6 +150,9 @@ func (s *state) _removePeer(port types.SwitchPortID) {
 	peerID := s._peers[port].public.String()
 	s._peers[port] = nil
 	s._peercount--
+	if s._peercount == 0 {
+		s._highest = nil
+	}
 	s.r.Act(nil, func() {
 		s.r._publish(events.PeerRemoved{Port: port, PeerID: peerID})
 	})
