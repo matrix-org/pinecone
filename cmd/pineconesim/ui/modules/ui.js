@@ -146,6 +146,12 @@ function focusSelectedNode() {
 }
 document.getElementById("focusNode").onclick = focusSelectedNode;
 
+function handleAnalyticsSelect() {
+    console.log("changed to " + document.getElementById("analyticsDropdown").value);
+    document.getElementById("analyticsDropdown").blur();
+}
+document.getElementById("analyticsDropdown").onchange = handleAnalyticsSelect;
+
 function selectNetworkType(networkType) {
     let selectionTabs = document.getElementsByClassName("netselect");
     for (let i = 0; i < selectionTabs.length; i++) {
@@ -189,8 +195,8 @@ function selectTool(toolType) {
     case "ping-start-stop":
         handleToolPingStartStop(this);
         break;
-    case "view-route-stats":
-        handleToolViewRouteStats(this);
+    case "view-analytics":
+        handleToolViewAnalytics(this);
         break;
     case "scenario-new":
         handleToolScenarioNew(this);
@@ -256,8 +262,8 @@ function handleToolPingStartStop(subtool) {
     SendToServer({"MsgID": APICommandMessageID.PlaySequence, "Events": [command]});
 }
 
-function handleToolViewRouteStats(subtool) {
-    setupBaseModal("route-stats-modal");
+function handleToolViewAnalytics(subtool) {
+    setupBaseModal("analytics-modal");
 }
 
 function handleToolScenarioNew(subtool) {

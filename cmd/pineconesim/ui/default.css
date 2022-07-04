@@ -387,13 +387,13 @@ body {
     margin-top: 5%;
     margin-bottom: 5%;
     width: 60%;
-    min-width: 540px; /* 600 * 90% */
+    min-width: 810px; /* 900 * 90% */
     box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2),0 6px 20px 0 rgba(0,0,0,0.19);
     animation-name: animatemodal;
     animation-duration: 0.4s
 }
 
-@media screen and (max-width: 600px) {
+@media screen and (max-width: 900px) {
     .modal-content {
         width: 90%;
         min-width: 0;
@@ -521,7 +521,7 @@ input[type=submit]:active {
     clear: both;
 }
 
-@media screen and (max-width: 600px) {
+@media screen and (max-width: 900px) {
     .col-two-left, .col-two-right {
         width: 100%;
         margin-top: 0;
@@ -651,4 +651,45 @@ input[type=submit]:active {
   -webkit-transform: rotate(45deg);
   -ms-transform: rotate(45deg);
   transform: rotate(45deg);
+}
+
+/* Dropdown Button */
+.dropbtn {
+    color: var(--color-dark-grey);
+    background-color: var(--color-dull-grey);
+    font-size: 16px;
+    max-width: 50%;
+    text-align: center;
+    border: none;
+    cursor: pointer;
+}
+
+/* Dropdown button on hover & focus */
+.dropbtn:hover, .dropbtn:focus {
+    background-color: var(--color-dark-grey);
+    color: var(--color-dull-grey);
+}
+
+/* The container <div> - needed to position the dropdown content */
+.dropdown {
+    position: relative;
+    padding: 8px 0 0 0;
+    text-align: center;
+    display: block;
+}
+
+/* Dropdown Content (Hidden by Default) */
+.dropdown-content {
+    display: none;
+    position: absolute;
+    min-width: 160px;
+    box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2);
+    z-index: 1;
+}
+
+/* Links inside the dropdown */
+.dropdown-content a {
+    padding: 12px 16px;
+    text-decoration: none;
+    display: block;
 }
