@@ -49,7 +49,7 @@ type Router struct {
 	local         *peer
 	state         *state
 	secure        bool
-	_readDeadline time.Time
+	_readDeadline *atomic.Time
 	_subscribers  map[chan<- events.Event]*phony.Inbox
 }
 
@@ -64,7 +64,7 @@ func NewRouter(logger types.Logger, sk ed25519.PrivateKey, debug bool) *Router {
 		context:       ctx,
 		cancel:        cancel,
 		secure:        !insecure,
-		_readDeadline: time.Now().Add(time.Hour * 24 * 365 * 100), // ~100 years
+		_readDeadline: atomic.NewTime(time.Now().Add(time.Hour * 24 * 365 * 100)), // ~100 years
 		_subscribers:  make(map[chan<- events.Event]*phony.Inbox),
 	}
 	// Populate the node keys from the supplied private key.

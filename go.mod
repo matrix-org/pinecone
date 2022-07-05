@@ -11,7 +11,7 @@ require (
 	github.com/niemeyer/pretty v0.0.0-20200227124842-a10e7caefd8e // indirect
 	github.com/stretchr/testify v1.7.0 // indirect
 	github.com/vishvananda/netlink v1.1.0
-	go.uber.org/atomic v1.7.0
+	go.uber.org/atomic v1.9.0
 	golang.org/x/mobile v0.0.0-20220325161704-447654d348e3
 	golang.org/x/net v0.0.0-20210927181540-4e4d966f7476
 	golang.org/x/sys v0.0.0-20210927094055-39ccf1dd6fa6

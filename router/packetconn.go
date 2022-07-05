@@ -46,10 +46,7 @@ func (r *Router) newLocalPeer() *peer {
 // was delivered using tree routing).
 func (r *Router) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
 	var frame *types.Frame
-	readDeadline := time.Time{}
-	phony.Block(r, func() {
-		readDeadline = r._readDeadline
-	})
+	readDeadline := r._readDeadline.Load()
 	select {
 	case <-r.local.context.Done():
 		r.local.stop(nil)
@@ -133,11 +130,8 @@ func (r *Router) SetDeadline(t time.Time) error {
 	return nil
 }
 
-// SetReadDeadline is not implemented.
 func (r *Router) SetReadDeadline(t time.Time) error {
-	phony.Block(r, func() {
-		r._readDeadline = t
-	})
+	r._readDeadline.Store(t)
 	return nil
 }
 
