@@ -25,7 +25,17 @@ export function updateRoutingTableChart() {
 
     analyticsCharts['routing-table-size'].data.datasets[0].data = routingTableSizes;
     if (currentAnalyticsChart.name === 'routing-table-size') {
+        graphDataUpdated = true;
+    }
+}
+
+var graphDataUpdated = false;
+setInterval(updateGraphs, 2000);
+
+function updateGraphs() {
+    if (graphDataUpdated) {
         currentAnalyticsChart.chart.update();
+        graphDataUpdated = false;
     }
 }
 
@@ -35,226 +45,6 @@ export function ResetReplayUI(element) {
     tooltip.textContent = "Pause Events";
     let icon = element.getElementsByClassName("fa")[0];
     icon.className = icon.className.replace(" fa-play", " fa-pause");
-}
-
-var analyticsCharts = {
-    'routing-table-size': {
-        type: 'bar',
-        data: {
-            datasets: [{
-                label: '# of Nodes',
-                data: [],
-                backgroundColor: [
-                    "rgba(126,105,255,0.5)"
-                ],
-                borderWidth: 0,
-                barPercentage: 1,
-                categoryPercentage: 1
-            }]
-        },
-        options: {
-            interaction: {
-                intersect: true,
-                mode: 'index',
-            },
-            scales: {
-                x: {
-                    beginAtZero: true,
-                    type: 'linear',
-                    ticks: {
-                        stepSize: 1
-                    },
-                    title: {
-                        display: true,
-                        text: '# of Routes',
-                        font: {
-                            size: 14
-                        }
-                    }
-                },
-                y: {
-                    beginAtZero: true,
-                    title: {
-                        display: true,
-                        text: '# of Nodes',
-                        font: {
-                            size: 14
-                        }
-                    }
-                }
-            },
-            layout: {
-                padding: {
-                    top: 20
-                }
-            },
-            plugins: {
-                legend: {
-                    display: false,
-                },
-                tooltip: {
-                    callbacks: {
-                        title: (items) => {
-                            if (!items.length) {
-                                return '';
-                            }
-                            const item = items[0];
-                            const x = item.parsed.x;
-                            return `Routes: ${x}`;
-                        }
-                    }
-                }
-            }
-        }
-    },
-    'total-bandwidth': {
-        type: 'line',
-        data: {
-            labels: ["19:15", "19:16", "19:17", "19:18", "19:19", "19:20", "19:21", "19:22", "19:23", "19:24", "19:25"],
-            datasets: [{
-                label: "Protocol Traffic",
-                fill: true,
-                backgroundColor: "rgba(35,140,245,0.5)",
-                borderColor: "rgba(35,140,245,0.8)",
-                data: [65, 59, 80, 81, 56, 55, 40, 81, 83, 26, 21]
-            }, {
-                label: "Overlay Traffic",
-                fill: true,
-                backgroundColor: "rgba(126,105,255,0.5)",
-                borderColor: "rgba(126,105,255,0.8)",
-                data: [28, 48, 40, 19, 86, 27, 90, 65, 21, 85, 80]
-            }],
-        },
-        options: {
-            interaction: {
-                intersect: false,
-                mode: 'index',
-            },
-            responsive: true,
-            scales: {
-                x: {
-                    title: {
-                        display: true,
-                        text: 'Timestamp',
-                        font: {
-                            size: 14
-                        }
-                    }
-                },
-                y: {
-                    beginAtZero: true,
-                    title: {
-                        display: true,
-                        text: 'Bandwidth (Kbps)',
-                        font: {
-                            size: 14
-                        }
-                    }
-                }
-            },
-            layout: {
-                padding: {
-                    top: 20
-                }
-            }
-        }
-    },
-    'bandwidth-distribution': {
-        type: 'bar',
-        data: {
-            datasets: [{
-                label: 'Protocol Traffic',
-                data: {'0-1': 0, '1-2': 5, '2-3': 4, '3-4': 3, '4-5': 6, '5-6': 8, '6-7': 9, '7-8': 2, '8-9': 1, '9-10': 1},
-                backgroundColor: [
-                    "rgba(126,105,255,0.5)"
-                ],
-                borderWidth: 0,
-                barPercentage: 1,
-                categoryPercentage: 1
-            },
-            {
-                label: 'Overlay Traffic',
-                data: {'0-1': 2, '1-2': 2, '2-3': 0, '3-4': 0, '4-5': 1, '5-6': 2, '6-7': 3, '7-8': 0, '8-9': 0, '9-10': 1},
-                backgroundColor: [
-                    "rgba(35,140,245,0.5)"
-                ],
-                borderWidth: 0,
-                barPercentage: 1,
-                categoryPercentage: 1
-            }]
-        },
-        options: {
-            interaction: {
-                intersect: true,
-                mode: 'index',
-            },
-            scales: {
-                x: {
-                    stacked: true,
-                    title: {
-                        display: true,
-                        text: 'Bandwidth (Kbps)',
-                        font: {
-                            size: 14
-                        }
-                    }
-                },
-                y: {
-                    stacked: true,
-                    beginAtZero: true,
-                    title: {
-                        display: true,
-                        text: '# of Nodes',
-                        font: {
-                            size: 14
-                        }
-                    }
-                }
-            },
-            layout: {
-                padding: {
-                    top: 20
-                }
-            },
-            plugins: {
-                legend: {
-                    display: true,
-                },
-                tooltip: {
-                    callbacks: {
-                        title: (items) => {
-                            if (!items.length) {
-                                return '';
-                            }
-                            const item = items[0];
-                            const x = item.label;
-                            return `BW: ${x} kbps`;
-                        }
-                    }
-                }
-            }
-        }
-    }
-};
-
-let routeChartParams = analyticsCharts['routing-table-size'];
-let currentAnalyticsChart = {
-    name: 'routing-table-size',
-    chart: new Chart(document.getElementById('networkAnalytics').getContext('2d'), {
-    type: routeChartParams.type,
-    data: routeChartParams.data,
-    options: routeChartParams.options
-    })
-};
-
-function updateAnalyticsSelection(selection) {
-    let chartParams = analyticsCharts[selection];
-    currentAnalyticsChart.chart.destroy();
-    currentAnalyticsChart.chart = new Chart(document.getElementById('networkAnalytics').getContext('2d'), {
-        type: chartParams.type,
-        data: chartParams.data,
-        options: chartParams.options
-    });
 }
 
 function toggleLeftPanel() {
@@ -301,16 +91,6 @@ function focusSelectedNode() {
     }
 }
 document.getElementById("focusNode").onclick = focusSelectedNode;
-
-function handleAnalyticsSelect() {
-    let selection = document.getElementById("analyticsDropdown").value;
-    console.log("changed to " + selection);
-    document.getElementById("analyticsDropdown").blur();
-
-    updateAnalyticsSelection(selection);
-}
-document.getElementById("analyticsDropdown").onchange = handleAnalyticsSelect;
-document.getElementById("analyticsDropdown").value = 'routing-table-size';
 
 function selectNetworkType(networkType) {
     let selectionTabs = document.getElementsByClassName("netselect");
@@ -759,3 +539,270 @@ function convertCommandToID(command) {
 
     return id;
 }
+
+function handleAnalyticsSelect() {
+    let selection = document.getElementById("analyticsDropdown").value;
+    console.log("changed to " + selection);
+    document.getElementById("analyticsDropdown").blur();
+
+    updateAnalyticsSelection(selection);
+}
+document.getElementById("analyticsDropdown").onchange = handleAnalyticsSelect;
+document.getElementById("analyticsDropdown").value = 'routing-table-size';
+
+function updateAnalyticsSelection(selection) {
+    let chartParams = analyticsCharts[selection];
+    currentAnalyticsChart.chart.destroy();
+    currentAnalyticsChart.chart = new Chart(document.getElementById('networkAnalytics').getContext('2d'), {
+        type: chartParams.type,
+        data: chartParams.data,
+        options: chartParams.options
+    });
+}
+
+
+const bwTimestamps = new Array(11);
+
+function assignTimestamps() {
+    let minuteDelta = 1;
+    let nowRoundedUp = new Date();
+    let minutes = nowRoundedUp.getMinutes();
+    let remainder = minuteDelta - (minutes % minuteDelta);
+    nowRoundedUp.setMinutes(minutes + remainder, 0, 0);
+    let newMinutes = nowRoundedUp.getMinutes();
+    const options = {
+        hour12 : false,
+        hour:  "2-digit",
+        minute: "2-digit",
+    };
+
+    for (let i = 0; i < 11; i++) {
+        let newTime = structuredClone(nowRoundedUp);
+        newTime.setMinutes(newMinutes - minuteDelta * i);
+        bwTimestamps[10 - i] = newTime.toLocaleTimeString("en-US",options);
+    }
+}
+assignTimestamps();
+
+var analyticsCharts = {
+    'routing-table-size': {
+        type: 'bar',
+        data: {
+            datasets: [{
+                label: '# of Nodes',
+                data: [],
+                backgroundColor: [
+                    "rgba(126,105,255,0.5)"
+                ],
+                borderWidth: 0,
+                barPercentage: 1,
+                categoryPercentage: 1
+            }]
+        },
+        options: {
+            animation: {
+                duration: 300,
+            },
+            interaction: {
+                intersect: true,
+                mode: 'index',
+            },
+            scales: {
+                x: {
+                    beginAtZero: true,
+                    type: 'linear',
+                    ticks: {
+                        stepSize: 1
+                    },
+                    title: {
+                        display: true,
+                        text: '# of Routes',
+                        font: {
+                            size: 14
+                        }
+                    }
+                },
+                y: {
+                    beginAtZero: true,
+                    title: {
+                        display: true,
+                        text: '# of Nodes',
+                        font: {
+                            size: 14
+                        }
+                    }
+                }
+            },
+            layout: {
+                padding: {
+                    top: 20
+                }
+            },
+            plugins: {
+                legend: {
+                    display: false,
+                },
+                tooltip: {
+                    callbacks: {
+                        title: (items) => {
+                            if (!items.length) {
+                                return '';
+                            }
+                            const item = items[0];
+                            const x = item.parsed.x;
+                            return `Routes: ${x}`;
+                        }
+                    }
+                }
+            }
+        }
+    },
+    'total-bandwidth': {
+        type: 'line',
+        data: {
+            labels: bwTimestamps,
+            datasets: [{
+                label: "Protocol Traffic",
+                fill: true,
+                backgroundColor: "rgba(35,140,245,0.5)",
+                borderColor: "rgba(35,140,245,0.8)",
+                data: [65, 59, 80, 81, 56, 55, 40, 81, 83, 26, 21]
+            }, {
+                label: "Overlay Traffic",
+                fill: true,
+                backgroundColor: "rgba(126,105,255,0.5)",
+                borderColor: "rgba(126,105,255,0.8)",
+                data: [28, 48, 40, 19, 86, 27, 90, 65, 21, 85, 80]
+            }],
+        },
+        options: {
+            animation: {
+                duration: 300,
+            },
+            interaction: {
+                intersect: false,
+                mode: 'index',
+            },
+            responsive: true,
+            scales: {
+                x: {
+                    // type: 'time',
+                    // time: {
+                        // unit: 'minute',
+                    // },
+                    title: {
+                        display: true,
+                        text: 'Timestamp',
+                        font: {
+                            size: 14
+                        }
+                    }
+                },
+                y: {
+                    beginAtZero: true,
+                    title: {
+                        display: true,
+                        text: 'Bandwidth (Kbps)',
+                        font: {
+                            size: 14
+                        }
+                    }
+                }
+            },
+            layout: {
+                padding: {
+                    top: 20
+                }
+            }
+        }
+    },
+    'bandwidth-distribution': {
+        type: 'bar',
+        data: {
+            datasets: [{
+                label: 'Protocol Traffic',
+                data: {'0-1': 0, '1-2': 5, '2-3': 4, '3-4': 3, '4-5': 6, '5-6': 8, '6-7': 9, '7-8': 2, '8-9': 1, '9-10': 1},
+                backgroundColor: [
+                    "rgba(126,105,255,0.5)"
+                ],
+                borderWidth: 0,
+                barPercentage: 1,
+                categoryPercentage: 1
+            },
+            {
+                label: 'Overlay Traffic',
+                data: {'0-1': 2, '1-2': 2, '2-3': 0, '3-4': 0, '4-5': 1, '5-6': 2, '6-7': 3, '7-8': 0, '8-9': 0, '9-10': 1},
+                backgroundColor: [
+                    "rgba(35,140,245,0.5)"
+                ],
+                borderWidth: 0,
+                barPercentage: 1,
+                categoryPercentage: 1
+            }]
+        },
+        options: {
+            animation: {
+                duration: 300,
+            },
+            interaction: {
+                intersect: true,
+                mode: 'index',
+            },
+            scales: {
+                x: {
+                    stacked: true,
+                    title: {
+                        display: true,
+                        text: 'Bandwidth (Kbps)',
+                        font: {
+                            size: 14
+                        }
+                    }
+                },
+                y: {
+                    stacked: true,
+                    beginAtZero: true,
+                    title: {
+                        display: true,
+                        text: '# of Nodes',
+                        font: {
+                            size: 14
+                        }
+                    }
+                }
+            },
+            layout: {
+                padding: {
+                    top: 20
+                }
+            },
+            plugins: {
+                legend: {
+                    display: true,
+                },
+                tooltip: {
+                    callbacks: {
+                        title: (items) => {
+                            if (!items.length) {
+                                return '';
+                            }
+                            const item = items[0];
+                            const x = item.label;
+                            return `BW: ${x} kbps`;
+                        }
+                    }
+                }
+            }
+        }
+    }
+};
+
+let routeChartParams = analyticsCharts['routing-table-size'];
+let currentAnalyticsChart = {
+    name: 'routing-table-size',
+    chart: new Chart(document.getElementById('networkAnalytics').getContext('2d'), {
+    type: routeChartParams.type,
+    data: routeChartParams.data,
+    options: routeChartParams.options
+    })
+};
