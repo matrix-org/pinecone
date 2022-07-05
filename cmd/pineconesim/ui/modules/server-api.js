@@ -19,8 +19,10 @@ export const APIUpdateID = {
     SnakeAscUpdated: 6,
     SnakeDescUpdated: 7,
     TreeRootAnnUpdated: 8,
-    PingStateUpdated: 9,
-    NetworkStatsUpdated: 10,
+    SnakeEntryAdded: 9,
+    SnakeEntryRemoved: 10,
+    PingStateUpdated: 11,
+    NetworkStatsUpdated: 12,
 };
 
 export const APICommandID = {

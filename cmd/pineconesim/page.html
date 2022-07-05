@@ -3,7 +3,7 @@
         <title>Pinecone Sim</title>
         <link href="ui/default.css" rel="stylesheet" type="text/css">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.1.1/css/all.min.css">
     </head>
     <body>
         <div class="main" id="main">
@@ -47,12 +47,16 @@
                         <i class="fa fa-podcast"></i>
                         <span class="tooltiptext tooltip-top">Start Pings</span>
                     </button>
+                    <button class="toolselect tooltip" id="view-route-stats">
+                        <i class="fa fa-chart-column"></i>
+                        <span class="tooltiptext tooltip-top">View Routing Stats</span>
+                    </button>
                     <div class="dropup" >
                         <button class="dropup-button" id="scenario">
                             <i class="fa fa-image"></i></button>
                         <div class="dropup-content" >
                             <button class="subtoolselect tooltip" id="scenario-new">
-                                <i class="fa fa-file-image-o"></i>
+                                <i class="fa fa-file-image"></i>
                                 <span class="tooltiptext tooltip-right">New Scenario</span>
                             </button>
                             <button class="subtoolselect tooltip" id="scenario-load">
@@ -134,6 +138,18 @@
                         </div>
                     </div>
                 </div>
+
+                <div id="route-stats-modal" class="modal">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <span class="close">&times;</span>
+                            <h2>Routing Table Size</h2>
+                        </div>
+                        <div class="modal-body">
+                            <canvas id="routingTableSizes"></canvas>
+                        </div>
+                    </div>
+                </div>
             </div>
             <script>
              let visjsLocal = "ui/modules/vis-network.min.js";
@@ -144,6 +160,7 @@
              document.write('<script defer src="' + visjsSrc + '"><\/script>');
              document.write('<script type="module" src="ui/main.js"><\/script>');
             </script>
+            <script src='https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.8.0/chart.min.js' integrity="sha512-sW/w8s4RWTdFFSduOTGtk4isV1+190E/GghVffMA9XczdJ2MDzSzLEubKAs5h0wzgSJOQTRYyaz73L3d6RtJSg==" crossorigin="anonymous"></script>
         </div>
     </body>
 </html>

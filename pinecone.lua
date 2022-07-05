@@ -26,10 +26,6 @@ local frame_types = {
   [6] = "Setup ACK",
   [7] = "Teardown",
   [8] = "SNEK Routed",
-  [9] = "SNEK Ping",
-  [10] = "SNEK Pong",
-  [11] = "Tree Ping",
-  [12] = "Tree Pong",
 }
 
 header_size = 10
@@ -60,7 +56,6 @@ source_sig = ProtoField.bytes("pinecone.srcsig", "Source Signature")
 
 path_sig = ProtoField.bytes("pinecone.pathsig", "Path Signature")
 
-hop_count = ProtoField.uint16("pinecone.hops", "Hop Count")
 payload = ProtoField.bytes("pinecone.payload", "Payload", base.SPACE)
 
 rootkey = ProtoField.bytes("pinecone.rootkey", "Root public key")
@@ -244,7 +239,7 @@ local function do_pinecone_dissect(buffer, pinfo, tree)
       -- Info column
       pinfo.cols.info:set(frame_types[7])
       pinfo.cols.info:append(" → [" .. short_pk(dstkey:bytes():raw()) .. "]")
-    elseif (ftype == 8 or ftype == 9 or ftype == 10) then
+    elseif (ftype == 8) then
       -- SNEK Routed
       -- SNEK Ping
       -- SNEK Pong
@@ -267,15 +262,6 @@ local function do_pinecone_dissect(buffer, pinfo, tree)
           pinfo.cols.protocol:prepend(pinecone_protocol.name .. "-")
         end
         pinfo.cols.info:set(frame_types[8])
-      elseif (ftype == 9 or ftype == 10) then
-        if ftype == 9 then
-          -- SNEK Ping
-          pinfo.cols.info:set(frame_types[9])
-        elseif ftype == 10 then
-          -- SNEK Pong
-          pinfo.cols.info:set(frame_types[10])
-        end
-        subtree:add(hop_count, buffer(f_extra_idx, 2), buffer(f_extra_idx, 2):uint())
       end
 
       -- Info column
@@ -341,15 +327,6 @@ local function do_pinecone_dissect(buffer, pinfo, tree)
             pinfo.cols.protocol:prepend(pinecone_protocol.name .. "-")
           end
           pinfo.cols.info:set(frame_types[2])
-        elseif (ftype == 11 or ftype == 12) then
-          if ftype == 11 then
-            -- Tree Ping
-            pinfo.cols.info:set(frame_types[11])
-          elseif ftype == 12 then
-            -- Tree Pong
-            pinfo.cols.info:set(frame_types[12])
-          end
-          subtree:add(hop_count, buffer(f_extra_idx, 2), buffer(f_extra_idx, 2):uint())
         end
 
         -- Info column

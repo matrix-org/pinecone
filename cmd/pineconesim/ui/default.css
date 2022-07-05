@@ -19,7 +19,7 @@ body {
     --topnav-height: 0px;
     --toggle-box-size: 35px;
     --toggle-box-margin: 10px;
-    --tool-panel-count: 6;
+    --tool-panel-count: 7;
     --tool-icon-width: 37.5px;
     --tool-panel-width: calc(var(--tool-panel-count) * var(--tool-icon-width));
     --tool-icon-size: calc(var(--tool-panel-width) / var(--tool-panel-count));
