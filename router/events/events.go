@@ -61,3 +61,18 @@ type TreeRootAnnUpdate struct {
 
 // Tag TreeRootAnnUpdate as an Event
 func (e TreeRootAnnUpdate) isEvent() {}
+
+type SnakeEntryAdded struct {
+	EntryID string
+	PeerID  string
+}
+
+// Tag SnakeEntryAdded as an Event
+func (e SnakeEntryAdded) isEvent() {}
+
+type SnakeEntryRemoved struct {
+	EntryID string
+}
+
+// Tag SnakeEntryRemoved as an Event
+func (e SnakeEntryRemoved) isEvent() {}

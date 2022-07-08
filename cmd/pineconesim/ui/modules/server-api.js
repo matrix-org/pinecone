@@ -16,10 +16,13 @@ export const APIUpdateID = {
     PeerAdded: 3,
     PeerRemoved: 4,
     TreeParentUpdated: 5,
-    SnakeDescUpdated: 6,
-    TreeRootAnnUpdated: 7,
-    PingStateUpdated: 8,
-    NetworkStatsUpdated: 9,
+    SnakeAscUpdated: 6,
+    SnakeDescUpdated: 7,
+    TreeRootAnnUpdated: 8,
+    SnakeEntryAdded: 9,
+    SnakeEntryRemoved: 10,
+    PingStateUpdated: 11,
+    NetworkStatsUpdated: 12,
 };
 
 export const APICommandID = {

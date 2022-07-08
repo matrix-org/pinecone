@@ -17,12 +17,21 @@ function handleSimMessage(msg) {
                 }
             }
 
-            if (value.SnakeDesc) {
-                graph.setSnekDesc(key, value.SnakeDesc, "");
+            if (value.SnakeAsc && value.SnakeAscPath) {
+                graph.setSnekAsc(key, value.SnakeAsc, "", value.SnakeAscPath);
+            }
+            if (value.SnakeDesc && value.SnakeDescPath) {
+                graph.setSnekDesc(key, value.SnakeDesc, "", value.SnakeDescPath);
             }
 
             if (value.TreeParent) {
                 graph.setTreeParent(key, value.TreeParent, "");
+            }
+
+            if (value.SnakeEntries) {
+                for (let i = 0; i < value.SnakeEntries.length; i++) {
+                    graph.addSnakeEntry(key, value.SnakeEntries[i].EntryID, value.SnakeEntries[i].PeerID);
+                }
             }
         }
 
@@ -49,11 +58,20 @@ function handleSimMessage(msg) {
         case APIUpdateID.TreeParentUpdated:
             graph.setTreeParent(event.Node, event.Peer, event.Prev);
             break;
+        case APIUpdateID.SnakeAscUpdated:
+            graph.setSnekAsc(event.Node, event.Peer, event.Prev, event.PathID);
+            break;
         case APIUpdateID.SnakeDescUpdated:
-            graph.setSnekDesc(event.Node, event.Peer, event.Prev);
+            graph.setSnekDesc(event.Node, event.Peer, event.Prev, event.PathID);
             break;
         case APIUpdateID.TreeRootAnnUpdated:
             graph.updateRootAnnouncement(event.Node, event.Root, event.Sequence, event.Time, event.Coords);
+            break;
+        case APIUpdateID.SnakeEntryAdded:
+            graph.addSnakeEntry(event.Node, event.EntryID, event.PeerID);
+            break;
+        case APIUpdateID.SnakeEntryRemoved:
+            graph.removeSnakeEntry(event.Node, event.EntryID);
             break;
         case APIUpdateID.PingStateUpdated:
             SetPingToolState(event.Enabled, event.Active);

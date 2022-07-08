@@ -38,8 +38,11 @@ const (
 	SimPeerAdded
 	SimPeerRemoved
 	SimTreeParentUpdated
+	SimSnakeAscUpdated
 	SimSnakeDescUpdated
 	SimTreeRootAnnUpdated
+	SimSnakeEntryAdded
+	SimSnakeEntryRemoved
 	SimPingStateUpdated
 	SimNetworkStatsUpdated
 )
@@ -67,12 +70,16 @@ const (
 )
 
 type InitialNodeState struct {
-	PublicKey  string
-	NodeType   APINodeType
-	RootState  RootState
-	Peers      []PeerInfo
-	TreeParent string
-	SnakeDesc  string
+	PublicKey     string
+	NodeType      APINodeType
+	RootState     RootState
+	Peers         []PeerInfo
+	TreeParent    string
+	SnakeAsc      string
+	SnakeAscPath  string
+	SnakeDesc     string
+	SnakeDescPath string
+	SnakeEntries  []SnakeRouteEntry
 }
 
 type RootState struct {
@@ -85,6 +92,11 @@ type RootState struct {
 type PeerInfo struct {
 	ID   string
 	Port int
+}
+
+type SnakeRouteEntry struct {
+	EntryID string
+	PeerID  string
 }
 
 type SimEventMsg struct {

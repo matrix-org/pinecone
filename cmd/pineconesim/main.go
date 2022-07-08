@@ -252,6 +252,11 @@ func userProxyReporter(conn *websocket.Conn, connID uint64, sim *simulator.Simul
 			peerConns = append(peerConns, simulator.PeerInfo{ID: conn, Port: port})
 		}
 
+		var snakeEntries []simulator.SnakeRouteEntry
+		for entry, peer := range node.SnakeEntries {
+			snakeEntries = append(snakeEntries, simulator.SnakeRouteEntry{EntryID: entry, PeerID: peer})
+		}
+
 		nodeState[name] = simulator.InitialNodeState{
 			PublicKey: node.PeerID,
 			NodeType:  node.NodeType,
@@ -261,9 +266,13 @@ func userProxyReporter(conn *websocket.Conn, connID uint64, sim *simulator.Simul
 				AnnTime:     node.Announcement.Time,
 				Coords:      node.Coords,
 			},
-			Peers:      peerConns,
-			TreeParent: node.Parent,
-			SnakeDesc:  node.DescendingPeer,
+			Peers:         peerConns,
+			TreeParent:    node.Parent,
+			SnakeAsc:      node.AscendingPeer,
+			SnakeAscPath:  node.AscendingPathID,
+			SnakeDesc:     node.DescendingPeer,
+			SnakeDescPath: node.DescendingPathID,
+			SnakeEntries:  snakeEntries,
 		}
 
 		if batchSize == int(maxBatchSize) || end {
@@ -348,10 +357,16 @@ func handleSimEvents(log *log.Logger, conn *websocket.Conn, ch <-chan simulator.
 			eventType = simulator.SimPeerRemoved
 		case simulator.TreeParentUpdate:
 			eventType = simulator.SimTreeParentUpdated
+		case simulator.SnakeAscUpdate:
+			eventType = simulator.SimSnakeAscUpdated
 		case simulator.SnakeDescUpdate:
 			eventType = simulator.SimSnakeDescUpdated
 		case simulator.TreeRootAnnUpdate:
 			eventType = simulator.SimTreeRootAnnUpdated
+		case simulator.SnakeEntryAdded:
+			eventType = simulator.SimSnakeEntryAdded
+		case simulator.SnakeEntryRemoved:
+			eventType = simulator.SimSnakeEntryRemoved
 		case simulator.PingStateUpdate:
 			eventType = simulator.SimPingStateUpdated
 		case simulator.NetworkStatsUpdate:

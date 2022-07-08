@@ -19,6 +19,14 @@ export function closeRightPanel() {
     }
 }
 
+export function updateRoutingTableChart() {
+    let tableSizes = graph.getRoutingTableSizes();
+    let routingTableSizes = Object.fromEntries(tableSizes);
+
+    routeTableChart.data.datasets[0].data = routingTableSizes;
+    routeTableChart.update();
+}
+
 export function ResetReplayUI(element) {
     element.className = element.className.replace(" active", "");
     let tooltip = element.getElementsByClassName("tooltiptext")[0];
@@ -26,6 +34,72 @@ export function ResetReplayUI(element) {
     let icon = element.getElementsByClassName("fa")[0];
     icon.className = icon.className.replace(" fa-play", " fa-pause");
 }
+
+let routeTableChart = new Chart(document.getElementById('routingTableSizes').getContext('2d'), {
+    type: 'bar',
+    data: {
+        datasets: [{
+            label: '# of Nodes',
+            data: [],
+            backgroundColor: [
+                'rgba(54, 162, 235, 0.5)'
+            ],
+            borderWidth: 0,
+            barPercentage: 1,
+            categoryPercentage: 1
+        }]
+    },
+    options: {
+        scales: {
+            x: {
+                beginAtZero: true,
+                type: 'linear',
+                ticks: {
+                    stepSize: 1
+                },
+                title: {
+                    display: true,
+                    text: '# of Routes',
+                    font: {
+                        size: 14
+                    }
+                }
+            },
+            y: {
+                beginAtZero: true,
+                title: {
+                    display: true,
+                    text: '# of Nodes',
+                    font: {
+                        size: 14
+                    }
+                }
+            }
+        },
+        layout: {
+            padding: {
+                top: 20
+            }
+        },
+        plugins: {
+            legend: {
+                display: false,
+            },
+            tooltip: {
+                callbacks: {
+                    title: (items) => {
+                        if (!items.length) {
+                            return '';
+                        }
+                        const item = items[0];
+                        const x = item.parsed.x;
+                        return `Routes: ${x}`;
+                    }
+                }
+            }
+        }
+    }
+});
 
 function toggleLeftPanel() {
     let panel = document.getElementById("left");
@@ -115,6 +189,9 @@ function selectTool(toolType) {
     case "ping-start-stop":
         handleToolPingStartStop(this);
         break;
+    case "view-route-stats":
+        handleToolViewRouteStats(this);
+        break;
     case "scenario-new":
         handleToolScenarioNew(this);
         break;
@@ -177,6 +254,10 @@ function handleToolPingStartStop(subtool) {
     }
 
     SendToServer({"MsgID": APICommandMessageID.PlaySequence, "Events": [command]});
+}
+
+function handleToolViewRouteStats(subtool) {
+    setupBaseModal("route-stats-modal");
 }
 
 function handleToolScenarioNew(subtool) {

@@ -54,7 +54,12 @@ source = ProtoField.string("pinecone.src", "Source Coords")
 source_key = ProtoField.bytes("pinecone.srckey", "Source Key")
 source_sig = ProtoField.bytes("pinecone.srcsig", "Source Signature")
 
+<<<<<<< HEAD
 hop_count = ProtoField.uint16("pinecone.hops", "Hop Count")
+=======
+path_sig = ProtoField.bytes("pinecone.pathsig", "Path Signature")
+
+>>>>>>> main
 payload = ProtoField.bytes("pinecone.payload", "Payload", base.SPACE)
 
 rootkey = ProtoField.bytes("pinecone.rootkey", "Root public key")
@@ -147,9 +152,15 @@ local function do_pinecone_dissect(buffer, pinfo, tree)
       psubtree:add(sigsig, pload(offset + 32 + root_offset, 64))
 
       -- Info column
+<<<<<<< HEAD
       pinfo.cols.info:set(frame_types[3])
       pinfo.cols.info:append(" " .. short_pk(dstkey:bytes():raw()) .. " → ")
     elseif (ftype == 4 or ftype == 5 or ftype == 6) then
+=======
+      pinfo.cols.info:set(frame_types[7])
+      pinfo.cols.info:append(" → [" .. short_pk(dstkey:bytes():raw()) .. "]")
+    elseif (ftype == 8) then
+>>>>>>> main
       -- SNEK Routed
       -- SNEK Ping
       -- SNEK Pong
@@ -176,6 +187,7 @@ local function do_pinecone_dissect(buffer, pinfo, tree)
         if pinfo.cols.protocol ~= pinecone_protocol.name then
           pinfo.cols.protocol:prepend(pinecone_protocol.name .. "-")
         end
+<<<<<<< HEAD
         pinfo.cols.info:set(frame_types[4])
       elseif (ftype == 5 or ftype == 6) then
         if ftype == 5 then
@@ -186,6 +198,9 @@ local function do_pinecone_dissect(buffer, pinfo, tree)
           pinfo.cols.info:set(frame_types[6])
         end
         subtree:add(hop_count, buffer(f_extra_idx, 2), buffer(f_extra_idx, 2):uint())
+=======
+        pinfo.cols.info:set(frame_types[8])
+>>>>>>> main
       end
 
       -- Info column
@@ -251,6 +266,7 @@ local function do_pinecone_dissect(buffer, pinfo, tree)
             pinfo.cols.protocol:prepend(pinecone_protocol.name .. "-")
           end
           pinfo.cols.info:set(frame_types[2])
+<<<<<<< HEAD
         elseif (ftype == 7 or ftype == 8) then
           if ftype == 7 then
             -- Tree Ping
@@ -260,6 +276,8 @@ local function do_pinecone_dissect(buffer, pinfo, tree)
             pinfo.cols.info:set(frame_types[8])
           end
           subtree:add(hop_count, buffer(f_extra_idx, 2), buffer(f_extra_idx, 2):uint())
+=======
+>>>>>>> main
         end
 
         -- Info column
