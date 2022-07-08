@@ -343,7 +343,7 @@ func (s *state) _handleTreeAnnouncement(p *peer, f *types.Frame) error {
 			s._sendTreeAnnouncements()
 		case SelectNewParent:
 			if s._selectNewParent() {
-				s._bootstrapNow()
+				s._bootstrapSoon()
 			}
 		case SelectNewParentWithWait:
 			s._waiting = true
@@ -353,7 +353,7 @@ func (s *state) _handleTreeAnnouncement(p *peer, f *types.Frame) error {
 				s.Act(nil, func() {
 					s._waiting = false
 					if s._selectNewParent() {
-						s._bootstrapNow()
+						s._bootstrapSoon()
 					}
 				})
 			})

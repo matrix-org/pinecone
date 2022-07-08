@@ -48,5 +48,5 @@ The Pinecone routing scheme effectively is built up of two major components:
     * Provides efficient, low-stretch and strictly loop-free routing;
     * Effective means of exchanging path setup messages, even before SNEK bootstrap has taken place;
 
-* A **virtual snake** (or **SNEK**) — a double-linked linear routing topology:
+* A **virtual snake** (or **SNEK**) — a single-linked linear routing topology:
     * Provides resilient public key-based routing across the overlay network.

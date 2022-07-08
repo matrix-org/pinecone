@@ -28,7 +28,6 @@ import (
 
 type NeighbourInfo struct {
 	PublicKey types.PublicKey
-	PathID    types.VirtualSnakePathID
 }
 
 type PeerInfo struct {
@@ -85,7 +84,7 @@ func (r *Router) NextHop(from net.Addr, frameType types.FrameType, dest net.Addr
 
 	var nextPeer *peer
 	phony.Block(r.state, func() {
-		nextPeer = r.state._nextHopsFor(fromPeer, frameType, dest)
+		nextPeer, _ = r.state._nextHopsFor(fromPeer, frameType, dest, types.VirtualSnakeWatermark{PublicKey: types.FullMask})
 	})
 
 	if nextPeer != nil {

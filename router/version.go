@@ -19,7 +19,8 @@ const (
 	capabilityCryptographicSetups
 	capabilitySetupACKs // nolint:deadcode,varcheck
 	capabilityDedupedCoordinateInfo
+	capabilitySoftState
 )
 
 const ourVersion uint8 = 1
-const ourCapabilities uint32 = capabilityLengthenedRootInterval | capabilityCryptographicSetups | capabilitySetupACKs | capabilityDedupedCoordinateInfo
+const ourCapabilities uint32 = capabilityLengthenedRootInterval | capabilityCryptographicSetups | capabilityDedupedCoordinateInfo | capabilitySoftState

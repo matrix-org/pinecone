@@ -147,10 +147,8 @@ func (h eventHandler) Run(quit <-chan bool, sim *Simulator) {
 				sim.handlePeerRemoved(h.node, e.PeerID, int(e.Port))
 			case events.TreeParentUpdate:
 				sim.handleTreeParentUpdate(h.node, e.PeerID)
-			case events.SnakeAscUpdate:
-				sim.handleSnakeAscUpdate(h.node, e.PeerID, e.PathID)
 			case events.SnakeDescUpdate:
-				sim.handleSnakeDescUpdate(h.node, e.PeerID, e.PathID)
+				sim.handleSnakeDescUpdate(h.node, e.PeerID, "") // TODO: do we need the path ID?
 			case events.TreeRootAnnUpdate:
 				sim.handleTreeRootAnnUpdate(h.node, e.Root, e.Sequence, e.Time, e.Coords)
 			case events.SnakeEntryAdded:

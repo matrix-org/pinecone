@@ -88,10 +88,6 @@ func defaultFrameCount() PeerFrameCount {
 	frameCount[types.TypeKeepalive] = atomic.NewUint64(0)
 	frameCount[types.TypeTreeAnnouncement] = atomic.NewUint64(0)
 	frameCount[types.TypeVirtualSnakeBootstrap] = atomic.NewUint64(0)
-	frameCount[types.TypeVirtualSnakeBootstrapACK] = atomic.NewUint64(0)
-	frameCount[types.TypeVirtualSnakeSetup] = atomic.NewUint64(0)
-	frameCount[types.TypeVirtualSnakeSetupACK] = atomic.NewUint64(0)
-	frameCount[types.TypeVirtualSnakeTeardown] = atomic.NewUint64(0)
 	frameCount[types.TypeTreeRouted] = atomic.NewUint64(0)
 	frameCount[types.TypeVirtualSnakeRouted] = atomic.NewUint64(0)
 
