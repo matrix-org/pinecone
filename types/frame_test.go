@@ -82,30 +82,42 @@ func TestMarshalUnmarshalFrame(t *testing.T) {
 
 func TestMarshalUnmarshalSNEKBootstrapFrame(t *testing.T) {
 	pk, _, _ := ed25519.GenerateKey(nil)
+	wpk, _, _ := ed25519.GenerateKey(nil)
 	input := Frame{
 		Version: Version0,
 		Type:    TypeVirtualSnakeBootstrap,
-		Source:  Coordinates{1, 2, 3, 4, 5},
 		Payload: []byte{9, 9, 9, 9, 9},
+		Watermark: VirtualSnakeWatermark{
+			Sequence: 100,
+		},
 	}
 	copy(input.DestinationKey[:], pk)
+	copy(input.Watermark.PublicKey[:], wpk)
+	input.Watermark.Sequence = 100
 	expected := []byte{
 		0x70, 0x69, 0x6e, 0x65, // magic bytes
 		0,                               // version 0
 		byte(TypeVirtualSnakeBootstrap), // type greedy
 		0, 0,                            // extra
-		0, 56, // frame length
+		0, 82, // frame length
 		0, 5, // payload length
-		0, 5, // source length
-		1, 2, 3, 4, 5, // source coordinates
 	}
 	expected = append(expected, pk...)
-	expected = append(expected, input.Payload...)
-	buf := make([]byte, 65535)
-	n, err := input.MarshalBinary(buf)
+	expected = append(expected, wpk...)
+	var seq [4]byte
+	n, err := input.Watermark.Sequence.MarshalBinary(seq[:])
 	if err != nil {
 		t.Fatal(err)
 	}
+	expected = append(expected, seq[:n]...)
+	expected = append(expected, input.Payload...)
+	buf := make([]byte, 65535)
+	n, err = input.MarshalBinary(buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fmt.Println("Got", buf[:n])
+	fmt.Println("Want", expected)
 	if n != len(expected) {
 		t.Fatalf("wrong marshalled length, got %d, expected %d", n, len(expected))
 	}
@@ -136,198 +148,41 @@ func TestMarshalUnmarshalSNEKBootstrapFrame(t *testing.T) {
 	}
 }
 
-func TestMarshalUnmarshalSNEKBootstrapACKFrame(t *testing.T) {
-	pk1, _, _ := ed25519.GenerateKey(nil)
-	pk2, _, _ := ed25519.GenerateKey(nil)
-	input := Frame{
-		Version:     Version0,
-		Type:        TypeVirtualSnakeBootstrapACK,
-		Source:      Coordinates{1, 2, 3, 4, 5},
-		Destination: Coordinates{5, 4, 3, 2, 1},
-		Payload:     []byte{9, 9, 9, 9, 9},
-	}
-	copy(input.DestinationKey[:], pk1)
-	copy(input.SourceKey[:], pk2)
-	expected := []byte{
-		0x70, 0x69, 0x6e, 0x65, // magic bytes
-		0,                                  // version 0
-		byte(TypeVirtualSnakeBootstrapACK), // type greedy
-		0, 0,                               // extra
-		0, 95, // frame length
-		0, 5, // payload length
-		0, 5, 5, 4, 3, 2, 1, // destination coordinates
-		0, 5, 1, 2, 3, 4, 5, // source coordinates
-	}
-	expected = append(expected, pk1...)
-	expected = append(expected, pk2...)
-	expected = append(expected, input.Payload...)
-	buf := make([]byte, 65535)
-	n, err := input.MarshalBinary(buf)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if n != len(expected) {
-		t.Fatalf("wrong marshalled length, got %d, expected %d", n, len(expected))
-	}
-	if !bytes.Equal(buf[:n], expected) {
-		t.Fatalf("wrong marshalled output, got %v, expected %v", buf[:n], expected)
-	}
-
-	t.Log("Got: ", buf[:n])
-	t.Log("Want:", expected)
-
-	output := Frame{
-		Payload: make([]byte, 0, MaxPayloadSize),
-	}
-	if _, err := output.UnmarshalBinary(buf[:n]); err != nil {
-		t.Fatal(err)
-	}
-	if output.Version != input.Version {
-		t.Fatal("wrong version")
-	}
-	if output.Type != input.Type {
-		t.Fatal("wrong version")
-	}
-	if !output.Destination.EqualTo(input.Destination) {
-		t.Fatal("wrong path")
-	}
-	if !bytes.Equal(input.Payload, output.Payload) {
-		t.Fatal("wrong payload")
-	}
-}
-
-func TestMarshalUnmarshalSNEKSetupFrame(t *testing.T) {
-	pk1, _, _ := ed25519.GenerateKey(nil)
-	pk2, _, _ := ed25519.GenerateKey(nil)
-	input := Frame{
-		Version:     Version0,
-		Type:        TypeVirtualSnakeSetup,
-		Destination: Coordinates{5, 4, 3, 2, 1},
-		Payload:     []byte{9, 9, 9, 9, 9, 9, 9, 9, 9, 9},
-	}
-	copy(input.DestinationKey[:], pk1)
-	copy(input.SourceKey[:], pk2)
-	expected := []byte{
-		0x70, 0x69, 0x6e, 0x65, // magic bytes
-		0,                           // version 0
-		byte(TypeVirtualSnakeSetup), // type greedy
-		0, 0,                        // extra
-		0, 93, // frame length
-		0, 10, // payload length
-		0, 5, 5, 4, 3, 2, 1, // destination coordinates
-	}
-	expected = append(expected, pk2...)
-	expected = append(expected, pk1...)
-	expected = append(expected, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9) // payload
-	buf := make([]byte, 65535)
-	n, err := input.MarshalBinary(buf)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if n != len(expected) {
-		t.Fatalf("wrong marshalled length, \ngot %d, \nexpected %d", n, len(expected))
-	}
-	if !bytes.Equal(buf[:n], expected) {
-		t.Fatalf("wrong marshalled output, \ngot %v, \nexpected %v", buf[:n], expected)
-	}
-
-	t.Log("Got: ", buf[:n])
-	t.Log("Want:", expected)
-
-	output := Frame{
-		Payload: make([]byte, 0, MaxPayloadSize),
-	}
-	if _, err := output.UnmarshalBinary(buf[:n]); err != nil {
-		t.Fatal(err)
-	}
-	if output.Version != input.Version {
-		t.Fatal("wrong version")
-	}
-	if output.Type != input.Type {
-		t.Fatal("wrong version")
-	}
-	if !output.Destination.EqualTo(input.Destination) {
-		t.Fatal("wrong path")
-	}
-	if !bytes.Equal(input.Payload, output.Payload) {
-		t.Fatal("wrong payload")
-	}
-}
-
-func TestMarshalUnmarshalSNEKTeardownFrame(t *testing.T) {
-	pk1, _, _ := ed25519.GenerateKey(nil)
-	input := Frame{
-		Version: Version0,
-		Type:    TypeVirtualSnakeTeardown,
-	}
-	copy(input.DestinationKey[:], pk1)
-	expected := []byte{
-		0x70, 0x69, 0x6e, 0x65, // magic bytes
-		0,                              // version 0
-		byte(TypeVirtualSnakeTeardown), // type greedy
-		0, 0,                           // extra
-		0, 44, // frame length
-		0, 0, // payload length
-	}
-	expected = append(expected, pk1...)
-	buf := make([]byte, 65535)
-	n, err := input.MarshalBinary(buf)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if n != len(expected) {
-		t.Fatalf("wrong marshalled length, \ngot %d, \nexpected %d", n, len(expected))
-	}
-	if !bytes.Equal(buf[:n], expected) {
-		t.Fatalf("wrong marshalled output, \ngot %v, \nexpected %v", buf[:n], expected)
-	}
-
-	t.Log("Got: ", buf[:n])
-	t.Log("Want:", expected)
-
-	output := Frame{
-		Payload: make([]byte, 0, MaxPayloadSize),
-	}
-	if _, err := output.UnmarshalBinary(buf[:n]); err != nil {
-		t.Fatal(err)
-	}
-	if output.Version != input.Version {
-		t.Fatal("wrong version")
-	}
-	if output.Type != input.Type {
-		t.Fatal("wrong version")
-	}
-	if !output.Destination.EqualTo(input.Destination) {
-		t.Fatal("wrong path")
-	}
-	if !bytes.Equal(input.Payload, output.Payload) {
-		t.Fatal("wrong payload")
-	}
-}
-
 func TestMarshalUnmarshalSNEKFrame(t *testing.T) {
 	pk1, _, _ := ed25519.GenerateKey(nil)
 	pk2, _, _ := ed25519.GenerateKey(nil)
+	wpk, _, _ := ed25519.GenerateKey(nil)
 	input := Frame{
 		Version: Version0,
 		Type:    TypeVirtualSnakeRouted,
 		Payload: []byte("HELLO!"),
+		Watermark: VirtualSnakeWatermark{
+			Sequence: 100,
+		},
 	}
 	copy(input.SourceKey[:], pk1)
 	copy(input.DestinationKey[:], pk2)
+	copy(input.Watermark.PublicKey[:], wpk)
 	expected := []byte{
 		0x70, 0x69, 0x6e, 0x65, // magic bytes
 		0,                            // version 0
 		byte(TypeVirtualSnakeRouted), // type greedy
 		0, 0,                         // extra
-		0, 82, // frame length
+		0, 115, // frame length
 		0, 6, // payload length
 	}
 	expected = append(expected, pk2...)
 	expected = append(expected, pk1...)
+	expected = append(expected, wpk...)
+	var seq [4]byte
+	n, err := input.Watermark.Sequence.MarshalBinary(seq[:])
+	if err != nil {
+		t.Fatal(err)
+	}
+	expected = append(expected, seq[:n]...)
 	expected = append(expected, input.Payload...)
 	buf := make([]byte, 65535)
-	n, err := input.MarshalBinary(buf)
+	n, err = input.MarshalBinary(buf)
 	if err != nil {
 		t.Fatal(err)
 	}

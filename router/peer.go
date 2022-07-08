@@ -86,13 +86,6 @@ func (p *peer) String() string { // to make sim less ugly
 	return fmt.Sprintf("%d", p.port)
 }
 
-// local returns true if the peer refers to the local router peer, or
-// false if the peer is an actual connected peer. It is safe to be called from
-// other actors.
-func (p *peer) local() bool {
-	return p == p.router.local
-}
-
 // send queues a frame to be sent to this peer. It is safe to be called from
 // other actors. The frame will be allocated to the correct queue automatically
 // depending on whether it is a protocol frame or a traffic frame. This function
@@ -103,9 +96,7 @@ func (p *peer) send(f *types.Frame) bool {
 	// Protocol messages
 	case types.TypeTreeAnnouncement, types.TypeKeepalive:
 		fallthrough
-	case types.TypeVirtualSnakeBootstrap, types.TypeVirtualSnakeBootstrapACK:
-		fallthrough
-	case types.TypeVirtualSnakeSetup, types.TypeVirtualSnakeSetupACK, types.TypeVirtualSnakeTeardown:
+	case types.TypeVirtualSnakeBootstrap:
 		if p.proto == nil {
 			// The local peer doesn't have a protocol queue so we should check
 			// for nils to prevent panics.

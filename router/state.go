@@ -37,9 +37,7 @@ type state struct {
 	phony.Inbox
 	r              *Router
 	_peers         []*peer            // All switch ports, connected and disconnected
-	_ascending     *virtualSnakeEntry // Next ascending node in keyspace
 	_descending    *virtualSnakeEntry // Next descending node in keyspace
-	_candidate     *virtualSnakeEntry // Candidate to replace the ascending node
 	_parent        *peer              // Our chosen parent in the tree
 	_announcements announcementTable  // Announcements received from our peers
 	_table         virtualSnakeTable  // Virtual snake DHT entries
@@ -47,6 +45,7 @@ type state struct {
 	_sequence      uint64             // Used to sequence our root tree announcements
 	_treetimer     *time.Timer        // Tree maintenance timer
 	_snaketimer    *time.Timer        // Virtual snake maintenance timer
+	_lastbootstrap time.Time          // When did we last bootstrap?
 	_waiting       bool               // Is the tree waiting to reparent?
 	_filterPacket  FilterFn           // Function called when forwarding packets
 }
@@ -54,10 +53,8 @@ type state struct {
 // _start resets the state and starts tree and virtual snake maintenance.
 func (s *state) _start() {
 	s._setParent(nil)
-	s._setAscendingNode(nil)
 	s._setDescendingNode(nil)
 
-	s._candidate = nil
 	s._ordering = 0
 	s._waiting = false
 
@@ -172,37 +169,23 @@ func (s *state) _setParent(peer *peer) {
 	})
 }
 
-func (s *state) _setAscendingNode(node *virtualSnakeEntry) {
-	s._ascending = node
-
-	s.r.Act(nil, func() {
-		peerID := ""
-		pathID := []byte{}
-		if node != nil {
-			peerID = node.Origin.String()
-			if node.virtualSnakeIndex != nil {
-				pathID, _ = node.PathID.MarshalJSON()
-			}
-		}
-
-		s.r._publish(events.SnakeAscUpdate{PeerID: peerID, PathID: string(pathID)})
-	})
-}
-
 func (s *state) _setDescendingNode(node *virtualSnakeEntry) {
+	switch {
+	case s._descending == nil || node == nil:
+		fallthrough
+	case s._descending != nil && node != nil && s._descending.PublicKey != node.PublicKey:
+		s._bootstrapSoon()
+	}
+
 	s._descending = node
 
 	s.r.Act(nil, func() {
 		peerID := ""
-		pathID := []byte{}
 		if node != nil {
 			peerID = node.PublicKey.String()
-			if node.virtualSnakeIndex != nil {
-				pathID, _ = node.PathID.MarshalJSON()
-			}
 		}
 
-		s.r._publish(events.SnakeDescUpdate{PeerID: peerID, PathID: string(pathID)})
+		s.r._publish(events.SnakeDescUpdate{PeerID: peerID})
 	})
 }
 
@@ -225,7 +208,6 @@ func (s *state) _removeRouteEntry(index virtualSnakeIndex) {
 // _portDisconnected is called when a peer disconnects.
 func (s *state) _portDisconnected(peer *peer) {
 	peercount := 0
-	bootstrap := false
 
 	// Work out how many peers are connected now that this peer has
 	// disconnected.
@@ -246,41 +228,26 @@ func (s *state) _portDisconnected(peer *peer) {
 	// Delete the last tree announcement that we received from this peer.
 	delete(s._announcements, peer)
 
-	// Scan the local DHT table for any routes that transited this now-dead
-	// peering. If we find any then we need to send teardowns in the opposite
-	// direction, so that nodes further along the path will learn that the
-	// path was broken.
+	// Scan the local routing table for any routes that transited this now-dead
+	// peering and remove them from the routing table.
 	for k, v := range s._table {
-		if v.Destination == peer || v.Source == peer {
-			s._sendTeardownForExistingPath(peer, k.PublicKey, k.PathID)
+		if v.Source == peer || v.Destination == peer {
+			delete(s._table, k)
 		}
 	}
 
-	// If the ascending path was also lost because it went via the now-dead
-	// peering then clear that path (although we can't send a teardown) and
-	// then bootstrap again.
-	if asc := s._ascending; asc != nil && asc.Destination == peer {
-		s._teardownPath(s.r.local, asc.PublicKey, asc.PathID)
-		bootstrap = true
-	}
-
 	// If the descending path was lost because it went via the now-dead
-	// peering then clear that path (although we can't send a teardown) and
-	// wait for another incoming setup.
+	// peering then clear that path and wait for another incoming setup.
 	if desc := s._descending; desc != nil && desc.Source == peer {
-		s._teardownPath(s.r.local, desc.PublicKey, desc.PathID)
+		s._setDescendingNode(nil)
 	}
 
 	// If the peer that died was our chosen tree parent, then we will need to
 	// select a new parent. If we successfully choose a new parent (as in, we
 	// don't end up promoting ourselves to a root) then we will also need to
 	// send a new bootstrap into the network.
-	if s._parent == peer {
-		bootstrap = bootstrap || s._selectNewParent()
-	}
-
-	if bootstrap {
-		s._bootstrapNow()
+	if s._parent == peer && s._selectNewParent() {
+		s._bootstrapSoon()
 	}
 }
 

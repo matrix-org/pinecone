@@ -7,56 +7,25 @@ permalink: /virtual_snake/bootstraps
 
 # Handling Bootstrap Messages
 
-Once the bootstrap message arrives at a dead end, the node will respond using **tree routing** back to the node with a Bootstrap ACK message.
+Once the bootstrap message arrives at a dead end, the node will update it's descending node entry if it makes sense to do so (ie. same **Root public key** and **Root sequence** and a closer key than the previous descending entry or an update from our existing descending node).
 
 Before doing anything, the node must ensure that the signature in the **Source signature** field is valid by checking against the **Destination public key**. If the signature is invalid, the bootstrap message should be silently dropped and not processed any further.
 
-Additionally, the node should ensure that the **Root public key** and **Root sequence** of the bootstrap message match those of the most recent root announcement from our chosen parent, if any, or the node’s own public key and sequence number if the node is currently acting as a root node. If this is not true, the bootstrap message should be silently dropped and not processed any further.
+The node should ensure that the **Root public key** and **Root sequence** of the bootstrap message match those of the most recent root announcement from our chosen parent, if any, or the node’s own public key and sequence number if the node is currently acting as a root node. If this is not true, the bootstrap message should be silently dropped and not processed any further.
 
-A Bootstrap ACK message contains the following fields:
+Each node along the bootstrapping path should install the bootstrapping node into their routing table.
 
-<table>
-  <tr>
-   <td>Destination coordinates
-   </td>
-   <td>Source coordinates
-   </td>
-  </tr>
-  <tr>
-   <td>Destination public key
-   </td>
-   <td>Source public key
-   </td>
-  </tr>
-  <tr>
-   <td colspan="2" >Path ID
-   </td>
-  </tr>
-  <tr>
-   <td>Root public key
-   </td>
-   <td>Root sequence
-   </td>
-  </tr>
-  <tr>
-   <td>Source signature
-   </td>
-   <td>Destination signature
-   </td>
-  </tr>
-</table>
+## Install route into routing table
 
-The responding node should:
+Regardless of whether the bootstrap message is considered to have arrived at its intended destination (there is no closer node to route to) or not, a bootstrap message should result in the route being installed into the routing table of each node handling the message.
 
-1. Copy the bootstrap **Source coordinates** into the **Destination coordinates** field;
-2. Copy the bootstrap **Path public key** into the **Destination public key** field;
-3. Copy the bootstrap **Path ID** into the **Path ID** field;
-4. Copy the bootstrap **Source signature** into the **Source signature** field;
-5. Populate the node’s own current coordinates into the **Source coordinates** field;
-6. Populate the node’s own public key into the **Source public key** field;
-7. Copy their own parent’s last root announcement **Root public key** and **Root sequence** fields into the corresponding fields;
-8. Add the **Destination signature**, as below.
+Before installing the bootstrapping node into the routing table, each node should compare the bootstrap sequence against any existing entry for the bootstrapping node. If an entry exists and the new bootstrap sequence number isn't higher than the current entry, then the bootstrap should be dropped and not processed any further. The only reason to see a bootstrap with a lower or equal sequence number to a bootstrap the node has seen before is if there is a routing loop present.
 
-The **Destination signature** is a signature that covers the **Source signature**, **Path public key** and **Path ID** fields by concatenating all three values together and then signing the result. It enables any node on the network to verify that the acknowledging node accepted a specific bootstrap for a specific path.
+To install the route into the routing table, the node should either create a new entry or overwrite the existing entry and:
 
-Note that the **Source signature** is copied and preserved from the original packet without modification. This is so that the bootstrap ACK contains signatures from both ends of the bootstrap.
+1. Copy the **Origin public key** into the virtual snake index;
+2. Copy the bootstrap **Root public key** and **Root sequence** into the appropriate fields;
+3. Populate the **Last seen time** with the current time;
+4. Populate the **Source port** with a reference to the port that the setup message was received from;
+5. Populate the **Destination port** with a reference to the chosen next-hop port, unless the bootstrap message has reached its intended destination, in which case this field should remain empty;
+6. Copy the setup **Watermark public key** and **Watermark sequence** into the appropriate fields.

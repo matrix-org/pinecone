@@ -20,6 +20,7 @@ import (
 
 	"github.com/Arceliar/phony"
 	"github.com/matrix-org/pinecone/types"
+	"go.uber.org/atomic"
 )
 
 // newLocalPeer returns a new local peer. It should only be called once when
@@ -34,6 +35,7 @@ func (r *Router) newLocalPeer() *peer {
 		zone:     "local",
 		peertype: 0,
 		public:   r.public,
+		started:  *atomic.NewBool(true),
 		traffic:  newFairFIFOQueue(trafficBuffer, r.log),
 	}
 	return peer
@@ -105,6 +107,10 @@ func (r *Router) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 		frame.DestinationKey = ga
 		frame.SourceKey = r.public
 		frame.Payload = append(frame.Payload[:0], p...)
+		frame.Watermark = types.VirtualSnakeWatermark{
+			PublicKey: types.FullMask,
+			Sequence:  0,
+		}
 		phony.Block(r.state, func() {
 			_ = r.state._forward(r.local, frame)
 		})

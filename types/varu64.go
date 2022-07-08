@@ -53,3 +53,7 @@ func (n Varu64) Length() int {
 	}
 	return l
 }
+
+func (n Varu64) MinLength() int {
+	return 1
+}
