@@ -137,9 +137,13 @@ func (sim *Simulator) StartPinging(ping_period time.Duration) {
 				sim.log.Println("Starting pings...")
 
 				tasks := make(chan pair, 2*(len(sim.nodes)*len(sim.nodes)))
-				for from := range sim.nodes {
-					for to := range sim.nodes {
-						tasks <- pair{from, to}
+				for from, fromNode := range sim.nodes {
+					if fromNode.Type == DefaultNode {
+						for to, toNode := range sim.nodes {
+							if toNode.Type == DefaultNode {
+								tasks <- pair{from, to}
+							}
+						}
 					}
 				}
 				close(tasks)

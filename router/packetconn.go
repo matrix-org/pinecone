@@ -48,14 +48,18 @@ func (r *Router) newLocalPeer() *peer {
 // was delivered using tree routing).
 func (r *Router) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
 	var frame *types.Frame
+	readDeadline := r._readDeadline.Load()
 	select {
 	case <-r.local.context.Done():
 		r.local.stop(nil)
+		return
+	case <-time.After(time.Until(readDeadline)):
 		return
 	case frame = <-r.local.traffic.pop():
 		// A protocol packet is ready to send.
 		r.local.traffic.ack()
 	}
+
 	switch frame.Type {
 	case types.TypeTreeRouted:
 		addr = frame.Source
@@ -132,8 +136,8 @@ func (r *Router) SetDeadline(t time.Time) error {
 	return nil
 }
 
-// SetReadDeadline is not implemented.
 func (r *Router) SetReadDeadline(t time.Time) error {
+	r._readDeadline.Store(t)
 	return nil
 }
 

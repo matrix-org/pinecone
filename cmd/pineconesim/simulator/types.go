@@ -22,6 +22,7 @@ type Node struct {
 	SimRouter
 	l          *net.TCPListener // nolint:structcheck,unused
 	ListenAddr *net.TCPAddr
+	Type       APINodeType
 }
 
 type Distance struct {

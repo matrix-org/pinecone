@@ -96,6 +96,8 @@ func (sim *Simulator) ConnectNodes(a, b string) error {
 		register(pa)
 	}
 
+	sim.CalculateShortestPaths()
+
 	sim.log.Printf("Connected node %q to node %q\n", a, b)
 	return nil
 }
@@ -116,6 +118,9 @@ func (sim *Simulator) DisconnectNodes(a, b string) error {
 	sim.wiresMutex.Lock()
 	sim.wires[firstIndex][secondIndex] = nil
 	sim.wiresMutex.Unlock()
+
+	sim.CalculateShortestPaths()
+
 	return wire.Close()
 }
 
@@ -140,4 +145,6 @@ func (sim *Simulator) DisconnectAllPeers(disconnectNode string) {
 		}
 	}
 	sim.wiresMutex.Unlock()
+
+	sim.CalculateShortestPaths()
 }

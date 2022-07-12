@@ -69,6 +69,7 @@ func (sim *Simulator) CreateNode(t string, nodeType APINodeType) error {
 		SimRouter:  sim.routerCreationMap[nodeType](logger, sk, true, quit),
 		l:          l,
 		ListenAddr: tcpaddr,
+		Type:       nodeType,
 	}
 	sim.nodeRunnerChannelsMutex.Lock()
 	sim.nodeRunnerChannels[t] = append(sim.nodeRunnerChannels[t], quit)
@@ -116,6 +117,9 @@ func (sim *Simulator) CreateNode(t string, nodeType APINodeType) error {
 	} else {
 		sim.log.Printf("Created node %q\n", t)
 	}
+
+	sim.CalculateShortestPaths()
+
 	return nil
 }
 
@@ -135,6 +139,7 @@ func (sim *Simulator) StartNodeEventHandler(t string, nodeType APINodeType) {
 
 func (sim *Simulator) RemoveNode(node string) {
 	// Stop all the goroutines running for this node
+
 	sim.nodeRunnerChannelsMutex.Lock()
 	for _, quitChan := range sim.nodeRunnerChannels[node] {
 		quitChan <- true
@@ -150,6 +155,8 @@ func (sim *Simulator) RemoveNode(node string) {
 	sim.nodesMutex.Unlock()
 
 	phony.Block(sim.State, func() { sim.State._removeNode(node) })
+
+	sim.CalculateShortestPaths()
 }
 
 func (sim *Simulator) ConfigureFilterDefaults(node string, rates adversary.DropRates) {
@@ -181,5 +188,9 @@ func createDefaultRouter(log *log.Logger, sk ed25519.PrivateKey, debug bool, qui
 }
 
 func createAdversaryRouter(log *log.Logger, sk ed25519.PrivateKey, debug bool, quit <-chan bool) SimRouter {
-	return adversary.NewAdversaryRouter(log, sk, debug)
+	rtr := adversary.NewAdversaryRouter(log, sk, debug)
+
+	go rtr.OverlayReadHandler(quit)
+
+	return rtr
 }

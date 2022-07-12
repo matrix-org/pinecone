@@ -81,7 +81,6 @@ func main() {
 	log := log.New(os.Stdout, "\u001b[36m***\u001b[0m ", 0)
 	sim := simulator.NewSimulator(log, *sockets, *acceptCommands)
 	configureHTTPRouting(log, sim)
-	sim.CalculateShortestPaths(nodes, wires)
 
 	for n := range nodes {
 		if err := sim.CreateNode(n, simulator.DefaultNode); err != nil {
@@ -103,6 +102,8 @@ func main() {
 			}
 		}
 	}
+
+	sim.CalculateShortestPaths()
 
 	if chaos != nil && *chaos > 0 {
 		rand.Seed(time.Now().UnixNano())
