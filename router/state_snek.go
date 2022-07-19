@@ -80,7 +80,7 @@ func (s *state) _maintainSnake() {
 	// Clean up any paths that are older than the expiry period.
 	for k, v := range s._table {
 		if !v.valid() {
-			delete(s._table, k)
+			s._removeRouteEntry(k)
 		}
 	}
 
@@ -357,7 +357,8 @@ func (s *state) _handleBootstrap(from, to *peer, rx *types.Frame) bool {
 			return false
 		}
 	}
-	s._table[index] = &virtualSnakeEntry{
+
+	entry := &virtualSnakeEntry{
 		virtualSnakeIndex: &index,
 		Source:            from,
 		Destination:       to,
@@ -368,6 +369,7 @@ func (s *state) _handleBootstrap(from, to *peer, rx *types.Frame) bool {
 			Sequence:  bootstrap.Sequence,
 		},
 	}
+	s._addRouteEntry(index, entry)
 
 	// Now let's see if this is a suitable descending entry.
 	update := false
