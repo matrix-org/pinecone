@@ -267,21 +267,23 @@ func userProxyReporter(conn *websocket.Conn, connID uint64, sim *simulator.Simul
 				AnnTime:     node.Announcement.Time,
 				Coords:      node.Coords,
 			},
-			Peers:         peerConns,
-			TreeParent:    node.Parent,
-			SnakeAsc:      node.AscendingPeer,
-			SnakeAscPath:  node.AscendingPathID,
-			SnakeDesc:     node.DescendingPeer,
-			SnakeDescPath: node.DescendingPathID,
-			SnakeEntries:  snakeEntries,
+			Peers:            peerConns,
+			TreeParent:       node.Parent,
+			SnakeAsc:         node.AscendingPeer,
+			SnakeAscPath:     node.AscendingPathID,
+			SnakeDesc:        node.DescendingPeer,
+			SnakeDescPath:    node.DescendingPathID,
+			SnakeEntries:     snakeEntries,
+			BandwidthReports: node.BandwidthReports,
 		}
 
 		if batchSize == int(maxBatchSize) || end {
 			// Send batch
 			if err := conn.WriteJSON(simulator.InitialStateMsg{
-				MsgID: simulator.SimInitialState,
-				Nodes: nodeState,
-				End:   end,
+				MsgID:               simulator.SimInitialState,
+				Nodes:               nodeState,
+				End:                 end,
+				BWReportingInterval: int(router.BWReportingInterval.Seconds()),
 			}); err != nil {
 				log.Println(err)
 				return
@@ -297,9 +299,10 @@ func userProxyReporter(conn *websocket.Conn, connID uint64, sim *simulator.Simul
 	// to let the UI know it can begin processing updates.
 	if len(state.Nodes) == 0 {
 		if err := conn.WriteJSON(simulator.InitialStateMsg{
-			MsgID: simulator.SimInitialState,
-			Nodes: map[string]simulator.InitialNodeState{},
-			End:   true,
+			MsgID:               simulator.SimInitialState,
+			Nodes:               map[string]simulator.InitialNodeState{},
+			End:                 true,
+			BWReportingInterval: int(router.BWReportingInterval.Seconds()),
 		}); err != nil {
 			log.Println(err)
 			return
@@ -372,6 +375,8 @@ func handleSimEvents(log *log.Logger, conn *websocket.Conn, ch <-chan simulator.
 			eventType = simulator.SimPingStateUpdated
 		case simulator.NetworkStatsUpdate:
 			eventType = simulator.SimNetworkStatsUpdated
+		case simulator.BandwidthReport:
+			eventType = simulator.SimBandwidthReport
 		}
 
 		if err := conn.WriteJSON(simulator.StateUpdateMsg{

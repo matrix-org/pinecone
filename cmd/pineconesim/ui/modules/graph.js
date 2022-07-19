@@ -303,6 +303,46 @@ class Graph {
         return tableSizes;
     }
 
+    getTotalBandwidthUsage() {
+        let totalBandwidth = new Map();
+        let timestampsEstablished = 0;
+        for (const node of Nodes.values()) {
+            for (const report of node.bandwidthReports.values()) {
+                let totalProto = 0;
+                let totalOverlay = 0;
+                if (report.Peers != null && report.Peers.size !== 0) {
+                    let peerMap = new Map(Object.entries(report.Peers));
+                    if (peerMap.size > 0) {
+                        for (const peer of peerMap) {
+                            totalProto = totalProto + peer[1].Protocol.Rx;
+                            totalProto = totalProto + peer[1].Protocol.Tx;
+                            totalOverlay = totalOverlay + peer[1].Overlay.Rx;
+                            totalOverlay = totalOverlay + peer[1].Overlay.Tx;
+                        }
+                    }
+                } else {
+                    continue;
+                }
+
+                let timestamp = new Date(report.ReceiveTime / 1000 / 1000);
+                if (totalBandwidth.has(report.ReceiveTime)) {
+                    let entry = totalBandwidth.get(report.ReceiveTime);
+                    totalBandwidth.set(report.ReceiveTime, {
+                        Protocol: entry.Protocol + totalProto,
+                        Overlay: entry.Overlay + totalOverlay,
+                    });
+                } else {
+                    totalBandwidth.set(report.ReceiveTime, {
+                        Protocol: totalProto,
+                        Overlay: totalOverlay,
+                    });
+                }
+            }
+        }
+
+        return totalBandwidth;
+    }
+
     removeSnakeEntry(id, entry) {
         if (Nodes.has(id)) {
             let node = Nodes.get(id);
@@ -655,6 +695,19 @@ class Graph {
         NetworkStats.SnakeAverageStretch = snakeStretch.toFixed(2);
         handleStatsPanelUpdate();
     }
+
+    addBandwidthReport(id, report) {
+        if (Nodes.has(id)) {
+            let node = Nodes.get(id);
+            node.bandwidthReports[node.nextReportIndex] = report;
+
+            let nextReportIndex = 0;
+            if (node.nextReportIndex + 1 < 10) {
+                nextReportIndex = node.nextReportIndex + 1;
+            }
+            node.nextReportIndex = nextReportIndex;
+        }
+    }
 }
 
 export var graph = new Graph(document.getElementById("canvas"));
@@ -676,6 +729,11 @@ function newNode(key, type) {
         snekDesc: "",
         snekDescPath: "",
         snekEntries: new Map(),
+        nextReportIndex: 0,
+        bandwidthReports: new Array(10).fill({
+            ReceiveTime: 0,
+            Peers: new Map(),
+        }),
     };
 }
 

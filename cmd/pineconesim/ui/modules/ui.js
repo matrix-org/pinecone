@@ -39,7 +39,32 @@ function updateGraphs() {
     }
 }
 
-export function ResetReplayUI(element) {
+export function UpdateBandwidthGraphData(bwIntervalSeconds) {
+    let bandwidth = graph.getTotalBandwidthUsage();
+    let timestamps = new Array();
+    let proto = new Array();
+    let overlay = new Array();
+    const options = {
+        hour12 : false,
+        hour:  "2-digit",
+        minute: "2-digit",
+    };
+
+    for (const [key, value] of [...bandwidth.entries()].sort()) {
+        let date = (new Date(key / 1000 / 1000)).toLocaleTimeString("en-US",options);
+        timestamps.push(date);
+        proto.push(value.Protocol * 8 / 1000 / bwIntervalSeconds); // bytes to Kbps
+        overlay.push(value.Overlay * 8 / 1000 / bwIntervalSeconds); // bytes to Kbps
+    }
+    analyticsCharts['total-bandwidth'].data.labels = timestamps;
+    analyticsCharts['total-bandwidth'].data.datasets[0].data = proto;
+    analyticsCharts['total-bandwidth'].data.datasets[1].data = overlay;
+    if (currentAnalyticsChart.name === 'total-bandwidth' || currentAnalyticsChart.name === 'bandwidth-distribution') {
+        updateAnalyticsSelection(currentAnalyticsChart.name);
+    }
+}
+
+function resetReplayUI(element) {
     element.className = element.className.replace(" active", "");
     let tooltip = element.getElementsByClassName("tooltiptext")[0];
     tooltip.textContent = "Pause Events";
@@ -386,7 +411,7 @@ function validateField(field, value) {
 function handleToolReplayPlayPause(subtool) {
     let command = {"MsgID": APICommandID.Unknown, "Event": {}};
     if (subtool.className.includes("active")) {
-        ResetReplayUI(subtool);
+        resetReplayUI(subtool);
 
         command.MsgID = APICommandID.Play;
     } else {
@@ -552,6 +577,7 @@ document.getElementById("analyticsDropdown").value = 'routing-table-size';
 
 function updateAnalyticsSelection(selection) {
     let chartParams = analyticsCharts[selection];
+    currentAnalyticsChart.name = selection;
     currentAnalyticsChart.chart.destroy();
     currentAnalyticsChart.chart = new Chart(document.getElementById('networkAnalytics').getContext('2d'), {
         type: chartParams.type,

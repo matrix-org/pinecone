@@ -25,6 +25,7 @@ import (
 
 	"github.com/Arceliar/phony"
 	"github.com/RyanCarrier/dijkstra"
+	"github.com/matrix-org/pinecone/router/events"
 	"go.uber.org/atomic"
 )
 
@@ -405,6 +406,20 @@ func (sim *Simulator) handleSnakeEntryRemoved(node string, entryID string) {
 	}
 
 	sim.State.Act(nil, func() { sim.State._removeSnakeEntry(node, entryName) })
+}
+
+func (sim *Simulator) handleBandwidthReport(node string, peers map[string]events.PeerBandwidthUsage) {
+	peerBandwidth := make(map[string]PeerBandwidthUsage)
+	for peer, report := range peers {
+		peerBandwidth[peer] = PeerBandwidthUsage{
+			Protocol: report.Protocol,
+			Overlay:  report.Overlay,
+		}
+	}
+
+	sim.State.Act(nil, func() {
+		sim.State._updatePeerBandwidthUsage(node, peerBandwidth)
+	})
 }
 
 func (sim *Simulator) updatePingState(enabled bool, active bool) {

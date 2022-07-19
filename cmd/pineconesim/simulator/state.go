@@ -17,6 +17,7 @@ package simulator
 import (
 	"fmt"
 	"reflect"
+	"time"
 
 	"github.com/Arceliar/phony"
 )
@@ -26,6 +27,24 @@ type RootAnnouncement struct {
 	Sequence uint64
 	Time     uint64
 }
+
+type PeerBandwidthUsage struct {
+	Protocol struct {
+		Rx uint64
+		Tx uint64
+	}
+	Overlay struct {
+		Rx uint64
+		Tx uint64
+	}
+}
+
+type BandwidthSnapshot struct {
+	ReceiveTime uint64
+	Peers       map[string]PeerBandwidthUsage
+}
+
+type BandwidthReports []BandwidthSnapshot
 
 type NodeState struct {
 	PeerID           string
@@ -39,7 +58,11 @@ type NodeState struct {
 	DescendingPeer   string
 	DescendingPathID string
 	SnakeEntries     map[string]string
+	BandwidthReports BandwidthReports
+	NextReportIndex  uint
 }
+
+const MaxBandwidthReports = 10
 
 func NewNodeState(peerID string, nodeType APINodeType) *NodeState {
 	node := &NodeState{
@@ -54,6 +77,8 @@ func NewNodeState(peerID string, nodeType APINodeType) *NodeState {
 		DescendingPeer:   "",
 		DescendingPathID: "",
 		SnakeEntries:     make(map[string]string),
+		BandwidthReports: make(BandwidthReports, MaxBandwidthReports),
+		NextReportIndex:  0,
 	}
 	return node
 }
@@ -252,4 +277,23 @@ func (s *StateAccessor) _removeSnakeEntry(node string, entryID string) {
 		delete(s._state.Nodes[node].SnakeEntries, entryID)
 	}
 	s._publish(SnakeEntryRemoved{Node: node, EntryID: entryID})
+}
+
+func (s *StateAccessor) _updatePeerBandwidthUsage(node string, peers map[string]PeerBandwidthUsage) {
+	receiveTime := uint64(time.Now().Round(time.Minute).UnixNano())
+	bandwidthSnapshot := BandwidthSnapshot{
+		ReceiveTime: receiveTime,
+		Peers:       peers,
+	}
+
+	if node, ok := s._state.Nodes[node]; ok {
+		node.BandwidthReports[node.NextReportIndex] = bandwidthSnapshot
+		nextReportIndex := uint(0)
+		if node.NextReportIndex+1 < MaxBandwidthReports {
+			nextReportIndex = node.NextReportIndex + 1
+		}
+		node.NextReportIndex = nextReportIndex
+	}
+
+	s._publish(BandwidthReport{Node: node, Bandwidth: bandwidthSnapshot})
 }

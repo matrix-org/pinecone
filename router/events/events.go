@@ -76,3 +76,21 @@ type SnakeEntryRemoved struct {
 
 // Tag SnakeEntryRemoved as an Event
 func (e SnakeEntryRemoved) isEvent() {}
+
+type PeerBandwidthUsage struct {
+	Protocol struct {
+		Rx uint64
+		Tx uint64
+	}
+	Overlay struct {
+		Rx uint64
+		Tx uint64
+	}
+}
+
+type BandwidthReport struct {
+	Peers map[string]PeerBandwidthUsage
+}
+
+// Tag BandwidthReport as an Event
+func (e BandwidthReport) isEvent() {}
