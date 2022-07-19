@@ -17,7 +17,6 @@ package simulator
 import (
 	"fmt"
 	"reflect"
-	"time"
 
 	"github.com/Arceliar/phony"
 )
@@ -279,10 +278,9 @@ func (s *StateAccessor) _removeSnakeEntry(node string, entryID string) {
 	s._publish(SnakeEntryRemoved{Node: node, EntryID: entryID})
 }
 
-func (s *StateAccessor) _updatePeerBandwidthUsage(node string, peers map[string]PeerBandwidthUsage) {
-	receiveTime := uint64(time.Now().Round(time.Minute).UnixNano())
+func (s *StateAccessor) _updatePeerBandwidthUsage(node string, captureTime uint64, peers map[string]PeerBandwidthUsage) {
 	bandwidthSnapshot := BandwidthSnapshot{
-		ReceiveTime: receiveTime,
+		ReceiveTime: captureTime,
 		Peers:       peers,
 	}
 

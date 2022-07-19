@@ -89,7 +89,8 @@ type PeerBandwidthUsage struct {
 }
 
 type BandwidthReport struct {
-	Peers map[string]PeerBandwidthUsage
+	CaptureTime uint64 // Unix Time
+	Peers       map[string]PeerBandwidthUsage
 }
 
 // Tag BandwidthReport as an Event

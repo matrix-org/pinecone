@@ -164,7 +164,7 @@ func (h eventHandler) Run(quit <-chan bool, sim *Simulator) {
 			case events.SnakeEntryRemoved:
 				sim.handleSnakeEntryRemoved(h.node, e.EntryID)
 			case events.BandwidthReport:
-				sim.handleBandwidthReport(h.node, e.Peers)
+				sim.handleBandwidthReport(h.node, e.CaptureTime, e.Peers)
 			default:
 				sim.log.Println("Unhandled event!")
 			}

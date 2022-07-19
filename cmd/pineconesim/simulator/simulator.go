@@ -408,7 +408,7 @@ func (sim *Simulator) handleSnakeEntryRemoved(node string, entryID string) {
 	sim.State.Act(nil, func() { sim.State._removeSnakeEntry(node, entryName) })
 }
 
-func (sim *Simulator) handleBandwidthReport(node string, peers map[string]events.PeerBandwidthUsage) {
+func (sim *Simulator) handleBandwidthReport(node string, captureTime uint64, peers map[string]events.PeerBandwidthUsage) {
 	peerBandwidth := make(map[string]PeerBandwidthUsage)
 	for peer, report := range peers {
 		peerBandwidth[peer] = PeerBandwidthUsage{
@@ -418,7 +418,7 @@ func (sim *Simulator) handleBandwidthReport(node string, peers map[string]events
 	}
 
 	sim.State.Act(nil, func() {
-		sim.State._updatePeerBandwidthUsage(node, peerBandwidth)
+		sim.State._updatePeerBandwidthUsage(node, captureTime, peerBandwidth)
 	})
 }
 

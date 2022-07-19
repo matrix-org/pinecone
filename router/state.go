@@ -154,8 +154,13 @@ func (s *state) _reportBandwidth() {
 			peer.ClearBandwidthCounters()
 		}
 	}
+
+	captureTime := uint64(time.Now().Round(time.Minute).UnixNano())
 	s.r.Act(nil, func() {
-		s.r._publish(events.BandwidthReport{Peers: peerBandwidth})
+		s.r._publish(events.BandwidthReport{
+			CaptureTime: captureTime,
+			Peers:       peerBandwidth,
+		})
 	})
 }
 

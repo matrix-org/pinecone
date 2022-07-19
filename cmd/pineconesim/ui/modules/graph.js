@@ -211,6 +211,10 @@ class Graph {
         handleStatsPanelUpdate();
     }
 
+    getNodeCount() {
+        return Nodes.size;
+    }
+
     addNode(id, key, type) {
         let colour = getComputedStyle(document.documentElement).getPropertyValue('--color-router-blue');
         if (type === APINodeType.GeneralAdversary) {

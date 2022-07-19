@@ -53,8 +53,8 @@ export function UpdateBandwidthGraphData(bwIntervalSeconds) {
     for (const [key, value] of [...bandwidth.entries()].sort()) {
         let date = (new Date(key / 1000 / 1000)).toLocaleTimeString("en-US",options);
         timestamps.push(date);
-        proto.push(value.Protocol * 8 / 1000 / bwIntervalSeconds); // bytes to Kbps
-        overlay.push(value.Overlay * 8 / 1000 / bwIntervalSeconds); // bytes to Kbps
+        proto.push(value.Protocol * 8 / 1000 / bwIntervalSeconds / graph.getNodeCount()); // bytes to Kbps
+        overlay.push(value.Overlay * 8 / 1000 / bwIntervalSeconds / graph.getNodeCount()); // bytes to Kbps
     }
     analyticsCharts['total-bandwidth'].data.labels = timestamps;
     analyticsCharts['total-bandwidth'].data.datasets[0].data = proto;
