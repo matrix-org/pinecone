@@ -258,6 +258,13 @@ func userProxyReporter(conn *websocket.Conn, connID uint64, sim *simulator.Simul
 			snakeEntries = append(snakeEntries, simulator.SnakeRouteEntry{EntryID: entry, PeerID: peer})
 		}
 
+		var bandwidthReports simulator.BandwidthReports
+		for _, report := range node.BandwidthReports {
+			if report.ReceiveTime != 0 {
+				bandwidthReports = append(bandwidthReports, report)
+			}
+		}
+
 		nodeState[name] = simulator.InitialNodeState{
 			PublicKey: node.PeerID,
 			NodeType:  node.NodeType,
@@ -274,7 +281,7 @@ func userProxyReporter(conn *websocket.Conn, connID uint64, sim *simulator.Simul
 			SnakeDesc:        node.DescendingPeer,
 			SnakeDescPath:    node.DescendingPathID,
 			SnakeEntries:     snakeEntries,
-			BandwidthReports: node.BandwidthReports,
+			BandwidthReports: bandwidthReports,
 		}
 
 		if batchSize == int(maxBatchSize) || end {

@@ -26,6 +26,8 @@ let NetworkStats = {
     SnakeAverageStretch: 0.0
 };
 
+const MaxBandwidthReports = 10;
+
 class Graph {
     nodeIDs = [];
 
@@ -305,6 +307,81 @@ class Graph {
         }
 
         return tableSizes;
+    }
+
+    getNodeBandwidthDistribution() {
+        let bandwidthDistribution = new Map();
+        let lowestProto = 1000000000;
+        let highestProto = 0;
+        let lowestMag = 1000000000;
+        let highestMag = 0;
+
+        for (const node of Nodes.values()) {
+            let latestReportIndex = node.nextReportIndex - 1;
+            if (latestReportIndex < 0) {
+                latestReportIndex = MaxBandwidthReports - 1;
+            }
+
+            let report = node.bandwidthReports.at(latestReportIndex);
+            let totalProto = 0;
+            if (report.Peers != null && report.Peers.size !== 0) {
+                let peerMap = new Map(Object.entries(report.Peers));
+                if (peerMap.size > 0) {
+                    for (const peer of peerMap) {
+                        totalProto = totalProto + peer[1].Protocol.Rx;
+                        totalProto = totalProto + peer[1].Protocol.Tx;
+                    }
+                }
+            } else {
+                continue;
+            }
+
+            if (totalProto > highestProto) {
+                highestProto = totalProto;
+            }
+            if (totalProto < lowestProto) {
+                lowestProto = totalProto;
+            }
+
+            let mag = Math.log10(totalProto);
+            if (mag > highestMag) {
+                highestMag = mag;
+            }
+            if (mag < lowestMag) {
+                lowestMag = mag;
+            }
+
+            bandwidthDistribution.set(node.key, {
+                Protocol: totalProto,
+            });
+        }
+
+        let numberOfSteps = 10;
+        let magStep = (highestMag - lowestMag) / (numberOfSteps - 1);
+
+        let steps = new Array();
+        let distributionMap = new Map();
+        let offset = Math.pow(10, lowestMag);
+        for (let i = 0; i < numberOfSteps; i++) {
+            let step = offset + Math.pow(10, lowestMag + magStep * i);
+            steps.push(step);
+            distributionMap.set(step, {
+                Protocol: 0,
+            });
+        }
+
+        for (const node of bandwidthDistribution.values()) {
+            for (let index = 0; index < steps.length; index++) {
+                if (node.Protocol < steps[index]) {
+                    distributionMap.set(steps[index], {
+                        Protocol: distributionMap.get(steps[index]).Protocol + 1,
+                    });
+                    break;
+                }
+            }
+        }
+
+        return distributionMap;
     }
 
     getTotalBandwidthUsage() {
@@ -706,7 +783,7 @@ class Graph {
             node.bandwidthReports[node.nextReportIndex] = report;
 
             let nextReportIndex = 0;
-            if (node.nextReportIndex + 1 < 10) {
+            if (node.nextReportIndex + 1 < MaxBandwidthReports) {
                 nextReportIndex = node.nextReportIndex + 1;
             }
             node.nextReportIndex = nextReportIndex;

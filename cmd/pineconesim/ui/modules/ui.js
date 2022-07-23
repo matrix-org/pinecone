@@ -40,6 +40,21 @@ function updateGraphs() {
 }
 
 export function UpdateBandwidthGraphData(bwIntervalSeconds) {
+    let distribution = graph.getNodeBandwidthDistribution();
+    let labels = new Array();
+    let protoDist = new Array();
+
+    let conversionToKBPS = 8 / 1000 / bwIntervalSeconds;
+
+    for (const [key, value] of [...distribution.entries()]) {
+        labels.push(key * conversionToKBPS); // bytes to Kbps
+        protoDist.push(value.Protocol);
+    }
+
+    let distributionGraph = 'bandwidth-distribution';
+    analyticsCharts[distributionGraph].data.labels = labels;
+    analyticsCharts[distributionGraph].data.datasets[0].data = protoDist;
+
     let bandwidth = graph.getTotalBandwidthUsage();
     let timestamps = new Array();
     let proto = new Array();
@@ -50,16 +65,20 @@ export function UpdateBandwidthGraphData(bwIntervalSeconds) {
         minute: "2-digit",
     };
 
+    let nodeCount = graph.getNodeCount();
     for (const [key, value] of [...bandwidth.entries()].sort()) {
         let date = (new Date(key / 1000 / 1000)).toLocaleTimeString("en-US",options);
         timestamps.push(date);
-        proto.push(value.Protocol * 8 / 1000 / bwIntervalSeconds / graph.getNodeCount()); // bytes to Kbps
-        overlay.push(value.Overlay * 8 / 1000 / bwIntervalSeconds / graph.getNodeCount()); // bytes to Kbps
+        proto.push(value.Protocol * conversionToKBPS / nodeCount); // bytes to Kbps
+        overlay.push(value.Overlay * conversionToKBPS / nodeCount); // bytes to Kbps
     }
-    analyticsCharts['total-bandwidth'].data.labels = timestamps;
-    analyticsCharts['total-bandwidth'].data.datasets[0].data = proto;
-    analyticsCharts['total-bandwidth'].data.datasets[1].data = overlay;
-    if (currentAnalyticsChart.name === 'total-bandwidth' || currentAnalyticsChart.name === 'bandwidth-distribution') {
+
+    let averageBWGraph = 'total-bandwidth';
+    analyticsCharts[averageBWGraph].data.labels = timestamps;
+    analyticsCharts[averageBWGraph].data.datasets[0].data = proto;
+    analyticsCharts[averageBWGraph].data.datasets[1].data = overlay;
+
+    if (currentAnalyticsChart.name === averageBWGraph || currentAnalyticsChart.name === distributionGraph) {
         updateAnalyticsSelection(currentAnalyticsChart.name);
     }
 }
@@ -567,7 +586,6 @@ function convertCommandToID(command) {
 
 function handleAnalyticsSelect() {
     let selection = document.getElementById("analyticsDropdown").value;
-    console.log("changed to " + selection);
     document.getElementById("analyticsDropdown").blur();
 
     updateAnalyticsSelection(selection);
@@ -692,13 +710,15 @@ var analyticsCharts = {
                 fill: true,
                 backgroundColor: "rgba(35,140,245,0.5)",
                 borderColor: "rgba(35,140,245,0.8)",
-                data: [65, 59, 80, 81, 56, 55, 40, 81, 83, 26, 21]
+                data: [],
+                yAxisID: 'y'
             }, {
                 label: "Overlay Traffic",
                 fill: true,
                 backgroundColor: "rgba(126,105,255,0.5)",
                 borderColor: "rgba(126,105,255,0.8)",
-                data: [28, 48, 40, 19, 86, 27, 90, 65, 21, 85, 80]
+                data: [],
+                yAxisID: 'y2'
             }],
         },
         options: {
@@ -712,10 +732,6 @@ var analyticsCharts = {
             responsive: true,
             scales: {
                 x: {
-                    // type: 'time',
-                    // time: {
-                        // unit: 'minute',
-                    // },
                     title: {
                         display: true,
                         text: 'Timestamp',
@@ -728,10 +744,24 @@ var analyticsCharts = {
                     beginAtZero: true,
                     title: {
                         display: true,
-                        text: 'Bandwidth (Kbps)',
+                        text: 'Bandwidth (kb/s)',
                         font: {
                             size: 14
                         }
+                    }
+                },
+                y2: {
+                    position: 'right',
+                    beginAtZero: true,
+                    title: {
+                        display: true,
+                        text: 'Bandwidth (kb/s)',
+                        font: {
+                            size: 14
+                        }
+                    },
+                    grid: {
+                        drawOnChartArea: false // only want the grid lines for one axis to show up
                     }
                 }
             },
@@ -745,25 +775,17 @@ var analyticsCharts = {
     'bandwidth-distribution': {
         type: 'bar',
         data: {
+            labels: [],
             datasets: [{
                 label: 'Protocol Traffic',
-                data: {'0-1': 0, '1-2': 5, '2-3': 4, '3-4': 3, '4-5': 6, '5-6': 8, '6-7': 9, '7-8': 2, '8-9': 1, '9-10': 1},
+                data: [],
                 backgroundColor: [
                     "rgba(126,105,255,0.5)"
                 ],
                 borderWidth: 0,
                 barPercentage: 1,
-                categoryPercentage: 1
-            },
-            {
-                label: 'Overlay Traffic',
-                data: {'0-1': 2, '1-2': 2, '2-3': 0, '3-4': 0, '4-5': 1, '5-6': 2, '6-7': 3, '7-8': 0, '8-9': 0, '9-10': 1},
-                backgroundColor: [
-                    "rgba(35,140,245,0.5)"
-                ],
-                borderWidth: 0,
-                barPercentage: 1,
-                categoryPercentage: 1
+                categoryPercentage: 1,
+                yAxisID: 'y'
             }]
         },
         options: {
@@ -771,22 +793,23 @@ var analyticsCharts = {
                 duration: 300,
             },
             interaction: {
-                intersect: true,
+                intersect: false,
                 mode: 'index',
             },
             scales: {
                 x: {
-                    stacked: true,
+                    type: 'logarithmic',
+                    // type: 'linear',
                     title: {
                         display: true,
-                        text: 'Bandwidth (Kbps)',
+                        text: 'Bandwidth (kb/s)',
                         font: {
                             size: 14
                         }
                     }
                 },
                 y: {
-                    stacked: true,
+                    // stacked: false,
                     beginAtZero: true,
                     title: {
                         display: true,
@@ -814,7 +837,7 @@ var analyticsCharts = {
                             }
                             const item = items[0];
                             const x = item.label;
-                            return `BW: ${x} kbps`;
+                            return `BW: < ${x} kb/s`;
                         }
                     }
                 }
