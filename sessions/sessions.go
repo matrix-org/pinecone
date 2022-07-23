@@ -51,6 +51,8 @@ type SessionProtocol struct {
 	proto    string
 	streams  chan net.Conn
 	sessions sync.Map // types.PublicKey -> *activeSession
+	mutex    sync.Mutex
+	closed   bool
 }
 
 type activeSession struct {
