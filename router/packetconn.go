@@ -48,7 +48,6 @@ func (r *Router) newLocalPeer() *peer {
 // was delivered using tree routing).
 func (r *Router) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
 	var frame *types.Frame
-	n = 0
 	readDeadline := r._readDeadline.Load()
 	select {
 	case <-r.local.context.Done():
