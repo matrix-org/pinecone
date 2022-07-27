@@ -295,7 +295,7 @@ func (s *state) _portDisconnected(peer *peer) {
 	// peering and remove them from the routing table.
 	for k, v := range s._table {
 		if v.Source == peer || v.Destination == peer {
-			delete(s._table, k)
+			s._removeRouteEntry(k)
 		}
 	}
 
