@@ -49,21 +49,25 @@ const ( // These need to be a simple int type for gobind/gomobile to export them
 // the peering). Having separate actors allows reads and writes to take
 // place concurrently.
 type peer struct {
-	reader     phony.Inbox
-	writer     phony.Inbox
-	router     *Router
-	port       types.SwitchPortID // Not mutated after peer setup.
-	context    context.Context    // Not mutated after peer setup.
-	cancel     context.CancelFunc // Not mutated after peer setup.
-	conn       net.Conn           // Not mutated after peer setup.
-	uri        ConnectionURI      // Not mutated after peer setup.
-	zone       ConnectionZone     // Not mutated after peer setup.
-	peertype   ConnectionPeerType // Not mutated after peer setup.
-	public     types.PublicKey    // Not mutated after peer setup.
-	keepalives bool               // Not mutated after peer setup.
-	started    atomic.Bool        // Thread-safe toggle for marking a peer as down.
-	proto      queue              // Thread-safe queue for outbound protocol messages.
-	traffic    queue              // Thread-safe queue for outbound traffic messages.
+	reader         phony.Inbox
+	writer         phony.Inbox
+	router         *Router
+	port           types.SwitchPortID // Not mutated after peer setup.
+	context        context.Context    // Not mutated after peer setup.
+	cancel         context.CancelFunc // Not mutated after peer setup.
+	conn           net.Conn           // Not mutated after peer setup.
+	uri            ConnectionURI      // Not mutated after peer setup.
+	zone           ConnectionZone     // Not mutated after peer setup.
+	peertype       ConnectionPeerType // Not mutated after peer setup.
+	public         types.PublicKey    // Not mutated after peer setup.
+	keepalives     bool               // Not mutated after peer setup.
+	started        atomic.Bool        // Thread-safe toggle for marking a peer as down.
+	proto          queue              // Thread-safe queue for outbound protocol messages.
+	traffic        queue              // Thread-safe queue for outbound traffic messages.
+	bytesRxProto   atomic.Uint64
+	bytesRxTraffic atomic.Uint64
+	bytesTxProto   atomic.Uint64
+	bytesTxTraffic atomic.Uint64
 }
 
 func (p *peer) MarshalJSON() ([]byte, error) {
@@ -84,6 +88,13 @@ func (p *peer) String() string { // to make sim less ugly
 		return "local"
 	}
 	return fmt.Sprintf("%d", p.port)
+}
+
+func (p *peer) ClearBandwidthCounters() {
+	p.bytesRxProto.Store(0)
+	p.bytesRxTraffic.Store(0)
+	p.bytesTxProto.Store(0)
+	p.bytesTxTraffic.Store(0)
 }
 
 // send queues a frame to be sent to this peer. It is safe to be called from
@@ -139,6 +150,8 @@ func (p *peer) stop(err error) {
 		p.router.active.Delete(index)
 	}
 
+	p.ClearBandwidthCounters()
+
 	// Next we'll send a message to the state inbox in order to clean up.
 	p.router.state.Act(nil, func() {
 		// Make sure that the connection is closed.
@@ -179,6 +192,7 @@ func (p *peer) _write() {
 		return
 	}
 	var frame *types.Frame
+
 	// The keepalive function will return a channel that either matches the
 	// keepalive interval (if enabled) or blocks forever (if disabled).
 	keepalive := func() <-chan time.Time {
@@ -187,6 +201,7 @@ func (p *peer) _write() {
 		}
 		return time.After(peerKeepaliveInterval)
 	}
+
 	// Wait for some work to do.
 	select {
 	case <-p.context.Done():
@@ -215,6 +230,7 @@ func (p *peer) _write() {
 			frame.Type = types.TypeKeepalive
 		}
 	}
+
 	// If the frame is `nil` at this point, it's probably because the queues
 	// were reset. This *shouldn't* happen at this stage but the guard doesn't
 	// hurt.
@@ -223,12 +239,14 @@ func (p *peer) _write() {
 		return
 	}
 	defer framePool.Put(frame)
+
 	// We might have been waiting for a little while for one of the above
 	// cases to happen, so let's check one more time that the peering wasn't
 	// stopped before we try to marshal and send the frame.
 	if !p.started.Load() {
 		return
 	}
+
 	// Marshal the frame.
 	buf := frameBufferPool.Get().(*[types.MaxFrameSize]byte)
 	defer frameBufferPool.Put(buf)
@@ -237,6 +255,7 @@ func (p *peer) _write() {
 		p.stop(fmt.Errorf("frame.MarshalBinary: %w", err))
 		return
 	}
+
 	// If keepalives are enabled then we should set a write deadline to ensure
 	// that the write doesn't block for too long. We don't do this when keepalives
 	// are disabled, which allows writes to take longer.
@@ -246,12 +265,19 @@ func (p *peer) _write() {
 			return
 		}
 	}
+
 	// Write the frame to the peering.
+	if frame.Type == types.TypeTreeRouted || frame.Type == types.TypeVirtualSnakeRouted {
+		p.bytesTxTraffic.Add(uint64(n))
+	} else {
+		p.bytesTxProto.Add(uint64(n))
+	}
 	wn, err := p.conn.Write(buf[:n])
 	if err != nil {
 		p.stop(fmt.Errorf("p.conn.Write: %w", err))
 		return
 	}
+
 	// Check that we wrote the number of bytes that we were expecting to write.
 	// If we didn't then that implies that something went wrong, so shut down the
 	// peering.
@@ -259,6 +285,7 @@ func (p *peer) _write() {
 		p.stop(fmt.Errorf("p.conn.Write length %d != %d", wn, n))
 		return
 	}
+
 	// If keepalives are enabled then we should reset the write deadline.
 	if p.keepalives {
 		if err := p.conn.SetWriteDeadline(time.Time{}); err != nil {
@@ -266,6 +293,7 @@ func (p *peer) _write() {
 			return
 		}
 	}
+
 	// This is effectively a recursive call to queue up the next write into
 	// the actor inbox.
 	p.writer.Act(nil, p._write)
@@ -281,6 +309,7 @@ func (p *peer) _read() {
 	}
 	b := frameBufferPool.Get().(*[types.MaxFrameSize]byte)
 	defer frameBufferPool.Put(b)
+
 	// If keepalives are enabled then we should set a read deadline to ensure
 	// that the read doesn't block for too long. If we wait for a packet for too long
 	// then we assume the remote peer is dead, as they should have sent us a keepalive
@@ -291,13 +320,28 @@ func (p *peer) _read() {
 			return
 		}
 	}
+
 	// Wait for the packet to arrive from the remote peer and read only enough bytes to
 	// get the header. This will tell us how much more we need to read to get the rest
 	// of the frame.
-	if _, err := io.ReadFull(p.conn, b[:types.FrameHeaderLength]); err != nil {
-		p.stop(fmt.Errorf("io.ReadFull: %w", err))
-		return
+	isProtoTraffic := true
+	{
+		n, err := io.ReadFull(p.conn, b[:types.FrameHeaderLength])
+		if err != nil {
+			p.stop(fmt.Errorf("io.ReadFull: %w", err))
+			return
+		}
+		if types.FrameType(b[5]) == types.TypeTreeRouted || types.FrameType(b[5]) == types.TypeVirtualSnakeRouted {
+			isProtoTraffic = false
+		}
+
+		if isProtoTraffic {
+			p.bytesRxProto.Add(uint64(n))
+		} else {
+			p.bytesRxTraffic.Add(uint64(n))
+		}
 	}
+
 	// Check for the presence of the magic bytes at the beginning of the frame. If they
 	// are missing then something is wrong — either they sent us garbage or the offsets
 	// in one of the previous packets was incorrect.
@@ -305,6 +349,7 @@ func (p *peer) _read() {
 		p.stop(fmt.Errorf("missing magic bytes"))
 		return
 	}
+
 	// Now read the rest of the packet. If something goes wrong with this then we will
 	// assume that either the length given to us earlier was incorrect, or something else
 	// is wrong with the peering, so we will stop the peering in either case.
@@ -314,6 +359,13 @@ func (p *peer) _read() {
 		p.stop(fmt.Errorf("io.ReadFull: %w", err))
 		return
 	}
+
+	if isProtoTraffic {
+		p.bytesRxProto.Add(uint64(n))
+	} else {
+		p.bytesRxTraffic.Add(uint64(n))
+	}
+
 	// If keepalives are disabled then we can reset the read deadline again.
 	if p.keepalives {
 		if err := p.conn.SetReadDeadline(time.Time{}); err != nil {
@@ -321,12 +373,14 @@ func (p *peer) _read() {
 			return
 		}
 	}
+
 	// We might have been waiting for a little while for the above to yield a
 	// new frame, so let's check one more time that the peering wasn't stopped
 	// before we try to unmarshal and handle the frame.
 	if !p.started.Load() {
 		return
 	}
+
 	// Check that we read the number of bytes that we were expecting to read.
 	// If we didn't then that implies that something went wrong, so shut down the
 	// peering.
@@ -334,12 +388,14 @@ func (p *peer) _read() {
 		p.stop(fmt.Errorf("expecting %d bytes but got %d bytes", expecting, n))
 		return
 	}
+
 	// Unmarshal the frame.
 	f := getFrame()
 	if _, err := f.UnmarshalBinary(b[:n+types.FrameHeaderLength]); err != nil {
 		p.stop(fmt.Errorf("f.UnmarshalBinary: %w", err))
 		return
 	}
+
 	// Send the frame across to the state actor to be handled/forwarded.
 	p.router.state.Act(&p.reader, func() {
 		if err := p.router.state._forward(p, f); err != nil {
@@ -347,6 +403,7 @@ func (p *peer) _read() {
 			return
 		}
 	})
+
 	// This is effectively a recursive call to queue up the next read into
 	// the actor inbox.
 	p.reader.Act(nil, p._read)

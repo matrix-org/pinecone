@@ -136,8 +136,8 @@ func (r *DefaultRouter) OverlayReadHandler(quit <-chan bool) {
 		}
 
 		r.rtr.SetReadDeadline(time.Now().Add(time.Millisecond * 300))
-		_, addr, err := r.rtr.ReadFrom(buf)
-		if err != nil {
+		n, addr, err := r.rtr.ReadFrom(buf)
+		if err != nil || n == 0 {
 			continue
 		}
 

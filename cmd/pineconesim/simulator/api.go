@@ -45,6 +45,7 @@ const (
 	SimSnakeEntryRemoved
 	SimPingStateUpdated
 	SimNetworkStatsUpdated
+	SimBandwidthReport
 )
 
 const (
@@ -70,16 +71,17 @@ const (
 )
 
 type InitialNodeState struct {
-	PublicKey     string
-	NodeType      APINodeType
-	RootState     RootState
-	Peers         []PeerInfo
-	TreeParent    string
-	SnakeAsc      string
-	SnakeAscPath  string
-	SnakeDesc     string
-	SnakeDescPath string
-	SnakeEntries  []SnakeRouteEntry
+	PublicKey        string
+	NodeType         APINodeType
+	RootState        RootState
+	Peers            []PeerInfo
+	TreeParent       string
+	SnakeAsc         string
+	SnakeAscPath     string
+	SnakeDesc        string
+	SnakeDescPath    string
+	SnakeEntries     []SnakeRouteEntry
+	BandwidthReports []BandwidthSnapshot
 }
 
 type RootState struct {
@@ -105,9 +107,10 @@ type SimEventMsg struct {
 }
 
 type InitialStateMsg struct {
-	MsgID APIEventMessageID
-	Nodes map[string]InitialNodeState
-	End   bool
+	MsgID               APIEventMessageID
+	Nodes               map[string]InitialNodeState
+	End                 bool
+	BWReportingInterval int
 }
 
 type StateUpdateMsg struct {

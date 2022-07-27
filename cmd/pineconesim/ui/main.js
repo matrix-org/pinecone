@@ -1,7 +1,7 @@
 import { graph } from "./modules/graph.js";
 import { APIEventMessageID, APICommandMessageID, APIUpdateID, APICommandID,
          ConnectToServer, SendToServer } from "./modules/server-api.js";
-import { SetPingToolState } from "./modules/ui.js";
+import { SetPingToolState, UpdateBandwidthGraphData } from "./modules/ui.js";
 
 function handleSimMessage(msg) {
     // console.log(msg.data);
@@ -33,11 +33,21 @@ function handleSimMessage(msg) {
                     graph.addSnakeEntry(key, value.SnakeEntries[i].EntryID, value.SnakeEntries[i].PeerID);
                 }
             }
+
+            if (value.BandwidthReports) {
+                for (let i = 0; i < value.BandwidthReports.length; i++) {
+                    graph.addBandwidthReport(key, value.BandwidthReports[i]);
+                }
+            }
         }
 
         if (msg.data.End === true) {
-            console.log("Finished receiving initial state from server. Listening for further updates...");
+            let bwIntervalSeconds = msg.data.BWReportingInterval;
+            UpdateBandwidthGraphData(bwIntervalSeconds);
+            setInterval(function() { UpdateBandwidthGraphData(bwIntervalSeconds); }, bwIntervalSeconds * 1000);
             graph.startGraph();
+
+            console.log("Finished receiving initial state from server. Listening for further updates...");
         }
         break;
     case APIEventMessageID.StateUpdate:
@@ -78,6 +88,9 @@ function handleSimMessage(msg) {
             break;
         case APIUpdateID.NetworkStatsUpdated:
             graph.updateNetworkStats(event.TreePathConvergence, event.TreeAverageStretch, event.SnakePathConvergence, event.SnakeAverageStretch);
+            break;
+        case APIUpdateID.BandwidthReport:
+            graph.addBandwidthReport(event.Node, event.Bandwidth);
             break;
         }
         break;
