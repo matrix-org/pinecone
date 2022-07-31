@@ -22,7 +22,7 @@ import (
 
 type Stream struct {
 	quic.Stream
-	session quic.Session
+	session quic.Connection
 }
 
 func (s *Stream) LocalAddr() net.Addr {

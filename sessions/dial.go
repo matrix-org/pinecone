@@ -87,7 +87,7 @@ retry:
 			},
 		}
 
-		session.Session, err = quic.DialContext(ctx, s.s.r, addr, addrstr, tlsConfig, s.s.quicConfig)
+		session.Connection, err = quic.DialContext(ctx, s.s.r, addr, addrstr, tlsConfig, s.s.quicConfig)
 		session.Unlock()
 		if err != nil {
 			if err == context.DeadlineExceeded {
@@ -102,7 +102,7 @@ retry:
 		defer session.RUnlock()
 	}
 
-	if session.Session == nil {
+	if session.Connection == nil {
 		s.sessions.Delete(pk)
 		return nil, fmt.Errorf("session failed to open")
 	}

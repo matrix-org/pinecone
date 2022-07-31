@@ -50,7 +50,7 @@ func (q *Sessions) listener() {
 			if ok {
 				_ = session.CloseWithError(0, "session replaced")
 			}
-			entry.Session = session
+			entry.Connection = session
 			entry.Unlock()
 			go proto.sessionlistener(entry)
 		}
