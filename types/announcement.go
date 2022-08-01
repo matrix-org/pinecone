@@ -15,9 +15,10 @@
 package types
 
 import (
-	"crypto/ed25519"
 	"fmt"
 	"os"
+
+	"github.com/cloudflare/circl/sign/eddilithium2"
 )
 
 type Root struct {
@@ -26,11 +27,11 @@ type Root struct {
 }
 
 func (r *Root) Length() int {
-	return ed25519.PublicKeySize + r.RootSequence.Length()
+	return eddilithium2.PublicKeySize + r.RootSequence.Length()
 }
 
 func (r *Root) MinLength() int {
-	return ed25519.PublicKeySize + 1
+	return eddilithium2.PublicKeySize + 1
 }
 
 type SwitchAnnouncement struct {
@@ -38,7 +39,7 @@ type SwitchAnnouncement struct {
 	Signatures []SignatureWithHop
 }
 
-func (a *SwitchAnnouncement) Sign(privKey ed25519.PrivateKey, forPort SwitchPortID) error {
+func (a *SwitchAnnouncement) Sign(privKey eddilithium2.PrivateKey, forPort SwitchPortID) error {
 	var body [65535]byte
 	n, err := a.MarshalBinary(body[:])
 	if err != nil {
@@ -47,33 +48,38 @@ func (a *SwitchAnnouncement) Sign(privKey ed25519.PrivateKey, forPort SwitchPort
 	hop := SignatureWithHop{
 		Hop: Varu64(forPort),
 	}
-	copy(hop.PublicKey[:], privKey.Public().(ed25519.PublicKey))
+	pubKey := privKey.Public().(eddilithium2.PublicKey)
+	copy(hop.PublicKey[:], pubKey.Bytes())
 	if _, ok := os.LookupEnv("PINECONE_DISABLE_SIGNATURES"); !ok {
-		copy(hop.Signature[:], ed25519.Sign(privKey, body[:n]))
+		var signature []byte
+		eddilithium2.SignTo(&privKey, body[:n], signature)
+		copy(hop.Signature[:], signature)
 	}
 	a.Signatures = append(a.Signatures, hop)
 	return nil
 }
 
 func (a *SwitchAnnouncement) UnmarshalBinary(data []byte) (int, error) {
-	expected := ed25519.PublicKeySize + 1
+	expected := eddilithium2.PublicKeySize + 1
 	if size := len(data); size < expected {
 		return 0, fmt.Errorf("expecting at least %d bytes, got %d bytes", expected, size)
 	}
-	remaining := data[copy(a.RootPublicKey[:ed25519.PublicKeySize], data):]
+	remaining := data[copy(a.RootPublicKey[:eddilithium2.PublicKeySize], data):]
 	if l, err := a.RootSequence.UnmarshalBinary(remaining); err != nil {
 		return 0, fmt.Errorf("a.Sequence.UnmarshalBinary: %w", err)
 	} else {
 		remaining = remaining[l:]
 	}
-	for i := Varu64(0); len(remaining) >= ed25519.PublicKeySize+ed25519.SignatureSize+1; i++ {
+	for i := Varu64(0); len(remaining) >= eddilithium2.PublicKeySize+eddilithium2.SignatureSize+1; i++ {
 		var signature SignatureWithHop
 		n, err := signature.UnmarshalBinary(remaining[:])
 		if err != nil {
 			return 0, fmt.Errorf("signature.UnmarshalBinary: %w", err)
 		}
 		if _, ok := os.LookupEnv("PINECONE_DISABLE_SIGNATURES"); !ok {
-			if !ed25519.Verify(signature.PublicKey[:], data[:len(data)-len(remaining)], signature.Signature[:]) {
+			signaturePublicKey := eddilithium2.PublicKey{}
+			signaturePublicKey.UnmarshalBinary(signature.PublicKey[:])
+			if !eddilithium2.Verify(&signaturePublicKey, data[:len(data)-len(remaining)], signature.Signature[:]) {
 				return 0, fmt.Errorf("signature verification failed for hop %d", signature.Hop)
 			}
 		}

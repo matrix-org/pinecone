@@ -16,7 +16,6 @@ package multicast
 
 import (
 	"context"
-	"crypto/ed25519"
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
@@ -24,6 +23,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cloudflare/circl/sign/eddilithium2"
 	"github.com/matrix-org/pinecone/router"
 	"github.com/matrix-org/pinecone/types"
 	"go.uber.org/atomic"
@@ -316,11 +316,11 @@ func (m *Multicast) listen(intf *multicastInterface, conn net.PacketConn, srcadd
 	dialer := m.dialer
 	dialer.LocalAddr = srcaddr
 	dialer.Control = m.tcpOptions
-	buf := make([]byte, 512)
+	buf := make([]byte, 2048)
 	ourPublicKey := m.r.PublicKey()
 	neighborKey := types.PublicKey{}
-	publicKey := buf[:ed25519.PublicKeySize]
-	listenPort := buf[ed25519.PublicKeySize : ed25519.PublicKeySize+2]
+	publicKey := buf[:eddilithium2.PublicKeySize]
+	listenPort := buf[eddilithium2.PublicKeySize : eddilithium2.PublicKeySize+2]
 	for {
 		select {
 		case <-m.ctx.Done():
@@ -331,7 +331,7 @@ func (m *Multicast) listen(intf *multicastInterface, conn net.PacketConn, srcadd
 		}
 
 		n, addr, err := conn.ReadFrom(buf)
-		if err != nil || n < ed25519.PublicKeySize+2 {
+		if err != nil || n < eddilithium2.PublicKeySize+2 {
 			//m.log.Println("conn.ReadFrom:", err)
 			intf.cancel()
 			continue

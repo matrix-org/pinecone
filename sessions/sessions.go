@@ -16,7 +16,6 @@ package sessions
 
 import (
 	"context"
-	"crypto/ed25519"
 	"crypto/rand"
 	"crypto/tls"
 	"crypto/x509"
@@ -29,6 +28,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cloudflare/circl/sign/eddilithium2"
 	"github.com/lucas-clemente/quic-go"
 	"github.com/matrix-org/pinecone/router"
 	"github.com/matrix-org/pinecone/types"
@@ -105,12 +105,14 @@ func (s *Sessions) Protocol(proto string) *SessionProtocol {
 	return s.protocols[proto]
 }
 
-func (s *SessionProtocol) Sessions() []ed25519.PublicKey {
-	var sessions []ed25519.PublicKey
+func (s *SessionProtocol) Sessions() []eddilithium2.PublicKey {
+	var sessions []eddilithium2.PublicKey
 	s.sessions.Range(func(k, _ interface{}) bool {
 		switch pk := k.(type) {
 		case types.PublicKey:
-			sessions = append(sessions, pk[:])
+			pkTmp := eddilithium2.PublicKey{}
+			pkTmp.UnmarshalBinary(pk[:])
+			sessions = append(sessions, pkTmp)
 		default:
 		}
 		return true
@@ -124,8 +126,8 @@ func (p *SessionProtocol) getSession(pk types.PublicKey) (*activeSession, bool) 
 }
 
 func (s *Sessions) generateTLSCertificate() *tls.Certificate {
-	private, public := s.r.PrivateKey(), s.r.PublicKey()
-	id := hex.EncodeToString(public[:])
+	privateTmp, publicTmp := s.r.PrivateKey(), s.r.PublicKey()
+	id := hex.EncodeToString(publicTmp[:])
 
 	template := x509.Certificate{
 		Subject: pkix.Name{
@@ -136,17 +138,23 @@ func (s *Sessions) generateTLSCertificate() *tls.Certificate {
 		DNSNames:     []string{id},
 	}
 
+	public := eddilithium2.PublicKey{}
+	private := eddilithium2.PrivateKey{}
+
+	public.UnmarshalBinary(publicTmp[:])
+	private.UnmarshalBinary(privateTmp[:])
+
 	certDER, err := x509.CreateCertificate(
 		rand.Reader,
 		&template,
 		&template,
-		ed25519.PublicKey(public[:]),
-		ed25519.PrivateKey(private[:]),
+		public,
+		private,
 	)
 	if err != nil {
 		panic(fmt.Errorf("x509.CreateCertificate: %w", err))
 	}
-	privateKey, err := x509.MarshalPKCS8PrivateKey(ed25519.PrivateKey(private[:]))
+	privateKey, err := x509.MarshalPKCS8PrivateKey(eddilithium2.PrivateKey(private))
 	if err != nil {
 		panic(fmt.Errorf("x509.MarshalPKCS8PrivateKey: %w", err))
 	}

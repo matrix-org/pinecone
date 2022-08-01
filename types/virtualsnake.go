@@ -1,14 +1,15 @@
 package types
 
 import (
-	"crypto/ed25519"
 	"fmt"
+
+	"github.com/cloudflare/circl/sign/eddilithium2"
 )
 
 type VirtualSnakeBootstrap struct {
 	Sequence Varu64
 	Root
-	Signature [ed25519.SignatureSize]byte
+	Signature [eddilithium2.SignatureSize]byte
 }
 
 type VirtualSnakeWatermark struct {
@@ -22,7 +23,7 @@ func (a VirtualSnakeWatermark) WorseThan(b VirtualSnakeWatermark) bool {
 }
 
 func (v *VirtualSnakeBootstrap) ProtectedPayload() ([]byte, error) {
-	buffer := make([]byte, ed25519.SignatureSize+v.Sequence.Length())
+	buffer := make([]byte, eddilithium2.SignatureSize+v.Sequence.Length())
 	sn, err := v.Sequence.MarshalBinary(buffer[:])
 	if err != nil {
 		return nil, fmt.Errorf("v.Sequence.MarshalBinary: %w", err)
@@ -36,7 +37,7 @@ func (v *VirtualSnakeBootstrap) ProtectedPayload() ([]byte, error) {
 }
 
 func (v *VirtualSnakeBootstrap) MarshalBinary(buf []byte) (int, error) {
-	if len(buf) < v.Sequence.Length()+v.Root.Length()+ed25519.SignatureSize {
+	if len(buf) < v.Sequence.Length()+v.Root.Length()+eddilithium2.SignatureSize {
 		return 0, fmt.Errorf("buffer too small")
 	}
 	offset := 0
@@ -56,7 +57,7 @@ func (v *VirtualSnakeBootstrap) MarshalBinary(buf []byte) (int, error) {
 }
 
 func (v *VirtualSnakeBootstrap) UnmarshalBinary(buf []byte) (int, error) {
-	if len(buf) < v.Sequence.MinLength()+v.Root.MinLength()+ed25519.SignatureSize {
+	if len(buf) < v.Sequence.MinLength()+v.Root.MinLength()+eddilithium2.SignatureSize {
 		return 0, fmt.Errorf("buffer too small")
 	}
 	offset := 0

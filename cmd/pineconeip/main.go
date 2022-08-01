@@ -15,7 +15,6 @@
 package main
 
 import (
-	"crypto/ed25519"
 	"flag"
 	"fmt"
 	"log"
@@ -29,6 +28,7 @@ import (
 	"net/http"
 	_ "net/http/pprof"
 
+	"github.com/cloudflare/circl/sign/eddilithium2"
 	"github.com/matrix-org/pinecone/cmd/pineconeip/tun"
 	"github.com/matrix-org/pinecone/connections"
 	"github.com/matrix-org/pinecone/multicast"
@@ -36,7 +36,7 @@ import (
 )
 
 func main() {
-	_, sk, err := ed25519.GenerateKey(nil)
+	_, sk, err := eddilithium2.GenerateKey(nil)
 	if err != nil {
 		panic(err)
 	}
@@ -69,7 +69,7 @@ func main() {
 		}()
 	}
 
-	pineconeRouter := router.NewRouter(logger, sk, false)
+	pineconeRouter := router.NewRouter(logger, *sk, false)
 	pineconeMulticast := multicast.NewMulticast(logger, pineconeRouter)
 	pineconeMulticast.Start()
 	pineconeManager := connections.NewConnectionManager(pineconeRouter, nil)

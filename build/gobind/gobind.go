@@ -16,7 +16,6 @@ package gobind
 
 import (
 	"context"
-	"crypto/ed25519"
 	"encoding/hex"
 	"io"
 	"log"
@@ -24,6 +23,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cloudflare/circl/sign/eddilithium2"
 	pineconeConnections "github.com/matrix-org/pinecone/connections"
 	pineconeMulticast "github.com/matrix-org/pinecone/multicast"
 	pineconeRouter "github.com/matrix-org/pinecone/router"
@@ -120,7 +120,7 @@ func (m *Pinecone) Conduit(zone string, peertype int) (*Conduit, error) {
 
 // nolint:gocyclo
 func (m *Pinecone) Start() {
-	pk, sk, err := ed25519.GenerateKey(nil)
+	pk, sk, err := eddilithium2.GenerateKey(nil)
 	if err != nil {
 		panic(err)
 	}
@@ -128,9 +128,9 @@ func (m *Pinecone) Start() {
 	m.ctx, m.cancel = context.WithCancel(context.Background())
 
 	m.logger = log.New(BindLogger{}, "Pinecone: ", 0)
-	m.logger.Println("Public key:", hex.EncodeToString(pk))
+	m.logger.Println("Public key:", hex.EncodeToString(pk.Bytes()))
 
-	m.PineconeRouter = pineconeRouter.NewRouter(m.logger, sk, false)
+	m.PineconeRouter = pineconeRouter.NewRouter(m.logger, *sk, false)
 	m.PineconeMulticast = pineconeMulticast.NewMulticast(m.logger, m.PineconeRouter)
 	m.PineconeManager = pineconeConnections.NewConnectionManager(m.PineconeRouter, nil)
 }

@@ -15,9 +15,9 @@
 package router
 
 import (
-	"crypto/ed25519"
 	"time"
 
+	"github.com/cloudflare/circl/sign/eddilithium2"
 	"github.com/matrix-org/pinecone/types"
 	"github.com/matrix-org/pinecone/util"
 )
@@ -120,9 +120,13 @@ func (s *state) _bootstrapNow() {
 		if err != nil {
 			return
 		}
+		routerPrivate := eddilithium2.PrivateKey{}
+		routerPrivate.UnmarshalBinary(s.r.private[:])
+		var bootstrapSignature []byte
+		eddilithium2.SignTo(&routerPrivate, protected, bootstrapSignature)
 		copy(
 			bootstrap.Signature[:],
-			ed25519.Sign(s.r.private[:], protected),
+			bootstrapSignature,
 		)
 	}
 	n, err := bootstrap.MarshalBinary(b[:])
@@ -327,8 +331,10 @@ func (s *state) _handleBootstrap(from, to *peer, rx *types.Frame) bool {
 		if err != nil {
 			return false
 		}
-		if !ed25519.Verify(
-			rx.DestinationKey[:],
+		destinationKey := eddilithium2.PublicKey{}
+		destinationKey.UnmarshalBinary(rx.DestinationKey[:])
+		if !eddilithium2.Verify(
+			&destinationKey,
 			protected,
 			bootstrap.Signature[:],
 		) {

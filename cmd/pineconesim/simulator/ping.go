@@ -15,11 +15,11 @@
 package simulator
 
 import (
-	"crypto/ed25519"
 	"encoding/binary"
 	"fmt"
 	"net"
 
+	"github.com/cloudflare/circl/sign/eddilithium2"
 	"github.com/matrix-org/pinecone/types"
 )
 
@@ -54,7 +54,7 @@ func (p *PingPayload) MarshalBinary(buffer []byte) (int, error) {
 		}
 		offset += on
 	case types.PublicKey:
-		offset += copy(buffer[offset:], orig[:ed25519.PublicKeySize])
+		offset += copy(buffer[offset:], orig[:eddilithium2.PublicKeySize])
 	}
 
 	switch dest := p.destination.(type) {
@@ -65,7 +65,7 @@ func (p *PingPayload) MarshalBinary(buffer []byte) (int, error) {
 		}
 		offset += dn
 	case types.PublicKey:
-		offset += copy(buffer[offset:], dest[:ed25519.PublicKeySize])
+		offset += copy(buffer[offset:], dest[:eddilithium2.PublicKeySize])
 	}
 
 	return offset, nil

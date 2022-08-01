@@ -15,8 +15,9 @@
 package types
 
 import (
-	"crypto/ed25519"
 	"fmt"
+
+	"github.com/cloudflare/circl/sign/eddilithium2"
 )
 
 type SignatureWithHop struct {
@@ -25,7 +26,7 @@ type SignatureWithHop struct {
 	Signature Signature
 }
 
-const SignatureWithHopMinSize = ed25519.PublicKeySize + ed25519.SignatureSize + 1
+const SignatureWithHopMinSize = eddilithium2.PublicKeySize + eddilithium2.SignatureSize + 1
 
 func (a *SignatureWithHop) UnmarshalBinary(data []byte) (int, error) {
 	if size := len(data); size < SignatureWithHopMinSize {
@@ -50,7 +51,7 @@ func (a *SignatureWithHop) MarshalBinary(data []byte) (int, error) {
 	if len(data) < SignatureWithHopMinSize {
 		return 0, fmt.Errorf("buffer is not big enough (must be %d bytes)", SignatureWithHopMinSize)
 	}
-	offset += copy(data[offset:offset+ed25519.PublicKeySize], a.PublicKey[:])
-	offset += copy(data[offset:offset+ed25519.SignatureSize], a.Signature[:])
+	offset += copy(data[offset:offset+eddilithium2.PublicKeySize], a.PublicKey[:])
+	offset += copy(data[offset:offset+eddilithium2.SignatureSize], a.Signature[:])
 	return offset, nil
 }

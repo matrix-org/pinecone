@@ -16,12 +16,12 @@ package adversary
 
 import (
 	"context"
-	"crypto/ed25519"
 	"log"
 	"net"
 	"net/http"
 	"time"
 
+	"github.com/cloudflare/circl/sign/eddilithium2"
 	"github.com/matrix-org/pinecone/router"
 	"github.com/matrix-org/pinecone/router/events"
 	"github.com/matrix-org/pinecone/types"
@@ -106,7 +106,7 @@ type AdversaryRouter struct {
 	packetsDropped PacketsDropped
 }
 
-func NewAdversaryRouter(log *log.Logger, sk ed25519.PrivateKey, debug bool) *AdversaryRouter {
+func NewAdversaryRouter(log *log.Logger, sk eddilithium2.PrivateKey, debug bool) *AdversaryRouter {
 	rtr := router.NewRouter(log, sk, debug)
 	adversary := &AdversaryRouter{
 		rtr,

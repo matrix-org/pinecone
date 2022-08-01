@@ -16,10 +16,10 @@ package sessions
 
 import (
 	"bytes"
-	"crypto/ed25519"
 	"fmt"
 	"net"
 
+	"github.com/cloudflare/circl/sign/eddilithium2"
 	"github.com/matrix-org/pinecone/types"
 )
 
@@ -36,11 +36,11 @@ func (q *Sessions) listener() {
 			continue
 		}
 		cert := tls.PeerCertificates[0]
-		public, ok := cert.PublicKey.(ed25519.PublicKey)
+		public, ok := cert.PublicKey.(eddilithium2.PublicKey)
 		if !ok {
 			continue
 		}
-		if !bytes.Equal(public, key[:]) {
+		if !bytes.Equal(public.Bytes(), key[:]) {
 			continue
 		}
 

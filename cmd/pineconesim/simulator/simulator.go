@@ -15,7 +15,6 @@
 package simulator
 
 import (
-	"crypto/ed25519"
 	"log"
 	"math"
 	"net"
@@ -25,7 +24,11 @@ import (
 
 	"github.com/Arceliar/phony"
 	"github.com/RyanCarrier/dijkstra"
+<<<<<<< HEAD
 	"github.com/matrix-org/pinecone/router/events"
+=======
+	"github.com/cloudflare/circl/sign/eddilithium2"
+>>>>>>> 2c4e0a3 (Initial ed25519 -> eddilithium2 switch)
 	"go.uber.org/atomic"
 )
 
@@ -63,7 +66,7 @@ func (r *EventSequenceRunner) Run(sim *Simulator) {
 	}
 }
 
-type RouterCreatorFn func(log *log.Logger, sk ed25519.PrivateKey, debug bool, quit <-chan bool) SimRouter
+type RouterCreatorFn func(log *log.Logger, sk eddilithium2.PrivateKey, debug bool, quit <-chan bool) SimRouter
 
 type pair struct{ from, to string }
 

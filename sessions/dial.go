@@ -17,22 +17,22 @@ package sessions
 import (
 	"bytes"
 	"context"
-	"crypto/ed25519"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/hex"
 	"fmt"
 	"net"
 
+	"github.com/cloudflare/circl/sign/eddilithium2"
 	"github.com/lucas-clemente/quic-go"
 	"github.com/matrix-org/pinecone/types"
 )
 
 // DialContext dials a given public key using the supplied network.
 // The network field can be used to specify which routing algorithm to
-// use for the session: "ed25519+greedy" for greedy routing or "ed25519+source"
+// use for the session: "eddilithium2+greedy" for greedy routing or "eddilithium2+source"
 // for source routing - DHT lookups and pathfinds will be performed for these
-// networks automatically. Otherwise, the default "ed25519" will use snake
+// networks automatically. Otherwise, the default "eddilithium2" will use snake
 // routing. The address must be the destination public key specified in hex.
 // If the context expires then the session will be torn down automatically.
 func (s *SessionProtocol) DialContext(ctx context.Context, network, addrstr string) (net.Conn, error) {
@@ -47,8 +47,8 @@ func (s *SessionProtocol) DialContext(ctx context.Context, network, addrstr stri
 	if err != nil {
 		return nil, fmt.Errorf("hex.DecodeString: %w", err)
 	}
-	if len(pkb) != ed25519.PublicKeySize {
-		return nil, fmt.Errorf("host must be length of an ed25519 public key")
+	if len(pkb) != eddilithium2.PublicKeySize {
+		return nil, fmt.Errorf("host must be length of an eddilithium2 public key")
 	}
 	copy(pk[:], pkb)
 	addr = pk
@@ -76,11 +76,11 @@ retry:
 				if err != nil {
 					return fmt.Errorf("x509.ParseCertificate: %w", err)
 				}
-				public, ok := cert.PublicKey.(ed25519.PublicKey)
+				public, ok := cert.PublicKey.(eddilithium2.PublicKey)
 				if !ok {
-					return fmt.Errorf("expected ed25519 public key")
+					return fmt.Errorf("expected eddilithium2 public key")
 				}
-				if !bytes.Equal(public, pk[:]) {
+				if !bytes.Equal(public.Bytes(), pk[:]) {
 					return fmt.Errorf("remote side returned incorrect public key")
 				}
 				return nil

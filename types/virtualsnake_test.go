@@ -16,29 +16,32 @@ package types
 
 import (
 	"bytes"
-	"crypto/ed25519"
 	"fmt"
 	"testing"
+
+	"github.com/cloudflare/circl/sign/eddilithium2"
 )
 
 func TestMarshalUnmarshalBootstrap(t *testing.T) {
-	pkr, _, _ := ed25519.GenerateKey(nil)
-	_, sk1, _ := ed25519.GenerateKey(nil)
+	pkr, _, _ := eddilithium2.GenerateKey(nil)
+	_, sk1, _ := eddilithium2.GenerateKey(nil)
 	input := &VirtualSnakeBootstrap{
 		Sequence: 7,
 		Root: Root{
 			RootSequence: 1,
 		},
 	}
-	copy(input.RootPublicKey[:], pkr)
+	copy(input.RootPublicKey[:], pkr.Bytes())
 	var err error
 	protected, err := input.ProtectedPayload()
 	if err != nil {
 		t.Fatal(err)
 	}
+	var signature []byte
+	eddilithium2.SignTo(sk1, protected, signature)
 	copy(
 		input.Signature[:],
-		ed25519.Sign(sk1[:], protected),
+		signature,
 	)
 	var buffer [65535]byte
 	n, err := input.MarshalBinary(buffer[:])
@@ -56,7 +59,7 @@ func TestMarshalUnmarshalBootstrap(t *testing.T) {
 		fmt.Println("got:", output.Sequence)
 		t.Fatalf("bootstrap sequence doesn't match")
 	}
-	if !bytes.Equal(pkr, output.RootPublicKey[:]) {
+	if !bytes.Equal(pkr.Bytes(), output.RootPublicKey[:]) {
 		fmt.Println("expected:", pkr)
 		fmt.Println("got:", output.RootPublicKey)
 		t.Fatalf("root public key doesn't match")

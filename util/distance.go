@@ -15,13 +15,12 @@
 package util
 
 import (
-	"crypto/ed25519"
-
+	"github.com/cloudflare/circl/sign/eddilithium2"
 	"github.com/matrix-org/pinecone/types"
 )
 
 func LessThan(first, second types.PublicKey) bool {
-	for i := 0; i < ed25519.PublicKeySize; i++ {
+	for i := 0; i < eddilithium2.PublicKeySize; i++ {
 		if first[i] < second[i] {
 			return true
 		}

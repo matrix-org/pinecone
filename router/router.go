@@ -16,7 +16,6 @@ package router
 
 import (
 	"context"
-	"crypto/ed25519"
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
@@ -30,6 +29,7 @@ import (
 	"time"
 
 	"github.com/Arceliar/phony"
+	"github.com/cloudflare/circl/sign/eddilithium2"
 	"github.com/matrix-org/pinecone/router/events"
 	"github.com/matrix-org/pinecone/types"
 	"go.uber.org/atomic"
@@ -53,7 +53,7 @@ type Router struct {
 	_subscribers  map[chan<- events.Event]*phony.Inbox
 }
 
-func NewRouter(logger types.Logger, sk ed25519.PrivateKey, debug bool) *Router {
+func NewRouter(logger types.Logger, sk eddilithium2.PrivateKey, debug bool) *Router {
 	if logger == nil {
 		logger = log.New(ioutil.Discard, "", 0)
 	}
@@ -68,7 +68,7 @@ func NewRouter(logger types.Logger, sk ed25519.PrivateKey, debug bool) *Router {
 		_subscribers:  make(map[chan<- events.Event]*phony.Inbox),
 	}
 	// Populate the node keys from the supplied private key.
-	copy(r.private[:], sk)
+	copy(r.private[:], sk.Bytes())
 	r.public = r.private.Public()
 	// Create a state actor.
 	r.state = &state{
@@ -195,8 +195,12 @@ func (r *Router) Connect(conn net.Conn, options ...ConnectionOption) (types.Swit
 			0, // capabilities
 		}
 		binary.BigEndian.PutUint32(handshake[4:8], ourCapabilities)
-		handshake = append(handshake, r.public[:ed25519.PublicKeySize]...)
-		handshake = append(handshake, ed25519.Sign(r.private[:], handshake)...)
+		handshake = append(handshake, r.public[:eddilithium2.PublicKeySize]...)
+		routerPrivate := eddilithium2.PrivateKey{}
+		routerPrivate.UnmarshalBinary(r.private[:])
+		var handshakeSignature []byte
+		eddilithium2.SignTo(&routerPrivate, handshake, handshakeSignature)
+		handshake = append(handshake, handshakeSignature...)
 		if err := conn.SetDeadline(time.Now().Add(peerKeepaliveInterval)); err != nil {
 			return 0, fmt.Errorf("conn.SetDeadline: %w", err)
 		}
@@ -221,9 +225,11 @@ func (r *Router) Connect(conn net.Conn, options ...ConnectionOption) (types.Swit
 		}
 		var signature types.Signature
 		offset := 8
-		offset += copy(public[:], handshake[offset:offset+ed25519.PublicKeySize])
-		copy(signature[:], handshake[offset:offset+ed25519.SignatureSize])
-		if !ed25519.Verify(public[:], handshake[:offset], signature[:]) {
+		offset += copy(public[:], handshake[offset:offset+eddilithium2.PublicKeySize])
+		copy(signature[:], handshake[offset:offset+eddilithium2.SignatureSize])
+		publicTmp := eddilithium2.PublicKey{}
+		publicTmp.UnmarshalBinary(public[:])
+		if !eddilithium2.Verify(&publicTmp, handshake[:offset], signature[:]) {
 			conn.Close()
 			return 0, fmt.Errorf("peer sent invalid signature")
 		}

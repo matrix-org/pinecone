@@ -15,7 +15,6 @@
 package simulator
 
 import (
-	"crypto/ed25519"
 	"fmt"
 	"hash/crc32"
 	"log"
@@ -23,6 +22,7 @@ import (
 	"time"
 
 	"github.com/Arceliar/phony"
+	"github.com/cloudflare/circl/sign/eddilithium2"
 	"github.com/matrix-org/pinecone/cmd/pineconesim/simulator/adversary"
 	"github.com/matrix-org/pinecone/router"
 	"github.com/matrix-org/pinecone/router/events"
@@ -56,9 +56,9 @@ func (sim *Simulator) CreateNode(t string, nodeType APINodeType) error {
 			return fmt.Errorf("net.Listen: %w", err)
 		}
 	}
-	_, sk, err := ed25519.GenerateKey(nil)
+	_, sk, err := eddilithium2.GenerateKey(nil)
 	if err != nil {
-		return fmt.Errorf("ed25519.GenerateKey: %w", err)
+		return fmt.Errorf("eddilithium2.GenerateKey: %w", err)
 	}
 	crc := crc32.ChecksumIEEE([]byte(t))
 	color := 31 + (crc % 6)
@@ -66,7 +66,7 @@ func (sim *Simulator) CreateNode(t string, nodeType APINodeType) error {
 
 	quit := make(chan bool)
 	n := &Node{
-		SimRouter:  sim.routerCreationMap[nodeType](logger, sk, true, quit),
+		SimRouter:  sim.routerCreationMap[nodeType](logger, *sk, true, quit),
 		l:          l,
 		ListenAddr: tcpaddr,
 		Type:       nodeType,
@@ -177,7 +177,7 @@ func (sim *Simulator) ConfigureFilterPeer(node string, peer string, rates advers
 	}
 }
 
-func createDefaultRouter(log *log.Logger, sk ed25519.PrivateKey, debug bool, quit <-chan bool) SimRouter {
+func createDefaultRouter(log *log.Logger, sk eddilithium2.PrivateKey, debug bool, quit <-chan bool) SimRouter {
 	rtr := &DefaultRouter{
 		rtr: router.NewRouter(log, sk, debug),
 	}
@@ -187,7 +187,7 @@ func createDefaultRouter(log *log.Logger, sk ed25519.PrivateKey, debug bool, qui
 	return rtr
 }
 
-func createAdversaryRouter(log *log.Logger, sk ed25519.PrivateKey, debug bool, quit <-chan bool) SimRouter {
+func createAdversaryRouter(log *log.Logger, sk eddilithium2.PrivateKey, debug bool, quit <-chan bool) SimRouter {
 	rtr := adversary.NewAdversaryRouter(log, sk, debug)
 
 	go rtr.OverlayReadHandler(quit)

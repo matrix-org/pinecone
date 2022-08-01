@@ -15,27 +15,27 @@
 package util
 
 import (
-	"crypto/ed25519"
 	"fmt"
 	"testing"
 
+	"github.com/cloudflare/circl/sign/eddilithium2"
 	"github.com/matrix-org/pinecone/types"
 )
 
 func TestOverlaySorting(t *testing.T) {
 	overlay := &Overlay{}
-	opk, _, _ := ed25519.GenerateKey(nil)
-	tpk, _, _ := ed25519.GenerateKey(nil)
-	copy(overlay.ourkey[:], opk)
-	copy(overlay.target[:], tpk)
+	opk, _, _ := eddilithium2.GenerateKey(nil)
+	tpk, _, _ := eddilithium2.GenerateKey(nil)
+	copy(overlay.ourkey[:], opk.Bytes())
+	copy(overlay.target[:], tpk.Bytes())
 
 	fmt.Println("Our key:   ", overlay.ourkey)
 	fmt.Println("Target key:", overlay.target)
 
 	for i := 0; i < 32; i++ {
-		pk, _, _ := ed25519.GenerateKey(nil)
+		pk, _, _ := eddilithium2.GenerateKey(nil)
 		k := types.PublicKey{}
-		copy(k[:], pk)
+		copy(k[:], pk.Bytes())
 		overlay.keys = append(overlay.keys[:], k)
 	}
 

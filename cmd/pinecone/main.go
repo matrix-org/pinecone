@@ -16,7 +16,6 @@ package main
 
 import (
 	"context"
-	"crypto/ed25519"
 	"flag"
 	"fmt"
 	"log"
@@ -28,6 +27,7 @@ import (
 	"net/http"
 	_ "net/http/pprof"
 
+	"github.com/cloudflare/circl/sign/eddilithium2"
 	"github.com/gorilla/websocket"
 	"github.com/matrix-org/pinecone/connections"
 	"github.com/matrix-org/pinecone/multicast"
@@ -39,7 +39,7 @@ func main() {
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 
-	_, sk, err := ed25519.GenerateKey(nil)
+	_, sk, err := eddilithium2.GenerateKey(nil)
 	if err != nil {
 		panic(err)
 	}
@@ -54,7 +54,7 @@ func main() {
 
 	listener := net.ListenConfig{}
 
-	pineconeRouter := router.NewRouter(logger, sk, false)
+	pineconeRouter := router.NewRouter(logger, *sk, false)
 	pineconeMulticast := multicast.NewMulticast(logger, pineconeRouter)
 	pineconeMulticast.Start()
 	pineconeManager := connections.NewConnectionManager(pineconeRouter, nil)

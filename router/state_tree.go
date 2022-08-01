@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/Arceliar/phony"
+	"github.com/cloudflare/circl/sign/eddilithium2"
 	"github.com/matrix-org/pinecone/router/events"
 	"github.com/matrix-org/pinecone/types"
 )
@@ -82,7 +83,9 @@ func (a *rootAnnouncementWithTime) forPeer(p *peer) *types.Frame {
 		}
 	}
 	// Sign the announcement.
-	if err := announcement.Sign(p.router.private[:], p.port); err != nil {
+	routerPrivate := eddilithium2.PrivateKey{}
+	routerPrivate.UnmarshalBinary(p.router.private[:])
+	if err := announcement.Sign(routerPrivate, p.port); err != nil {
 		panic("failed to sign switch announcement: " + err.Error())
 	}
 	frame := getFrame()

@@ -16,10 +16,11 @@ package types
 
 import (
 	"bytes"
-	"crypto/ed25519"
 	"encoding/binary"
 	"fmt"
 	"math"
+
+	"github.com/cloudflare/circl/sign/eddilithium2"
 )
 
 // MaxPayloadSize is the maximum size that a single frame can contain
@@ -85,8 +86,8 @@ func (f *Frame) MarshalBinary(buffer []byte) (int, error) {
 		payloadLen := len(f.Payload)
 		binary.BigEndian.PutUint16(buffer[offset+0:offset+2], uint16(payloadLen))
 		offset += 2
-		offset += copy(buffer[offset:], f.DestinationKey[:ed25519.PublicKeySize])
-		offset += copy(buffer[offset:], f.Watermark.PublicKey[:ed25519.PublicKeySize])
+		offset += copy(buffer[offset:], f.DestinationKey[:eddilithium2.PublicKeySize])
+		offset += copy(buffer[offset:], f.Watermark.PublicKey[:eddilithium2.PublicKeySize])
 		n, err := f.Watermark.Sequence.MarshalBinary(buffer[offset:])
 		if err != nil {
 			return 0, fmt.Errorf("f.WatermarkSeq.MarshalBinary: %w", err)
@@ -101,9 +102,9 @@ func (f *Frame) MarshalBinary(buffer []byte) (int, error) {
 		payloadLen := len(f.Payload)
 		binary.BigEndian.PutUint16(buffer[offset+0:offset+2], uint16(payloadLen))
 		offset += 2
-		offset += copy(buffer[offset:], f.DestinationKey[:ed25519.PublicKeySize])
-		offset += copy(buffer[offset:], f.SourceKey[:ed25519.PublicKeySize])
-		offset += copy(buffer[offset:], f.Watermark.PublicKey[:ed25519.PublicKeySize])
+		offset += copy(buffer[offset:], f.DestinationKey[:eddilithium2.PublicKeySize])
+		offset += copy(buffer[offset:], f.SourceKey[:eddilithium2.PublicKeySize])
+		offset += copy(buffer[offset:], f.Watermark.PublicKey[:eddilithium2.PublicKeySize])
 		n, err := f.Watermark.Sequence.MarshalBinary(buffer[offset:])
 		if err != nil {
 			return 0, fmt.Errorf("f.WatermarkSeq.MarshalBinary: %w", err)

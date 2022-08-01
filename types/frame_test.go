@@ -16,9 +16,10 @@ package types
 
 import (
 	"bytes"
-	"crypto/ed25519"
 	"fmt"
 	"testing"
+
+	"github.com/cloudflare/circl/sign/eddilithium2"
 )
 
 func TestMarshalUnmarshalFrame(t *testing.T) {
@@ -81,8 +82,8 @@ func TestMarshalUnmarshalFrame(t *testing.T) {
 }
 
 func TestMarshalUnmarshalSNEKBootstrapFrame(t *testing.T) {
-	pk, _, _ := ed25519.GenerateKey(nil)
-	wpk, _, _ := ed25519.GenerateKey(nil)
+	pk, _, _ := eddilithium2.GenerateKey(nil)
+	wpk, _, _ := eddilithium2.GenerateKey(nil)
 	input := Frame{
 		Version: Version0,
 		Type:    TypeVirtualSnakeBootstrap,
@@ -91,8 +92,8 @@ func TestMarshalUnmarshalSNEKBootstrapFrame(t *testing.T) {
 			Sequence: 100,
 		},
 	}
-	copy(input.DestinationKey[:], pk)
-	copy(input.Watermark.PublicKey[:], wpk)
+	copy(input.DestinationKey[:], pk.Bytes())
+	copy(input.Watermark.PublicKey[:], wpk.Bytes())
 	input.Watermark.Sequence = 100
 	expected := []byte{
 		0x70, 0x69, 0x6e, 0x65, // magic bytes
@@ -102,8 +103,8 @@ func TestMarshalUnmarshalSNEKBootstrapFrame(t *testing.T) {
 		0, 82, // frame length
 		0, 5, // payload length
 	}
-	expected = append(expected, pk...)
-	expected = append(expected, wpk...)
+	expected = append(expected, pk.Bytes()...)
+	expected = append(expected, wpk.Bytes()...)
 	var seq [4]byte
 	n, err := input.Watermark.Sequence.MarshalBinary(seq[:])
 	if err != nil {
@@ -149,9 +150,9 @@ func TestMarshalUnmarshalSNEKBootstrapFrame(t *testing.T) {
 }
 
 func TestMarshalUnmarshalSNEKFrame(t *testing.T) {
-	pk1, _, _ := ed25519.GenerateKey(nil)
-	pk2, _, _ := ed25519.GenerateKey(nil)
-	wpk, _, _ := ed25519.GenerateKey(nil)
+	pk1, _, _ := eddilithium2.GenerateKey(nil)
+	pk2, _, _ := eddilithium2.GenerateKey(nil)
+	wpk, _, _ := eddilithium2.GenerateKey(nil)
 	input := Frame{
 		Version: Version0,
 		Type:    TypeVirtualSnakeRouted,
@@ -160,9 +161,9 @@ func TestMarshalUnmarshalSNEKFrame(t *testing.T) {
 			Sequence: 100,
 		},
 	}
-	copy(input.SourceKey[:], pk1)
-	copy(input.DestinationKey[:], pk2)
-	copy(input.Watermark.PublicKey[:], wpk)
+	copy(input.SourceKey[:], pk1.Bytes())
+	copy(input.DestinationKey[:], pk2.Bytes())
+	copy(input.Watermark.PublicKey[:], wpk.Bytes())
 	expected := []byte{
 		0x70, 0x69, 0x6e, 0x65, // magic bytes
 		0,                            // version 0
@@ -171,9 +172,9 @@ func TestMarshalUnmarshalSNEKFrame(t *testing.T) {
 		0, 115, // frame length
 		0, 6, // payload length
 	}
-	expected = append(expected, pk2...)
-	expected = append(expected, pk1...)
-	expected = append(expected, wpk...)
+	expected = append(expected, pk2.Bytes()...)
+	expected = append(expected, pk1.Bytes()...)
+	expected = append(expected, wpk.Bytes()...)
 	var seq [4]byte
 	n, err := input.Watermark.Sequence.MarshalBinary(seq[:])
 	if err != nil {
