@@ -48,10 +48,10 @@ func (a *SwitchAnnouncement) Sign(privKey eddilithium2.PrivateKey, forPort Switc
 	hop := SignatureWithHop{
 		Hop: Varu64(forPort),
 	}
-	pubKey := privKey.Public().(eddilithium2.PublicKey)
+	pubKey := privKey.Public().(*eddilithium2.PublicKey)
 	copy(hop.PublicKey[:], pubKey.Bytes())
 	if _, ok := os.LookupEnv("PINECONE_DISABLE_SIGNATURES"); !ok {
-		var signature []byte
+		signature := make([]byte, eddilithium2.SignatureSize)
 		eddilithium2.SignTo(&privKey, body[:n], signature)
 		copy(hop.Signature[:], signature)
 	}

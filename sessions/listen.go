@@ -36,7 +36,7 @@ func (q *Sessions) listener() {
 			continue
 		}
 		cert := tls.PeerCertificates[0]
-		public, ok := cert.PublicKey.(eddilithium2.PublicKey)
+		public, ok := cert.PublicKey.(*eddilithium2.PublicKey)
 		if !ok {
 			continue
 		}

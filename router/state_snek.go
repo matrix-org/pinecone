@@ -122,7 +122,7 @@ func (s *state) _bootstrapNow() {
 		}
 		routerPrivate := eddilithium2.PrivateKey{}
 		routerPrivate.UnmarshalBinary(s.r.private[:])
-		var bootstrapSignature []byte
+		bootstrapSignature := make([]byte, eddilithium2.SignatureSize)
 		eddilithium2.SignTo(&routerPrivate, protected, bootstrapSignature)
 		copy(
 			bootstrap.Signature[:],

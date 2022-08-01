@@ -37,7 +37,7 @@ func TestMarshalUnmarshalBootstrap(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var signature []byte
+	signature := make([]byte, eddilithium2.SignatureSize)
 	eddilithium2.SignTo(sk1, protected, signature)
 	copy(
 		input.Signature[:],

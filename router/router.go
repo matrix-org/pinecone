@@ -198,7 +198,7 @@ func (r *Router) Connect(conn net.Conn, options ...ConnectionOption) (types.Swit
 		handshake = append(handshake, r.public[:eddilithium2.PublicKeySize]...)
 		routerPrivate := eddilithium2.PrivateKey{}
 		routerPrivate.UnmarshalBinary(r.private[:])
-		var handshakeSignature []byte
+		handshakeSignature := make([]byte, eddilithium2.SignatureSize)
 		eddilithium2.SignTo(&routerPrivate, handshake, handshakeSignature)
 		handshake = append(handshake, handshakeSignature...)
 		if err := conn.SetDeadline(time.Now().Add(peerKeepaliveInterval)); err != nil {

@@ -76,7 +76,7 @@ retry:
 				if err != nil {
 					return fmt.Errorf("x509.ParseCertificate: %w", err)
 				}
-				public, ok := cert.PublicKey.(eddilithium2.PublicKey)
+				public, ok := cert.PublicKey.(*eddilithium2.PublicKey)
 				if !ok {
 					return fmt.Errorf("expected eddilithium2 public key")
 				}
