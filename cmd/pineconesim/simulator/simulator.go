@@ -24,11 +24,8 @@ import (
 
 	"github.com/Arceliar/phony"
 	"github.com/RyanCarrier/dijkstra"
-<<<<<<< HEAD
-	"github.com/matrix-org/pinecone/router/events"
-=======
 	"github.com/cloudflare/circl/sign/eddilithium2"
->>>>>>> 2c4e0a3 (Initial ed25519 -> eddilithium2 switch)
+	"github.com/matrix-org/pinecone/router/events"
 	"go.uber.org/atomic"
 )
 
