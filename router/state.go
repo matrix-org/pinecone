@@ -29,25 +29,28 @@ import (
 
 type FilterFn func(from types.PublicKey, f *types.Frame) bool
 
+const BWReportingInterval = time.Minute
+
 // NOTE: Functions prefixed with an underscore (_) are only safe to be called
 // from the actor that owns them, in order to prevent data races.
 
 // state is an actor that owns all of the mutable state for the Pinecone router.
 type state struct {
 	phony.Inbox
-	r              *Router
-	_peers         []*peer            // All switch ports, connected and disconnected
-	_descending    *virtualSnakeEntry // Next descending node in keyspace
-	_parent        *peer              // Our chosen parent in the tree
-	_announcements announcementTable  // Announcements received from our peers
-	_table         virtualSnakeTable  // Virtual snake DHT entries
-	_ordering      uint64             // Used to order incoming tree announcements
-	_sequence      uint64             // Used to sequence our root tree announcements
-	_treetimer     *time.Timer        // Tree maintenance timer
-	_snaketimer    *time.Timer        // Virtual snake maintenance timer
-	_lastbootstrap time.Time          // When did we last bootstrap?
-	_waiting       bool               // Is the tree waiting to reparent?
-	_filterPacket  FilterFn           // Function called when forwarding packets
+	r               *Router
+	_peers          []*peer            // All switch ports, connected and disconnected
+	_descending     *virtualSnakeEntry // Next descending node in keyspace
+	_parent         *peer              // Our chosen parent in the tree
+	_announcements  announcementTable  // Announcements received from our peers
+	_table          virtualSnakeTable  // Virtual snake DHT entries
+	_ordering       uint64             // Used to order incoming tree announcements
+	_sequence       uint64             // Used to sequence our root tree announcements
+	_treetimer      *time.Timer        // Tree maintenance timer
+	_snaketimer     *time.Timer        // Virtual snake maintenance timer
+	_lastbootstrap  time.Time          // When did we last bootstrap?
+	_waiting        bool               // Is the tree waiting to reparent?
+	_filterPacket   FilterFn           // Function called when forwarding packets
+	_bandwidthTimer *time.Timer
 }
 
 // _start resets the state and starts tree and virtual snake maintenance.
@@ -71,6 +74,14 @@ func (s *state) _start() {
 		s._snaketimer = time.AfterFunc(time.Second, func() {
 			s.Act(nil, s._maintainSnake)
 		})
+	}
+
+	if s._bandwidthTimer == nil {
+		s._bandwidthTimer = time.AfterFunc(time.Until(
+			time.Now().Round(time.Minute).Add(BWReportingInterval)),
+			func() {
+				s.Act(nil, s._reportBandwidth)
+			})
 	}
 
 	s._maintainTreeIn(0)
@@ -99,6 +110,58 @@ func (s *state) _maintainSnakeIn(d time.Duration) {
 		}
 	}
 	s._snaketimer.Reset(d)
+}
+
+// _reportBandwidthIn resets the bandwidth reporting timer to the
+// specified duration.
+func (s *state) _reportBandwidthIn(d time.Duration) {
+	if !s._bandwidthTimer.Stop() {
+		select {
+		case <-s._bandwidthTimer.C:
+		default:
+		}
+	}
+	s._bandwidthTimer.Reset(time.Until(time.Now().Round(time.Minute).Add(d)))
+}
+
+func (s *state) _reportBandwidth() {
+	select {
+	case <-s.r.context.Done():
+		return
+	default:
+		defer s._reportBandwidthIn(BWReportingInterval)
+	}
+
+	peerBandwidth := make(map[string]events.PeerBandwidthUsage)
+	for _, peer := range s._peers {
+		if peer != nil && peer != s.r.local && peer.started.Load() {
+			peerBandwidth[peer.public.String()] = events.PeerBandwidthUsage{
+				Protocol: struct {
+					Rx uint64
+					Tx uint64
+				}{
+					Rx: peer.bytesRxProto.Load(),
+					Tx: peer.bytesTxProto.Load(),
+				},
+				Overlay: struct {
+					Rx uint64
+					Tx uint64
+				}{
+					Rx: peer.bytesRxTraffic.Load(),
+					Tx: peer.bytesTxTraffic.Load(),
+				},
+			}
+			peer.ClearBandwidthCounters()
+		}
+	}
+
+	captureTime := uint64(time.Now().Round(time.Minute).UnixNano())
+	s.r.Act(nil, func() {
+		s.r._publish(events.BandwidthReport{
+			CaptureTime: captureTime,
+			Peers:       peerBandwidth,
+		})
+	})
 }
 
 // _addPeer creates a new Peer and adds it to the switch in the next available port
@@ -232,7 +295,7 @@ func (s *state) _portDisconnected(peer *peer) {
 	// peering and remove them from the routing table.
 	for k, v := range s._table {
 		if v.Source == peer || v.Destination == peer {
-			delete(s._table, k)
+			s._removeRouteEntry(k)
 		}
 	}
 

@@ -47,9 +47,9 @@
                         <i class="fa fa-podcast"></i>
                         <span class="tooltiptext tooltip-top">Start Pings</span>
                     </button>
-                    <button class="toolselect tooltip" id="view-route-stats">
+                    <button class="toolselect tooltip" id="view-analytics">
                         <i class="fa fa-chart-column"></i>
-                        <span class="tooltiptext tooltip-top">View Routing Stats</span>
+                        <span class="tooltiptext tooltip-top">View Analytics</span>
                     </button>
                     <div class="dropup" >
                         <button class="dropup-button" id="scenario">
@@ -139,14 +139,21 @@
                     </div>
                 </div>
 
-                <div id="route-stats-modal" class="modal">
+                <div id="analytics-modal" class="modal">
                     <div class="modal-content">
                         <div class="modal-header">
                             <span class="close">&times;</span>
-                            <h2>Routing Table Size</h2>
+                            <h2>Network Analytics</h2>
+                        </div>
+                        <div class="dropdown">
+                            <select id="analyticsDropdown" class="dropbtn">
+                                <option value="routing-table-size" selected>Routing Table Size</option>
+                                <option value="total-bandwidth">Average Node Bandwidth</option>
+                                <option value="bandwidth-distribution">Bandwidth Distribution</option>
+                            </select>
                         </div>
                         <div class="modal-body">
-                            <canvas id="routingTableSizes"></canvas>
+                            <canvas id="networkAnalytics"></canvas>
                         </div>
                     </div>
                 </div>

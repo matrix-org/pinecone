@@ -83,6 +83,7 @@ func NewRouter(logger types.Logger, sk ed25519.PrivateKey, debug bool) *Router {
 	// Start the state actor.
 	r.state.Act(nil, r.state._start)
 	r.log.Println("Router identity:", r.public.String())
+
 	return r
 }
 
