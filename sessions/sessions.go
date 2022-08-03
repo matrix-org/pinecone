@@ -54,7 +54,7 @@ type SessionProtocol struct {
 }
 
 type activeSession struct {
-	quic.Session
+	quic.Connection
 	sync.RWMutex
 }
 
