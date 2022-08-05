@@ -30,11 +30,11 @@ import (
 
 // DialContext dials a given public key using the supplied network.
 // The network field can be used to specify which routing algorithm to
-// use for the session: "ed25519+greedy" for greedy routing or "ed25519+source"
+// use for the connection: "ed25519+greedy" for greedy routing or "ed25519+source"
 // for source routing - DHT lookups and pathfinds will be performed for these
 // networks automatically. Otherwise, the default "ed25519" will use snake
 // routing. The address must be the destination public key specified in hex.
-// If the context expires then the session will be torn down automatically.
+// If the context expires then the connection will be torn down automatically.
 func (s *SessionProtocol) DialContext(ctx context.Context, network, addrstr string) (net.Conn, error) {
 	host, _, err := net.SplitHostPort(addrstr)
 	if err != nil {
@@ -104,7 +104,7 @@ retry:
 
 	if session.Connection == nil {
 		s.sessions.Delete(pk)
-		return nil, fmt.Errorf("session failed to open")
+		return nil, fmt.Errorf("connection failed to open")
 	}
 
 	stream, err := session.OpenStreamSync(ctx)
@@ -114,7 +114,7 @@ retry:
 			retrying = true
 			goto retry
 		}
-		return nil, fmt.Errorf("session.OpenStream: %w", err)
+		return nil, fmt.Errorf("connection.OpenStream: %w", err)
 	}
 
 	return &Stream{stream, session}, nil

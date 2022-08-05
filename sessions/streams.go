@@ -22,13 +22,13 @@ import (
 
 type Stream struct {
 	quic.Stream
-	session quic.Connection
+	connection quic.Connection
 }
 
 func (s *Stream) LocalAddr() net.Addr {
-	return s.session.LocalAddr()
+	return s.connection.LocalAddr()
 }
 
 func (s *Stream) RemoteAddr() net.Addr {
-	return s.session.RemoteAddr()
+	return s.connection.RemoteAddr()
 }
