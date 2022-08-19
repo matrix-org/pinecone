@@ -94,16 +94,10 @@ func (s *SessionProtocol) Addr() net.Addr {
 }
 
 func (s *SessionProtocol) Close() error {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-
-	if s.closed {
-		return nil
-	}
-
-	s.closed = true
-
-	close(s.streams)
-
-	return s.s.quicListener.Close()
+	var err error = nil
+	s.closeOnce.Do(func() {
+		close(s.streams)
+		err = s.s.quicListener.Close()
+	})
+	return err
 }

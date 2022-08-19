@@ -47,12 +47,11 @@ type Sessions struct {
 }
 
 type SessionProtocol struct {
-	s        *Sessions
-	proto    string
-	streams  chan net.Conn
-	sessions sync.Map // types.PublicKey -> *activeSession
-	mutex    sync.Mutex
-	closed   bool
+	s         *Sessions
+	proto     string
+	streams   chan net.Conn
+	sessions  sync.Map // types.PublicKey -> *activeSession
+	closeOnce sync.Once
 }
 
 type activeSession struct {
