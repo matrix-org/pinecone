@@ -92,6 +92,7 @@ func (r *Router) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 	switch ga := addr.(type) {
 	case types.Coordinates:
 		frame := getFrame()
+		frame.HopLimit = types.MaxHopLimit
 		frame.Type = types.TypeTreeRouted
 		frame.Destination = ga
 		frame.Source = r.state.coords()
@@ -103,6 +104,7 @@ func (r *Router) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 
 	case types.PublicKey:
 		frame := getFrame()
+		frame.HopLimit = types.MaxHopLimit
 		frame.Type = types.TypeVirtualSnakeRouted
 		frame.DestinationKey = ga
 		frame.SourceKey = r.public

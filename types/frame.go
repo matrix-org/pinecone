@@ -50,10 +50,16 @@ var FrameMagicBytes = []byte{0x70, 0x69, 0x6e, 0x65}
 // 4 magic bytes, 1 byte version, 1 byte type, 2 bytes extra, 2 bytes frame length
 const FrameHeaderLength = 10
 
+// TODO: what should this be for the network visibility horizon to be what we desire?
+// ie. 2-hop 100%, 5-hop >90%, etc.
+const MaxHopLimit = 10
+const NetworkHorizonDistance = 5
+
 type Frame struct {
 	Version        FrameVersion
 	Type           FrameType
-	Extra          [2]byte
+	Extra          byte
+	HopLimit       uint8
 	Destination    Coordinates
 	DestinationKey PublicKey
 	Source         Coordinates
@@ -64,9 +70,8 @@ type Frame struct {
 
 func (f *Frame) Reset() {
 	f.Version, f.Type = 0, 0
-	for i := range f.Extra {
-		f.Extra[i] = 0
-	}
+	f.Extra = 0
+	f.HopLimit = 0
 	f.Destination = Coordinates{}
 	f.DestinationKey = PublicKey{}
 	f.Source = Coordinates{}
@@ -78,7 +83,8 @@ func (f *Frame) Reset() {
 func (f *Frame) MarshalBinary(buffer []byte) (int, error) {
 	copy(buffer[:4], FrameMagicBytes)
 	buffer[4], buffer[5] = byte(f.Version), byte(f.Type)
-	copy(buffer[6:], f.Extra[:])
+	buffer[6] = f.Extra
+	buffer[7] = f.HopLimit
 	offset := FrameHeaderLength
 	switch f.Type {
 	case TypeVirtualSnakeBootstrap: // destination = key, source = coords
@@ -150,8 +156,8 @@ func (f *Frame) UnmarshalBinary(data []byte) (int, error) {
 		return 0, fmt.Errorf("frame doesn't contain magic bytes")
 	}
 	f.Version, f.Type = FrameVersion(data[4]), FrameType(data[5])
-	f.Extra[0], f.Extra[1] = data[6], data[7]
-	copy(f.Extra[:], data[6:])
+	f.Extra = data[6]
+	f.HopLimit = data[7]
 	framelen := int(binary.BigEndian.Uint16(data[FrameHeaderLength-2 : FrameHeaderLength]))
 	if len(data) != framelen {
 		return 0, fmt.Errorf("frame length incorrect")

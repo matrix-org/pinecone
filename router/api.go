@@ -68,6 +68,14 @@ func (r *Router) Peers() []PeerInfo {
 	return infos
 }
 
+func (r *Router) EnableHopLimiting() {
+	r._hopLimiting.Store(true)
+}
+
+func (r *Router) DisableHopLimiting() {
+	r._hopLimiting.Store(false)
+}
+
 func (r *Router) NextHop(from net.Addr, frameType types.FrameType, dest net.Addr) net.Addr {
 	var fromPeer *peer
 	var nexthop net.Addr

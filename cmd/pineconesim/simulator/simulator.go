@@ -26,6 +26,7 @@ import (
 	"github.com/Arceliar/phony"
 	"github.com/RyanCarrier/dijkstra"
 	"github.com/matrix-org/pinecone/router/events"
+	"github.com/matrix-org/pinecone/types"
 	"go.uber.org/atomic"
 )
 
@@ -138,11 +139,16 @@ func (sim *Simulator) StartPinging(ping_period time.Duration) {
 				sim.log.Println("Starting pings...")
 
 				tasks := make(chan pair, 2*(len(sim.nodes)*len(sim.nodes)))
+
+				sim.UpdateRealDistances()
+
 				for from, fromNode := range sim.nodes {
 					if fromNode.Type == DefaultNode {
 						for to, toNode := range sim.nodes {
 							if toNode.Type == DefaultNode {
-								tasks <- pair{from, to}
+								if sim.dists[from][to].Real <= int64(types.NetworkHorizonDistance) {
+									tasks <- pair{from, to}
+								}
 							}
 						}
 					}
@@ -155,11 +161,11 @@ func (sim *Simulator) StartPinging(ping_period time.Duration) {
 				for i := 0; i < numWorkers; i++ {
 					go func() {
 						for pair := range tasks {
-							sim.log.Println("Tree ping from", pair.from, "to", pair.to)
+							// sim.log.Println("Tree ping from", pair.from, "to", pair.to)
 							if _, _, err := sim.PingTree(pair.from, pair.to); err != nil {
 								sim.log.Println("Tree ping from", pair.from, "to", pair.to, "failed:", err)
 							}
-							sim.log.Println("SNEK ping from", pair.from, "to", pair.to)
+							// sim.log.Println("SNEK ping from", pair.from, "to", pair.to)
 							if _, _, err := sim.PingSNEK(pair.from, pair.to); err != nil {
 								sim.log.Println("SNEK ping from", pair.from, "to", pair.to, "failed:", err)
 							}

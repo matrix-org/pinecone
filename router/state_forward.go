@@ -93,10 +93,27 @@ func (s *state) _forward(p *peer, f *types.Frame) error {
 		}
 
 	case types.TypeVirtualSnakeRouted, types.TypeTreeRouted:
-		// Traffic type packets are forwarded normally by falling through. There
-		// are no special rules to apply to these packets, regardless of whether
-		// they are SNEK-routed or tree-routed.
+		// Traffic type packets are forwarded normally by falling through unless hop
+		// limiting is enabled.
+		if s.r._hopLimiting.Load() {
+			if f.HopLimit > 1 {
+				f.HopLimit -= 1
+			} else {
+				// The packet has reached the hop limit and shouldn't be forwarded.
+				return nil
+			}
+		}
 	}
+
+	// if f.HopLimit > 1 {
+	// 	f.HopLimit -= 1
+	// } else if f.Type != types.TypeTreeAnnouncement && f.Type != types.TypeTreeRouted {
+	// 	// The packet has reached the hop limit and shouldn't be forwarded.
+	// 	// Tree announcements don't follow hop limit rules in order to prevent
+	// 	// splitting up local networks when a new root joins near the edge of
+	// 	// the network.
+	// 	return nil
+	// }
 
 	// If the packet's watermark is higher than the previous one or we are
 	// obviously looping, drop the packet.
@@ -112,6 +129,7 @@ func (s *state) _forward(p *peer, f *types.Frame) error {
 	if watermark.Sequence > 0 {
 		f.Watermark = watermark
 	}
+
 	if nexthop != nil && !nexthop.send(f) {
 		s.r.log.Println("Dropping forwarded packet of type", f.Type)
 	}

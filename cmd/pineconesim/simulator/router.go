@@ -60,6 +60,10 @@ func (r *DefaultRouter) Coords() types.Coordinates {
 	return r.rtr.Coords()
 }
 
+func (r *DefaultRouter) EnableHopLimiting() {
+	r.rtr.EnableHopLimiting()
+}
+
 func (r *DefaultRouter) ConfigureFilterDefaults(rates adversary.DropRates) {}
 
 func (r *DefaultRouter) ConfigureFilterPeer(peer types.PublicKey, rates adversary.DropRates) {}
@@ -210,6 +214,14 @@ func (r *DefaultRouter) OverlayReadHandler(quit <-chan bool) {
 		if payload.pingType == TreePing || payload.pingType == SNEKPing {
 			if !pingAtDest {
 				payload.hops++
+
+				// NOTE: manually track hop limiting since pings work by sending
+				// single hop destined packets between the two nodes.
+				if payload.hops > types.MaxHopLimit {
+					// Drop the packet if the max hop limit has been reached
+					continue
+				}
+				// TODO: this doesnt limit hop count for the response pongs...
 			} else {
 				fromAddr = nil
 				if frameType == types.TypeTreeRouted {

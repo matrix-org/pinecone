@@ -33,8 +33,9 @@ func TestMarshalUnmarshalFrame(t *testing.T) {
 		0x70, 0x69, 0x6e, 0x65, // magic bytes
 		0,                    // version 0
 		byte(TypeTreeRouted), // type greedy
-		0, 0,                 // extra
-		0, 33, // frame length
+		0,                    // extra
+		0,                    // hop limit
+		0, 33,                // frame length
 		0, 7, // payload len
 		0, 6, 1, 2, 3, 4, 167, 8, // destination (2+6 bytes but 5 ports!)
 		0, 4, 4, 3, 2, 1, // source (2+4 bytes)
@@ -98,8 +99,9 @@ func TestMarshalUnmarshalSNEKBootstrapFrame(t *testing.T) {
 		0x70, 0x69, 0x6e, 0x65, // magic bytes
 		0,                               // version 0
 		byte(TypeVirtualSnakeBootstrap), // type greedy
-		0, 0,                            // extra
-		0, 82, // frame length
+		0,                               // extra
+		0,                               // hop limit
+		0, 82,                           // frame length
 		0, 5, // payload length
 	}
 	expected = append(expected, pk...)
@@ -167,8 +169,9 @@ func TestMarshalUnmarshalSNEKFrame(t *testing.T) {
 		0x70, 0x69, 0x6e, 0x65, // magic bytes
 		0,                            // version 0
 		byte(TypeVirtualSnakeRouted), // type greedy
-		0, 0,                         // extra
-		0, 115, // frame length
+		0,                            // extra
+		0,                            // hop limit
+		0, 115,                       // frame length
 		0, 6, // payload length
 	}
 	expected = append(expected, pk2...)

@@ -181,6 +181,7 @@ func createDefaultRouter(log *log.Logger, sk ed25519.PrivateKey, debug bool, qui
 	rtr := &DefaultRouter{
 		rtr: router.NewRouter(log, sk, debug),
 	}
+	rtr.EnableHopLimiting()
 
 	go rtr.OverlayReadHandler(quit)
 
