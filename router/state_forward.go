@@ -105,16 +105,6 @@ func (s *state) _forward(p *peer, f *types.Frame) error {
 		}
 	}
 
-	// if f.HopLimit > 1 {
-	// 	f.HopLimit -= 1
-	// } else if f.Type != types.TypeTreeAnnouncement && f.Type != types.TypeTreeRouted {
-	// 	// The packet has reached the hop limit and shouldn't be forwarded.
-	// 	// Tree announcements don't follow hop limit rules in order to prevent
-	// 	// splitting up local networks when a new root joins near the edge of
-	// 	// the network.
-	// 	return nil
-	// }
-
 	// If the packet's watermark is higher than the previous one or we are
 	// obviously looping, drop the packet.
 	// In the case of initial pong response frames, they are routed back to
