@@ -20,7 +20,6 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
-	"log"
 	"net"
 	"sync"
 	"time"
@@ -28,15 +27,17 @@ import (
 	"github.com/matrix-org/pinecone/router"
 	"github.com/matrix-org/pinecone/types"
 	"go.uber.org/atomic"
+	"golang.org/x/net/ipv4"
 	"golang.org/x/net/ipv6"
 )
 
-const MulticastGroupAddr = "[ff02::114]"
+const MulticastIPv4GroupAddr = "224.0.0.114"
+const MulticastIPv6GroupAddr = "[ff02::114]"
 const MulticastGroupPort = 60606
 
 type Multicast struct {
 	r          *router.Router
-	log        *log.Logger
+	log        types.Logger
 	ctx        context.Context
 	cancel     context.CancelFunc
 	id         string
@@ -56,7 +57,7 @@ type multicastInterface struct {
 }
 
 func NewMulticast(
-	log *log.Logger, r *router.Router,
+	log types.Logger, r *router.Router,
 ) *Multicast {
 	public := r.PublicKey()
 	m := &Multicast{
@@ -102,7 +103,7 @@ func (m *Multicast) Start() {
 
 			intfs, err := net.Interfaces()
 			if err != nil {
-				panic(err)
+				return
 			}
 
 			for _, intf := range intfs {
@@ -120,7 +121,8 @@ func (m *Multicast) Start() {
 					if !unsuitable {
 						ctx, cancel := context.WithCancel(context.Background())
 						mi := &multicastInterface{ctx, cancel, intf}
-						go m.start(mi)
+						go m.startIPv6(mi)
+						go m.startIPv4(mi)
 					}
 				}
 			}
@@ -184,8 +186,55 @@ func (m *Multicast) accept(listener net.Listener) {
 	}
 }
 
-func (m *Multicast) start(intf *multicastInterface) {
-	groupAddrPort := fmt.Sprintf("%s:%d", MulticastGroupAddr, MulticastGroupPort)
+func (m *Multicast) startIPv4(intf *multicastInterface) {
+	groupAddrPort := fmt.Sprintf("%s:%d", MulticastIPv4GroupAddr, MulticastGroupPort)
+	addr, err := net.ResolveUDPAddr("udp4", groupAddrPort)
+	if err != nil {
+		//m.log.Printf("net.ResolveUDPAddr (%s): %s, ignoring interface\n", intf.Name, err)
+		return
+	}
+	listenString := fmt.Sprintf("0.0.0.0:%d", MulticastGroupPort)
+	conn, err := m.udpLC.ListenPacket(m.ctx, "udp4", listenString)
+	if err != nil {
+		//m.log.Printf("lc.ListenPacket (%s): %s, ignoring interface\n", intf.Name, err)
+		return
+	}
+	sock := ipv4.NewPacketConn(conn)
+	if err := sock.JoinGroup(&intf.Interface, addr); err != nil {
+		//m.log.Printf("sock.JoinGroup (%s): %s, ignoring interface\n", intf.Name, err)
+		return
+	}
+	addr.Zone = intf.Name
+	ifaddrs, err := intf.Addrs()
+	if err != nil {
+		//m.log.Printf("intf.Addrs (%s): %s, ignoring interface\n", intf.Name, err)
+		return
+	}
+	var srcaddr net.IP
+	for _, ifaddr := range ifaddrs {
+		srcaddr, _, err = net.ParseCIDR(ifaddr.String())
+		if err != nil {
+			continue
+		}
+		if !srcaddr.IsGlobalUnicast() || srcaddr.To4() == nil {
+			continue
+		}
+		break
+	}
+	if srcaddr == nil {
+		return
+	}
+	m.log.Printf("Multicast discovery enabled on %s (%s)\n", intf.Name, srcaddr.String())
+	m.interfaces.Store(intf.Name, intf)
+	go m.advertise(intf, conn, addr)
+	go m.listen(intf, conn, &net.TCPAddr{
+		IP:   srcaddr,
+		Zone: addr.Zone,
+	})
+}
+
+func (m *Multicast) startIPv6(intf *multicastInterface) {
+	groupAddrPort := fmt.Sprintf("%s:%d", MulticastIPv6GroupAddr, MulticastGroupPort)
 	addr, err := net.ResolveUDPAddr("udp6", groupAddrPort)
 	if err != nil {
 		//m.log.Printf("net.ResolveUDPAddr (%s): %s, ignoring interface\n", intf.Name, err)
@@ -320,7 +369,7 @@ func (m *Multicast) listen(intf *multicastInterface, conn net.PacketConn, srcadd
 		go func() {
 			defer m.dialling.Delete(straddr)
 
-			conn, err := dialer.Dial("tcp6", straddr)
+			conn, err := dialer.Dial("tcp", straddr)
 			if err != nil {
 				//m.log.Println("dialer.Dial:", err)
 				return

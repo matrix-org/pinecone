@@ -137,30 +137,6 @@ func UnmarshalCommandJSON(command *SimCommandMsg) (SimCommand, error) {
 			} else {
 				err = fmt.Errorf("%sConfigureAdversaryDefaults.DropRates.VirtualSnakeBootstrap field doesn't exist", FAILURE_PREAMBLE)
 			}
-			if subVal, subOk := val.(map[string]interface{})["VirtualSnakeBootstrapACK"]; subOk {
-				intVal, _ := strconv.Atoi(subVal.(string))
-				dropRates.Frames[types.TypeVirtualSnakeBootstrapACK] = uint64(intVal)
-			} else {
-				err = fmt.Errorf("%sConfigureAdversaryDefaults.DropRates.VirtualSnakeBootstrapACK field doesn't exist", FAILURE_PREAMBLE)
-			}
-			if subVal, subOk := val.(map[string]interface{})["VirtualSnakeSetup"]; subOk {
-				intVal, _ := strconv.Atoi(subVal.(string))
-				dropRates.Frames[types.TypeVirtualSnakeSetup] = uint64(intVal)
-			} else {
-				err = fmt.Errorf("%sConfigureAdversaryDefaults.DropRates.VirtualSnakeSetup field doesn't exist", FAILURE_PREAMBLE)
-			}
-			if subVal, subOk := val.(map[string]interface{})["VirtualSnakeSetupACK"]; subOk {
-				intVal, _ := strconv.Atoi(subVal.(string))
-				dropRates.Frames[types.TypeVirtualSnakeSetupACK] = uint64(intVal)
-			} else {
-				err = fmt.Errorf("%sConfigureAdversaryDefaults.DropRates.VirtualSnakeSetupACK field doesn't exist", FAILURE_PREAMBLE)
-			}
-			if subVal, subOk := val.(map[string]interface{})["VirtualSnakeTeardown"]; subOk {
-				intVal, _ := strconv.Atoi(subVal.(string))
-				dropRates.Frames[types.TypeVirtualSnakeTeardown] = uint64(intVal)
-			} else {
-				err = fmt.Errorf("%sConfigureAdversaryDefaults.DropRates.VirtualSnakeTeardown field doesn't exist", FAILURE_PREAMBLE)
-			}
 			if subVal, subOk := val.(map[string]interface{})["VirtualSnakeRouted"]; subOk {
 				intVal, _ := strconv.Atoi(subVal.(string))
 				dropRates.Frames[types.TypeVirtualSnakeRouted] = uint64(intVal)
@@ -217,30 +193,6 @@ func UnmarshalCommandJSON(command *SimCommandMsg) (SimCommand, error) {
 			} else {
 				err = fmt.Errorf("%sConfigureAdversaryPeer.DropRates.VirtualSnakeBootstrap field doesn't exist", FAILURE_PREAMBLE)
 			}
-			if subVal, subOk := val.(map[string]interface{})["VirtualSnakeBootstrapACK"]; subOk {
-				intVal, _ := strconv.Atoi(subVal.(string))
-				dropRates.Frames[types.TypeVirtualSnakeBootstrapACK] = uint64(intVal)
-			} else {
-				err = fmt.Errorf("%sConfigureAdversaryPeer.DropRates.VirtualSnakeBootstrapACK field doesn't exist", FAILURE_PREAMBLE)
-			}
-			if subVal, subOk := val.(map[string]interface{})["VirtualSnakeSetup"]; subOk {
-				intVal, _ := strconv.Atoi(subVal.(string))
-				dropRates.Frames[types.TypeVirtualSnakeSetup] = uint64(intVal)
-			} else {
-				err = fmt.Errorf("%sConfigureAdversaryPeer.DropRates.VirtualSnakeSetup field doesn't exist", FAILURE_PREAMBLE)
-			}
-			if subVal, subOk := val.(map[string]interface{})["VirtualSnakeSetupACK"]; subOk {
-				intVal, _ := strconv.Atoi(subVal.(string))
-				dropRates.Frames[types.TypeVirtualSnakeSetupACK] = uint64(intVal)
-			} else {
-				err = fmt.Errorf("%sConfigureAdversaryPeer.DropRates.VirtualSnakeSetupACK field doesn't exist", FAILURE_PREAMBLE)
-			}
-			if subVal, subOk := val.(map[string]interface{})["VirtualSnakeTeardown"]; subOk {
-				intVal, _ := strconv.Atoi(subVal.(string))
-				dropRates.Frames[types.TypeVirtualSnakeTeardown] = uint64(intVal)
-			} else {
-				err = fmt.Errorf("%sConfigureAdversaryPeer.DropRates.VirtualSnakeTeardown field doesn't exist", FAILURE_PREAMBLE)
-			}
 			if subVal, subOk := val.(map[string]interface{})["VirtualSnakeRouted"]; subOk {
 				intVal, _ := strconv.Atoi(subVal.(string))
 				dropRates.Frames[types.TypeVirtualSnakeRouted] = uint64(intVal)
@@ -251,6 +203,10 @@ func UnmarshalCommandJSON(command *SimCommandMsg) (SimCommand, error) {
 			err = fmt.Errorf("%sConfigureAdversaryPeer.DropRates field doesn't exist", FAILURE_PREAMBLE)
 		}
 		msg = ConfigureAdversaryPeer{node, peer, dropRates}
+	case SimStartPings:
+		msg = StartPings{}
+	case SimStopPings:
+		msg = StopPings{}
 	default:
 		err = fmt.Errorf("%sUnknown Event ID=%v", FAILURE_PREAMBLE, command.MsgID)
 	}
@@ -409,4 +365,28 @@ func (c ConfigureAdversaryPeer) Run(log *log.Logger, sim *Simulator) {
 
 func (c ConfigureAdversaryPeer) String() string {
 	return fmt.Sprintf("ConfigureAdversaryPeer{Node:%s, Peer:%s, DropRates:%v}", c.Node, c.Peer, c.DropRates)
+}
+
+type StartPings struct{}
+
+// Tag StartPings as a Command
+func (c StartPings) Run(log *log.Logger, sim *Simulator) {
+	log.Printf("Executing command %s", c)
+	sim.StartPings()
+}
+
+func (c StartPings) String() string {
+	return "StartPings{}"
+}
+
+type StopPings struct{}
+
+// Tag StopPings as a Command
+func (c StopPings) Run(log *log.Logger, sim *Simulator) {
+	log.Printf("Executing command %s", c)
+	sim.StopPings()
+}
+
+func (c StopPings) String() string {
+	return "StopPings{}"
 }

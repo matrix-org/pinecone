@@ -21,8 +21,16 @@ import (
 )
 
 type Root struct {
-	RootPublicKey PublicKey
-	RootSequence  Varu64
+	RootPublicKey PublicKey `json:"root_public_key"`
+	RootSequence  Varu64    `json:"root_sequence"`
+}
+
+func (r *Root) Length() int {
+	return ed25519.PublicKeySize + r.RootSequence.Length()
+}
+
+func (r *Root) MinLength() int {
+	return ed25519.PublicKeySize + 1
 }
 
 type SwitchAnnouncement struct {

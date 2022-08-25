@@ -35,36 +35,37 @@ import (
 	"go.uber.org/atomic"
 )
 
-const portCount = math.MaxUint8
-const trafficBuffer = math.MaxUint8
+const portCount = math.MaxUint8 - 1
+const trafficBuffer = math.MaxUint8 - 1
 
 type Router struct {
 	phony.Inbox
-	log          *log.Logger
-	context      context.Context
-	cancel       context.CancelFunc
-	public       types.PublicKey
-	private      types.PrivateKey
-	active       sync.Map
-	pings        sync.Map // types.PublicKey -> chan struct{}
-	local        *peer
-	state        *state
-	secure       bool
-	_subscribers map[chan<- events.Event]*phony.Inbox
+	log           types.Logger
+	context       context.Context
+	cancel        context.CancelFunc
+	public        types.PublicKey
+	private       types.PrivateKey
+	active        sync.Map
+	local         *peer
+	state         *state
+	secure        bool
+	_readDeadline *atomic.Time
+	_subscribers  map[chan<- events.Event]*phony.Inbox
 }
 
-func NewRouter(logger *log.Logger, sk ed25519.PrivateKey, debug bool) *Router {
+func NewRouter(logger types.Logger, sk ed25519.PrivateKey, debug bool) *Router {
 	if logger == nil {
 		logger = log.New(ioutil.Discard, "", 0)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	_, insecure := os.LookupEnv("PINECONE_DISABLE_SIGNATURES")
 	r := &Router{
-		log:          logger,
-		context:      ctx,
-		cancel:       cancel,
-		secure:       !insecure,
-		_subscribers: make(map[chan<- events.Event]*phony.Inbox),
+		log:           logger,
+		context:       ctx,
+		cancel:        cancel,
+		secure:        !insecure,
+		_readDeadline: atomic.NewTime(time.Now().Add(time.Hour * 24 * 365 * 100)), // ~100 years
+		_subscribers:  make(map[chan<- events.Event]*phony.Inbox),
 	}
 	// Populate the node keys from the supplied private key.
 	copy(r.private[:], sk)
@@ -82,6 +83,7 @@ func NewRouter(logger *log.Logger, sk ed25519.PrivateKey, debug bool) *Router {
 	// Start the state actor.
 	r.state.Act(nil, r.state._start)
 	r.log.Println("Router identity:", r.public.String())
+
 	return r
 }
 

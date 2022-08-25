@@ -15,18 +15,26 @@
 package router
 
 import (
+	"encoding/json"
 	"sync"
 
 	"github.com/matrix-org/pinecone/types"
 )
 
 type fifoQueue struct {
+	log     types.Logger
+	max     int
 	entries []chan *types.Frame
 	mutex   sync.Mutex
 }
 
-func newFIFOQueue() *fifoQueue {
-	q := &fifoQueue{}
+const fifoNoMax = 0
+
+func newFIFOQueue(max int, log types.Logger) *fifoQueue {
+	q := &fifoQueue{
+		log: log,
+		max: max,
+	}
 	q.reset()
 	return q
 }
@@ -35,8 +43,17 @@ func (q *fifoQueue) _initialise() {
 	for i := range q.entries {
 		q.entries[i] = nil
 	}
-	q.entries = []chan *types.Frame{
-		make(chan *types.Frame, 1),
+	if q.max != 0 {
+		// Make space for one extra entry in the capacity, since
+		// every push appends a new channel. To prevent reallocating
+		// the whole slice when we hit q.max to increase capacity,
+		// make sure there's room for that trailing entry.
+		q.entries = make([]chan *types.Frame, 1, q.max+1)
+		q.entries[0] = make(chan *types.Frame, 1)
+	} else {
+		q.entries = []chan *types.Frame{
+			make(chan *types.Frame, 1),
+		}
 	}
 }
 
@@ -55,6 +72,9 @@ func (q *fifoQueue) queuesize() int { // nolint:unused
 func (q *fifoQueue) push(frame *types.Frame) bool {
 	q.mutex.Lock()
 	defer q.mutex.Unlock()
+	if q.max != 0 && len(q.entries)-1 >= q.max {
+		return false
+	}
 	ch := q.entries[len(q.entries)-1]
 	ch <- frame
 	close(ch)
@@ -87,7 +107,19 @@ func (q *fifoQueue) ack() {
 	q.mutex.Lock()
 	defer q.mutex.Unlock()
 	q.entries = q.entries[1:]
-	if len(q.entries) == 0 {
+	if q.max == 0 && len(q.entries) == 0 {
 		q._initialise()
 	}
+}
+
+func (q *fifoQueue) MarshalJSON() ([]byte, error) {
+	q.mutex.Lock()
+	defer q.mutex.Unlock()
+	return json.Marshal(struct {
+		Count int `json:"count"`
+		Size  int `json:"size"`
+	}{
+		Count: len(q.entries) - 1,
+		Size:  cap(q.entries),
+	})
 }

@@ -1,9 +1,9 @@
-import { openRightPanel, closeRightPanel } from "./ui.js";
+import { openRightPanel, closeRightPanel, updateRoutingTableChart } from "./ui.js";
 import { ConvertNodeTypeToString, APINodeType } from "./server-api.js";
 
 // You can supply an element as your title.
 var titleElement = document.createElement("div");
-titleElement.style.height = "15em";
+titleElement.style.height = "16em";
 // titleElement.style.minWidth = "10em";
 titleElement.style.width = "max-content";
 titleElement.style.color = getComputedStyle(document.documentElement)
@@ -18,6 +18,15 @@ let selectedNodes = null;
 let hoverNode = null;
 
 let Nodes = new Map();
+
+let NetworkStats = {
+    TreePathConvergence: 0,
+    TreeAverageStretch: 0.0,
+    SnakePathConvergence: 0,
+    SnakeAverageStretch: 0.0
+};
+
+const MaxBandwidthReports = 10;
 
 class Graph {
     nodeIDs = [];
@@ -204,6 +213,10 @@ class Graph {
         handleStatsPanelUpdate();
     }
 
+    getNodeCount() {
+        return Nodes.size;
+    }
+
     addNode(id, key, type) {
         let colour = getComputedStyle(document.documentElement).getPropertyValue('--color-router-blue');
         if (type === APINodeType.GeneralAdversary) {
@@ -266,6 +279,155 @@ class Graph {
             node.announcement.sequence = sequence;
             node.announcement.time = time;
             node.coords = coords;
+
+            this.updateUI(id);
+            updateRoutingTableChart(this.getRoutingTableSizes());
+        }
+    }
+
+    addSnakeEntry(id, entry, peer) {
+        if (Nodes.has(id)) {
+            let node = Nodes.get(id);
+            node.snekEntries.set(entry, peer);
+
+            this.updateUI(id);
+            updateRoutingTableChart(this.getRoutingTableSizes());
+        }
+    }
+
+    getRoutingTableSizes() {
+        let tableSizes = new Map();
+        for (const node of Nodes.values()) {
+            if (tableSizes.has(node.snekEntries.size)) {
+                let entry = tableSizes.get(node.snekEntries.size);
+                tableSizes.set(node.snekEntries.size, entry + 1);
+            } else {
+                tableSizes.set(node.snekEntries.size, 1);
+            }
+        }
+
+        return tableSizes;
+    }
+
+    getNodeBandwidthDistribution() {
+        let bandwidthDistribution = new Map();
+        let lowestProto = 1000000000;
+        let highestProto = 0;
+        let lowestMag = 1000000000;
+        let highestMag = 0;
+
+        for (const node of Nodes.values()) {
+            let latestReportIndex = node.nextReportIndex - 1;
+            if (latestReportIndex < 0) {
+                latestReportIndex = MaxBandwidthReports - 1;
+            }
+
+            let report = node.bandwidthReports.at(latestReportIndex);
+            let totalProto = 0;
+            if (report.Peers != null && report.Peers.size !== 0) {
+                let peerMap = new Map(Object.entries(report.Peers));
+                if (peerMap.size > 0) {
+                    for (const peer of peerMap) {
+                        totalProto = totalProto + peer[1].Protocol.Rx;
+                        totalProto = totalProto + peer[1].Protocol.Tx;
+                    }
+                }
+            } else {
+                continue;
+            }
+
+            if (totalProto > highestProto) {
+                highestProto = totalProto;
+            }
+            if (totalProto < lowestProto) {
+                lowestProto = totalProto;
+            }
+
+            let mag = Math.log10(totalProto);
+            if (mag > highestMag) {
+                highestMag = mag;
+            }
+            if (mag < lowestMag) {
+                lowestMag = mag;
+            }
+
+            bandwidthDistribution.set(node.key, {
+                Protocol: totalProto,
+            });
+        }
+
+        let numberOfSteps = 10;
+        let magStep = (highestMag - lowestMag) / (numberOfSteps - 1);
+
+        let steps = new Array();
+        let distributionMap = new Map();
+        let offset = Math.pow(10, lowestMag);
+        for (let i = 0; i < numberOfSteps; i++) {
+            let step = offset + Math.pow(10, lowestMag + magStep * i);
+            steps.push(step);
+            distributionMap.set(step, {
+                Protocol: 0,
+            });
+        }
+
+        for (const node of bandwidthDistribution.values()) {
+            for (let index = 0; index < steps.length; index++) {
+                if (node.Protocol < steps[index]) {
+                    distributionMap.set(steps[index], {
+                        Protocol: distributionMap.get(steps[index]).Protocol + 1,
+                    });
+                    break;
+                }
+            }
+        }
+
+        return distributionMap;
+    }
+
+    getTotalBandwidthUsage() {
+        let totalBandwidth = new Map();
+        let timestampsEstablished = 0;
+        for (const node of Nodes.values()) {
+            for (const report of node.bandwidthReports.values()) {
+                let totalProto = 0;
+                let totalOverlay = 0;
+                if (report.Peers != null && report.Peers.size !== 0) {
+                    let peerMap = new Map(Object.entries(report.Peers));
+                    if (peerMap.size > 0) {
+                        for (const peer of peerMap) {
+                            totalProto = totalProto + peer[1].Protocol.Rx;
+                            totalProto = totalProto + peer[1].Protocol.Tx;
+                            totalOverlay = totalOverlay + peer[1].Overlay.Rx;
+                            totalOverlay = totalOverlay + peer[1].Overlay.Tx;
+                        }
+                    }
+                } else {
+                    continue;
+                }
+
+                let timestamp = new Date(report.ReceiveTime / 1000 / 1000);
+                if (totalBandwidth.has(report.ReceiveTime)) {
+                    let entry = totalBandwidth.get(report.ReceiveTime);
+                    totalBandwidth.set(report.ReceiveTime, {
+                        Protocol: entry.Protocol + totalProto,
+                        Overlay: entry.Overlay + totalOverlay,
+                    });
+                } else {
+                    totalBandwidth.set(report.ReceiveTime, {
+                        Protocol: totalProto,
+                        Overlay: totalOverlay,
+                    });
+                }
+            }
+        }
+
+        return totalBandwidth;
+    }
+
+    removeSnakeEntry(id, entry) {
+        if (Nodes.has(id)) {
+            let node = Nodes.get(id);
+            node.snekEntries.delete(entry);
 
             this.updateUI(id);
         }
@@ -606,6 +768,27 @@ class Graph {
             this.network.moveNode(node, position.x + 0.1, position.y);
         }
     }
+
+    updateNetworkStats(treeConv, treeStretch, snakeConv, snakeStretch) {
+        NetworkStats.TreePathConvergence = treeConv.toFixed(2);
+        NetworkStats.TreeAverageStretch = treeStretch.toFixed(2);
+        NetworkStats.SnakePathConvergence = snakeConv.toFixed(2);
+        NetworkStats.SnakeAverageStretch = snakeStretch.toFixed(2);
+        handleStatsPanelUpdate();
+    }
+
+    addBandwidthReport(id, report) {
+        if (Nodes.has(id)) {
+            let node = Nodes.get(id);
+            node.bandwidthReports[node.nextReportIndex] = report;
+
+            let nextReportIndex = 0;
+            if (node.nextReportIndex + 1 < MaxBandwidthReports) {
+                nextReportIndex = node.nextReportIndex + 1;
+            }
+            node.nextReportIndex = nextReportIndex;
+        }
+    }
 }
 
 export var graph = new Graph(document.getElementById("canvas"));
@@ -626,6 +809,12 @@ function newNode(key, type) {
         snekAscPath: "",
         snekDesc: "",
         snekDescPath: "",
+        snekEntries: new Map(),
+        nextReportIndex: 0,
+        bandwidthReports: new Array(10).fill({
+            ReceiveTime: 0,
+            Peers: new Map(),
+        }),
     };
 }
 
@@ -660,6 +849,7 @@ function handleNodeHoverUpdate() {
             "<br>Tree Parent: " + node.treeParent +
             "<br>SNEK Desc: " + node.snekDesc +
             "<br>SNEK Asc: " + node.snekAsc +
+            "<br>Table Size: " + node.snekEntries.size +
             "<br><br><u>Announcement</u>" +
             "<br>Root: Node " + node.announcement.root +
             "<br>Sequence: " + node.announcement.sequence +
@@ -711,6 +901,13 @@ function handleNodePanelUpdate() {
             peerTable += "<tr><td><code>" + peers[i].id + "</code></td><td><code>" + key.slice(0, 8) + "</code></td><td><code>" + peers[i].port + "</code></td><td><code>" + root + "</code></td></tr>";
         }
 
+        let routes = node.snekEntries;
+        let snekTable = "";
+        for (var [entry, peer] of routes.entries()) {
+            snekTable += "<tr><td><code>" + entry + "</code></td><td><code>" + peer + "</code></td></tr>";
+        }
+
+
         if (nodePanel) {
             nodePanel.innerHTML +=
                 "<h3>Node " + nodeID + "</h3>" +
@@ -726,15 +923,15 @@ function handleNodePanelUpdate() {
                 "<tr><td>Ascending Node:</td><td><code>" + node.snekAsc + "</code></td></tr>" +
                 "<tr><td>Ascending Path:</td><td><code>" + node.snekAscPath + "</code></td></tr>" +
                 "</table>" +
-                "<hr><h4><u>Peers</u></h4>" +
+                "<hr><h4><u>Peers (" + peers.length + ")</u></h4>" +
                 "<table>" +
                 "<tr><th>Name</th><th>Public Key</th><th>Port</th><th>Root</th></tr>" +
                 peerTable +
                 "</table>" +
-                "<hr><h4><u>SNEK Routes</u></h4>" +
+                "<hr><h4><u>SNEK Routes (" + routes.size + ")</u></h4>" +
                 "<table>" +
-                "<tr><th>Public Key</th><th>Path ID</th><th>Src</th><th>Dst</th><th>Seq</th></tr>" +
-                "<tr><td><code><b>N/A</b></code></td><td><code><b>N/A</b></code></td><td><code><b>N/A</b></code></td><td><code><b>N/A</b></code></td><td><code><b>N/A</b></code></td></tr>" +
+                "<tr><th>Name</th><th>Peer</th></tr>" +
+                snekTable +
                 "</table><hr><br>";
         }
     }
@@ -765,15 +962,50 @@ function handleStatsPanelUpdate() {
         }
     }
 
+    let totalEntrySum = 0;
+    let minTableSize = Number.MAX_VALUE;
+    let maxTableSize = 0;
+    for (var [key, node] of Nodes.entries()) {
+        let tableSize = node.snekEntries.size;
+        totalEntrySum += tableSize;
+
+        if (tableSize > maxTableSize) {
+            maxTableSize = tableSize;
+        } else if (tableSize < minTableSize) {
+            minTableSize = tableSize;
+        }
+    }
+    let avgTableSize = 0;
+    if (Nodes.size > 0) {
+        avgTableSize = totalEntrySum / Nodes.size;
+    }
+
     statsPanel.innerHTML =
         "<div class=\"shift-right\"><h3>Statistics</h3></div>" +
         "<hr><table>" +
         "<tr><td>Node Count:</td><td style=\"text-align: left;\">" + Nodes.size + "</td></tr>" +
         "<tr><td>Path Count:</td><td style=\"text-align: left;\">" + peerLinks / 2 + "</td></tr>" +
-        "<tr><td>Tree Path Convergence:</td><td style=\"text-align: left;\"><code><b>N/A</b></code></td></tr>" +
-        "<tr><td>SNEK Path Convergence:</td><td style=\"text-align: left;\"><code><b>N/A</b></code></td></tr>" +
-        "<tr><td>Tree Average Stretch:</td><td><code><b>N/A</b></code></td></tr>" +
-        "<tr><td>SNEK Average Stretch:</td><td><code><b>N/A</b></code></td></tr>" +
+        "<tr><td>Tree Path Convergence:</td><td style=\"text-align: left;\">" +
+        NetworkStats.TreePathConvergence +
+        "%</td></tr>" +
+        "<tr><td>SNEK Path Convergence:</td><td style=\"text-align: left;\">" +
+        NetworkStats.SnakePathConvergence +
+        "%</td></tr>" +
+        "<tr><td>Tree Average Stretch:</td><td>" +
+        NetworkStats.TreeAverageStretch +
+        "</td></tr>" +
+        "<tr><td>SNEK Average Stretch:</td><td>" +
+        NetworkStats.SnakeAverageStretch +
+        "</td></tr>" +
+        "<tr><td>SNEK Table Size (Avg):</td><td>" +
+        avgTableSize.toFixed(2) +
+        "</td></tr>" +
+        "<tr><td>SNEK Table Size (Min):</td><td>" +
+        minTableSize +
+        "</td></tr>" +
+        "<tr><td>SNEK Table Size (Max):</td><td>" +
+        maxTableSize +
+        "</td></tr>" +
         "</table>" +
         "<hr><h4><u>Node Summary</u></h4>" +
         "<table>" +

@@ -18,23 +18,6 @@ import (
 	"github.com/matrix-org/pinecone/types"
 )
 
-/* API Events:
-DONE:
-   Peer Added
-   Peer Removed
-   Tree Parent Changed
-   Snake Descending Node Changed
-   Snake Ascending Node Changed
-   Tree Root Announcement Changed
-
-TODO:
-   Snake Table Entry Added
-   Snake Table Entry Removed
-
-NOTE:
-   Events need to be processed in FIFO order.
-*/
-
 type Event interface {
 	isEvent()
 }
@@ -62,17 +45,8 @@ type TreeParentUpdate struct {
 // Tag TreeParentUpdate as an Event
 func (e TreeParentUpdate) isEvent() {}
 
-type SnakeAscUpdate struct {
-	PeerID string
-	PathID string
-}
-
-// Tag SnakeAscUpdate as an Event
-func (e SnakeAscUpdate) isEvent() {}
-
 type SnakeDescUpdate struct {
 	PeerID string
-	PathID string
 }
 
 // Tag SnakeDescUpdate as an Event
@@ -87,3 +61,37 @@ type TreeRootAnnUpdate struct {
 
 // Tag TreeRootAnnUpdate as an Event
 func (e TreeRootAnnUpdate) isEvent() {}
+
+type SnakeEntryAdded struct {
+	EntryID string
+	PeerID  string
+}
+
+// Tag SnakeEntryAdded as an Event
+func (e SnakeEntryAdded) isEvent() {}
+
+type SnakeEntryRemoved struct {
+	EntryID string
+}
+
+// Tag SnakeEntryRemoved as an Event
+func (e SnakeEntryRemoved) isEvent() {}
+
+type PeerBandwidthUsage struct {
+	Protocol struct {
+		Rx uint64
+		Tx uint64
+	}
+	Overlay struct {
+		Rx uint64
+		Tx uint64
+	}
+}
+
+type BandwidthReport struct {
+	CaptureTime uint64 // Unix Time
+	Peers       map[string]PeerBandwidthUsage
+}
+
+// Tag BandwidthReport as an Event
+func (e BandwidthReport) isEvent() {}

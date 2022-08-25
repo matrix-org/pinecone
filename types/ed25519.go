@@ -40,6 +40,11 @@ var FullMask = PublicKey{
 	0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
 }
 
+func (a PublicKey) IsEmpty() bool {
+	empty := PublicKey{}
+	return a == empty
+}
+
 func (a PublicKey) EqualMaskTo(b, m PublicKey) bool {
 	for i := range a {
 		if (a[i] & m[i]) != (b[i] & m[i]) {
@@ -55,6 +60,10 @@ func (a PublicKey) CompareTo(b PublicKey) int {
 
 func (a PublicKey) String() string {
 	return fmt.Sprintf("%v", hex.EncodeToString(a[:]))
+}
+
+func (a PublicKey) MarshalJSON() ([]byte, error) {
+	return []byte(`"` + a.String() + `"`), nil
 }
 
 func (a PublicKey) Network() string {

@@ -16,13 +16,14 @@ body {
     --color-switch-blue: #6d8bac;
     --color-ems-purple: #7e69ff;
     --topo-panel-width: 150px;
-    --tool-panel-width: 187.5px;
     --topnav-height: 0px;
     --toggle-box-size: 35px;
     --toggle-box-margin: 10px;
-    --tool-panel-count: 5;
-    --topo-panel-count: 4;
+    --tool-panel-count: 7;
+    --tool-icon-width: 37.5px;
+    --tool-panel-width: calc(var(--tool-panel-count) * var(--tool-icon-width));
     --tool-icon-size: calc(var(--tool-panel-width) / var(--tool-panel-count));
+    --topo-panel-count: 4;
     --topo-icon-size: calc(var(--topo-panel-width) / var(--topo-panel-count));
 }
 
@@ -217,6 +218,10 @@ body {
     background-color: var(--color-logo-green); /* Add an active/current color */
 }
 
+.toolselect.sub-active {
+    color: var(--color-dark-red);
+}
+
 .toolselect:active, .netselect:active, .netselect.active:active, .toolselect.active:active, .dropup-content:active, .dropup-content button:active {
     background-color: var(--color-dull-grey);
     color: var(--color-dark-grey);
@@ -382,13 +387,13 @@ body {
     margin-top: 5%;
     margin-bottom: 5%;
     width: 60%;
-    min-width: 540px; /* 600 * 90% */
+    min-width: 810px; /* 900 * 90% */
     box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2),0 6px 20px 0 rgba(0,0,0,0.19);
     animation-name: animatemodal;
     animation-duration: 0.4s
 }
 
-@media screen and (max-width: 600px) {
+@media screen and (max-width: 900px) {
     .modal-content {
         width: 90%;
         min-width: 0;
@@ -516,7 +521,7 @@ input[type=submit]:active {
     clear: both;
 }
 
-@media screen and (max-width: 600px) {
+@media screen and (max-width: 900px) {
     .col-two-left, .col-two-right {
         width: 100%;
         margin-top: 0;
@@ -646,4 +651,45 @@ input[type=submit]:active {
   -webkit-transform: rotate(45deg);
   -ms-transform: rotate(45deg);
   transform: rotate(45deg);
+}
+
+/* Dropdown Button */
+.dropbtn {
+    color: var(--color-dark-grey);
+    background-color: var(--color-dull-grey);
+    font-size: 16px;
+    max-width: 50%;
+    text-align: center;
+    border: none;
+    cursor: pointer;
+}
+
+/* Dropdown button on hover & focus */
+.dropbtn:hover, .dropbtn:focus {
+    background-color: var(--color-dark-grey);
+    color: var(--color-dull-grey);
+}
+
+/* The container <div> - needed to position the dropdown content */
+.dropdown {
+    position: relative;
+    padding: 8px 0 0 0;
+    text-align: center;
+    display: block;
+}
+
+/* Dropdown Content (Hidden by Default) */
+.dropdown-content {
+    display: none;
+    position: absolute;
+    min-width: 160px;
+    box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2);
+    z-index: 1;
+}
+
+/* Links inside the dropdown */
+.dropdown-content a {
+    padding: 12px 16px;
+    text-decoration: none;
+    display: block;
 }

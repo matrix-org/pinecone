@@ -19,7 +19,71 @@ export function closeRightPanel() {
     }
 }
 
-export function ResetReplayUI(element) {
+export function updateRoutingTableChart() {
+    let tableSizes = graph.getRoutingTableSizes();
+    let routingTableSizes = Object.fromEntries(tableSizes);
+
+    analyticsCharts['routing-table-size'].data.datasets[0].data = routingTableSizes;
+    if (currentAnalyticsChart.name === 'routing-table-size') {
+        graphDataUpdated = true;
+    }
+}
+
+var graphDataUpdated = false;
+setInterval(updateGraphs, 2000);
+
+function updateGraphs() {
+    if (graphDataUpdated) {
+        currentAnalyticsChart.chart.update();
+        graphDataUpdated = false;
+    }
+}
+
+export function UpdateBandwidthGraphData(bwIntervalSeconds) {
+    let distribution = graph.getNodeBandwidthDistribution();
+    let labels = new Array();
+    let protoDist = new Array();
+
+    let conversionToKBPS = 8 / 1000 / bwIntervalSeconds;
+
+    for (const [key, value] of [...distribution.entries()]) {
+        labels.push(key * conversionToKBPS); // bytes to Kbps
+        protoDist.push(value.Protocol);
+    }
+
+    let distributionGraph = 'bandwidth-distribution';
+    analyticsCharts[distributionGraph].data.labels = labels;
+    analyticsCharts[distributionGraph].data.datasets[0].data = protoDist;
+
+    let bandwidth = graph.getTotalBandwidthUsage();
+    let timestamps = new Array();
+    let proto = new Array();
+    let overlay = new Array();
+    const options = {
+        hour12 : false,
+        hour:  "2-digit",
+        minute: "2-digit",
+    };
+
+    let nodeCount = graph.getNodeCount();
+    for (const [key, value] of [...bandwidth.entries()].sort()) {
+        let date = (new Date(key / 1000 / 1000)).toLocaleTimeString("en-US",options);
+        timestamps.push(date);
+        proto.push(value.Protocol * conversionToKBPS / nodeCount); // bytes to Kbps
+        overlay.push(value.Overlay * conversionToKBPS / nodeCount); // bytes to Kbps
+    }
+
+    let averageBWGraph = 'total-bandwidth';
+    analyticsCharts[averageBWGraph].data.labels = timestamps;
+    analyticsCharts[averageBWGraph].data.datasets[0].data = proto;
+    analyticsCharts[averageBWGraph].data.datasets[1].data = overlay;
+
+    if (currentAnalyticsChart.name === averageBWGraph || currentAnalyticsChart.name === distributionGraph) {
+        updateAnalyticsSelection(currentAnalyticsChart.name);
+    }
+}
+
+function resetReplayUI(element) {
     element.className = element.className.replace(" active", "");
     let tooltip = element.getElementsByClassName("tooltiptext")[0];
     tooltip.textContent = "Pause Events";
@@ -80,20 +144,26 @@ function selectNetworkType(networkType) {
 
     this.className += " active";
 
+    let anchor = "";
     switch(this.id) {
     case "peerTopo":
-        graph.changeDataSet("peer");
+        anchor = "peer";
         break;
     case "snakeTopo":
-        graph.changeDataSet("snake");
+        anchor = "snake";
         break;
     case "treeTopo":
-        graph.changeDataSet("tree");
+        anchor = "tree";
         break;
     case "geographicTopo":
-        graph.changeDataSet("geographic");
+        anchor = "geographic";
         break;
+    default:
+        return;
     }
+
+    graph.changeDataSet(anchor);
+    window.location.href = "#" + anchor;
 }
 
 function setupNetworkSelection() {
@@ -106,6 +176,12 @@ setupNetworkSelection();
 
 function selectTool(toolType) {
     switch(this.id) {
+    case "ping-start-stop":
+        handleToolPingStartStop(this);
+        break;
+    case "view-analytics":
+        handleToolViewAnalytics(this);
+        break;
     case "scenario-new":
         handleToolScenarioNew(this);
         break;
@@ -131,6 +207,47 @@ function selectTool(toolType) {
         handleToolRemove(this);
         break;
     }
+}
+
+export function SetPingToolState(enabled, active) {
+    let subtool = document.getElementById("ping-start-stop");
+
+    if (!enabled && subtool.className.includes("active")) {
+        subtool.className = subtool.className.replace(" active", "");
+        let tooltip = subtool.getElementsByClassName("tooltiptext")[0];
+        tooltip.textContent = "Start Pings";
+
+        if (subtool.className.includes("sub-active")) {
+            subtool.className = subtool.className.replace(" sub-active", "");
+        }
+    } else if (enabled) {
+        if (!subtool.className.includes("active")) {
+            subtool.className += " active";
+            let tooltip = subtool.getElementsByClassName("tooltiptext")[0];
+            tooltip.textContent = "Stop Pings";
+        }
+
+        if (active && !subtool.className.includes("sub-active")) {
+            subtool.className += " sub-active";
+        } else if (!active && subtool.className.includes("sub-active")) {
+            subtool.className = subtool.className.replace(" sub-active", "");
+        }
+    }
+}
+
+function handleToolPingStartStop(subtool) {
+    let command = {"MsgID": APICommandID.Unknown, "Event": {}};
+    if (subtool.className.includes("active")) {
+        command.MsgID = APICommandID.StopPings;
+    } else {
+        command.MsgID = APICommandID.StartPings;
+    }
+
+    SendToServer({"MsgID": APICommandMessageID.PlaySequence, "Events": [command]});
+}
+
+function handleToolViewAnalytics(subtool) {
+    setupBaseModal("analytics-modal");
 }
 
 function handleToolScenarioNew(subtool) {
@@ -211,6 +328,8 @@ function validateEventSequence(content) {
         validSimCommands.set("RemovePeer", ["Node", "Peer"]);
         validSimCommands.set("ConfigureAdversaryDefaults", ["Node", "DropRates"]);
         validSimCommands.set("ConfigureAdversaryPeer", ["Node", "Peer", "DropRates"]);
+        validSimCommands.set("StartPings", []);
+        validSimCommands.set("StopPings", []);
 
         let validSubcommands = new Map();
         validSubcommands.set("DropRates", ["Overall", "Keepalive", "TreeAnnouncement", "TreeRouted", "VirtualSnakeBootstrap", "VirtualSnakeBootstrapACK", "VirtualSnakeSetup", "VirtualSnakeSetupACK", "VirtualSnakeTeardown", "VirtualSnakeRouted"]);
@@ -311,7 +430,7 @@ function validateField(field, value) {
 function handleToolReplayPlayPause(subtool) {
     let command = {"MsgID": APICommandID.Unknown, "Event": {}};
     if (subtool.className.includes("active")) {
-        ResetReplayUI(subtool);
+        resetReplayUI(subtool);
 
         command.MsgID = APICommandID.Play;
     } else {
@@ -454,9 +573,285 @@ function convertCommandToID(command) {
     case "ConfigureAdversaryPeer":
         id = APICommandID.ConfigureAdversaryPeer;
         break;
+    case "StartPings":
+        id = APICommandID.StartPings;
+    case "StopPings":
+        id = APICommandID.StopPings;
     default:
         break;
     }
 
     return id;
 }
+
+function handleAnalyticsSelect() {
+    let selection = document.getElementById("analyticsDropdown").value;
+    document.getElementById("analyticsDropdown").blur();
+
+    updateAnalyticsSelection(selection);
+}
+document.getElementById("analyticsDropdown").onchange = handleAnalyticsSelect;
+document.getElementById("analyticsDropdown").value = 'routing-table-size';
+
+function updateAnalyticsSelection(selection) {
+    let chartParams = analyticsCharts[selection];
+    currentAnalyticsChart.name = selection;
+    currentAnalyticsChart.chart.destroy();
+    currentAnalyticsChart.chart = new Chart(document.getElementById('networkAnalytics').getContext('2d'), {
+        type: chartParams.type,
+        data: chartParams.data,
+        options: chartParams.options
+    });
+}
+
+
+const bwTimestamps = new Array(11);
+
+function assignTimestamps() {
+    let minuteDelta = 1;
+    let nowRoundedUp = new Date();
+    let minutes = nowRoundedUp.getMinutes();
+    let remainder = minuteDelta - (minutes % minuteDelta);
+    nowRoundedUp.setMinutes(minutes + remainder, 0, 0);
+    let newMinutes = nowRoundedUp.getMinutes();
+    const options = {
+        hour12 : false,
+        hour:  "2-digit",
+        minute: "2-digit",
+    };
+
+    for (let i = 0; i < 11; i++) {
+        let newTime = structuredClone(nowRoundedUp);
+        newTime.setMinutes(newMinutes - minuteDelta * i);
+        bwTimestamps[10 - i] = newTime.toLocaleTimeString("en-US",options);
+    }
+}
+assignTimestamps();
+
+var analyticsCharts = {
+    'routing-table-size': {
+        type: 'bar',
+        data: {
+            datasets: [{
+                label: '# of Nodes',
+                data: [],
+                backgroundColor: [
+                    "rgba(126,105,255,0.5)"
+                ],
+                borderWidth: 0,
+                barPercentage: 1,
+                categoryPercentage: 1
+            }]
+        },
+        options: {
+            animation: {
+                duration: 300,
+            },
+            interaction: {
+                intersect: true,
+                mode: 'index',
+            },
+            scales: {
+                x: {
+                    beginAtZero: true,
+                    type: 'linear',
+                    ticks: {
+                        stepSize: 1
+                    },
+                    title: {
+                        display: true,
+                        text: '# of Routes',
+                        font: {
+                            size: 14
+                        }
+                    }
+                },
+                y: {
+                    beginAtZero: true,
+                    title: {
+                        display: true,
+                        text: '# of Nodes',
+                        font: {
+                            size: 14
+                        }
+                    }
+                }
+            },
+            layout: {
+                padding: {
+                    top: 20
+                }
+            },
+            plugins: {
+                legend: {
+                    display: false,
+                },
+                tooltip: {
+                    callbacks: {
+                        title: (items) => {
+                            if (!items.length) {
+                                return '';
+                            }
+                            const item = items[0];
+                            const x = item.parsed.x;
+                            return `Routes: ${x}`;
+                        }
+                    }
+                }
+            }
+        }
+    },
+    'total-bandwidth': {
+        type: 'line',
+        data: {
+            labels: bwTimestamps,
+            datasets: [{
+                label: "Protocol Traffic",
+                fill: true,
+                backgroundColor: "rgba(35,140,245,0.5)",
+                borderColor: "rgba(35,140,245,0.8)",
+                data: [],
+                yAxisID: 'y'
+            }, {
+                label: "Overlay Traffic",
+                fill: true,
+                backgroundColor: "rgba(126,105,255,0.5)",
+                borderColor: "rgba(126,105,255,0.8)",
+                data: [],
+                yAxisID: 'y2'
+            }],
+        },
+        options: {
+            animation: {
+                duration: 300,
+            },
+            interaction: {
+                intersect: false,
+                mode: 'index',
+            },
+            responsive: true,
+            scales: {
+                x: {
+                    title: {
+                        display: true,
+                        text: 'Timestamp',
+                        font: {
+                            size: 14
+                        }
+                    }
+                },
+                y: {
+                    beginAtZero: true,
+                    title: {
+                        display: true,
+                        text: 'Bandwidth (kb/s)',
+                        font: {
+                            size: 14
+                        }
+                    }
+                },
+                y2: {
+                    position: 'right',
+                    beginAtZero: true,
+                    title: {
+                        display: true,
+                        text: 'Bandwidth (kb/s)',
+                        font: {
+                            size: 14
+                        }
+                    },
+                    grid: {
+                        drawOnChartArea: false // only want the grid lines for one axis to show up
+                    }
+                }
+            },
+            layout: {
+                padding: {
+                    top: 20
+                }
+            }
+        }
+    },
+    'bandwidth-distribution': {
+        type: 'bar',
+        data: {
+            labels: [],
+            datasets: [{
+                label: 'Protocol Traffic',
+                data: [],
+                backgroundColor: [
+                    "rgba(126,105,255,0.5)"
+                ],
+                borderWidth: 0,
+                barPercentage: 1,
+                categoryPercentage: 1,
+                yAxisID: 'y'
+            }]
+        },
+        options: {
+            animation: {
+                duration: 300,
+            },
+            interaction: {
+                intersect: false,
+                mode: 'index',
+            },
+            scales: {
+                x: {
+                    type: 'logarithmic',
+                    // type: 'linear',
+                    title: {
+                        display: true,
+                        text: 'Bandwidth (kb/s)',
+                        font: {
+                            size: 14
+                        }
+                    }
+                },
+                y: {
+                    // stacked: false,
+                    beginAtZero: true,
+                    title: {
+                        display: true,
+                        text: '# of Nodes',
+                        font: {
+                            size: 14
+                        }
+                    }
+                }
+            },
+            layout: {
+                padding: {
+                    top: 20
+                }
+            },
+            plugins: {
+                legend: {
+                    display: true,
+                },
+                tooltip: {
+                    callbacks: {
+                        title: (items) => {
+                            if (!items.length) {
+                                return '';
+                            }
+                            const item = items[0];
+                            const x = item.label;
+                            return `BW: < ${x} kb/s`;
+                        }
+                    }
+                }
+            }
+        }
+    }
+};
+
+let routeChartParams = analyticsCharts['routing-table-size'];
+let currentAnalyticsChart = {
+    name: 'routing-table-size',
+    chart: new Chart(document.getElementById('networkAnalytics').getContext('2d'), {
+    type: routeChartParams.type,
+    data: routeChartParams.data,
+    options: routeChartParams.options
+    })
+};

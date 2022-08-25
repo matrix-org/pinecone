@@ -29,35 +29,35 @@ import (
 
 type FilterFn func(from types.PublicKey, f *types.Frame) bool
 
+const BWReportingInterval = time.Minute
+
 // NOTE: Functions prefixed with an underscore (_) are only safe to be called
 // from the actor that owns them, in order to prevent data races.
 
 // state is an actor that owns all of the mutable state for the Pinecone router.
 type state struct {
 	phony.Inbox
-	r              *Router
-	_peers         []*peer            // All switch ports, connected and disconnected
-	_ascending     *virtualSnakeEntry // Next ascending node in keyspace
-	_descending    *virtualSnakeEntry // Next descending node in keyspace
-	_candidate     *virtualSnakeEntry // Candidate to replace the ascending node
-	_parent        *peer              // Our chosen parent in the tree
-	_announcements announcementTable  // Announcements received from our peers
-	_table         virtualSnakeTable  // Virtual snake DHT entries
-	_ordering      uint64             // Used to order incoming tree announcements
-	_sequence      uint64             // Used to sequence our root tree announcements
-	_treetimer     *time.Timer        // Tree maintenance timer
-	_snaketimer    *time.Timer        // Virtual snake maintenance timer
-	_waiting       bool               // Is the tree waiting to reparent?
-	_filterPacket  FilterFn           // Function called when forwarding packets
+	r               *Router
+	_peers          []*peer            // All switch ports, connected and disconnected
+	_descending     *virtualSnakeEntry // Next descending node in keyspace
+	_parent         *peer              // Our chosen parent in the tree
+	_announcements  announcementTable  // Announcements received from our peers
+	_table          virtualSnakeTable  // Virtual snake DHT entries
+	_ordering       uint64             // Used to order incoming tree announcements
+	_sequence       uint64             // Used to sequence our root tree announcements
+	_treetimer      *time.Timer        // Tree maintenance timer
+	_snaketimer     *time.Timer        // Virtual snake maintenance timer
+	_lastbootstrap  time.Time          // When did we last bootstrap?
+	_waiting        bool               // Is the tree waiting to reparent?
+	_filterPacket   FilterFn           // Function called when forwarding packets
+	_bandwidthTimer *time.Timer
 }
 
 // _start resets the state and starts tree and virtual snake maintenance.
 func (s *state) _start() {
 	s._setParent(nil)
-	s._setAscendingNode(nil)
 	s._setDescendingNode(nil)
 
-	s._candidate = nil
 	s._ordering = 0
 	s._waiting = false
 
@@ -74,6 +74,14 @@ func (s *state) _start() {
 		s._snaketimer = time.AfterFunc(time.Second, func() {
 			s.Act(nil, s._maintainSnake)
 		})
+	}
+
+	if s._bandwidthTimer == nil {
+		s._bandwidthTimer = time.AfterFunc(time.Until(
+			time.Now().Round(time.Minute).Add(BWReportingInterval)),
+			func() {
+				s.Act(nil, s._reportBandwidth)
+			})
 	}
 
 	s._maintainTreeIn(0)
@@ -104,6 +112,58 @@ func (s *state) _maintainSnakeIn(d time.Duration) {
 	s._snaketimer.Reset(d)
 }
 
+// _reportBandwidthIn resets the bandwidth reporting timer to the
+// specified duration.
+func (s *state) _reportBandwidthIn(d time.Duration) {
+	if !s._bandwidthTimer.Stop() {
+		select {
+		case <-s._bandwidthTimer.C:
+		default:
+		}
+	}
+	s._bandwidthTimer.Reset(time.Until(time.Now().Round(time.Minute).Add(d)))
+}
+
+func (s *state) _reportBandwidth() {
+	select {
+	case <-s.r.context.Done():
+		return
+	default:
+		defer s._reportBandwidthIn(BWReportingInterval)
+	}
+
+	peerBandwidth := make(map[string]events.PeerBandwidthUsage)
+	for _, peer := range s._peers {
+		if peer != nil && peer != s.r.local && peer.started.Load() {
+			peerBandwidth[peer.public.String()] = events.PeerBandwidthUsage{
+				Protocol: struct {
+					Rx uint64
+					Tx uint64
+				}{
+					Rx: peer.bytesRxProto.Load(),
+					Tx: peer.bytesTxProto.Load(),
+				},
+				Overlay: struct {
+					Rx uint64
+					Tx uint64
+				}{
+					Rx: peer.bytesRxTraffic.Load(),
+					Tx: peer.bytesTxTraffic.Load(),
+				},
+			}
+			peer.ClearBandwidthCounters()
+		}
+	}
+
+	captureTime := uint64(time.Now().Round(time.Minute).UnixNano())
+	s.r.Act(nil, func() {
+		s.r._publish(events.BandwidthReport{
+			CaptureTime: captureTime,
+			Peers:       peerBandwidth,
+		})
+	})
+}
+
 // _addPeer creates a new Peer and adds it to the switch in the next available port
 func (s *state) _addPeer(conn net.Conn, public types.PublicKey, uri ConnectionURI, zone ConnectionZone, peertype ConnectionPeerType, keepalives bool) (types.SwitchPortID, error) {
 	var new *peer
@@ -114,6 +174,10 @@ func (s *state) _addPeer(conn net.Conn, public types.PublicKey, uri ConnectionUR
 			continue
 		}
 		ctx, cancel := context.WithCancel(s.r.context)
+		queues := uint16(trafficBuffer)
+		if peertype == ConnectionPeerType(PeerTypeBluetooth) {
+			queues = 16
+		}
 		new = &peer{
 			router:     s.r,
 			port:       types.SwitchPortID(i),
@@ -125,8 +189,8 @@ func (s *state) _addPeer(conn net.Conn, public types.PublicKey, uri ConnectionUR
 			keepalives: keepalives,
 			context:    ctx,
 			cancel:     cancel,
-			proto:      newFIFOQueue(),
-			traffic:    newLIFOQueue(trafficBuffer),
+			proto:      newFIFOQueue(fifoNoMax, s.r.log),
+			traffic:    newFairFIFOQueue(queues, s.r.log),
 		}
 		s._peers[i] = new
 		s.r.log.Println("Connected to peer", new.public.String(), "on port", new.port)
@@ -168,44 +232,45 @@ func (s *state) _setParent(peer *peer) {
 	})
 }
 
-func (s *state) _setAscendingNode(node *virtualSnakeEntry) {
-	s._ascending = node
-
-	s.r.Act(nil, func() {
-		peerID := ""
-		pathID := []byte{}
-		if node != nil {
-			peerID = node.Origin.String()
-			if node.virtualSnakeIndex != nil {
-				pathID, _ = node.PathID.MarshalJSON()
-			}
-		}
-
-		s.r._publish(events.SnakeAscUpdate{PeerID: peerID, PathID: string(pathID)})
-	})
-}
-
 func (s *state) _setDescendingNode(node *virtualSnakeEntry) {
+	switch {
+	case s._descending == nil || node == nil:
+		fallthrough
+	case s._descending != nil && node != nil && s._descending.PublicKey != node.PublicKey:
+		s._bootstrapSoon()
+	}
+
 	s._descending = node
 
 	s.r.Act(nil, func() {
 		peerID := ""
-		pathID := []byte{}
 		if node != nil {
 			peerID = node.PublicKey.String()
-			if node.virtualSnakeIndex != nil {
-				pathID, _ = node.PathID.MarshalJSON()
-			}
 		}
 
-		s.r._publish(events.SnakeDescUpdate{PeerID: peerID, PathID: string(pathID)})
+		s.r._publish(events.SnakeDescUpdate{PeerID: peerID})
+	})
+}
+
+func (s *state) _addRouteEntry(index virtualSnakeIndex, entry *virtualSnakeEntry) {
+	s._table[index] = entry
+
+	s.r.Act(nil, func() {
+		s.r._publish(events.SnakeEntryAdded{EntryID: index.PublicKey.String(), PeerID: entry.Source.public.String()})
+	})
+}
+
+func (s *state) _removeRouteEntry(index virtualSnakeIndex) {
+	delete(s._table, index)
+
+	s.r.Act(nil, func() {
+		s.r._publish(events.SnakeEntryRemoved{EntryID: index.PublicKey.String()})
 	})
 }
 
 // _portDisconnected is called when a peer disconnects.
 func (s *state) _portDisconnected(peer *peer) {
 	peercount := 0
-	bootstrap := false
 
 	// Work out how many peers are connected now that this peer has
 	// disconnected.
@@ -226,40 +291,53 @@ func (s *state) _portDisconnected(peer *peer) {
 	// Delete the last tree announcement that we received from this peer.
 	delete(s._announcements, peer)
 
-	// Scan the local DHT table for any routes that transited this now-dead
-	// peering. If we find any then we need to send teardowns in the opposite
-	// direction, so that nodes further along the path will learn that the
-	// path was broken.
+	// Scan the local routing table for any routes that transited this now-dead
+	// peering and remove them from the routing table.
 	for k, v := range s._table {
-		if v.Destination == peer || v.Source == peer {
-			s._sendTeardownForExistingPath(peer, k.PublicKey, k.PathID)
+		if v.Source == peer || v.Destination == peer {
+			s._removeRouteEntry(k)
 		}
 	}
 
-	// If the ascending path was also lost because it went via the now-dead
-	// peering then clear that path (although we can't send a teardown) and
-	// then bootstrap again.
-	if asc := s._ascending; asc != nil && asc.Destination == peer {
-		s._teardownPath(s.r.local, asc.PublicKey, asc.PathID)
-		bootstrap = true
-	}
-
 	// If the descending path was lost because it went via the now-dead
-	// peering then clear that path (although we can't send a teardown) and
-	// wait for another incoming setup.
+	// peering then clear that path and wait for another incoming setup.
 	if desc := s._descending; desc != nil && desc.Source == peer {
-		s._teardownPath(s.r.local, desc.PublicKey, desc.PathID)
+		s._setDescendingNode(nil)
 	}
 
 	// If the peer that died was our chosen tree parent, then we will need to
 	// select a new parent. If we successfully choose a new parent (as in, we
 	// don't end up promoting ourselves to a root) then we will also need to
 	// send a new bootstrap into the network.
-	if s._parent == peer {
-		bootstrap = bootstrap || s._selectNewParent()
+	if s._parent == peer && s._selectNewParent() {
+		s._bootstrapSoon()
+	}
+}
+
+// _lookupPeerForAddr finds and returns the peer corresponding to the provided
+// net.Addr if such a peer exists.
+func (s *state) _lookupPeerForAddr(addr net.Addr) *peer {
+	var result *peer
+
+	for _, p := range s._peers {
+		if p == nil || !p.started.Load() {
+			continue
+		}
+
+		switch fromAddr := addr.(type) {
+		case types.Coordinates:
+			coords, err := p._coords()
+			if err == nil && fromAddr.EqualTo(coords) {
+				result = p
+				break
+			}
+		case types.PublicKey:
+			if fromAddr == p.public {
+				result = p
+				break
+			}
+		}
 	}
 
-	if bootstrap {
-		s._bootstrapNow()
-	}
+	return result
 }

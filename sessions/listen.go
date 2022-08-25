@@ -1,4 +1,4 @@
-// Copyright 2021 The Matrix.org Foundation C.I.C.
+// Copyright 2022 The Matrix.org Foundation C.I.C.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,42 +15,89 @@
 package sessions
 
 import (
-	"crypto/tls"
+	"bytes"
+	"crypto/ed25519"
 	"fmt"
 	"net"
+
+	"github.com/matrix-org/pinecone/types"
 )
 
 func (q *Sessions) listener() {
-	q.log.Println("Listening for UTP sessions")
 	for {
-		session, err := q.utpSocket.Accept()
+		con, err := q.quicListener.Accept(q.context)
 		if err != nil {
-			q.log.Println("Failed to accept UTP:", err)
 			return
 		}
 
-		go func(session net.Conn) {
-			q.streams <- session
-		}(session)
+		key := con.RemoteAddr().(types.PublicKey)
+		tls := con.ConnectionState().TLS
+		if c := len(tls.PeerCertificates); c != 1 {
+			continue
+		}
+		cert := tls.PeerCertificates[0]
+		public, ok := cert.PublicKey.(ed25519.PublicKey)
+		if !ok {
+			continue
+		}
+		if !bytes.Equal(public, key[:]) {
+			continue
+		}
+
+		if proto := q.Protocol(con.ConnectionState().TLS.NegotiatedProtocol); proto != nil {
+			entry, ok := proto.getSession(key)
+			entry.Lock()
+			if ok {
+				_ = con.CloseWithError(0, "connection replaced")
+			}
+			entry.Connection = con
+			entry.Unlock()
+			go proto.sessionlistener(entry)
+		}
 	}
 }
 
-// Accept blocks until a new session request is received. The
+func (s *SessionProtocol) sessionlistener(session *activeSession) {
+	key, ok := session.RemoteAddr().(types.PublicKey)
+	if !ok {
+		return
+	}
+
+	defer s.sessions.Delete(key)
+
+	ctx := session.Context()
+	for {
+		stream, err := session.AcceptStream(ctx)
+		if err != nil {
+			return
+		}
+
+		select {
+		case <-ctx.Done():
+		case s.streams <- &Stream{stream, session}:
+		}
+	}
+}
+
+// Accept blocks until a new connection request is received. The
 // connection returned by this function will be TLS-encrypted.
-func (q *Sessions) Accept() (net.Conn, error) {
-	stream := <-q.streams
+func (s *SessionProtocol) Accept() (net.Conn, error) {
+	stream := <-s.streams
 	if stream == nil {
 		return nil, fmt.Errorf("listener closed")
 	}
-	stream = tls.Server(stream, q.tlsServerCfg)
 	return stream, nil
 }
 
-func (q *Sessions) Addr() net.Addr {
-	return q.r.Addr()
+func (s *SessionProtocol) Addr() net.Addr {
+	return s.s.r.Addr()
 }
 
-func (q *Sessions) Close() error {
-	q.cancel()
-	return nil
+func (s *SessionProtocol) Close() error {
+	var err error = nil
+	s.closeOnce.Do(func() {
+		close(s.streams)
+		err = s.s.quicListener.Close()
+	})
+	return err
 }

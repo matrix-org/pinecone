@@ -22,17 +22,23 @@ import (
 	"log"
 	"net"
 	"os"
-	"time"
+	"os/signal"
+	"syscall"
 
 	"net/http"
 	_ "net/http/pprof"
 
+	"github.com/gorilla/websocket"
+	"github.com/matrix-org/pinecone/connections"
 	"github.com/matrix-org/pinecone/multicast"
 	"github.com/matrix-org/pinecone/router"
-	"github.com/matrix-org/pinecone/sessions"
+	"github.com/matrix-org/pinecone/util"
 )
 
 func main() {
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+
 	_, sk, err := ed25519.GenerateKey(nil)
 	if err != nil {
 		panic(err)
@@ -46,64 +52,86 @@ func main() {
 		}()
 	}
 
-	dialer := net.Dialer{
-		Timeout: time.Second * 5,
-	}
 	listener := net.ListenConfig{}
 
 	pineconeRouter := router.NewRouter(logger, sk, false)
-	_ = sessions.NewSessions(logger, pineconeRouter)
 	pineconeMulticast := multicast.NewMulticast(logger, pineconeRouter)
 	pineconeMulticast.Start()
+	pineconeManager := connections.NewConnectionManager(pineconeRouter, nil)
 
-	listen := flag.String("listen", "", "address to listen on")
+	listentcp := flag.String("listen", ":0", "address to listen for TCP connections")
+	listenws := flag.String("listenws", ":0", "address to listen for WebSockets connections")
 	connect := flag.String("connect", "", "peer to connect to")
 	flag.Parse()
 
 	if connect != nil && *connect != "" {
+		pineconeManager.AddPeer(*connect)
+	}
+
+	if listenws != nil && *listenws != "" {
 		go func() {
-			conn, err := dialer.Dial("tcp", *connect)
+			var upgrader = websocket.Upgrader{}
+			http.DefaultServeMux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+				conn, err := upgrader.Upgrade(w, r, nil)
+				if err != nil {
+					log.Println(err)
+					return
+				}
+
+				if _, err := pineconeRouter.Connect(
+					util.WrapWebSocketConn(conn),
+					router.ConnectionURI(conn.RemoteAddr().String()),
+					router.ConnectionPeerType(router.PeerTypeRemote),
+					router.ConnectionZone("websocket"),
+				); err != nil {
+					fmt.Println("Inbound WS connection", conn.RemoteAddr(), "error:", err)
+					_ = conn.Close()
+				} else {
+					fmt.Println("Inbound WS connection", conn.RemoteAddr(), "is connected")
+				}
+			})
+
+			listener, err := listener.Listen(context.Background(), "tcp", *listenws)
 			if err != nil {
 				panic(err)
 			}
 
-			if _, err := pineconeRouter.Connect(
-				conn,
-				router.ConnectionURI(*connect),
-				router.ConnectionPeerType(router.PeerTypeRemote),
-			); err != nil {
+			fmt.Printf("Listening for WebSockets on http://%s\n", listener.Addr())
+
+			if err := http.Serve(listener, http.DefaultServeMux); err != nil {
 				panic(err)
 			}
-
-			fmt.Println("Outbound connection", conn.RemoteAddr(), "is connected")
 		}()
 	}
 
-	go func() {
-		listener, err := listener.Listen(context.Background(), "tcp", *listen)
-		if err != nil {
-			panic(err)
-		}
-
-		fmt.Println("Listening on", listener.Addr())
-
-		for {
-			conn, err := listener.Accept()
+	if listentcp != nil && *listentcp != "" {
+		go func() {
+			listener, err := listener.Listen(context.Background(), "tcp", *listentcp)
 			if err != nil {
 				panic(err)
 			}
 
-			if _, err := pineconeRouter.Connect(
-				conn,
-				router.ConnectionURI(conn.RemoteAddr().String()),
-				router.ConnectionPeerType(router.PeerTypeRemote),
-			); err != nil {
-				panic(err)
+			fmt.Println("Listening on", listener.Addr())
+
+			for {
+				conn, err := listener.Accept()
+				if err != nil {
+					panic(err)
+				}
+
+				if _, err := pineconeRouter.Connect(
+					conn,
+					router.ConnectionURI(conn.RemoteAddr().String()),
+					router.ConnectionPeerType(router.PeerTypeRemote),
+				); err != nil {
+					fmt.Println("Inbound TCP connection", conn.RemoteAddr(), "error:", err)
+					_ = conn.Close()
+				} else {
+					fmt.Println("Inbound TCP connection", conn.RemoteAddr(), "is connected")
+				}
 			}
+		}()
+	}
 
-			fmt.Println("Inbound connection", conn.RemoteAddr(), "is connected")
-		}
-	}()
-
-	select {}
+	<-sigs
 }
