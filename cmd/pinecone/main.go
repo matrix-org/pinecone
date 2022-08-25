@@ -84,10 +84,11 @@ func main() {
 					router.ConnectionPeerType(router.PeerTypeRemote),
 					router.ConnectionZone("websocket"),
 				); err != nil {
-					panic(err)
+					fmt.Println("Inbound WS connection", conn.RemoteAddr(), "error:", err)
+					_ = conn.Close()
+				} else {
+					fmt.Println("Inbound WS connection", conn.RemoteAddr(), "is connected")
 				}
-
-				fmt.Println("Inbound WS connection", conn.RemoteAddr(), "is connected")
 			})
 
 			listener, err := listener.Listen(context.Background(), "tcp", *listenws)
@@ -123,10 +124,11 @@ func main() {
 					router.ConnectionURI(conn.RemoteAddr().String()),
 					router.ConnectionPeerType(router.PeerTypeRemote),
 				); err != nil {
-					panic(err)
+					fmt.Println("Inbound TCP connection", conn.RemoteAddr(), "error:", err)
+					_ = conn.Close()
+				} else {
+					fmt.Println("Inbound TCP connection", conn.RemoteAddr(), "is connected")
 				}
-
-				fmt.Println("Inbound TCP connection", conn.RemoteAddr(), "is connected")
 			}
 		}()
 	}
