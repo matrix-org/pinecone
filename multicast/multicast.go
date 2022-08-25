@@ -103,7 +103,7 @@ func (m *Multicast) Start() {
 
 			intfs, err := net.Interfaces()
 			if err != nil {
-				panic(err)
+				return
 			}
 
 			for _, intf := range intfs {
