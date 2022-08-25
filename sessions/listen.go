@@ -94,5 +94,10 @@ func (s *SessionProtocol) Addr() net.Addr {
 }
 
 func (s *SessionProtocol) Close() error {
-	return fmt.Errorf("not implemented")
+	var err error = nil
+	s.closeOnce.Do(func() {
+		close(s.streams)
+		err = s.s.quicListener.Close()
+	})
+	return err
 }
