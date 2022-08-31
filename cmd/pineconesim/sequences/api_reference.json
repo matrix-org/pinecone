@@ -81,6 +81,14 @@
 	                  "VirtualSnakeRouted": "0"
                 }
             }
+        },
+        {
+            "Command": "StartPings",
+            "Data": {}
+        },
+        {
+            "Command": "StopPings",
+            "Data": {}
         }
     ]
 }

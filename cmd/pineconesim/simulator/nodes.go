@@ -64,11 +64,17 @@ func (sim *Simulator) CreateNode(t string, nodeType APINodeType) error {
 	color := 31 + (crc % 6)
 	logger := log.New(sim.log.Writer(), fmt.Sprintf("\033[%dmNode %s:\033[0m ", color, t), 0)
 
+	quit := make(chan bool)
 	n := &Node{
-		SimRouter:  sim.routerCreationMap[nodeType](logger, sk, true),
+		SimRouter:  sim.routerCreationMap[nodeType](logger, sk, true, quit),
 		l:          l,
 		ListenAddr: tcpaddr,
+		Type:       nodeType,
 	}
+	sim.nodeRunnerChannelsMutex.Lock()
+	sim.nodeRunnerChannels[t] = append(sim.nodeRunnerChannels[t], quit)
+	sim.nodeRunnerChannelsMutex.Unlock()
+
 	sim.nodesMutex.Lock()
 	sim.nodes[t] = n
 	sim.nodesMutex.Unlock()
@@ -111,6 +117,9 @@ func (sim *Simulator) CreateNode(t string, nodeType APINodeType) error {
 	} else {
 		sim.log.Printf("Created node %q\n", t)
 	}
+
+	sim.CalculateShortestPaths()
+
 	return nil
 }
 
@@ -130,6 +139,7 @@ func (sim *Simulator) StartNodeEventHandler(t string, nodeType APINodeType) {
 
 func (sim *Simulator) RemoveNode(node string) {
 	// Stop all the goroutines running for this node
+
 	sim.nodeRunnerChannelsMutex.Lock()
 	for _, quitChan := range sim.nodeRunnerChannels[node] {
 		quitChan <- true
@@ -145,6 +155,8 @@ func (sim *Simulator) RemoveNode(node string) {
 	sim.nodesMutex.Unlock()
 
 	phony.Block(sim.State, func() { sim.State._removeNode(node) })
+
+	sim.CalculateShortestPaths()
 }
 
 func (sim *Simulator) ConfigureFilterDefaults(node string, rates adversary.DropRates) {
@@ -165,13 +177,20 @@ func (sim *Simulator) ConfigureFilterPeer(node string, peer string, rates advers
 	}
 }
 
-func createDefaultRouter(log *log.Logger, sk ed25519.PrivateKey, debug bool) SimRouter {
+func createDefaultRouter(log *log.Logger, sk ed25519.PrivateKey, debug bool, quit <-chan bool) SimRouter {
 	rtr := &DefaultRouter{
-		router.NewRouter(log, sk, debug),
+		rtr: router.NewRouter(log, sk, debug),
 	}
+
+	go rtr.OverlayReadHandler(quit)
+
 	return rtr
 }
 
-func createAdversaryRouter(log *log.Logger, sk ed25519.PrivateKey, debug bool) SimRouter {
-	return adversary.NewAdversaryRouter(log, sk, debug)
+func createAdversaryRouter(log *log.Logger, sk ed25519.PrivateKey, debug bool, quit <-chan bool) SimRouter {
+	rtr := adversary.NewAdversaryRouter(log, sk, debug)
+
+	go rtr.OverlayReadHandler(quit)
+
+	return rtr
 }

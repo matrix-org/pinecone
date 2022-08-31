@@ -47,14 +47,15 @@ type Sessions struct {
 }
 
 type SessionProtocol struct {
-	s        *Sessions
-	proto    string
-	streams  chan net.Conn
-	sessions sync.Map // types.PublicKey -> *activeSession
+	s         *Sessions
+	proto     string
+	streams   chan net.Conn
+	sessions  sync.Map // types.PublicKey -> *activeSession
+	closeOnce sync.Once
 }
 
 type activeSession struct {
-	quic.Session
+	quic.Connection
 	sync.RWMutex
 }
 
@@ -89,7 +90,7 @@ func NewSessions(log types.Logger, r *router.Router, protos []string) *Sessions 
 	var err error
 	s.quicListener, err = quic.Listen(r, s.tlsServerCfg, s.quicConfig)
 	if err != nil {
-		panic(fmt.Errorf("utp.NewSocketFromPacketConnNoClose: %w", err))
+		panic(fmt.Errorf("quic.NewSocketFromPacketConnNoClose: %w", err))
 	}
 
 	go s.listener()

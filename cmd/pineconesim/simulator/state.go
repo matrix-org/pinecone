@@ -27,6 +27,24 @@ type RootAnnouncement struct {
 	Time     uint64
 }
 
+type PeerBandwidthUsage struct {
+	Protocol struct {
+		Rx uint64
+		Tx uint64
+	}
+	Overlay struct {
+		Rx uint64
+		Tx uint64
+	}
+}
+
+type BandwidthSnapshot struct {
+	ReceiveTime uint64
+	Peers       map[string]PeerBandwidthUsage
+}
+
+type BandwidthReports []BandwidthSnapshot
+
 type NodeState struct {
 	PeerID           string
 	NodeType         APINodeType
@@ -38,7 +56,12 @@ type NodeState struct {
 	AscendingPathID  string
 	DescendingPeer   string
 	DescendingPathID string
+	SnakeEntries     map[string]string
+	BandwidthReports BandwidthReports
+	NextReportIndex  uint
 }
+
+const MaxBandwidthReports = 10
 
 func NewNodeState(peerID string, nodeType APINodeType) *NodeState {
 	node := &NodeState{
@@ -52,6 +75,9 @@ func NewNodeState(peerID string, nodeType APINodeType) *NodeState {
 		AscendingPathID:  "",
 		DescendingPeer:   "",
 		DescendingPathID: "",
+		SnakeEntries:     make(map[string]string),
+		BandwidthReports: make(BandwidthReports, MaxBandwidthReports),
+		NextReportIndex:  0,
 	}
 	return node
 }
@@ -236,4 +262,36 @@ func (s *StateAccessor) _updateTreeRootAnnouncement(node string, root string, se
 			Time:     time,
 			Coords:   coords})
 	}
+}
+
+func (s *StateAccessor) _addSnakeEntry(node string, entryID string, peerID string) {
+	if _, ok := s._state.Nodes[node]; ok {
+		s._state.Nodes[node].SnakeEntries[entryID] = peerID
+	}
+	s._publish(SnakeEntryAdded{Node: node, EntryID: entryID, PeerID: peerID})
+}
+
+func (s *StateAccessor) _removeSnakeEntry(node string, entryID string) {
+	if _, ok := s._state.Nodes[node]; ok {
+		delete(s._state.Nodes[node].SnakeEntries, entryID)
+	}
+	s._publish(SnakeEntryRemoved{Node: node, EntryID: entryID})
+}
+
+func (s *StateAccessor) _updatePeerBandwidthUsage(node string, captureTime uint64, peers map[string]PeerBandwidthUsage) {
+	bandwidthSnapshot := BandwidthSnapshot{
+		ReceiveTime: captureTime,
+		Peers:       peers,
+	}
+
+	if node, ok := s._state.Nodes[node]; ok {
+		node.BandwidthReports[node.NextReportIndex] = bandwidthSnapshot
+		nextReportIndex := uint(0)
+		if node.NextReportIndex+1 < MaxBandwidthReports {
+			nextReportIndex = node.NextReportIndex + 1
+		}
+		node.NextReportIndex = nextReportIndex
+	}
+
+	s._publish(BandwidthReport{Node: node, Bandwidth: bandwidthSnapshot})
 }

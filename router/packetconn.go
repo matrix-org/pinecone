@@ -20,6 +20,7 @@ import (
 
 	"github.com/Arceliar/phony"
 	"github.com/matrix-org/pinecone/types"
+	"go.uber.org/atomic"
 )
 
 // newLocalPeer returns a new local peer. It should only be called once when
@@ -34,7 +35,8 @@ func (r *Router) newLocalPeer() *peer {
 		zone:     "local",
 		peertype: 0,
 		public:   r.public,
-		traffic:  newFairFIFOQueue(trafficBuffer),
+		started:  *atomic.NewBool(true),
+		traffic:  newFairFIFOQueue(trafficBuffer, r.log),
 	}
 	return peer
 }
@@ -46,14 +48,18 @@ func (r *Router) newLocalPeer() *peer {
 // was delivered using tree routing).
 func (r *Router) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
 	var frame *types.Frame
+	readDeadline := r._readDeadline.Load()
 	select {
 	case <-r.local.context.Done():
 		r.local.stop(nil)
+		return
+	case <-time.After(time.Until(readDeadline)):
 		return
 	case frame = <-r.local.traffic.pop():
 		// A protocol packet is ready to send.
 		r.local.traffic.ack()
 	}
+
 	switch frame.Type {
 	case types.TypeTreeRouted:
 		addr = frame.Source
@@ -85,23 +91,27 @@ func (r *Router) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 
 	switch ga := addr.(type) {
 	case types.Coordinates:
+		frame := getFrame()
+		frame.Type = types.TypeTreeRouted
+		frame.Destination = ga
+		frame.Source = r.state.coords()
+		frame.Payload = append(frame.Payload[:0], p...)
 		phony.Block(r.state, func() {
-			frame := getFrame()
-			frame.Type = types.TypeTreeRouted
-			frame.Destination = append(frame.Destination[:0], ga...)
-			frame.Source = append(frame.Source[:0], r.state.coords()...)
-			frame.Payload = append(frame.Payload[:0], p...)
 			_ = r.state._forward(r.local, frame)
 		})
 		return len(p), nil
 
 	case types.PublicKey:
+		frame := getFrame()
+		frame.Type = types.TypeVirtualSnakeRouted
+		frame.DestinationKey = ga
+		frame.SourceKey = r.public
+		frame.Payload = append(frame.Payload[:0], p...)
+		frame.Watermark = types.VirtualSnakeWatermark{
+			PublicKey: types.FullMask,
+			Sequence:  0,
+		}
 		phony.Block(r.state, func() {
-			frame := getFrame()
-			frame.Type = types.TypeVirtualSnakeRouted
-			frame.DestinationKey = ga
-			frame.SourceKey = r.public
-			frame.Payload = append(frame.Payload[:0], p...)
 			_ = r.state._forward(r.local, frame)
 		})
 		return len(p), nil
@@ -126,8 +136,8 @@ func (r *Router) SetDeadline(t time.Time) error {
 	return nil
 }
 
-// SetReadDeadline is not implemented.
 func (r *Router) SetReadDeadline(t time.Time) error {
+	r._readDeadline.Store(t)
 	return nil
 }
 

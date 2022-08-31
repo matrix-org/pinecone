@@ -18,14 +18,14 @@ import (
 	"github.com/RyanCarrier/dijkstra"
 )
 
-func (sim *Simulator) CalculateShortestPaths(nodes map[string]struct{}, wires map[string]map[string]bool) {
+func (sim *Simulator) CalculateShortestPaths() {
 	sim.log.Println("Building graph")
 	sim.graph = dijkstra.NewGraph()
 	sim.maps = make(map[string]int)
-	for n := range nodes {
+	for n := range sim.nodes {
 		sim.maps[n] = sim.graph.AddMappedVertex(n)
 	}
-	for a, aa := range wires {
+	for a, aa := range sim.wires {
 		for b := range aa {
 			if err := sim.graph.AddMappedArc(a, b, 1); err != nil {
 				panic(err)

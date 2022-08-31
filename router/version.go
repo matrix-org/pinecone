@@ -15,10 +15,12 @@
 package router
 
 const (
-	capabilityLengthenedRootInterval = iota + 1
+	capabilityLengthenedRootInterval = 1 << iota
 	capabilityCryptographicSetups
-	capabilitySetupACKs
+	capabilitySetupACKs // nolint:deadcode,varcheck
+	capabilityDedupedCoordinateInfo
+	capabilitySoftState
 )
 
 const ourVersion uint8 = 1
-const ourCapabilities uint32 = capabilityLengthenedRootInterval | capabilityCryptographicSetups | capabilitySetupACKs
+const ourCapabilities uint32 = capabilityLengthenedRootInterval | capabilityCryptographicSetups | capabilityDedupedCoordinateInfo | capabilitySoftState

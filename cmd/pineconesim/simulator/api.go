@@ -41,6 +41,11 @@ const (
 	SimSnakeAscUpdated
 	SimSnakeDescUpdated
 	SimTreeRootAnnUpdated
+	SimSnakeEntryAdded
+	SimSnakeEntryRemoved
+	SimPingStateUpdated
+	SimNetworkStatsUpdated
+	SimBandwidthReport
 )
 
 const (
@@ -55,6 +60,8 @@ const (
 	SimRemovePeer
 	SimConfigureAdversaryDefaults
 	SimConfigureAdversaryPeer
+	SimStartPings
+	SimStopPings
 )
 
 const (
@@ -64,15 +71,17 @@ const (
 )
 
 type InitialNodeState struct {
-	PublicKey     string
-	NodeType      APINodeType
-	RootState     RootState
-	Peers         []PeerInfo
-	TreeParent    string
-	SnakeAsc      string
-	SnakeAscPath  string
-	SnakeDesc     string
-	SnakeDescPath string
+	PublicKey        string
+	NodeType         APINodeType
+	RootState        RootState
+	Peers            []PeerInfo
+	TreeParent       string
+	SnakeAsc         string
+	SnakeAscPath     string
+	SnakeDesc        string
+	SnakeDescPath    string
+	SnakeEntries     []SnakeRouteEntry
+	BandwidthReports []BandwidthSnapshot
 }
 
 type RootState struct {
@@ -87,15 +96,21 @@ type PeerInfo struct {
 	Port int
 }
 
+type SnakeRouteEntry struct {
+	EntryID string
+	PeerID  string
+}
+
 type SimEventMsg struct {
 	UpdateID APIUpdateID
 	Event    SimEvent
 }
 
 type InitialStateMsg struct {
-	MsgID APIEventMessageID
-	Nodes map[string]InitialNodeState
-	End   bool
+	MsgID               APIEventMessageID
+	Nodes               map[string]InitialNodeState
+	End                 bool
+	BWReportingInterval int
 }
 
 type StateUpdateMsg struct {

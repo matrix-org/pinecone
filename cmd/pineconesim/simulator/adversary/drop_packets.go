@@ -88,10 +88,6 @@ func defaultFrameCount() PeerFrameCount {
 	frameCount[types.TypeKeepalive] = atomic.NewUint64(0)
 	frameCount[types.TypeTreeAnnouncement] = atomic.NewUint64(0)
 	frameCount[types.TypeVirtualSnakeBootstrap] = atomic.NewUint64(0)
-	frameCount[types.TypeVirtualSnakeBootstrapACK] = atomic.NewUint64(0)
-	frameCount[types.TypeVirtualSnakeSetup] = atomic.NewUint64(0)
-	frameCount[types.TypeVirtualSnakeSetupACK] = atomic.NewUint64(0)
-	frameCount[types.TypeVirtualSnakeTeardown] = atomic.NewUint64(0)
 	frameCount[types.TypeTreeRouted] = atomic.NewUint64(0)
 	frameCount[types.TypeVirtualSnakeRouted] = atomic.NewUint64(0)
 
@@ -136,7 +132,11 @@ func (a *AdversaryRouter) Connect(conn net.Conn, options ...router.ConnectionOpt
 }
 
 func (a *AdversaryRouter) Ping(ctx context.Context, addr net.Addr) (uint16, time.Duration, error) {
-	return a.rtr.Ping(ctx, addr)
+	return 0, 0, nil
+}
+
+func (a *AdversaryRouter) OverlayReadHandler(quit <-chan bool) {
+	<-quit
 }
 
 func (a *AdversaryRouter) Coords() types.Coordinates {

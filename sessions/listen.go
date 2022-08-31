@@ -25,13 +25,13 @@ import (
 
 func (q *Sessions) listener() {
 	for {
-		session, err := q.quicListener.Accept(q.context)
+		con, err := q.quicListener.Accept(q.context)
 		if err != nil {
 			return
 		}
 
-		key := session.RemoteAddr().(types.PublicKey)
-		tls := session.ConnectionState().TLS
+		key := con.RemoteAddr().(types.PublicKey)
+		tls := con.ConnectionState().TLS
 		if c := len(tls.PeerCertificates); c != 1 {
 			continue
 		}
@@ -44,13 +44,13 @@ func (q *Sessions) listener() {
 			continue
 		}
 
-		if proto := q.Protocol(session.ConnectionState().TLS.NegotiatedProtocol); proto != nil {
+		if proto := q.Protocol(con.ConnectionState().TLS.NegotiatedProtocol); proto != nil {
 			entry, ok := proto.getSession(key)
 			entry.Lock()
 			if ok {
-				_ = session.CloseWithError(0, "session replaced")
+				_ = con.CloseWithError(0, "connection replaced")
 			}
-			entry.Session = session
+			entry.Connection = con
 			entry.Unlock()
 			go proto.sessionlistener(entry)
 		}
@@ -79,7 +79,7 @@ func (s *SessionProtocol) sessionlistener(session *activeSession) {
 	}
 }
 
-// Accept blocks until a new session request is received. The
+// Accept blocks until a new connection request is received. The
 // connection returned by this function will be TLS-encrypted.
 func (s *SessionProtocol) Accept() (net.Conn, error) {
 	stream := <-s.streams
@@ -94,5 +94,10 @@ func (s *SessionProtocol) Addr() net.Addr {
 }
 
 func (s *SessionProtocol) Close() error {
-	return fmt.Errorf("not implemented")
+	var err error = nil
+	s.closeOnce.Do(func() {
+		close(s.streams)
+		err = s.s.quicListener.Close()
+	})
+	return err
 }

@@ -7,7 +7,7 @@ import (
 )
 
 func TestLimitedFIFO(t *testing.T) {
-	q := newFIFOQueue(5)
+	q := newFIFOQueue(5, nil)
 
 	// the actual allocated queue size will be 1 more than the
 	// supplied, so that when we push an entry and assign the

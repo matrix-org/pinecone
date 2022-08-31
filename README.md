@@ -1,3 +1,7 @@
+[![License](https://img.shields.io/badge/License-Apache%202.0-yellowgreen.svg?style=flat-square)](https://opensource.org/licenses/Apache-2.0)
+[![#p2p](https://img.shields.io/badge/matrix-%23p2p-blue?style=flat-square)](https://matrix.to/#/#p2p:matrix.org)
+[![Docs](https://img.shields.io/badge/docs-main-blue.svg?style=flat-square)](https://matrix-org.github.io/pinecone/)
+
 # Pinecone
 
 Pinecone is an experimental overlay routing protocol suite which is the foundation of the current P2P Matrix demos. It is designed to provide end-to-end encrypted connectivity between devices at a global scale over any compatible medium (currently TCP, WebSockets, Bluetooth Low Energy etc), allowing multi-hop peer-to-peer connectivity between devices even in places where there is no Internet connectivity.
@@ -16,7 +20,7 @@ Go 1.14 or later.
 
 ### Is there any documentation?
 
-The best documentation today is the code itself, which is reasonably well commented. There is also some documentation on how the protocol works in the [Pinecone Wiki on GitHub](https://github.com/matrix-org/pinecone/wiki). 
+The best documentation today is the code itself, which is reasonably well commented. There is also some documentation on how the protocol works [here](https://matrix-org.github.io/pinecone/).
 
 ### Does Pinecone perform well?
 

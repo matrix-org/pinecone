@@ -1,7 +1,7 @@
 import { graph } from "./modules/graph.js";
 import { APIEventMessageID, APICommandMessageID, APIUpdateID, APICommandID,
          ConnectToServer, SendToServer } from "./modules/server-api.js";
-import "./modules/ui.js";
+import { SetPingToolState, UpdateBandwidthGraphData } from "./modules/ui.js";
 
 function handleSimMessage(msg) {
     // console.log(msg.data);
@@ -27,11 +27,27 @@ function handleSimMessage(msg) {
             if (value.TreeParent) {
                 graph.setTreeParent(key, value.TreeParent, "");
             }
+
+            if (value.SnakeEntries) {
+                for (let i = 0; i < value.SnakeEntries.length; i++) {
+                    graph.addSnakeEntry(key, value.SnakeEntries[i].EntryID, value.SnakeEntries[i].PeerID);
+                }
+            }
+
+            if (value.BandwidthReports) {
+                for (let i = 0; i < value.BandwidthReports.length; i++) {
+                    graph.addBandwidthReport(key, value.BandwidthReports[i]);
+                }
+            }
         }
 
         if (msg.data.End === true) {
-            console.log("Finished receiving initial state from server. Listening for further updates...");
+            let bwIntervalSeconds = msg.data.BWReportingInterval;
+            UpdateBandwidthGraphData(bwIntervalSeconds);
+            setInterval(function() { UpdateBandwidthGraphData(bwIntervalSeconds); }, bwIntervalSeconds * 1000);
             graph.startGraph();
+
+            console.log("Finished receiving initial state from server. Listening for further updates...");
         }
         break;
     case APIEventMessageID.StateUpdate:
@@ -60,12 +76,42 @@ function handleSimMessage(msg) {
             break;
         case APIUpdateID.TreeRootAnnUpdated:
             graph.updateRootAnnouncement(event.Node, event.Root, event.Sequence, event.Time, event.Coords);
+            break;
+        case APIUpdateID.SnakeEntryAdded:
+            graph.addSnakeEntry(event.Node, event.EntryID, event.PeerID);
+            break;
+        case APIUpdateID.SnakeEntryRemoved:
+            graph.removeSnakeEntry(event.Node, event.EntryID);
+            break;
+        case APIUpdateID.PingStateUpdated:
+            SetPingToolState(event.Enabled, event.Active);
+            break;
+        case APIUpdateID.NetworkStatsUpdated:
+            graph.updateNetworkStats(event.TreePathConvergence, event.TreeAverageStretch, event.SnakePathConvergence, event.SnakeAverageStretch);
+            break;
+        case APIUpdateID.BandwidthReport:
+            graph.addBandwidthReport(event.Node, event.Bandwidth);
+            break;
         }
         break;
     default:
-        console.log("Unhandled message ID");
+        console.log("Unhandled message ID: " + msg.data.MsgID);
         break;
     }
 };
 
 ConnectToServer({url: window.origin.replace("http", "ws") + '/ws'}, handleSimMessage);
+
+function selectStartingNetwork() {
+    let selectionTabs = document.getElementsByClassName("netselect");
+    var hash = window.location.hash.substr(1);
+    if (hash != "") {
+        for (let i = 0; i < selectionTabs.length; i++) {
+            if (selectionTabs[i].id.includes(hash)) {
+                selectionTabs[i].click();
+                break;
+            }
+        }
+    }
+}
+selectStartingNetwork();
