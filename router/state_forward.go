@@ -21,6 +21,13 @@ import (
 	"github.com/matrix-org/pinecone/types"
 )
 
+type FloodType int
+
+const (
+	ClassicFlood FloodType = iota
+	TreeFlood
+)
+
 // _nextHopsFor returns the next-hop for the given frame. It will examine the packet
 // type and use the correct routing algorithm to determine the next-hop. It is possible
 // for this function to return `nil` if there is no suitable candidate.
@@ -92,6 +99,14 @@ func (s *state) _forward(p *peer, f *types.Frame) error {
 			return nil
 		}
 
+	case types.TypeWakeupBroadcast:
+		// Broadcasts are a special case. The _handleBroadcast function will handle
+		// forwarding broadcasts as appropriate.
+		if err := s._handleBroadcast(p, f); err != nil {
+			return fmt.Errorf("s._handleBroadcast (port %d): %w", p.port, err)
+		}
+		return nil
+
 	case types.TypeVirtualSnakeRouted, types.TypeTreeRouted:
 		// Traffic type packets are forwarded normally by falling through unless hop
 		// limiting is enabled.
@@ -125,4 +140,40 @@ func (s *state) _forward(p *peer, f *types.Frame) error {
 	}
 
 	return nil
+}
+
+// _flood sends a frame to all of our connected peers. This is used for
+// flooding the wakeup broadcast to all of our direct peers.
+// Classic flooding works by sending frames to all other peers.
+// Tree flooding works by only sending frames to peers on the same branch.
+func (s *state) _flood(from *peer, f *types.Frame, floodType FloodType) {
+	for _, p := range s._peers {
+		if p == nil || p.proto == nil || !p.started.Load() {
+			continue
+		}
+
+		if p == from || p == s.r.local {
+			continue
+		}
+
+		if floodType == TreeFlood {
+			if coords, err := p._coords(); err == nil {
+				if coords.DistanceTo(s._coords()) != 1 {
+					// This peer is not directly on the same branch.
+					continue
+				}
+			} else {
+				continue
+			}
+		}
+
+		if s._filterPacket != nil && s._filterPacket(p.public, f) {
+			s.r.log.Printf("Packet of type %s destined for port %d [%s] was dropped due to filter rules", f.Type.String(), p.port, p.public.String()[:8])
+			continue
+		}
+
+		frame := getFrame()
+		f.CopyInto(frame)
+		p.send(frame)
+	}
 }

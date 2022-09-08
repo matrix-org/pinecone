@@ -77,6 +77,13 @@ type SnakeEntryRemoved struct {
 // Tag SnakeEntryRemoved as an Event
 func (e SnakeEntryRemoved) isEvent() {}
 
+type BroadcastReceived struct {
+	PeerID string
+}
+
+// Tag BroadcastReceived as an Event
+func (e BroadcastReceived) isEvent() {}
+
 type PeerBandwidthUsage struct {
 	Protocol struct {
 		Rx uint64

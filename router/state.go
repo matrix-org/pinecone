@@ -38,18 +38,20 @@ const BWReportingInterval = time.Minute
 type state struct {
 	phony.Inbox
 	r               *Router
-	_peers          []*peer            // All switch ports, connected and disconnected
-	_descending     *virtualSnakeEntry // Next descending node in keyspace
-	_parent         *peer              // Our chosen parent in the tree
-	_announcements  announcementTable  // Announcements received from our peers
-	_table          virtualSnakeTable  // Virtual snake DHT entries
-	_ordering       uint64             // Used to order incoming tree announcements
-	_sequence       uint64             // Used to sequence our root tree announcements
-	_treetimer      *time.Timer        // Tree maintenance timer
-	_snaketimer     *time.Timer        // Virtual snake maintenance timer
-	_lastbootstrap  time.Time          // When did we last bootstrap?
-	_waiting        bool               // Is the tree waiting to reparent?
-	_filterPacket   FilterFn           // Function called when forwarding packets
+	_peers          []*peer                            // All switch ports, connected and disconnected
+	_descending     *virtualSnakeEntry                 // Next descending node in keyspace
+	_parent         *peer                              // Our chosen parent in the tree
+	_announcements  announcementTable                  // Announcements received from our peers
+	_table          virtualSnakeTable                  // Virtual snake DHT entries
+	_ordering       uint64                             // Used to order incoming tree announcements
+	_sequence       uint64                             // Used to sequence our root tree announcements
+	_treetimer      *time.Timer                        // Tree maintenance timer
+	_snaketimer     *time.Timer                        // Virtual snake maintenance timer
+	_broadcastTimer *time.Timer                        // Wakeup Broadcast maintenance timer
+	_seenBroadcasts map[types.PublicKey]BroadcastEntry // Cache of previously seen wakeup broadcasts
+	_lastbootstrap  time.Time                          // When did we last bootstrap?
+	_waiting        bool                               // Is the tree waiting to reparent?
+	_filterPacket   FilterFn                           // Function called when forwarding packets
 	_bandwidthTimer *time.Timer
 }
 
@@ -63,6 +65,7 @@ func (s *state) _start() {
 
 	s._announcements = make(announcementTable, portCount)
 	s._table = virtualSnakeTable{}
+	s._seenBroadcasts = make(map[types.PublicKey]BroadcastEntry)
 
 	if s._treetimer == nil {
 		s._treetimer = time.AfterFunc(announcementInterval, func() {
@@ -73,6 +76,12 @@ func (s *state) _start() {
 	if s._snaketimer == nil {
 		s._snaketimer = time.AfterFunc(time.Second, func() {
 			s.Act(nil, s._maintainSnake)
+		})
+	}
+
+	if s._broadcastTimer == nil {
+		s._broadcastTimer = time.AfterFunc(WakeupBroadcastInterval, func() {
+			s.Act(nil, s._maintainBroadcasts)
 		})
 	}
 
@@ -110,6 +119,18 @@ func (s *state) _maintainSnakeIn(d time.Duration) {
 		}
 	}
 	s._snaketimer.Reset(d)
+}
+
+// _sendBroadcastIn resets the wakeup broadcast maintenance timer to the
+// specified duration.
+func (s *state) _sendBroadcastIn(d time.Duration) {
+	if !s._broadcastTimer.Stop() {
+		select {
+		case <-s._broadcastTimer.C:
+		default:
+		}
+	}
+	s._broadcastTimer.Reset(d)
 }
 
 // _reportBandwidthIn resets the bandwidth reporting timer to the

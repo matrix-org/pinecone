@@ -105,7 +105,7 @@ func (p *peer) ClearBandwidthCounters() {
 func (p *peer) send(f *types.Frame) bool {
 	switch f.Type {
 	// Protocol messages
-	case types.TypeTreeAnnouncement, types.TypeKeepalive:
+	case types.TypeTreeAnnouncement, types.TypeWakeupBroadcast, types.TypeKeepalive:
 		fallthrough
 	case types.TypeVirtualSnakeBootstrap:
 		if p.proto == nil {
@@ -267,7 +267,9 @@ func (p *peer) _write() {
 	}
 
 	// Write the frame to the peering.
-	if frame.Type == types.TypeTreeRouted || frame.Type == types.TypeVirtualSnakeRouted {
+	if frame.Type == types.TypeTreeRouted ||
+		frame.Type == types.TypeVirtualSnakeRouted ||
+		frame.Type == types.TypeWakeupBroadcast {
 		p.bytesTxTraffic.Add(uint64(n))
 	} else {
 		p.bytesTxProto.Add(uint64(n))
@@ -331,7 +333,9 @@ func (p *peer) _read() {
 			p.stop(fmt.Errorf("io.ReadFull: %w", err))
 			return
 		}
-		if types.FrameType(b[5]) == types.TypeTreeRouted || types.FrameType(b[5]) == types.TypeVirtualSnakeRouted {
+		if types.FrameType(b[5]) == types.TypeTreeRouted ||
+			types.FrameType(b[5]) == types.TypeVirtualSnakeRouted ||
+			types.FrameType(b[5]) == types.TypeWakeupBroadcast {
 			isProtoTraffic = false
 		}
 

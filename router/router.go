@@ -95,6 +95,18 @@ func (r *Router) InjectPacketFilter(fn FilterFn) {
 	})
 }
 
+func (r *Router) EnableWakeupBroadcasts() {
+	r.state.Act(r.state, func() {
+		r.state._sendBroadcastIn(0)
+	})
+}
+
+func (r *Router) DisableWakeupBroadcasts() {
+	r.state.Act(r.state, func() {
+		r.state._broadcastTimer.Stop()
+	})
+}
+
 // _publish notifies each subscriber of a new event.
 func (r *Router) _publish(event events.Event) {
 	for ch, inbox := range r._subscribers {
