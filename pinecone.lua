@@ -21,16 +21,14 @@ local frame_types = {
     [2] = "Tree Routed",
     [3] = "Bootstrap",
     [4] = "SNEK Routed",
-    [5] = "SNEK Ping",
-    [6] = "SNEK Pong",
-    [7] = "Tree Ping",
-    [8] = "Tree Pong"
+    [5] = "Broadcast"
 }
 
 header_size = 10
 f_version_idx = 4
 f_type_idx = 5
 f_extra_idx = 6
+f_hop_limit_idx = 7
 f_len_idx = 8
 f_payload_idx = header_size
 
@@ -39,6 +37,7 @@ frame_version = ProtoField.uint8("pinecone.version", "Version", base.DEC,
                                  frame_versions)
 frame_type = ProtoField.uint8("pinecone.type", "Type", base.DEC, frame_types)
 extra_bytes = ProtoField.bytes("pinecone.extra", "Extra Bytes")
+hop_limit = ProtoField.bytes("pinecone.hoplimit", "Hop Limit")
 frame_len = ProtoField.uint16("pinecone.len", "Frame Length")
 
 destination_len = ProtoField.uint16("pinecone.dstlen", "Destination Length")
@@ -53,7 +52,6 @@ source = ProtoField.string("pinecone.src", "Source Coords")
 source_key = ProtoField.bytes("pinecone.srckey", "Source Key")
 source_sig = ProtoField.bytes("pinecone.srcsig", "Source Signature")
 
-hop_count = ProtoField.uint16("pinecone.hops", "Hop Count")
 payload = ProtoField.bytes("pinecone.payload", "Payload", base.SPACE)
 
 rootkey = ProtoField.bytes("pinecone.rootkey", "Root public key")
@@ -65,17 +63,19 @@ sigsig = ProtoField.bytes("pinecone.sigsig", "Signature")
 
 bootstrap_seq = ProtoField.uint32("pinecone.bootstrapseq",
                                   "Bootstrap sequence number")
+broadcast_seq = ProtoField.uint32("pinecone.broadcastseq",
+                                  "Broadcast sequence number")
 
 watermark_key = ProtoField.bytes("pinecone.wmarkkey", "Watermark public key")
 watermark_seq = ProtoField.uint32("pinecone.wmarkseq",
                                   "Watermark sequence number")
 
 pinecone_protocol.fields = {
-    magic_bytes, frame_version, frame_type, extra_bytes, frame_len,
+    magic_bytes, frame_version, frame_type, extra_bytes, hop_limit, frame_len,
     destination_len, source_len, payload_len, destination, source,
     destination_key, source_key, destination_sig, source_sig, payload, rootkey,
-    rootseq, sigkey, sigport, sigsig, roottgt, bootstrap_seq, watermark_key,
-    watermark_seq
+    rootseq, sigkey, sigport, sigsig, roottgt, bootstrap_seq, broadcast_seq,
+    watermark_key, watermark_seq
 }
 
 function short_pk(key)
@@ -117,7 +117,8 @@ local function do_pinecone_dissect(buffer, pinfo, tree)
     local subtree = tree:add(pinecone_protocol, buffer(), "Pinecone Protocol")
     subtree:add_le(frame_version, buffer(f_version_idx, 1))
     subtree:add_le(frame_type, buffer(f_type_idx, 1))
-    subtree:add_le(extra_bytes, buffer(f_extra_idx, 2))
+    subtree:add_le(extra_bytes, buffer(f_extra_idx, 1))
+    subtree:add_le(hop_limit, buffer(f_hop_limit_idx, 1))
     subtree:add_le(frame_len, buffer(f_len_idx, 2), buffer(f_len_idx, 2):uint())
 
     local ftype = buffer(5, 1):uint()
@@ -151,10 +152,8 @@ local function do_pinecone_dissect(buffer, pinfo, tree)
         -- Info column
         pinfo.cols.info:set(frame_types[3])
         pinfo.cols.info:append(" " .. short_pk(dstkey:bytes():raw()) .. " → ")
-    elseif (ftype == 4 or ftype == 5 or ftype == 6) then
+    elseif ftype == 4 then
         -- SNEK Routed
-        -- SNEK Ping
-        -- SNEK Pong
         local plen = buffer(f_payload_idx, 2):uint()
         subtree:add(payload_len, buffer(f_payload_idx, 2), plen)
         local dstkey = buffer(f_payload_idx + 2, 32)
@@ -186,11 +185,30 @@ local function do_pinecone_dissect(buffer, pinfo, tree)
         -- Info column
         pinfo.cols.info:append(" [" .. short_pk(srckey:string()) .. "] → [" ..
                                    short_pk(dstkey:string()) .. "]")
+    elseif ftype == 5 then
+        -- Broadcast
+        local plen = buffer(f_payload_idx, 2):uint()
+        local srckey = buffer(f_payload_idx + 2, 32)
+
+        local pload = buffer(f_payload_idx + 2 + 32, plen)
+        subtree:add(payload_len, buffer(f_payload_idx, 2), plen)
+        subtree:add(source_key, srckey)
+
+        local psubtree = subtree:add(subtree, pload, "Payload")
+        psubtree:set_text("Payload")
+        local seq, offset = varu64(pload(0):bytes())
+        psubtree:add(broadcast_seq, pload(0, offset), seq)
+        psubtree:add(rootkey, pload(offset, 32))
+        local root_seq, root_offset = varu64(pload(offset + 32):bytes())
+        psubtree:add(rootseq, pload(offset + 32, root_offset), root_seq)
+        psubtree:add(sigsig, pload(offset + 32 + root_offset, 64))
+
+        -- Info column
+        pinfo.cols.info:set(frame_types[5])
+        pinfo.cols.info:append(" " .. short_pk(srckey:bytes():raw()) .. " → ")
     else
         -- Tree Announcement
         -- Tree Routed
-        -- Tree Ping
-        -- Tree Pong
         local plen = buffer(f_payload_idx, 2):uint()
         subtree:add(payload_len, buffer(f_payload_idx, 2), plen)
 
@@ -239,7 +257,7 @@ local function do_pinecone_dissect(buffer, pinfo, tree)
                                        "]")
             pinfo.cols.info:append(" Coords=[" .. table.concat(ports, " ") ..
                                        "]")
-        elseif (ftype == 2 or ftype == 7 or ftype == 8) then
+        elseif (ftype == 2) then
             if plen > 0 and ftype == 2 then
                 -- Tree Routed
                 quic_dissector = Dissector.get("quic")
