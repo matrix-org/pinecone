@@ -19,6 +19,7 @@ import (
 	"reflect"
 
 	"github.com/Arceliar/phony"
+	"github.com/matrix-org/pinecone/types"
 )
 
 type RootAnnouncement struct {
@@ -45,39 +46,43 @@ type BandwidthSnapshot struct {
 
 type BandwidthReports []BandwidthSnapshot
 
+type ExpectedBroadcasts map[string]bool
+
 type NodeState struct {
-	PeerID           string
-	NodeType         APINodeType
-	Connections      map[int]string
-	Parent           string
-	Coords           []uint64
-	Announcement     RootAnnouncement
-	AscendingPeer    string
-	AscendingPathID  string
-	DescendingPeer   string
-	DescendingPathID string
-	SnakeEntries     map[string]string
-	BandwidthReports BandwidthReports
-	NextReportIndex  uint
+	PeerID             string
+	NodeType           APINodeType
+	Connections        map[int]string
+	Parent             string
+	Coords             []uint64
+	Announcement       RootAnnouncement
+	AscendingPeer      string
+	AscendingPathID    string
+	DescendingPeer     string
+	DescendingPathID   string
+	SnakeEntries       map[string]string
+	BandwidthReports   BandwidthReports
+	NextReportIndex    uint
+	ExpectedBroadcasts ExpectedBroadcasts
 }
 
 const MaxBandwidthReports = 10
 
 func NewNodeState(peerID string, nodeType APINodeType) *NodeState {
 	node := &NodeState{
-		PeerID:           peerID,
-		NodeType:         nodeType,
-		Connections:      make(map[int]string),
-		Parent:           "",
-		Announcement:     RootAnnouncement{},
-		Coords:           []uint64{},
-		AscendingPeer:    "",
-		AscendingPathID:  "",
-		DescendingPeer:   "",
-		DescendingPathID: "",
-		SnakeEntries:     make(map[string]string),
-		BandwidthReports: make(BandwidthReports, MaxBandwidthReports),
-		NextReportIndex:  0,
+		PeerID:             peerID,
+		NodeType:           nodeType,
+		Connections:        make(map[int]string),
+		Parent:             "",
+		Announcement:       RootAnnouncement{},
+		Coords:             []uint64{},
+		AscendingPeer:      "",
+		AscendingPathID:    "",
+		DescendingPeer:     "",
+		DescendingPathID:   "",
+		SnakeEntries:       make(map[string]string),
+		BandwidthReports:   make(BandwidthReports, MaxBandwidthReports),
+		NextReportIndex:    0,
+		ExpectedBroadcasts: make(ExpectedBroadcasts),
 	}
 	return node
 }
@@ -209,6 +214,7 @@ func (s *StateAccessor) _addPeerConnection(from string, to string, port int) {
 	if _, ok := s._state.Nodes[from]; ok {
 		s._state.Nodes[from].Connections[port] = to
 	}
+
 	s._publish(PeerAdded{Node: from, Peer: to, Port: uint64(port)})
 }
 
@@ -216,7 +222,26 @@ func (s *StateAccessor) _removePeerConnection(from string, to string, port int) 
 	if _, ok := s._state.Nodes[from]; ok {
 		delete(s._state.Nodes[from].Connections, port)
 	}
+
 	s._publish(PeerRemoved{Node: from, Peer: to})
+}
+
+func (s *StateAccessor) _updateExpectedBroadcasts(dists map[string]map[string]*Distance) {
+	for node := range s._state.Nodes {
+		if _, ok := s._state.Nodes[node]; ok {
+			s._state.Nodes[node].ExpectedBroadcasts = make(ExpectedBroadcasts)
+			if _, ok := dists[node]; ok {
+				for id := range dists[node] {
+					if id == node {
+						continue
+					}
+					if dists[node][id].Real <= types.NetworkHorizonDistance {
+						s._state.Nodes[node].ExpectedBroadcasts[id] = false
+					}
+				}
+			}
+		}
+	}
 }
 
 func (s *StateAccessor) _updateParent(node string, peerID string) {
@@ -276,6 +301,14 @@ func (s *StateAccessor) _removeSnakeEntry(node string, entryID string) {
 		delete(s._state.Nodes[node].SnakeEntries, entryID)
 	}
 	s._publish(SnakeEntryRemoved{Node: node, EntryID: entryID})
+}
+
+func (s *StateAccessor) _updateBroadcastCache(node string, peerID string) {
+	if _, ok := s._state.Nodes[node]; ok {
+		if _, ok := s._state.Nodes[node].ExpectedBroadcasts[peerID]; ok {
+			s._state.Nodes[node].ExpectedBroadcasts[peerID] = true
+		}
+	}
 }
 
 func (s *StateAccessor) _updatePeerBandwidthUsage(node string, captureTime uint64, peers map[string]PeerBandwidthUsage) {

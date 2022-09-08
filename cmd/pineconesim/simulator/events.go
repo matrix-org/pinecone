@@ -163,6 +163,8 @@ func (h eventHandler) Run(quit <-chan bool, sim *Simulator) {
 				sim.handleSnakeEntryAdded(h.node, e.EntryID, e.PeerID)
 			case events.SnakeEntryRemoved:
 				sim.handleSnakeEntryRemoved(h.node, e.EntryID)
+			case events.BroadcastReceived:
+				sim.handleBroadcastReceived(h.node, e.PeerID)
 			case events.BandwidthReport:
 				sim.handleBandwidthReport(h.node, e.CaptureTime, e.Peers)
 			default:

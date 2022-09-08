@@ -118,8 +118,6 @@ func (sim *Simulator) CreateNode(t string, nodeType APINodeType) error {
 		sim.log.Printf("Created node %q\n", t)
 	}
 
-	sim.CalculateShortestPaths()
-
 	return nil
 }
 
@@ -155,8 +153,6 @@ func (sim *Simulator) RemoveNode(node string) {
 	sim.nodesMutex.Unlock()
 
 	phony.Block(sim.State, func() { sim.State._removeNode(node) })
-
-	sim.CalculateShortestPaths()
 }
 
 func (sim *Simulator) ConfigureFilterDefaults(node string, rates adversary.DropRates) {
@@ -183,6 +179,7 @@ func createDefaultRouter(log *log.Logger, sk ed25519.PrivateKey, debug bool, qui
 	}
 	rtr.EnableHopLimiting()
 
+	rtr.EnableWakeupBroadcasts()
 	go rtr.OverlayReadHandler(quit)
 
 	return rtr

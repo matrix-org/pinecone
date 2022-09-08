@@ -15,6 +15,7 @@
 package simulator
 
 import (
+	"math"
 	"strings"
 )
 
@@ -40,17 +41,6 @@ func (sim *Simulator) ReportDistance(a, b string, l int64, snek bool) {
 	} else {
 		sim.dists[a][b].ObservedTree = l
 	}
-
-	// TODO: why is this 0 compare here?
-	if sim.dists[a][b].Real == 0 {
-		na, _ := sim.graph.GetMapping(a)
-		nb, _ := sim.graph.GetMapping(b)
-		path, err := sim.graph.Shortest(na, nb)
-
-		if err == nil {
-			sim.dists[a][b].Real = path.Distance
-		}
-	}
 }
 
 func (sim *Simulator) UpdateRealDistances() {
@@ -69,11 +59,21 @@ func (sim *Simulator) UpdateRealDistances() {
 
 			a, _ := sim.graph.GetMapping(from)
 			b, _ := sim.graph.GetMapping(to)
-			path, err := sim.graph.Shortest(a, b)
+			if a != -1 && b != -1 {
+				path, err := sim.graph.Shortest(a, b)
 
-			if err == nil {
-				sim.dists[from][to].Real = path.Distance
+				if err == nil {
+					sim.dists[from][to].Real = path.Distance
+				} else {
+					sim.dists[from][to].Real = math.MaxInt64
+				}
 			}
 		}
 	}
+
+	sim.State.Act(nil, func() {
+		sim.distsMutex.Lock()
+		defer sim.distsMutex.Unlock()
+		sim.State._updateExpectedBroadcasts(sim.dists)
+	})
 }

@@ -140,8 +140,6 @@ func (sim *Simulator) StartPinging(ping_period time.Duration) {
 
 				tasks := make(chan pair, 2*(len(sim.nodes)*len(sim.nodes)))
 
-				sim.UpdateRealDistances()
-
 				for from, fromNode := range sim.nodes {
 					if fromNode.Type == DefaultNode {
 						for to, toNode := range sim.nodes {
@@ -412,6 +410,12 @@ func (sim *Simulator) handleSnakeEntryRemoved(node string, entryID string) {
 	}
 
 	sim.State.Act(nil, func() { sim.State._removeSnakeEntry(node, entryName) })
+}
+
+func (sim *Simulator) handleBroadcastReceived(node string, peerID string) {
+	if peerNode, err := sim.State.GetNodeName(peerID); err == nil {
+		sim.State.Act(nil, func() { sim.State._updateBroadcastCache(node, peerNode) })
+	}
 }
 
 func (sim *Simulator) handleBandwidthReport(node string, captureTime uint64, peers map[string]events.PeerBandwidthUsage) {

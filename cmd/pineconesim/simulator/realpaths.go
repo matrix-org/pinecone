@@ -18,7 +18,7 @@ import (
 	"github.com/RyanCarrier/dijkstra"
 )
 
-func (sim *Simulator) CalculateShortestPaths() {
+func (sim *Simulator) GenerateNetworkGraph() {
 	sim.log.Println("Building graph")
 	sim.graph = dijkstra.NewGraph()
 	sim.maps = make(map[string]int)

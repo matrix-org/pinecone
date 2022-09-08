@@ -313,6 +313,8 @@ func (c AddPeer) Run(log *log.Logger, sim *Simulator) {
 	if err := sim.ConnectNodes(c.Node, c.Peer); err != nil {
 		log.Printf("Failed connecting node %s to node %s: %s", c.Node, c.Peer, err)
 	}
+	sim.GenerateNetworkGraph()
+	sim.UpdateRealDistances()
 }
 
 func (c AddPeer) String() string {
@@ -330,6 +332,8 @@ func (c RemovePeer) Run(log *log.Logger, sim *Simulator) {
 	if err := sim.DisconnectNodes(c.Node, c.Peer); err != nil {
 		log.Printf("Failed disconnecting node %s and node %s: %s", c.Node, c.Peer, err)
 	}
+	sim.GenerateNetworkGraph()
+	sim.UpdateRealDistances()
 }
 
 func (c RemovePeer) String() string {

@@ -103,7 +103,8 @@ func main() {
 		}
 	}
 
-	sim.CalculateShortestPaths()
+	sim.GenerateNetworkGraph()
+	sim.UpdateRealDistances()
 
 	if chaos != nil && *chaos > 0 {
 		rand.Seed(time.Now().UnixNano())
