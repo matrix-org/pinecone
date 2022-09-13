@@ -63,7 +63,7 @@ func (r *EventSequenceRunner) Run(sim *Simulator) {
 	}
 }
 
-type RouterCreatorFn func(log *log.Logger, sk ed25519.PrivateKey, debug bool, quit <-chan bool) SimRouter
+type RouterCreatorFn func(log *log.Logger, sk ed25519.PrivateKey, quit <-chan bool) SimRouter
 
 type pair struct{ from, to string }
 

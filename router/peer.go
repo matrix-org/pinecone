@@ -117,6 +117,11 @@ func (p *peer) send(f *types.Frame) bool {
 
 	// Traffic messages
 	case types.TypeVirtualSnakeRouted, types.TypeTreeRouted:
+		if p.traffic == nil {
+			// The local peer doesn't have a traffic queue so we should check
+			// for nils to prevent panics.
+			return true
+		}
 		return p.traffic.push(f)
 	}
 

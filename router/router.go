@@ -53,9 +53,16 @@ type Router struct {
 	_subscribers  map[chan<- events.Event]*phony.Inbox
 }
 
-func NewRouter(logger types.Logger, sk ed25519.PrivateKey, debug bool) *Router {
+func NewRouter(logger types.Logger, sk ed25519.PrivateKey, opts ...RouterOption) *Router {
 	if logger == nil {
 		logger = log.New(ioutil.Discard, "", 0)
+	}
+	blackhole := false
+	for _, opt := range opts {
+		switch v := opt.(type) {
+		case RouterOptionBlackhole:
+			blackhole = bool(v)
+		}
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	_, insecure := os.LookupEnv("PINECONE_DISABLE_SIGNATURES")
@@ -78,7 +85,7 @@ func NewRouter(logger types.Logger, sk ed25519.PrivateKey, debug bool) *Router {
 		_filterPacket: nil,
 	}
 	// Create a new local peer and wire it into port 0.
-	r.local = r.newLocalPeer()
+	r.local = r.newLocalPeer(blackhole)
 	r.state._peers[0] = r.local
 	// Start the state actor.
 	r.state.Act(nil, r.state._start)
@@ -140,22 +147,6 @@ func (r *Router) PublicKey() types.PublicKey {
 func (r *Router) Addr() net.Addr {
 	return r.PublicKey()
 }
-
-type ConnectionOption interface {
-	isConnectionOption()
-}
-
-type ConnectionPublicKey types.PublicKey
-type ConnectionURI string
-type ConnectionZone string
-type ConnectionPeerType int
-type ConnectionKeepalives bool
-
-func (w ConnectionPublicKey) isConnectionOption()  {}
-func (w ConnectionURI) isConnectionOption()        {}
-func (w ConnectionZone) isConnectionOption()       {}
-func (w ConnectionPeerType) isConnectionOption()   {}
-func (w ConnectionKeepalives) isConnectionOption() {}
 
 // Connect takes a connection and attaches it to the switch as a peering. This
 // function takes one or more ConnectionOptions to configure the peer. If no

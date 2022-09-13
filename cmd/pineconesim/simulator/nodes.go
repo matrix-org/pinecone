@@ -66,7 +66,7 @@ func (sim *Simulator) CreateNode(t string, nodeType APINodeType) error {
 
 	quit := make(chan bool)
 	n := &Node{
-		SimRouter:  sim.routerCreationMap[nodeType](logger, sk, true, quit),
+		SimRouter:  sim.routerCreationMap[nodeType](logger, sk, quit),
 		l:          l,
 		ListenAddr: tcpaddr,
 		Type:       nodeType,
@@ -177,9 +177,9 @@ func (sim *Simulator) ConfigureFilterPeer(node string, peer string, rates advers
 	}
 }
 
-func createDefaultRouter(log *log.Logger, sk ed25519.PrivateKey, debug bool, quit <-chan bool) SimRouter {
+func createDefaultRouter(log *log.Logger, sk ed25519.PrivateKey, quit <-chan bool) SimRouter {
 	rtr := &DefaultRouter{
-		rtr: router.NewRouter(log, sk, debug),
+		rtr: router.NewRouter(log, sk),
 	}
 
 	go rtr.OverlayReadHandler(quit)
@@ -187,8 +187,8 @@ func createDefaultRouter(log *log.Logger, sk ed25519.PrivateKey, debug bool, qui
 	return rtr
 }
 
-func createAdversaryRouter(log *log.Logger, sk ed25519.PrivateKey, debug bool, quit <-chan bool) SimRouter {
-	rtr := adversary.NewAdversaryRouter(log, sk, debug)
+func createAdversaryRouter(log *log.Logger, sk ed25519.PrivateKey, quit <-chan bool) SimRouter {
+	rtr := adversary.NewAdversaryRouter(log, sk)
 
 	go rtr.OverlayReadHandler(quit)
 

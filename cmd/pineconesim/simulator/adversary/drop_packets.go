@@ -106,8 +106,8 @@ type AdversaryRouter struct {
 	packetsDropped PacketsDropped
 }
 
-func NewAdversaryRouter(log *log.Logger, sk ed25519.PrivateKey, debug bool) *AdversaryRouter {
-	rtr := router.NewRouter(log, sk, debug)
+func NewAdversaryRouter(log *log.Logger, sk ed25519.PrivateKey) *AdversaryRouter {
+	rtr := router.NewRouter(log, sk)
 	adversary := &AdversaryRouter{
 		rtr,
 		NewDropSettings(),

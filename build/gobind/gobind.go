@@ -130,7 +130,7 @@ func (m *Pinecone) Start() {
 	m.logger = log.New(BindLogger{}, "Pinecone: ", 0)
 	m.logger.Println("Public key:", hex.EncodeToString(pk))
 
-	m.PineconeRouter = pineconeRouter.NewRouter(m.logger, sk, false)
+	m.PineconeRouter = pineconeRouter.NewRouter(m.logger, sk)
 	m.PineconeMulticast = pineconeMulticast.NewMulticast(m.logger, m.PineconeRouter)
 	m.PineconeManager = pineconeConnections.NewConnectionManager(m.PineconeRouter, nil)
 }

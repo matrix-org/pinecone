@@ -54,7 +54,7 @@ func main() {
 
 	listener := net.ListenConfig{}
 
-	pineconeRouter := router.NewRouter(logger, sk, false)
+	pineconeRouter := router.NewRouter(logger, sk, router.RouterOptionBlackhole(true))
 	pineconeMulticast := multicast.NewMulticast(logger, pineconeRouter)
 	pineconeMulticast.Start()
 	pineconeManager := connections.NewConnectionManager(pineconeRouter, nil)
