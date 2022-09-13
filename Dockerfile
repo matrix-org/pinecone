@@ -20,4 +20,4 @@ COPY --from=base /build/bin/* /usr/bin/
 EXPOSE 65432/tcp
 EXPOSE 65433/tcp
 
-ENTRYPOINT ["/usr/bin/pinecone", "-listenws=:65433", "-listen=:65432"]
+ENTRYPOINT ["/usr/bin/pinecone", "-listenws=:65433", "-listen=:65432", "-manhole"]
