@@ -111,7 +111,7 @@ func (p *peer) send(f *types.Frame) bool {
 		if p.proto == nil {
 			// The local peer doesn't have a protocol queue so we should check
 			// for nils to prevent panics.
-			return true
+			return false
 		}
 		return p.proto.push(f)
 
@@ -120,7 +120,7 @@ func (p *peer) send(f *types.Frame) bool {
 		if p.traffic == nil {
 			// The local peer doesn't have a traffic queue so we should check
 			// for nils to prevent panics.
-			return true
+			return false
 		}
 		return p.traffic.push(f)
 	}

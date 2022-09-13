@@ -52,6 +52,7 @@ func (s *state) _nextHopsFor(from *peer, frameType types.FrameType, dest net.Add
 func (s *state) _forward(p *peer, f *types.Frame) error {
 	if s._filterPacket != nil && s._filterPacket(p.public, f) {
 		s.r.log.Printf("Packet of type %s destined for port %d [%s] was dropped due to filter rules", f.Type.String(), p.port, p.public.String()[:8])
+		framePool.Put(f)
 		return nil
 	}
 
@@ -59,7 +60,9 @@ func (s *state) _forward(p *peer, f *types.Frame) error {
 	isTreeLoopback := f.Type == types.TypeTreeRouted && f.Destination.EqualTo(s._coords())
 	isSnakeLoopback := f.Type == types.TypeVirtualSnakeRouted && f.DestinationKey == s.r.public
 	if isTreeLoopback || isSnakeLoopback {
-		s.r.local.send(f)
+		if !s.r.local.send(f) {
+			framePool.Put(f)
+		}
 		return nil
 	}
 
@@ -77,6 +80,7 @@ func (s *state) _forward(p *peer, f *types.Frame) error {
 	case types.TypeTreeAnnouncement:
 		// Tree announcements are a special case. The _handleTreeAnnouncement function
 		// will generate new tree announcements and send them to peers if needed.
+		defer framePool.Put(f)
 		if err := s._handleTreeAnnouncement(p, f); err != nil {
 			return fmt.Errorf("s._handleTreeAnnouncement (port %d): %w", p.port, err)
 		}
@@ -84,11 +88,13 @@ func (s *state) _forward(p *peer, f *types.Frame) error {
 
 	case types.TypeKeepalive:
 		// Keepalives are sent on a peering and are never forwarded.
+		framePool.Put(f)
 		return nil
 
 	case types.TypeVirtualSnakeBootstrap:
 		// Bootstrap messages are handled at each node along the path.
 		if !s._handleBootstrap(p, nexthop, f) || deadend {
+			framePool.Put(f)
 			return nil
 		}
 
@@ -103,6 +109,7 @@ func (s *state) _forward(p *peer, f *types.Frame) error {
 	// In the case of initial pong response frames, they are routed back to
 	// the peer we received the ping from so the "loop" is desired.
 	if nexthop == p || watermark.WorseThan(f.Watermark) {
+		framePool.Put(f)
 		return nil
 	}
 
@@ -113,7 +120,8 @@ func (s *state) _forward(p *peer, f *types.Frame) error {
 		f.Watermark = watermark
 	}
 	if nexthop != nil && !nexthop.send(f) {
-		s.r.log.Println("Dropping forwarded packet of type", f.Type)
+		// s.r.log.Println("Dropping forwarded packet of type", f.Type)
+		framePool.Put(f)
 	}
 
 	return nil
