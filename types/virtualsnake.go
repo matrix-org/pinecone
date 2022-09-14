@@ -18,7 +18,7 @@ type VirtualSnakeWatermark struct {
 
 func (a VirtualSnakeWatermark) WorseThan(b VirtualSnakeWatermark) bool {
 	diff := a.PublicKey.CompareTo(b.PublicKey)
-	return diff > 0 || (diff == 0 && a.Sequence < b.Sequence)
+	return diff > 0 || (diff == 0 && a.Sequence != 0 && a.Sequence < b.Sequence)
 }
 
 func (v *VirtualSnakeBootstrap) ProtectedPayload() ([]byte, error) {

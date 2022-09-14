@@ -196,7 +196,6 @@ func getNextHopSNEK(params virtualSnakeNextHopParams) (*peer, types.VirtualSnake
 	}
 	bestKey := params.publicKey
 	destKey := params.destinationKey
-	watermark := params.watermark
 
 	// newCandidate updates the best key and best peer with new candidates.
 	newCandidate := func(key types.PublicKey, seq types.Varu64, p *peer) {
@@ -272,7 +271,7 @@ func getNextHopSNEK(params virtualSnakeNextHopParams) (*peer, types.VirtualSnake
 		if !entry.Source.started.Load() || !entry.valid() {
 			continue
 		}
-		if entry.Watermark.WorseThan(watermark) {
+		if entry.Watermark.WorseThan(params.watermark) {
 			continue
 		}
 		newCheckedCandidate(entry.PublicKey, entry.Watermark.Sequence, entry.Source)
@@ -298,17 +297,10 @@ func getNextHopSNEK(params virtualSnakeNextHopParams) (*peer, types.VirtualSnake
 		}
 	}
 
-	// Only SNEK paths will have a sequence number higher than 0, so
-	// it's a safe bet that if it's greater than 0, we have hit upon
-	// a newly watermarkable path.
-	if bestSeq > 0 {
-		watermark = types.VirtualSnakeWatermark{
-			PublicKey: bestKey,
-			Sequence:  bestSeq,
-		}
+	return bestPeer, types.VirtualSnakeWatermark{
+		PublicKey: bestKey,
+		Sequence:  bestSeq,
 	}
-
-	return bestPeer, watermark
 }
 
 // _handleBootstrap is called in response to receiving a bootstrap packet.
