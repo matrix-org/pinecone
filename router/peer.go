@@ -41,6 +41,7 @@ const ( // These need to be a simple int type for gobind/gomobile to export them
 	PeerTypeMulticast int = iota
 	PeerTypeRemote
 	PeerTypeBluetooth
+	PeerTypeBonjour
 )
 
 // peer contains information about a given active peering. There are two

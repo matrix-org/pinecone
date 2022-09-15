@@ -188,7 +188,7 @@ func (r *Router) Connect(conn net.Conn, options ...ConnectionOption) (types.Swit
 		binary.BigEndian.PutUint32(handshake[4:8], ourCapabilities)
 		handshake = append(handshake, r.public[:ed25519.PublicKeySize]...)
 		handshake = append(handshake, ed25519.Sign(r.private[:], handshake)...)
-		if err := conn.SetDeadline(time.Now().Add(peerKeepaliveInterval)); err != nil {
+		if err := conn.SetDeadline(time.Now().Add(time.Second * 10)); err != nil {
 			return 0, fmt.Errorf("conn.SetDeadline: %w", err)
 		}
 		if _, err := conn.Write(handshake); err != nil {
@@ -226,7 +226,7 @@ func (r *Router) Connect(conn net.Conn, options ...ConnectionOption) (types.Swit
 		port, err = r.state._addPeer(conn, public, uri, zone, peertype, keepalives)
 	})
 	if err != nil {
-		return types.SwitchPortID(0), err
+		return types.SwitchPortID(0), fmt.Errorf("_addPeer: %w", err)
 	}
 	return port, nil
 }
