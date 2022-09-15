@@ -36,7 +36,7 @@ const (
 	PeerTypeRemote    = pineconeRouter.PeerTypeRemote
 	PeerTypeMulticast = pineconeRouter.PeerTypeMulticast
 	PeerTypeBluetooth = pineconeRouter.PeerTypeBluetooth
-	PeerTypeNearby    = pineconeRouter.PeerTypeBonjour
+	PeerTypeBonjour   = pineconeRouter.PeerTypeBonjour
 )
 
 type Pinecone struct {
