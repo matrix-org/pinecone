@@ -108,7 +108,7 @@ func (p *peer) send(f *types.Frame) bool {
 	// Protocol messages
 	case types.TypeTreeAnnouncement, types.TypeKeepalive:
 		fallthrough
-	case types.TypeVirtualSnakeBootstrap:
+	case types.TypeBootstrap:
 		if p.proto == nil {
 			// The local peer doesn't have a protocol queue so we should check
 			// for nils to prevent panics.
@@ -117,7 +117,7 @@ func (p *peer) send(f *types.Frame) bool {
 		return p.proto.push(f)
 
 	// Traffic messages
-	case types.TypeVirtualSnakeRouted, types.TypeTreeRouted:
+	case types.TypeTraffic:
 		if p.traffic == nil {
 			// The local peer doesn't have a traffic queue so we should check
 			// for nils to prevent panics.
@@ -273,7 +273,7 @@ func (p *peer) _write() {
 	}
 
 	// Write the frame to the peering.
-	if frame.Type == types.TypeTreeRouted || frame.Type == types.TypeVirtualSnakeRouted {
+	if frame.Type == types.TypeTraffic {
 		p.bytesTxTraffic.Add(uint64(n))
 	} else {
 		p.bytesTxProto.Add(uint64(n))
@@ -330,16 +330,14 @@ func (p *peer) _read() {
 	// Wait for the packet to arrive from the remote peer and read only enough bytes to
 	// get the header. This will tell us how much more we need to read to get the rest
 	// of the frame.
-	isProtoTraffic := true
+	var isProtoTraffic bool
 	{
 		n, err := io.ReadFull(p.conn, b[:types.FrameHeaderLength])
 		if err != nil {
 			p.stop(fmt.Errorf("io.ReadFull: %w", err))
 			return
 		}
-		if types.FrameType(b[5]) == types.TypeTreeRouted || types.FrameType(b[5]) == types.TypeVirtualSnakeRouted {
-			isProtoTraffic = false
-		}
+		isProtoTraffic = types.FrameType(b[5]) != types.TypeTraffic
 
 		if isProtoTraffic {
 			p.bytesRxProto.Add(uint64(n))

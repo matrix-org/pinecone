@@ -125,24 +125,26 @@ func UnmarshalCommandJSON(command *SimCommandMsg) (SimCommand, error) {
 			} else {
 				err = fmt.Errorf("%sConfigureAdversaryDefaults.DropRates.TreeAnnouncement field doesn't exist", FAILURE_PREAMBLE)
 			}
-			if subVal, subOk := val.(map[string]interface{})["TreeRouted"]; subOk {
+			if subVal, subOk := val.(map[string]interface{})["Traffic"]; subOk {
 				intVal, _ := strconv.Atoi(subVal.(string))
-				dropRates.Frames[types.TypeTreeRouted] = uint64(intVal)
+				dropRates.Frames[types.TypeTraffic] = uint64(intVal)
 			} else {
 				err = fmt.Errorf("%sConfigureAdversaryDefaults.DropRates.TreeRouted field doesn't exist", FAILURE_PREAMBLE)
 			}
 			if subVal, subOk := val.(map[string]interface{})["VirtualSnakeBootstrap"]; subOk {
 				intVal, _ := strconv.Atoi(subVal.(string))
-				dropRates.Frames[types.TypeVirtualSnakeBootstrap] = uint64(intVal)
+				dropRates.Frames[types.TypeBootstrap] = uint64(intVal)
 			} else {
 				err = fmt.Errorf("%sConfigureAdversaryDefaults.DropRates.VirtualSnakeBootstrap field doesn't exist", FAILURE_PREAMBLE)
 			}
-			if subVal, subOk := val.(map[string]interface{})["VirtualSnakeRouted"]; subOk {
-				intVal, _ := strconv.Atoi(subVal.(string))
-				dropRates.Frames[types.TypeVirtualSnakeRouted] = uint64(intVal)
-			} else {
-				err = fmt.Errorf("%sConfigureAdversaryDefaults.DropRates.VirtualSnakeRouted field doesn't exist", FAILURE_PREAMBLE)
-			}
+			/*
+				if subVal, subOk := val.(map[string]interface{})["VirtualSnakeRouted"]; subOk {
+					intVal, _ := strconv.Atoi(subVal.(string))
+					dropRates.Frames[types.TypeVirtualSnakeRouted] = uint64(intVal)
+				} else {
+					err = fmt.Errorf("%sConfigureAdversaryDefaults.DropRates.VirtualSnakeRouted field doesn't exist", FAILURE_PREAMBLE)
+				}
+			*/
 		} else {
 			err = fmt.Errorf("%sConfigureAdversaryDefaults.DropRates field doesn't exist", FAILURE_PREAMBLE)
 		}
@@ -181,24 +183,26 @@ func UnmarshalCommandJSON(command *SimCommandMsg) (SimCommand, error) {
 			} else {
 				err = fmt.Errorf("%sConfigureAdversaryPeer.DropRates.TreeAnnouncement field doesn't exist", FAILURE_PREAMBLE)
 			}
-			if subVal, subOk := val.(map[string]interface{})["TreeRouted"]; subOk {
+			if subVal, subOk := val.(map[string]interface{})["Traffic"]; subOk {
 				intVal, _ := strconv.Atoi(subVal.(string))
-				dropRates.Frames[types.TypeTreeRouted] = uint64(intVal)
+				dropRates.Frames[types.TypeTraffic] = uint64(intVal)
 			} else {
 				err = fmt.Errorf("%sConfigureAdversaryPeer.DropRates.TreeRouted field doesn't exist", FAILURE_PREAMBLE)
 			}
 			if subVal, subOk := val.(map[string]interface{})["VirtualSnakeBootstrap"]; subOk {
 				intVal, _ := strconv.Atoi(subVal.(string))
-				dropRates.Frames[types.TypeVirtualSnakeBootstrap] = uint64(intVal)
+				dropRates.Frames[types.TypeBootstrap] = uint64(intVal)
 			} else {
 				err = fmt.Errorf("%sConfigureAdversaryPeer.DropRates.VirtualSnakeBootstrap field doesn't exist", FAILURE_PREAMBLE)
 			}
-			if subVal, subOk := val.(map[string]interface{})["VirtualSnakeRouted"]; subOk {
-				intVal, _ := strconv.Atoi(subVal.(string))
-				dropRates.Frames[types.TypeVirtualSnakeRouted] = uint64(intVal)
-			} else {
-				err = fmt.Errorf("%sConfigureAdversaryPeer.DropRates.VirtualSnakeRouted field doesn't exist", FAILURE_PREAMBLE)
-			}
+			/*
+				if subVal, subOk := val.(map[string]interface{})["VirtualSnakeRouted"]; subOk {
+					intVal, _ := strconv.Atoi(subVal.(string))
+					dropRates.Frames[types.TypeVirtualSnakeRouted] = uint64(intVal)
+				} else {
+					err = fmt.Errorf("%sConfigureAdversaryPeer.DropRates.VirtualSnakeRouted field doesn't exist", FAILURE_PREAMBLE)
+				}
+			*/
 		} else {
 			err = fmt.Errorf("%sConfigureAdversaryPeer.DropRates field doesn't exist", FAILURE_PREAMBLE)
 		}

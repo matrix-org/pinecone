@@ -20,6 +20,7 @@ import (
 	"time"
 )
 
+/*
 func (sim *Simulator) PingTree(from, to string) (uint16, time.Duration, error) {
 	fromnode := sim.nodes[from]
 	tonode := sim.nodes[to]
@@ -46,6 +47,7 @@ func (sim *Simulator) PingTree(from, to string) (uint16, time.Duration, error) {
 	sim.ReportDistance(from, to, int64(hops), false)
 	return hops, rtt, nil
 }
+*/
 
 func (sim *Simulator) PingSNEK(from, to string) (uint16, time.Duration, error) {
 	fromnode := sim.nodes[from]

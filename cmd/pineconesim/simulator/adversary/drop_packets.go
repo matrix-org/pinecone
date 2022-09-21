@@ -87,9 +87,8 @@ func defaultFrameCount() PeerFrameCount {
 	frameCount := make(FrameCounts, 9)
 	frameCount[types.TypeKeepalive] = atomic.NewUint64(0)
 	frameCount[types.TypeTreeAnnouncement] = atomic.NewUint64(0)
-	frameCount[types.TypeVirtualSnakeBootstrap] = atomic.NewUint64(0)
-	frameCount[types.TypeTreeRouted] = atomic.NewUint64(0)
-	frameCount[types.TypeVirtualSnakeRouted] = atomic.NewUint64(0)
+	frameCount[types.TypeBootstrap] = atomic.NewUint64(0)
+	frameCount[types.TypeTraffic] = atomic.NewUint64(0)
 
 	peerFrameCount := PeerFrameCount{
 		frameCount: frameCount,
@@ -131,7 +130,7 @@ func (a *AdversaryRouter) Connect(conn net.Conn, options ...router.ConnectionOpt
 	return a.rtr.Connect(conn, options...)
 }
 
-func (a *AdversaryRouter) Ping(ctx context.Context, addr net.Addr) (uint16, time.Duration, error) {
+func (a *AdversaryRouter) Ping(ctx context.Context, addr types.PublicKey) (uint16, time.Duration, error) {
 	return 0, 0, nil
 }
 
@@ -225,8 +224,8 @@ func (a *AdversaryRouter) selectivelyDrop(from types.PublicKey, f *types.Frame) 
 
 	a.updateDropCount(from, f.Type, numberToCountOverall, numberToCountFrame)
 
-	if shouldDrop {
-		// log.Printf("Router %s :: Dropping %s", a.PublicKey().String()[:8], f.Type)
-	}
+	//if shouldDrop {
+	//    log.Printf("Router %s :: Dropping %s", a.PublicKey().String()[:8], f.Type)
+	//}
 	return shouldDrop
 }

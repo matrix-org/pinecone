@@ -17,6 +17,7 @@ package router
 import (
 	"fmt"
 	"net"
+	"time"
 
 	"github.com/matrix-org/pinecone/types"
 )
@@ -26,23 +27,22 @@ import (
 // for this function to return `nil` if there is no suitable candidate.
 func (s *state) _nextHopsFor(from *peer, frameType types.FrameType, dest net.Addr, watermark types.VirtualSnakeWatermark) (*peer, types.VirtualSnakeWatermark) {
 	var nexthop *peer
-	var newWatermark types.VirtualSnakeWatermark
 	switch frameType {
-	// SNEK routing
-	case types.TypeVirtualSnakeRouted, types.TypeVirtualSnakeBootstrap:
+	case types.TypeBootstrap:
 		switch dest := (dest).(type) {
 		case types.PublicKey:
-			nexthop, newWatermark = s._nextHopsSNEK(dest, frameType, watermark)
+			nexthop, watermark = s._nextHopsSNEK(dest, frameType, watermark)
 		}
 
-	// Tree routing
-	case types.TypeTreeRouted:
+	case types.TypeTraffic:
 		switch dest := (dest).(type) {
+		case types.PublicKey:
+			nexthop, watermark = s._nextHopsSNEK(dest, frameType, watermark)
 		case types.Coordinates:
 			nexthop = s._nextHopsTree(from, dest)
 		}
 	}
-	return nexthop, newWatermark
+	return nexthop, watermark
 }
 
 // _forward handles frames received from a given peer. In most cases, this function will
@@ -57,9 +57,13 @@ func (s *state) _forward(p *peer, f *types.Frame) error {
 	}
 
 	// Allow overlay loopback traffic by directly forwarding it to the local router.
-	isTreeLoopback := f.Type == types.TypeTreeRouted && f.Destination.EqualTo(s._coords())
-	isSnakeLoopback := f.Type == types.TypeVirtualSnakeRouted && f.DestinationKey == s.r.public
-	if isTreeLoopback || isSnakeLoopback {
+	if f.Type == types.TypeTraffic && (f.Destination.EqualTo(s._coords()) || f.DestinationKey == s.r.public) {
+		if len(f.Source) > 0 {
+			s._coordsCache[f.SourceKey] = coordsCacheEntry{
+				coordinates: f.Source,
+				lastSeen:    time.Now(),
+			}
+		}
 		if !s.r.local.send(f) {
 			framePool.Put(f)
 		}
@@ -69,9 +73,15 @@ func (s *state) _forward(p *peer, f *types.Frame) error {
 	var nexthop *peer
 	var watermark types.VirtualSnakeWatermark
 	switch f.Type {
-	case types.TypeTreeRouted:
-		nexthop, watermark = s._nextHopsFor(p, f.Type, f.Destination, f.Watermark)
-	case types.TypeVirtualSnakeBootstrap, types.TypeVirtualSnakeRouted:
+	case types.TypeTraffic:
+		if len(f.Destination) > 0 {
+			nexthop, watermark = s._nextHopsFor(p, f.Type, f.Destination, f.Watermark)
+		}
+		if nexthop == nil {
+			f.Destination = f.Destination[:0] // Remove the dest coords so we fall back to SNEK routing
+			nexthop, watermark = s._nextHopsFor(p, f.Type, f.DestinationKey, f.Watermark)
+		}
+	case types.TypeBootstrap:
 		nexthop, watermark = s._nextHopsFor(p, f.Type, f.DestinationKey, f.Watermark)
 	}
 	deadend := nexthop == nil || nexthop == p.router.local
@@ -91,14 +101,14 @@ func (s *state) _forward(p *peer, f *types.Frame) error {
 		framePool.Put(f)
 		return nil
 
-	case types.TypeVirtualSnakeBootstrap:
+	case types.TypeBootstrap:
 		// Bootstrap messages are handled at each node along the path.
 		if !s._handleBootstrap(p, nexthop, f) || deadend {
 			framePool.Put(f)
 			return nil
 		}
 
-	case types.TypeVirtualSnakeRouted, types.TypeTreeRouted:
+	case types.TypeTraffic:
 		// Traffic type packets are forwarded normally by falling through. There
 		// are no special rules to apply to these packets, regardless of whether
 		// they are SNEK-routed or tree-routed.

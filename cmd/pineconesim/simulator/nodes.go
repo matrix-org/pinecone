@@ -87,7 +87,9 @@ func (sim *Simulator) CreateNode(t string, nodeType APINodeType) error {
 				case <-quit:
 					return
 				default:
-					n.l.SetDeadline(time.Now().Add(time.Duration(500) * time.Millisecond))
+					if err := n.l.SetDeadline(time.Now().Add(time.Duration(500) * time.Millisecond)); err != nil {
+						panic(err)
+					}
 					c, err := n.l.AcceptTCP()
 					if err != nil {
 						continue

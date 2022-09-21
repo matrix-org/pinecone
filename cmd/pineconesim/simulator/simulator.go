@@ -155,10 +155,12 @@ func (sim *Simulator) StartPinging(ping_period time.Duration) {
 				for i := 0; i < numWorkers; i++ {
 					go func() {
 						for pair := range tasks {
-							sim.log.Println("Tree ping from", pair.from, "to", pair.to)
-							if _, _, err := sim.PingTree(pair.from, pair.to); err != nil {
-								sim.log.Println("Tree ping from", pair.from, "to", pair.to, "failed:", err)
-							}
+							/*
+								sim.log.Println("Tree ping from", pair.from, "to", pair.to)
+								if _, _, err := sim.PingTree(pair.from, pair.to); err != nil {
+									sim.log.Println("Tree ping from", pair.from, "to", pair.to, "failed:", err)
+								}
+							*/
 							sim.log.Println("SNEK ping from", pair.from, "to", pair.to)
 							if _, _, err := sim.PingSNEK(pair.from, pair.to); err != nil {
 								sim.log.Println("SNEK ping from", pair.from, "to", pair.to, "failed:", err)
@@ -348,7 +350,7 @@ func (sim *Simulator) handlePeerAdded(node string, peerID string, port int) {
 
 func (sim *Simulator) handlePeerRemoved(node string, peerID string, port int) {
 	if peerNode, err := sim.State.GetNodeName(peerID); err == nil {
-		sim.DisconnectNodes(node, peerNode)
+		_ = sim.DisconnectNodes(node, peerNode)
 		sim.State.Act(nil, func() { sim.State._removePeerConnection(node, peerNode, port) })
 	}
 }
@@ -359,15 +361,6 @@ func (sim *Simulator) handleTreeParentUpdate(node string, peerID string) {
 		peerName = peerNode
 	}
 	sim.State.Act(nil, func() { sim.State._updateParent(node, peerName) })
-}
-
-func (sim *Simulator) handleSnakeAscUpdate(node string, peerID string, pathID string) {
-	peerName := ""
-	if peerNode, err := sim.State.GetNodeName(peerID); err == nil {
-		peerName = peerNode
-	}
-
-	sim.State.Act(nil, func() { sim.State._updateAscendingPeer(node, peerName, pathID) })
 }
 
 func (sim *Simulator) handleSnakeDescUpdate(node string, peerID string, pathID string) {

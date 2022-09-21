@@ -22,34 +22,45 @@ import (
 )
 
 func TestMarshalUnmarshalFrame(t *testing.T) {
+	src, _, _ := ed25519.GenerateKey(nil)
+	dst, _, _ := ed25519.GenerateKey(nil)
 	input := Frame{
 		Version:     Version0,
-		Type:        TypeTreeRouted,
+		Type:        TypeTraffic,
 		Destination: Coordinates{1, 2, 3, 4, 5000},
 		Source:      Coordinates{4, 3, 2, 1},
 		Payload:     []byte("ABCDEFG"),
 	}
+	copy(input.DestinationKey[:], dst)
+	copy(input.SourceKey[:], src)
+	copy(input.Watermark.PublicKey[:], src)
 	expected := []byte{
 		0x70, 0x69, 0x6e, 0x65, // magic bytes
-		0,                    // version 0
-		byte(TypeTreeRouted), // type greedy
-		0, 0,                 // extra
-		0, 33, // frame length
+		0,                 // version 0
+		byte(TypeTraffic), // type greedy
+		0, 0,              // extra
+		0, 130, // frame length
 		0, 7, // payload len
 		0, 6, 1, 2, 3, 4, 167, 8, // destination (2+6 bytes but 5 ports!)
 		0, 4, 4, 3, 2, 1, // source (2+4 bytes)
-		65, 66, 67, 68, 69, 70, 71, // payload (7 bytes)
 	}
+	expected = append(expected, dst...) // destination
+	expected = append(expected, src...) // source
+	expected = append(expected, src...) // watermark
+	expected = append(expected, []byte{
+		0,                          // watermark sequence
+		65, 66, 67, 68, 69, 70, 71, // payload (7 bytes)
+	}...)
 	buf := make([]byte, 65535)
 	n, err := input.MarshalBinary(buf)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if n != len(expected) {
-		t.Fatalf("wrong marshalled length, got %d, expected %d", n, len(expected))
+		t.Fatalf("wrong marshalled length, \ngot      %d, \nexpected %d", n, len(expected))
 	}
 	if !bytes.Equal(buf[:n], expected) {
-		t.Fatalf("wrong marshalled output, got %v, expected %v", buf[:n], expected)
+		t.Fatalf("wrong marshalled output, \ngot      %v, \nexpected %v", buf[:n], expected)
 	}
 	output := Frame{
 		Payload: make([]byte, 0, MaxPayloadSize),
@@ -72,8 +83,23 @@ func TestMarshalUnmarshalFrame(t *testing.T) {
 	if l := len(output.Payload); l != 7 {
 		t.Fatalf("wrong payload length (got %d, expected 7)", l)
 	}
+	if output.DestinationKey != input.DestinationKey {
+		t.Fatalf("wrong destination key")
+	}
+	if output.SourceKey != input.SourceKey {
+		t.Fatalf("wrong source key")
+	}
+	if output.Watermark.PublicKey != input.Watermark.PublicKey {
+		t.Fatalf("wrong watermark key")
+	}
+	if output.Watermark.Sequence != input.Watermark.Sequence {
+		t.Fatalf("wrong watermark sequence")
+	}
+	if !output.Source.EqualTo(input.Source) {
+		t.Fatal("wrong source coordinates")
+	}
 	if !output.Destination.EqualTo(input.Destination) {
-		t.Fatal("wrong path")
+		t.Fatal("wrong destination coordinates")
 	}
 	if !bytes.Equal(input.Payload, output.Payload) {
 		t.Fatal("wrong payload")
@@ -85,7 +111,7 @@ func TestMarshalUnmarshalSNEKBootstrapFrame(t *testing.T) {
 	wpk, _, _ := ed25519.GenerateKey(nil)
 	input := Frame{
 		Version: Version0,
-		Type:    TypeVirtualSnakeBootstrap,
+		Type:    TypeBootstrap,
 		Payload: []byte{9, 9, 9, 9, 9},
 		Watermark: VirtualSnakeWatermark{
 			Sequence: 100,
@@ -96,9 +122,9 @@ func TestMarshalUnmarshalSNEKBootstrapFrame(t *testing.T) {
 	input.Watermark.Sequence = 100
 	expected := []byte{
 		0x70, 0x69, 0x6e, 0x65, // magic bytes
-		0,                               // version 0
-		byte(TypeVirtualSnakeBootstrap), // type greedy
-		0, 0,                            // extra
+		0,                   // version 0
+		byte(TypeBootstrap), // type greedy
+		0, 0,                // extra
 		0, 82, // frame length
 		0, 5, // payload length
 	}
@@ -148,13 +174,14 @@ func TestMarshalUnmarshalSNEKBootstrapFrame(t *testing.T) {
 	}
 }
 
+/*
 func TestMarshalUnmarshalSNEKFrame(t *testing.T) {
 	pk1, _, _ := ed25519.GenerateKey(nil)
 	pk2, _, _ := ed25519.GenerateKey(nil)
 	wpk, _, _ := ed25519.GenerateKey(nil)
 	input := Frame{
 		Version: Version0,
-		Type:    TypeVirtualSnakeRouted,
+		Type:    TypeTraffic,
 		Payload: []byte("HELLO!"),
 		Watermark: VirtualSnakeWatermark{
 			Sequence: 100,
@@ -165,9 +192,9 @@ func TestMarshalUnmarshalSNEKFrame(t *testing.T) {
 	copy(input.Watermark.PublicKey[:], wpk)
 	expected := []byte{
 		0x70, 0x69, 0x6e, 0x65, // magic bytes
-		0,                            // version 0
-		byte(TypeVirtualSnakeRouted), // type greedy
-		0, 0,                         // extra
+		0,                 // version 0
+		byte(TypeTraffic), // type greedy
+		0, 0,              // extra
 		0, 115, // frame length
 		0, 6, // payload length
 	}
@@ -216,3 +243,4 @@ func TestMarshalUnmarshalSNEKFrame(t *testing.T) {
 		t.Fatal("wrong payload")
 	}
 }
+*/

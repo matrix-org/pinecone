@@ -228,16 +228,6 @@ func (s *StateAccessor) _updateParent(node string, peerID string) {
 	}
 }
 
-func (s *StateAccessor) _updateAscendingPeer(node string, peerID string, pathID string) {
-	if _, ok := s._state.Nodes[node]; ok {
-		prev := s._state.Nodes[node].AscendingPeer
-		s._state.Nodes[node].AscendingPeer = peerID
-		s._state.Nodes[node].AscendingPathID = pathID
-
-		s._publish(SnakeAscUpdate{Node: node, Peer: peerID, Prev: prev, PathID: pathID})
-	}
-}
-
 func (s *StateAccessor) _updateDescendingPeer(node string, peerID string, pathID string) {
 	if _, ok := s._state.Nodes[node]; ok {
 		prev := s._state.Nodes[node].DescendingPeer

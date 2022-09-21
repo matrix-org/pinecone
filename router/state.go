@@ -51,6 +51,14 @@ type state struct {
 	_waiting        bool               // Is the tree waiting to reparent?
 	_filterPacket   FilterFn           // Function called when forwarding packets
 	_bandwidthTimer *time.Timer
+	_coordsCache    coordsCacheTable
+}
+
+type coordsCacheTable map[types.PublicKey]coordsCacheEntry
+
+type coordsCacheEntry struct {
+	coordinates []types.SwitchPortID
+	lastSeen    time.Time
 }
 
 // _start resets the state and starts tree and virtual snake maintenance.
@@ -63,6 +71,7 @@ func (s *state) _start() {
 
 	s._announcements = make(announcementTable, portCount)
 	s._table = virtualSnakeTable{}
+	s._coordsCache = coordsCacheTable{}
 
 	if s._treetimer == nil {
 		s._treetimer = time.AfterFunc(announcementInterval, func() {
@@ -86,6 +95,9 @@ func (s *state) _start() {
 
 	s._maintainTreeIn(0)
 	s._maintainSnakeIn(0)
+	time.AfterFunc(time.Minute, func() {
+		s.Act(nil, s._cleanCachedCoords)
+	})
 }
 
 // _maintainTreeIn resets the tree maintenance timer to the specified
@@ -110,6 +122,18 @@ func (s *state) _maintainSnakeIn(d time.Duration) {
 		}
 	}
 	s._snaketimer.Reset(d)
+}
+
+// _cleanCachedCoords clears old entries out of the coordinate cache.
+func (s *state) _cleanCachedCoords() {
+	for k, v := range s._coordsCache {
+		if time.Since(v.lastSeen) > time.Minute {
+			delete(s._coordsCache, k)
+		}
+	}
+	time.AfterFunc(time.Minute, func() {
+		s.Act(nil, s._cleanCachedCoords)
+	})
 }
 
 // _reportBandwidthIn resets the bandwidth reporting timer to the
