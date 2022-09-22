@@ -29,12 +29,12 @@ type RootAnnouncement struct {
 
 type PeerBandwidthUsage struct {
 	Protocol struct {
-		Rx uint64
-		Tx uint64
+		Rx uint32
+		Tx uint32
 	}
 	Overlay struct {
-		Rx uint64
-		Tx uint64
+		Rx uint32
+		Tx uint32
 	}
 }
 

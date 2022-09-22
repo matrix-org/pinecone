@@ -65,10 +65,10 @@ type peer struct {
 	started        atomic.Bool        // Thread-safe toggle for marking a peer as down.
 	proto          queue              // Thread-safe queue for outbound protocol messages.
 	traffic        queue              // Thread-safe queue for outbound traffic messages.
-	bytesRxProto   atomic.Uint64
-	bytesRxTraffic atomic.Uint64
-	bytesTxProto   atomic.Uint64
-	bytesTxTraffic atomic.Uint64
+	bytesRxProto   atomic.Uint32
+	bytesRxTraffic atomic.Uint32
+	bytesTxProto   atomic.Uint32
+	bytesTxTraffic atomic.Uint32
 }
 
 func (p *peer) MarshalJSON() ([]byte, error) {
@@ -274,9 +274,9 @@ func (p *peer) _write() {
 
 	// Write the frame to the peering.
 	if frame.Type == types.TypeTreeRouted || frame.Type == types.TypeVirtualSnakeRouted {
-		p.bytesTxTraffic.Add(uint64(n))
+		p.bytesTxTraffic.Add(uint32(n))
 	} else {
-		p.bytesTxProto.Add(uint64(n))
+		p.bytesTxProto.Add(uint32(n))
 	}
 	wn, err := p.conn.Write(buf[:n])
 	if err != nil {
@@ -342,9 +342,9 @@ func (p *peer) _read() {
 		}
 
 		if isProtoTraffic {
-			p.bytesRxProto.Add(uint64(n))
+			p.bytesRxProto.Add(uint32(n))
 		} else {
-			p.bytesRxTraffic.Add(uint64(n))
+			p.bytesRxTraffic.Add(uint32(n))
 		}
 	}
 
@@ -367,9 +367,9 @@ func (p *peer) _read() {
 	}
 
 	if isProtoTraffic {
-		p.bytesRxProto.Add(uint64(n))
+		p.bytesRxProto.Add(uint32(n))
 	} else {
-		p.bytesRxTraffic.Add(uint64(n))
+		p.bytesRxTraffic.Add(uint32(n))
 	}
 
 	// If keepalives are disabled then we can reset the read deadline again.

@@ -137,15 +137,15 @@ func (s *state) _reportBandwidth() {
 		if peer != nil && peer != s.r.local && peer.started.Load() {
 			peerBandwidth[peer.public.String()] = events.PeerBandwidthUsage{
 				Protocol: struct {
-					Rx uint64
-					Tx uint64
+					Rx uint32
+					Tx uint32
 				}{
 					Rx: peer.bytesRxProto.Load(),
 					Tx: peer.bytesTxProto.Load(),
 				},
 				Overlay: struct {
-					Rx uint64
-					Tx uint64
+					Rx uint32
+					Tx uint32
 				}{
 					Rx: peer.bytesRxTraffic.Load(),
 					Tx: peer.bytesTxTraffic.Load(),
