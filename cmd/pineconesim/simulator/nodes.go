@@ -183,6 +183,7 @@ func createDefaultRouter(log *log.Logger, sk ed25519.PrivateKey, quit <-chan boo
 	rtr := &DefaultRouter{
 		rtr: router.NewRouter(log, sk),
 	}
+	rtr.rtr.InjectPacketFilter(rtr.PingFilter)
 
 	go rtr.OverlayReadHandler(quit)
 

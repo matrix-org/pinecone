@@ -73,12 +73,7 @@ func (r *DefaultRouter) Ping(ctx context.Context, destination types.PublicKey) (
 	payload := PingPayload{
 		origin:      r.PublicKey(),
 		destination: destination,
-		hops:        1,
-	}
-
-	nexthop := r.rtr.NextHop(nil, types.TypeTraffic, destination)
-	if nexthop == nil {
-		return 0, 0, fmt.Errorf("no valid nexthop for ping")
+		hops:        0,
 	}
 
 	p := make([]byte, 256)
@@ -87,7 +82,7 @@ func (r *DefaultRouter) Ping(ctx context.Context, destination types.PublicKey) (
 		return 0, 0, fmt.Errorf("failed marshalling ping payload: %w", err)
 	}
 
-	_, writeErr := r.rtr.WriteTo(p, nexthop)
+	_, writeErr := r.rtr.WriteTo(p, destination)
 	if writeErr != nil {
 		return 0, 0, fmt.Errorf("failed sending ping to node: %w", writeErr)
 	}
@@ -107,8 +102,31 @@ func (r *DefaultRouter) Ping(ctx context.Context, destination types.PublicKey) (
 	}
 }
 
+func (r *DefaultRouter) PingFilter(from types.PublicKey, f *types.Frame) bool {
+	if f.Type != types.TypeTraffic {
+		return false
+	}
+
+	payload := PingPayload{}
+	if _, err := payload.UnmarshalBinary(f.Payload); err != nil {
+		println(err.Error())
+		return true
+	}
+
+	payload.hops++
+
+	p := make([]byte, 256)
+	if _, err := payload.MarshalBinary(p); err != nil {
+		println(err.Error())
+		return true
+	}
+	f.Payload = p
+
+	return false
+}
+
 func (r *DefaultRouter) OverlayReadHandler(quit <-chan bool) {
-	buf := make([]byte, types.MaxFrameSize)
+	buf := make([]byte, 256)
 	for {
 		select {
 		case <-quit:
@@ -119,7 +137,7 @@ func (r *DefaultRouter) OverlayReadHandler(quit <-chan bool) {
 		if err := r.rtr.SetReadDeadline(time.Now().Add(time.Millisecond * 300)); err != nil {
 			panic(err)
 		}
-		n, addr, err := r.rtr.ReadFrom(buf)
+		n, _, err := r.rtr.ReadFrom(buf)
 		if err != nil || n == 0 {
 			continue
 		}
@@ -130,11 +148,13 @@ func (r *DefaultRouter) OverlayReadHandler(quit <-chan bool) {
 			continue
 		}
 
-		pingAtDest := false
 		switch payload.pingType {
 		case Ping:
 			if payload.destination == r.PublicKey() {
-				pingAtDest = true
+				payload.pingType = Pong
+			} else {
+				println("PING: hit deadend at:", r.PublicKey().String(), "for:", payload.origin.String(), "to:", payload.destination.String())
+				continue
 			}
 		case Pong:
 			if payload.origin == r.PublicKey() {
@@ -144,40 +164,25 @@ func (r *DefaultRouter) OverlayReadHandler(quit <-chan bool) {
 					continue
 				}
 				ch := v.(chan uint16)
-				ch <- payload.hops
+				ch <- payload.hops / 2
 				close(ch)
 				r.pings.Delete(id)
+				continue
+			} else {
+				println("PONG: hit deadend at:", r.PublicKey().String(), "for:", payload.origin.String(), "to:", payload.destination.String())
 				continue
 			}
 		default:
 			continue
 		}
 
-		fromAddr := addr
-		if payload.pingType == Ping {
-			if !pingAtDest {
-				payload.hops++
-			} else {
-				fromAddr = nil
-				payload.pingType = Pong
-			}
-		}
-
-		if n, err = payload.MarshalBinary(buf); err != nil {
+		_, pErr := payload.MarshalBinary(buf)
+		if pErr != nil {
 			continue
 		}
 
-		var nexthop net.Addr
-		if payload.pingType == Ping {
-			nexthop = r.rtr.NextHop(fromAddr, types.TypeTraffic, payload.destination)
-		} else {
-			nexthop = r.rtr.NextHop(fromAddr, types.TypeTraffic, payload.origin)
-		}
-		if nexthop == nil {
-			continue
-		}
-
-		if _, err = r.rtr.WriteTo(buf[:n], nexthop); err != nil {
+		_, writeErr := r.rtr.WriteTo(buf, payload.origin)
+		if writeErr != nil {
 			continue
 		}
 	}

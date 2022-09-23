@@ -119,6 +119,7 @@ func (s *state) _forward(p *peer, f *types.Frame) error {
 	// In the case of initial pong response frames, they are routed back to
 	// the peer we received the ping from so the "loop" is desired.
 	if nexthop == p || watermark.WorseThan(f.Watermark) {
+		// s.r.log.Println("Dropping forwarded packet of type", f.Type)
 		framePool.Put(f)
 		return nil
 	}
