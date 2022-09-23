@@ -250,7 +250,12 @@ func (s *state) _removePeer(port types.SwitchPortID) {
 }
 
 func (s *state) _setParent(peer *peer) {
+	oldAnnouncement := s._rootAnnouncement()
 	s._parent = peer
+
+	if s._rootAnnouncement().RootPublicKey != oldAnnouncement.RootPublicKey {
+		s._rootChanged()
+	}
 
 	s.r.Act(nil, func() {
 		peerID := ""
@@ -260,6 +265,14 @@ func (s *state) _setParent(peer *peer) {
 
 		s.r._publish(events.TreeParentUpdate{PeerID: peerID})
 	})
+}
+
+func (s *state) _rootChanged() {
+	// If the root has changed then it stands to reason that our cached
+	// coordinates are no longer valid, so clear those out.
+	for k := range s._coordsCache {
+		delete(s._coordsCache, k)
+	}
 }
 
 func (s *state) _setDescendingNode(node *virtualSnakeEntry) {
