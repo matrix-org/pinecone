@@ -79,12 +79,12 @@ func (e SnakeEntryRemoved) isEvent() {}
 
 type PeerBandwidthUsage struct {
 	Protocol struct {
-		Rx uint32
-		Tx uint32
+		Rx uint64
+		Tx uint64
 	}
 	Overlay struct {
-		Rx uint32
-		Tx uint32
+		Rx uint64
+		Tx uint64
 	}
 }
 
