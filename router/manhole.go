@@ -42,6 +42,10 @@ type manholePeer struct {
 	PeerType     ConnectionPeerType `json:"type,omitempty"`
 	PeerZone     ConnectionZone     `json:"zone,omitempty"`
 	PeerURI      ConnectionURI      `json:"uri,omitempty"`
+	RXProto      uint64             `json:"rx_proto_bytes"`
+	TXProto      uint64             `json:"tx_proto_bytes"`
+	RXTraffic    uint64             `json:"rx_traffic_bytes"`
+	TXTraffic    uint64             `json:"tx_traffic_bytes"`
 	ProtoQueue   queue              `json:"proto_queue"`
 	TrafficQueue queue              `json:"traffic_queue"`
 }
@@ -70,6 +74,10 @@ func (r *Router) ManholeHandler(w http.ResponseWriter, req *http.Request) {
 				ProtoQueue:   p.proto,
 				TrafficQueue: p.traffic,
 			}
+			phony.Block(&p.statistics, func() {
+				info.RXProto, info.RXTraffic = p.statistics._bytesRxProto, p.statistics._bytesRxTraffic
+				info.TXProto, info.TXTraffic = p.statistics._bytesTxProto, p.statistics._bytesTxTraffic
+			})
 			if ann := r.state._announcements[p]; ann != nil {
 				info.Coords = ann.Coords()
 				info.Order = ann.receiveOrder

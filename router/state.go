@@ -159,20 +159,26 @@ func (s *state) _reportBandwidth() {
 	peerBandwidth := make(map[string]events.PeerBandwidthUsage)
 	for _, peer := range s._peers {
 		if peer != nil && peer != s.r.local && peer.started.Load() {
+			var txProto, txTraffic uint64
+			var rxProto, rxTraffic uint64
+			phony.Block(&peer.statistics, func() {
+				txProto, txTraffic = peer.statistics._bytesTxProto, peer.statistics._bytesTxTraffic
+				rxProto, rxTraffic = peer.statistics._bytesRxProto, peer.statistics._bytesRxTraffic
+			})
 			peerBandwidth[peer.public.String()] = events.PeerBandwidthUsage{
 				Protocol: struct {
 					Rx uint64
 					Tx uint64
 				}{
-					Rx: peer.bytesRxProto.Load(),
-					Tx: peer.bytesTxProto.Load(),
+					Rx: rxProto,
+					Tx: txProto,
 				},
 				Overlay: struct {
 					Rx uint64
 					Tx uint64
 				}{
-					Rx: peer.bytesRxTraffic.Load(),
-					Tx: peer.bytesTxTraffic.Load(),
+					Rx: rxTraffic,
+					Tx: txTraffic,
 				},
 			}
 			peer.ClearBandwidthCounters()
