@@ -31,6 +31,8 @@ type FilterFn func(from types.PublicKey, f *types.Frame) bool
 
 const BWReportingInterval = time.Minute
 
+const coordsCacheLifetime = time.Minute
+
 // NOTE: Functions prefixed with an underscore (_) are only safe to be called
 // from the actor that owns them, in order to prevent data races.
 
@@ -127,7 +129,7 @@ func (s *state) _maintainSnakeIn(d time.Duration) {
 // _cleanCachedCoords clears old entries out of the coordinate cache.
 func (s *state) _cleanCachedCoords() {
 	for k, v := range s._coordsCache {
-		if time.Since(v.lastSeen) > time.Minute {
+		if time.Since(v.lastSeen) >= coordsCacheLifetime {
 			delete(s._coordsCache, k)
 		}
 	}

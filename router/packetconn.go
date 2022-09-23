@@ -105,7 +105,7 @@ func (r *Router) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 		frame.Type = types.TypeTraffic
 		frame.DestinationKey = ga
 		phony.Block(r.state, func() {
-			if cached, ok := r.state._coordsCache[ga]; ok {
+			if cached, ok := r.state._coordsCache[ga]; ok && time.Since(cached.lastSeen) < coordsCacheLifetime {
 				frame.Destination = cached.coordinates
 			}
 		})
