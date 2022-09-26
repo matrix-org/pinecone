@@ -109,7 +109,7 @@ func (r *DefaultRouter) PingFilter(from types.PublicKey, f *types.Frame) bool {
 
 	payload := PingPayload{}
 	if _, err := payload.UnmarshalBinary(f.Payload); err != nil {
-		return true
+		return false
 	}
 	if payload.pingType == Ping {
 		payload.hops++
