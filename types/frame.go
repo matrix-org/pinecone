@@ -37,12 +37,11 @@ const (
 	TypeKeepalive        FrameType = iota // protocol frame, direct to peers only
 	TypeTreeAnnouncement                  // protocol frame, bypasses queues
 	TypeBootstrap                         // protocol frame, forwarded using SNEK
-	TypeTrafficTree                       // traffic frame, forwarded using tree
-	TypeTrafficSNEK                       // traffic frame, forwarded using SNEK
+	TypeTraffic                           // traffic frame, forwarded using tree or SNEK
 )
 
 func (t FrameType) IsTraffic() bool {
-	return t == TypeTrafficTree || t == TypeTrafficSNEK
+	return t == TypeTraffic
 }
 
 const (
@@ -103,7 +102,7 @@ func (f *Frame) MarshalBinary(buffer []byte) (int, error) {
 
 	case TypeKeepalive:
 
-	case TypeTreeAnnouncement, TypeTrafficSNEK, TypeTrafficTree:
+	case TypeTreeAnnouncement, TypeTraffic:
 		payloadLen := len(f.Payload)
 		binary.BigEndian.PutUint16(buffer[offset+0:offset+2], uint16(payloadLen))
 		dn, err := f.Destination.MarshalBinary(buffer[offset+2:])
@@ -176,7 +175,7 @@ func (f *Frame) UnmarshalBinary(data []byte) (int, error) {
 	case TypeKeepalive:
 		return offset, nil
 
-	case TypeTreeAnnouncement, TypeTrafficSNEK, TypeTrafficTree:
+	case TypeTreeAnnouncement, TypeTraffic:
 		payloadLen := int(binary.BigEndian.Uint16(data[offset+0 : offset+2]))
 		if payloadLen > cap(f.Payload) {
 			return 0, fmt.Errorf("payload length exceeds frame capacity")
@@ -218,10 +217,8 @@ func (t FrameType) String() string {
 		return "TreeAnnouncement"
 	case TypeBootstrap:
 		return "VirtualSnakeBootstrap"
-	case TypeTrafficSNEK:
-		return "TrafficSNEK"
-	case TypeTrafficTree:
-		return "TrafficTree"
+	case TypeTraffic:
+		return "Traffic"
 	case TypeKeepalive:
 		return "Keepalive"
 	default:

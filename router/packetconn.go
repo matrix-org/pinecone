@@ -89,11 +89,10 @@ func (r *Router) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 	switch ga := addr.(type) {
 	case types.PublicKey:
 		frame := getFrame()
-		frame.Type = types.TypeTrafficSNEK
+		frame.Type = types.TypeTraffic
 		frame.DestinationKey = ga
 		phony.Block(r.state, func() {
 			if cached, ok := r.state._coordsCache[ga]; ok && time.Since(cached.lastSeen) < coordsCacheLifetime {
-				frame.Type = types.TypeTrafficTree
 				frame.Destination = cached.coordinates
 			}
 		})

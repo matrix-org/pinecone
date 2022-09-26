@@ -125,24 +125,24 @@ func UnmarshalCommandJSON(command *SimCommandMsg) (SimCommand, error) {
 			} else {
 				err = fmt.Errorf("%sConfigureAdversaryDefaults.DropRates.TreeAnnouncement field doesn't exist", FAILURE_PREAMBLE)
 			}
-			if subVal, subOk := val.(map[string]interface{})["TrafficSNEK"]; subOk {
+			/*if subVal, subOk := val.(map[string]interface{})["TrafficSNEK"]; subOk {
 				intVal, _ := strconv.Atoi(subVal.(string))
 				dropRates.Frames[types.TypeTrafficSNEK] = uint64(intVal)
 			} else {
 				err = fmt.Errorf("%sConfigureAdversaryDefaults.DropRates.TrafficSNEK field doesn't exist", FAILURE_PREAMBLE)
-			}
+			}*/
 			if subVal, subOk := val.(map[string]interface{})["VirtualSnakeBootstrap"]; subOk {
 				intVal, _ := strconv.Atoi(subVal.(string))
 				dropRates.Frames[types.TypeBootstrap] = uint64(intVal)
 			} else {
 				err = fmt.Errorf("%sConfigureAdversaryDefaults.DropRates.VirtualSnakeBootstrap field doesn't exist", FAILURE_PREAMBLE)
 			}
-			if subVal, subOk := val.(map[string]interface{})["TrafficTree"]; subOk {
+			/*if subVal, subOk := val.(map[string]interface{})["TrafficTree"]; subOk {
 				intVal, _ := strconv.Atoi(subVal.(string))
 				dropRates.Frames[types.TypeTrafficTree] = uint64(intVal)
 			} else {
 				err = fmt.Errorf("%sConfigureAdversaryDefaults.DropRates.TrafficTree field doesn't exist", FAILURE_PREAMBLE)
-			}
+			}*/
 		} else {
 			err = fmt.Errorf("%sConfigureAdversaryDefaults.DropRates field doesn't exist", FAILURE_PREAMBLE)
 		}
@@ -181,24 +181,24 @@ func UnmarshalCommandJSON(command *SimCommandMsg) (SimCommand, error) {
 			} else {
 				err = fmt.Errorf("%sConfigureAdversaryPeer.DropRates.TreeAnnouncement field doesn't exist", FAILURE_PREAMBLE)
 			}
-			if subVal, subOk := val.(map[string]interface{})["TrafficSNEK"]; subOk {
+			/*if subVal, subOk := val.(map[string]interface{})["TrafficSNEK"]; subOk {
 				intVal, _ := strconv.Atoi(subVal.(string))
 				dropRates.Frames[types.TypeTrafficSNEK] = uint64(intVal)
 			} else {
 				err = fmt.Errorf("%sConfigureAdversaryPeer.DropRates.TrafficSNEK field doesn't exist", FAILURE_PREAMBLE)
-			}
+			}*/
 			if subVal, subOk := val.(map[string]interface{})["VirtualSnakeBootstrap"]; subOk {
 				intVal, _ := strconv.Atoi(subVal.(string))
 				dropRates.Frames[types.TypeBootstrap] = uint64(intVal)
 			} else {
 				err = fmt.Errorf("%sConfigureAdversaryPeer.DropRates.VirtualSnakeBootstrap field doesn't exist", FAILURE_PREAMBLE)
 			}
-			if subVal, subOk := val.(map[string]interface{})["TrafficTree"]; subOk {
+			/*if subVal, subOk := val.(map[string]interface{})["TrafficTree"]; subOk {
 				intVal, _ := strconv.Atoi(subVal.(string))
 				dropRates.Frames[types.TypeTrafficTree] = uint64(intVal)
 			} else {
 				err = fmt.Errorf("%sConfigureAdversaryPeer.DropRates.TrafficTree field doesn't exist", FAILURE_PREAMBLE)
-			}
+			}*/
 		} else {
 			err = fmt.Errorf("%sConfigureAdversaryPeer.DropRates field doesn't exist", FAILURE_PREAMBLE)
 		}

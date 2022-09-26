@@ -109,29 +109,16 @@ func (p *peer) ClearBandwidthCounters() {
 // will return true if the message was correctly queued or false if it was dropped,
 // i.e. due to the queue overflowing.
 func (p *peer) send(f *types.Frame) bool {
-	switch f.Type {
-	// Protocol messages
-	case types.TypeTreeAnnouncement, types.TypeKeepalive:
-		fallthrough
-	case types.TypeBootstrap:
-		if p.proto == nil {
-			// The local peer doesn't have a protocol queue so we should check
-			// for nils to prevent panics.
-			return false
-		}
-		return p.proto.push(f)
-
-	// Traffic messages
-	case types.TypeTrafficSNEK, types.TypeTrafficTree:
-		if p.traffic == nil {
-			// The local peer doesn't have a traffic queue so we should check
-			// for nils to prevent panics.
-			return false
-		}
-		return p.traffic.push(f)
+	var q queue
+	if f.Type.IsTraffic() {
+		q = p.traffic
+	} else {
+		q = p.proto
 	}
-
-	return false
+	if q == nil {
+		return false
+	}
+	return q.push(f)
 }
 
 // stop will immediately mark a port as offline, before dispatching a task to

@@ -27,15 +27,11 @@ import (
 // for this function to return `nil` if there is no suitable candidate.
 func (s *state) _nextHopsFor(from *peer, frameType types.FrameType, dest net.Addr, watermark types.VirtualSnakeWatermark) (*peer, types.VirtualSnakeWatermark) {
 	var nexthop *peer
-	switch frameType {
-	case types.TypeBootstrap, types.TypeTrafficSNEK:
-		if dest, ok := dest.(types.PublicKey); ok {
-			nexthop, watermark = s._nextHopsSNEK(dest, frameType, watermark)
-		}
-	case types.TypeTrafficTree:
-		if dest, ok := dest.(types.Coordinates); ok {
-			nexthop = s._nextHopsTree(from, dest)
-		}
+	switch dest := dest.(type) {
+	case types.PublicKey:
+		nexthop, watermark = s._nextHopsSNEK(dest, frameType, watermark)
+	case types.Coordinates:
+		nexthop = s._nextHopsTree(from, dest)
 	}
 	return nexthop, watermark
 }
@@ -46,22 +42,17 @@ func (s *state) _nextHopsFor(from *peer, frameType types.FrameType, dest net.Add
 // special handling will be done before forwarding if needed.
 func (s *state) _forward(p *peer, f *types.Frame) error {
 	// Allow overlay loopback traffic by directly forwarding it to the local router.
-	if f.Type.IsTraffic() {
-		switch {
-		case f.DestinationKey == s.r.public:
-			fallthrough
-		case f.Type == types.TypeTrafficTree && f.Destination.EqualTo(s._coords()):
-			if len(f.Source) > 0 {
-				s._coordsCache[f.SourceKey] = coordsCacheEntry{
-					coordinates: f.Source,
-					lastSeen:    time.Now(),
-				}
+	if f.Type.IsTraffic() && f.DestinationKey == s.r.public {
+		if len(f.Source) > 0 {
+			s._coordsCache[f.SourceKey] = coordsCacheEntry{
+				coordinates: f.Source,
+				lastSeen:    time.Now(),
 			}
-			if !s.r.local.send(f) {
-				framePool.Put(f)
-			}
-			return nil
 		}
+		if !s.r.local.send(f) {
+			framePool.Put(f)
+		}
+		return nil
 	}
 
 	if s._filterPacket != nil && s._filterPacket(p.public, f) {
@@ -73,15 +64,17 @@ func (s *state) _forward(p *peer, f *types.Frame) error {
 	var nexthop *peer
 	var watermark types.VirtualSnakeWatermark
 	switch f.Type {
-	case types.TypeTrafficTree:
-		if nexthop, watermark = s._nextHopsFor(p, f.Type, f.Destination, f.Watermark); nexthop != nil {
-			// We found a next-hop on the tree, so use it
-			break
+	case types.TypeTraffic:
+		if len(f.Destination) > 0 {
+			if nexthop, watermark = s._nextHopsFor(p, f.Type, f.Destination, f.Watermark); nexthop != nil {
+				// We found a next-hop on the tree, so use it
+				break
+			}
 		}
 		// Otherwise, we failed to find a tree next-hop, fall back to SNEK routing
-		f.Type, f.Destination = types.TypeTrafficSNEK, f.Destination[:0]
+		f.Destination = f.Destination[:0]
 		fallthrough
-	case types.TypeTrafficSNEK, types.TypeBootstrap:
+	case types.TypeBootstrap:
 		nexthop, watermark = s._nextHopsFor(p, f.Type, f.DestinationKey, f.Watermark)
 	}
 	deadend := nexthop == nil || nexthop == p.router.local
@@ -108,7 +101,7 @@ func (s *state) _forward(p *peer, f *types.Frame) error {
 			return nil
 		}
 
-	case types.TypeTrafficSNEK, types.TypeTrafficTree:
+	case types.TypeTraffic:
 		// Traffic type packets are forwarded normally by falling through. There
 		// are no special rules to apply to these packets, regardless of whether
 		// they are SNEK-routed or tree-routed.
