@@ -17,6 +17,7 @@ package simulator
 import (
 	"crypto/ed25519"
 	"encoding/binary"
+	"fmt"
 
 	"github.com/matrix-org/pinecone/types"
 )
@@ -28,6 +29,9 @@ const (
 	Pong
 )
 
+const pingPreamble = "pineping"
+const pingSize = len(pingPreamble) + (ed25519.PublicKeySize * 2) + 3
+
 type PingPayload struct {
 	pingType    PingType
 	origin      types.PublicKey
@@ -36,8 +40,12 @@ type PingPayload struct {
 }
 
 func (p *PingPayload) MarshalBinary(buffer []byte) (int, error) {
-	buffer[0] = uint8(p.pingType)
-	offset := 1
+	if len(buffer) < pingSize {
+		return 0, fmt.Errorf("buffer too small")
+	}
+	offset := copy(buffer, []byte(pingPreamble))
+	buffer[offset] = uint8(p.pingType)
+	offset++
 	binary.BigEndian.PutUint16(buffer[offset:offset+2], p.hops)
 	offset += 2
 	offset += copy(buffer[offset:], p.origin[:ed25519.PublicKeySize])
@@ -45,12 +53,19 @@ func (p *PingPayload) MarshalBinary(buffer []byte) (int, error) {
 	return offset, nil
 }
 
-func (p *PingPayload) UnmarshalBinary(data []byte) (int, error) {
-	p.pingType = PingType(data[0])
-	offset := 1
-	p.hops = binary.BigEndian.Uint16(data[offset : offset+2])
+func (p *PingPayload) UnmarshalBinary(buffer []byte) (int, error) {
+	if len(buffer) < pingSize {
+		return 0, fmt.Errorf("buffer too small")
+	}
+	if string(buffer[:len(pingPreamble)]) != pingPreamble {
+		return 0, fmt.Errorf("not a ping")
+	}
+	offset := len(pingPreamble)
+	p.pingType = PingType(buffer[offset])
+	offset++
+	p.hops = binary.BigEndian.Uint16(buffer[offset : offset+2])
 	offset += 2
-	offset += copy(p.origin[:], data[offset:])
-	offset += copy(p.destination[:], data[offset:])
+	offset += copy(p.origin[:], buffer[offset:])
+	offset += copy(p.destination[:], buffer[offset:])
 	return offset, nil
 }
