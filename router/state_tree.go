@@ -227,6 +227,7 @@ func getNextHopTree(params treeNextHopParams) *peer {
 	// Now work out which of our peers takes the message closer.
 	var bestPeer *peer
 	bestDist := ourDist
+	bestType := math.MaxUint16
 	bestOrdering := uint64(math.MaxUint64)
 	ourRoot := params.lastAnnouncement
 	for p, ann := range *params.peerAnnouncements {
@@ -245,17 +246,24 @@ func getNextHopTree(params treeNextHopParams) *peer {
 		// across the tree to those coordinates.
 		peerCoords := ann.PeerCoords()
 		peerDist := int64(peerCoords.DistanceTo(params.destinationCoords))
-		if isBetterNextHopCandidate(peerDist, bestDist, ann.receiveOrder, bestOrdering,
-			bestPeer != nil) {
-			bestPeer, bestDist, bestOrdering = p, peerDist, ann.receiveOrder
+		peerType := int(p.peertype)
+		if isBetterNextHopCandidate(
+			peerType, peerDist, ann.receiveOrder,
+			bestType, bestDist, bestOrdering,
+			bestPeer == p,
+		) {
+			bestPeer, bestDist, bestOrdering, bestType = p, peerDist, ann.receiveOrder, peerType
 		}
 	}
 
 	return bestPeer
 }
 
-func isBetterNextHopCandidate(peerDistance int64, bestDistance int64,
-	peerOrder uint64, bestOrder uint64, candidateExists bool) bool {
+func isBetterNextHopCandidate(
+	peerType int, peerDistance int64, peerOrder uint64,
+	bestType int, bestDistance int64, bestOrder uint64,
+	isAnotherLinkToBest bool,
+) bool {
 	betterCandidate := false
 
 	switch {
@@ -264,9 +272,13 @@ func isBetterNextHopCandidate(peerDistance int64, bestDistance int64,
 		betterCandidate = true
 	case peerDistance > bestDistance:
 		// The peer is further away from the destination.
-	case candidateExists && peerOrder < bestOrder:
-		// The peer has a lower latency path to the root as a
-		// last-resort tiebreak.
+	case isAnotherLinkToBest && peerType < bestType:
+		// This is another peering to the same node but is
+		// a faster connection medium.
+		betterCandidate = true
+	case isAnotherLinkToBest && peerType == bestType && peerOrder < bestOrder:
+		// This is another peering to the same node but has
+		// a lower path to the root as a last-resort tiebreak.
 		betterCandidate = true
 	}
 

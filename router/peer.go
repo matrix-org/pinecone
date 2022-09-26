@@ -38,10 +38,11 @@ const peerKeepaliveTimeout = time.Second * 5
 
 // Lower numbers for these consts are typically faster connections.
 const ( // These need to be a simple int type for gobind/gomobile to export them...
-	PeerTypeMulticast int = iota
+	PeerTypePipe int = iota
+	PeerTypeMulticast
+	PeerTypeBonjour
 	PeerTypeRemote
 	PeerTypeBluetooth
-	PeerTypeBonjour
 )
 
 // peer contains information about a given active peering. There are two
