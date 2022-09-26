@@ -102,7 +102,16 @@ func (f *Frame) MarshalBinary(buffer []byte) (int, error) {
 
 	case TypeKeepalive:
 
-	case TypeTreeAnnouncement, TypeTraffic:
+	case TypeTreeAnnouncement:
+		payloadLen := len(f.Payload)
+		binary.BigEndian.PutUint16(buffer[offset+0:offset+2], uint16(payloadLen))
+		offset += 2
+		if f.Payload != nil {
+			f.Payload = f.Payload[:payloadLen]
+			offset += copy(buffer[offset:], f.Payload[:payloadLen])
+		}
+
+	case TypeTraffic:
 		payloadLen := len(f.Payload)
 		binary.BigEndian.PutUint16(buffer[offset+0:offset+2], uint16(payloadLen))
 		dn, err := f.Destination.MarshalBinary(buffer[offset+2:])
@@ -175,7 +184,17 @@ func (f *Frame) UnmarshalBinary(data []byte) (int, error) {
 	case TypeKeepalive:
 		return offset, nil
 
-	case TypeTreeAnnouncement, TypeTraffic:
+	case TypeTreeAnnouncement:
+		payloadLen := int(binary.BigEndian.Uint16(data[offset+0 : offset+2]))
+		if payloadLen > cap(f.Payload) {
+			return 0, fmt.Errorf("payload length exceeds frame capacity")
+		}
+		offset += 2
+		f.Payload = f.Payload[:payloadLen]
+		offset += copy(f.Payload, data[offset:])
+		return offset + payloadLen, nil
+
+	case TypeTraffic:
 		payloadLen := int(binary.BigEndian.Uint16(data[offset+0 : offset+2]))
 		if payloadLen > cap(f.Payload) {
 			return 0, fmt.Errorf("payload length exceeds frame capacity")
