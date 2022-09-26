@@ -245,7 +245,7 @@ func (t FrameType) String() string {
 	case TypeBootstrap:
 		return "VirtualSnakeBootstrap"
 	case TypeTraffic:
-		return "Traffic"
+		return "OverlayTraffic"
 	case TypeKeepalive:
 		return "Keepalive"
 	default:

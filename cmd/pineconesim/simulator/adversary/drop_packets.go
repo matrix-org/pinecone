@@ -224,8 +224,5 @@ func (a *AdversaryRouter) selectivelyDrop(from types.PublicKey, f *types.Frame) 
 
 	a.updateDropCount(from, f.Type, numberToCountOverall, numberToCountFrame)
 
-	//if shouldDrop {
-	//    log.Printf("Router %s :: Dropping %s", a.PublicKey().String()[:8], f.Type)
-	//}
 	return shouldDrop
 }
