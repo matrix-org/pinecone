@@ -25,10 +25,6 @@ import (
 // NOTE: Functions prefixed with an underscore (_) are only safe to be called
 // from the actor that owns them, in order to prevent data races.
 
-const virtualSnakeMaintainInterval = time.Second
-const virtualSnakeBootstrapInterval = time.Second * 5
-const virtualSnakeNeighExpiryPeriod = virtualSnakeBootstrapInterval * 2
-
 type virtualSnakeTable map[virtualSnakeIndex]*virtualSnakeEntry
 
 type virtualSnakeIndex struct {

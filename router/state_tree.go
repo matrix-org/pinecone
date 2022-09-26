@@ -27,15 +27,6 @@ import (
 // NOTE: Functions prefixed with an underscore (_) are only safe to be called
 // from the actor that owns them, in order to prevent data races.
 
-// announcementInterval is the frequency at which this
-// node will send root announcements to other peers.
-const announcementInterval = time.Minute * 30
-
-// announcementTimeout is the amount of time that must
-// pass without receiving a root announcement before we
-// will assume that the peer is dead.
-const announcementTimeout = time.Minute * 45
-
 type announcementTable map[*peer]*rootAnnouncementWithTime
 
 // _maintainTree sends out root announcements if we are

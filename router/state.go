@@ -31,8 +31,6 @@ type FilterFn func(from types.PublicKey, f *types.Frame) bool
 
 const BWReportingInterval = time.Minute
 
-const coordsCacheLifetime = time.Hour
-
 // NOTE: Functions prefixed with an underscore (_) are only safe to be called
 // from the actor that owns them, in order to prevent data races.
 

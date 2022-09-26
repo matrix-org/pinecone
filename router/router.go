@@ -23,7 +23,6 @@ import (
 	"io"
 	"io/ioutil"
 	"log"
-	"math"
 	"net"
 	"os"
 	"sync"
@@ -34,9 +33,6 @@ import (
 	"github.com/matrix-org/pinecone/types"
 	"go.uber.org/atomic"
 )
-
-const portCount = math.MaxUint8 - 1
-const trafficBuffer = math.MaxUint8 - 1
 
 type Router struct {
 	phony.Inbox
