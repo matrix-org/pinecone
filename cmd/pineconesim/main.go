@@ -332,16 +332,14 @@ func userProxyReporter(conn *websocket.Conn, connID uint64, sim *simulator.Simul
 	}
 
 	// Send current network stats
-	treeStretch, snekStretch := sim.CalculateStretch()
+	stretch := sim.CalculateStretch()
 	if err := conn.WriteJSON(simulator.StateUpdateMsg{
 		MsgID: simulator.SimStateUpdate,
 		Event: simulator.SimEventMsg{
 			UpdateID: simulator.SimNetworkStatsUpdated,
 			Event: simulator.NetworkStatsUpdate{
-				TreePathConvergence:  uint64(sim.CalculateTreePathConvergence()),
-				TreeAverageStretch:   treeStretch,
-				SnakePathConvergence: uint64(sim.CalculateSNEKPathConvergence()),
-				SnakeAverageStretch:  snekStretch,
+				PathConvergence: uint64(sim.CalculatePathConvergence()),
+				AverageStretch:  stretch,
 			}},
 	}); err != nil {
 		log.Println(err)

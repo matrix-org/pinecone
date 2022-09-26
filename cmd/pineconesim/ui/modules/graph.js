@@ -20,10 +20,8 @@ let hoverNode = null;
 let Nodes = new Map();
 
 let NetworkStats = {
-    TreePathConvergence: 0,
-    TreeAverageStretch: 0.0,
-    SnakePathConvergence: 0,
-    SnakeAverageStretch: 0.0
+    PathConvergence: 0,
+    AverageStretch: 0.0
 };
 
 const MaxBandwidthReports = 10;
@@ -769,11 +767,9 @@ class Graph {
         }
     }
 
-    updateNetworkStats(treeConv, treeStretch, snakeConv, snakeStretch) {
-        NetworkStats.TreePathConvergence = treeConv.toFixed(2);
-        NetworkStats.TreeAverageStretch = treeStretch.toFixed(2);
-        NetworkStats.SnakePathConvergence = snakeConv.toFixed(2);
-        NetworkStats.SnakeAverageStretch = snakeStretch.toFixed(2);
+    updateNetworkStats(conv, stretch) {
+        NetworkStats.PathConvergence = conv.toFixed(2);
+        NetworkStats.AverageStretch = stretch.toFixed(2);
         handleStatsPanelUpdate();
     }
 
@@ -985,17 +981,11 @@ function handleStatsPanelUpdate() {
         "<hr><table>" +
         "<tr><td>Node Count:</td><td style=\"text-align: left;\">" + Nodes.size + "</td></tr>" +
         "<tr><td>Path Count:</td><td style=\"text-align: left;\">" + peerLinks / 2 + "</td></tr>" +
-        "<tr><td>Tree Path Convergence:</td><td style=\"text-align: left;\">" +
-        NetworkStats.TreePathConvergence +
+        "<tr><td>Path Convergence:</td><td style=\"text-align: left;\">" +
+        NetworkStats.PathConvergence +
         "%</td></tr>" +
-        "<tr><td>SNEK Path Convergence:</td><td style=\"text-align: left;\">" +
-        NetworkStats.SnakePathConvergence +
-        "%</td></tr>" +
-        "<tr><td>Tree Average Stretch:</td><td>" +
-        NetworkStats.TreeAverageStretch +
-        "</td></tr>" +
-        "<tr><td>SNEK Average Stretch:</td><td>" +
-        NetworkStats.SnakeAverageStretch +
+        "<tr><td>Average Stretch:</td><td>" +
+        NetworkStats.AverageStretch +
         "</td></tr>" +
         "<tr><td>SNEK Table Size (Avg):</td><td>" +
         avgTableSize.toFixed(2) +

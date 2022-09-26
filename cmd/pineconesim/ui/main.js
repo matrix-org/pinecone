@@ -87,7 +87,7 @@ function handleSimMessage(msg) {
             SetPingToolState(event.Enabled, event.Active);
             break;
         case APIUpdateID.NetworkStatsUpdated:
-            graph.updateNetworkStats(event.TreePathConvergence, event.TreeAverageStretch, event.SnakePathConvergence, event.SnakeAverageStretch);
+            graph.updateNetworkStats(event.PathConvergence, event.AverageStretch);
             break;
         case APIUpdateID.BandwidthReport:
             graph.addBandwidthReport(event.Node, event.Bandwidth);

@@ -20,7 +20,7 @@ import (
 	"time"
 )
 
-func (sim *Simulator) PingSNEK(from, to string) (uint16, time.Duration, error) {
+func (sim *Simulator) Ping(from, to string) (uint16, time.Duration, error) {
 	fromnode := sim.nodes[from]
 	tonode := sim.nodes[to]
 	success := false
@@ -29,20 +29,20 @@ func (sim *Simulator) PingSNEK(from, to string) (uint16, time.Duration, error) {
 	defer cancel()
 
 	defer func() {
-		sim.snekPathConvergenceMutex.Lock()
-		if _, ok := sim.snekPathConvergence[from]; !ok {
-			sim.snekPathConvergence[from] = map[string]bool{}
+		sim.pathConvergenceMutex.Lock()
+		if _, ok := sim.pathConvergence[from]; !ok {
+			sim.pathConvergence[from] = map[string]bool{}
 		}
-		sim.snekPathConvergence[from][to] = success
-		sim.snekPathConvergenceMutex.Unlock()
+		sim.pathConvergence[from][to] = success
+		sim.pathConvergenceMutex.Unlock()
 	}()
 
 	hops, rtt, err := fromnode.Ping(ctx, tonode.PublicKey())
 	if err != nil {
-		return 0, 0, fmt.Errorf("fromnode.SNEKPing: %w", err)
+		return 0, 0, fmt.Errorf("fromnode.Ping: %w", err)
 	}
 
 	success = true
-	sim.ReportDistance(from, to, int64(hops), true)
+	sim.ReportDistance(from, to, int64(hops))
 	return hops, rtt, nil
 }
