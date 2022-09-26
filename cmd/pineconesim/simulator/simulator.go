@@ -232,11 +232,8 @@ func (sim *Simulator) Distances() map[string]map[string]*Distance {
 }
 
 func (sim *Simulator) CalculateStretch() (tree float64, snek float64) {
-	count := 0.0
-	treeSum := 0.0
-	snekSum := 0.0
-	tree = 0.0
-	snek = 0.0
+	var count float64
+	var treeSum, snekSum float64
 
 	for _, aa := range sim.Distances() {
 		for _, bb := range aa {
@@ -244,28 +241,18 @@ func (sim *Simulator) CalculateStretch() (tree float64, snek float64) {
 				// TODO : something is wrong with the distances. Real values of 0 exist...
 				continue
 			}
+			treeSum += float64(bb.ObservedTree) / float64(bb.Real)
+			snekSum += float64(bb.ObservedSNEK) / float64(bb.Real)
 			count += 1
-			treeStretch := float64(bb.ObservedTree) / float64(bb.Real)
-			treeSum += treeStretch
-			if treeStretch > tree {
-				tree = treeStretch
-			}
-
-			snekStretch := float64(bb.ObservedSNEK) / float64(bb.Real)
-			snekSum += snekStretch
-			if snekStretch > snek {
-				snek = snekStretch
-			}
 		}
 	}
 
-	treeRes, snekRes := 0.0, 0.0
 	if count > 0 {
-		treeRes, snekRes = treeSum/count, snekSum/count
+		tree, snek = treeSum/count, snekSum/count
 	}
 
 	sim.log.Printf("Network Stretch :: Tree=%.2f :: SNEK=%.2f", tree, snek)
-	return treeRes, snekRes
+	return tree, snek
 }
 
 func (sim *Simulator) SNEKPathConvergence() map[string]map[string]bool {

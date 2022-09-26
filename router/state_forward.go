@@ -28,17 +28,12 @@ import (
 func (s *state) _nextHopsFor(from *peer, frameType types.FrameType, dest net.Addr, watermark types.VirtualSnakeWatermark) (*peer, types.VirtualSnakeWatermark) {
 	var nexthop *peer
 	switch frameType {
-	case types.TypeBootstrap:
-		switch dest := (dest).(type) {
-		case types.PublicKey:
+	case types.TypeBootstrap, types.TypeTrafficSNEK:
+		if dest, ok := dest.(types.PublicKey); ok {
 			nexthop, watermark = s._nextHopsSNEK(dest, frameType, watermark)
 		}
-
-	case types.TypeTraffic:
-		switch dest := (dest).(type) {
-		case types.PublicKey:
-			nexthop, watermark = s._nextHopsSNEK(dest, frameType, watermark)
-		case types.Coordinates:
+	case types.TypeTrafficTree:
+		if dest, ok := dest.(types.Coordinates); ok {
 			nexthop = s._nextHopsTree(from, dest)
 		}
 	}
@@ -50,38 +45,43 @@ func (s *state) _nextHopsFor(from *peer, frameType types.FrameType, dest net.Add
 // queue if possible. In some special cases, like tree announcements,
 // special handling will be done before forwarding if needed.
 func (s *state) _forward(p *peer, f *types.Frame) error {
+	// Allow overlay loopback traffic by directly forwarding it to the local router.
+	if f.Type.IsTraffic() {
+		switch {
+		case f.DestinationKey == s.r.public:
+			fallthrough
+		case f.Type == types.TypeTrafficTree && f.Destination.EqualTo(s._coords()):
+			if len(f.Source) > 0 {
+				s._coordsCache[f.SourceKey] = coordsCacheEntry{
+					coordinates: f.Source,
+					lastSeen:    time.Now(),
+				}
+			}
+			if !s.r.local.send(f) {
+				framePool.Put(f)
+			}
+			return nil
+		}
+	}
+
 	if s._filterPacket != nil && s._filterPacket(p.public, f) {
 		s.r.log.Printf("Packet of type %s destined for port %d [%s] was dropped due to filter rules", f.Type.String(), p.port, p.public.String()[:8])
 		framePool.Put(f)
 		return nil
 	}
 
-	// Allow overlay loopback traffic by directly forwarding it to the local router.
-	if f.Type == types.TypeTraffic && (f.Destination.EqualTo(s._coords()) || f.DestinationKey == s.r.public) {
-		if len(f.Source) > 0 {
-			s._coordsCache[f.SourceKey] = coordsCacheEntry{
-				coordinates: f.Source,
-				lastSeen:    time.Now(),
-			}
-		}
-		if !s.r.local.send(f) {
-			framePool.Put(f)
-		}
-		return nil
-	}
-
 	var nexthop *peer
 	var watermark types.VirtualSnakeWatermark
 	switch f.Type {
-	case types.TypeTraffic:
-		if len(f.Destination) > 0 {
-			nexthop, watermark = s._nextHopsFor(p, f.Type, f.Destination, f.Watermark)
+	case types.TypeTrafficTree:
+		if nexthop, watermark = s._nextHopsFor(p, f.Type, f.Destination, f.Watermark); nexthop != nil {
+			// We found a next-hop on the tree, so use it
+			break
 		}
-		if nexthop == nil {
-			f.Destination = f.Destination[:0] // Remove the dest coords so we fall back to SNEK routing
-			nexthop, watermark = s._nextHopsFor(p, f.Type, f.DestinationKey, f.Watermark)
-		}
-	case types.TypeBootstrap:
+		// Otherwise, we failed to find a tree next-hop, fall back to SNEK routing
+		f.Type, f.Destination = types.TypeTrafficSNEK, f.Destination[:0]
+		fallthrough
+	case types.TypeTrafficSNEK, types.TypeBootstrap:
 		nexthop, watermark = s._nextHopsFor(p, f.Type, f.DestinationKey, f.Watermark)
 	}
 	deadend := nexthop == nil || nexthop == p.router.local
@@ -108,7 +108,7 @@ func (s *state) _forward(p *peer, f *types.Frame) error {
 			return nil
 		}
 
-	case types.TypeTraffic:
+	case types.TypeTrafficSNEK, types.TypeTrafficTree:
 		// Traffic type packets are forwarded normally by falling through. There
 		// are no special rules to apply to these packets, regardless of whether
 		// they are SNEK-routed or tree-routed.

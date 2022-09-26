@@ -21,6 +21,7 @@ import (
 	"net/http"
 	"sync"
 	"time"
+	"unsafe"
 
 	"github.com/matrix-org/pinecone/cmd/pineconesim/simulator/adversary"
 	"github.com/matrix-org/pinecone/router"
@@ -68,6 +69,8 @@ func (r *DefaultRouter) ManholeHandler(w http.ResponseWriter, req *http.Request)
 	r.rtr.ManholeHandler(w, req)
 }
 
+var pingBufferSize = unsafe.Sizeof(PingPayload{})
+
 func (r *DefaultRouter) Ping(ctx context.Context, destination types.PublicKey) (uint16, time.Duration, error) {
 	id := destination.String()
 	payload := PingPayload{
@@ -76,7 +79,7 @@ func (r *DefaultRouter) Ping(ctx context.Context, destination types.PublicKey) (
 		hops:        0,
 	}
 
-	p := make([]byte, 256)
+	p := make([]byte, pingBufferSize)
 	_, err := payload.MarshalBinary(p)
 	if err != nil {
 		return 0, 0, fmt.Errorf("failed marshalling ping payload: %w", err)
@@ -103,30 +106,26 @@ func (r *DefaultRouter) Ping(ctx context.Context, destination types.PublicKey) (
 }
 
 func (r *DefaultRouter) PingFilter(from types.PublicKey, f *types.Frame) bool {
-	if f.Type != types.TypeTraffic {
+	if !f.Type.IsTraffic() {
 		return false
 	}
 
 	payload := PingPayload{}
 	if _, err := payload.UnmarshalBinary(f.Payload); err != nil {
-		println(err.Error())
 		return true
 	}
-
-	payload.hops++
-
-	p := make([]byte, 256)
-	if _, err := payload.MarshalBinary(p); err != nil {
-		println(err.Error())
-		return true
+	if payload.pingType == Ping {
+		payload.hops++
+		if _, err := payload.MarshalBinary(f.Payload); err != nil {
+			return true
+		}
 	}
-	f.Payload = p
 
 	return false
 }
 
 func (r *DefaultRouter) OverlayReadHandler(quit <-chan bool) {
-	buf := make([]byte, 256)
+	buf := make([]byte, pingBufferSize)
 	for {
 		select {
 		case <-quit:
@@ -164,7 +163,7 @@ func (r *DefaultRouter) OverlayReadHandler(quit <-chan bool) {
 					continue
 				}
 				ch := v.(chan uint16)
-				ch <- payload.hops / 2
+				ch <- payload.hops
 				close(ch)
 				r.pings.Delete(id)
 				continue

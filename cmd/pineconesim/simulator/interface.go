@@ -14,14 +14,7 @@
 
 package simulator
 
-import (
-	"strings"
-)
-
 func (sim *Simulator) ReportDistance(a, b string, l int64, snek bool) {
-	if strings.Compare(a, b) > 0 {
-		a, b = b, a
-	}
 	sim.distsMutex.Lock()
 	defer sim.distsMutex.Unlock()
 	if _, ok := sim.dists[a]; !ok {

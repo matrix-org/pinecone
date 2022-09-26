@@ -26,7 +26,7 @@ func TestMarshalUnmarshalFrame(t *testing.T) {
 	dst, _, _ := ed25519.GenerateKey(nil)
 	input := Frame{
 		Version:     Version0,
-		Type:        TypeTraffic,
+		Type:        TypeTrafficSNEK,
 		Destination: Coordinates{1, 2, 3, 4, 5000},
 		Source:      Coordinates{4, 3, 2, 1},
 		Payload:     []byte("ABCDEFG"),
@@ -36,9 +36,9 @@ func TestMarshalUnmarshalFrame(t *testing.T) {
 	copy(input.Watermark.PublicKey[:], src)
 	expected := []byte{
 		0x70, 0x69, 0x6e, 0x65, // magic bytes
-		0,                 // version 0
-		byte(TypeTraffic), // type greedy
-		0, 0,              // extra
+		0,                     // version 0
+		byte(TypeTrafficSNEK), // type greedy
+		0, 0,                  // extra
 		0, 130, // frame length
 		0, 7, // payload len
 		0, 6, 1, 2, 3, 4, 167, 8, // destination (2+6 bytes but 5 ports!)

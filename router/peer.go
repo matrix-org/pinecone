@@ -122,7 +122,7 @@ func (p *peer) send(f *types.Frame) bool {
 		return p.proto.push(f)
 
 	// Traffic messages
-	case types.TypeTraffic:
+	case types.TypeTrafficSNEK, types.TypeTrafficTree:
 		if p.traffic == nil {
 			// The local peer doesn't have a traffic queue so we should check
 			// for nils to prevent panics.
@@ -278,7 +278,7 @@ func (p *peer) _write() {
 	}
 
 	// Write the frame to the peering.
-	if frame.Type == types.TypeTraffic {
+	if frame.Type.IsTraffic() {
 		phony.Block(&p.statistics, func() {
 			p.statistics._bytesTxTraffic += uint64(n)
 		})
@@ -346,7 +346,7 @@ func (p *peer) _read() {
 			p.stop(fmt.Errorf("io.ReadFull: %w", err))
 			return
 		}
-		isProtoTraffic = types.FrameType(b[5]) != types.TypeTraffic
+		isProtoTraffic = !types.FrameType(b[5]).IsTraffic()
 
 		if isProtoTraffic {
 			phony.Block(&p.statistics, func() {
@@ -428,21 +428,4 @@ func (p *peer) _read() {
 	// This is effectively a recursive call to queue up the next read into
 	// the actor inbox.
 	p.reader.Act(nil, p._read)
-}
-
-func (p *peer) _coords() (types.Coordinates, error) {
-	var err error
-	var coords types.Coordinates
-
-	if p == p.router.local {
-		coords = p.router.state._coords()
-	} else {
-		if announcement, ok := p.router.state._announcements[p]; ok {
-			coords = announcement.PeerCoords()
-		} else {
-			err = fmt.Errorf("no root announcement found for peer")
-		}
-	}
-
-	return coords, err
 }
