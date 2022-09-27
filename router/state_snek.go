@@ -25,10 +25,6 @@ import (
 // NOTE: Functions prefixed with an underscore (_) are only safe to be called
 // from the actor that owns them, in order to prevent data races.
 
-const virtualSnakeMaintainInterval = time.Second
-const virtualSnakeBootstrapInterval = time.Second * 5
-const virtualSnakeNeighExpiryPeriod = virtualSnakeBootstrapInterval * 2
-
 type virtualSnakeTable map[virtualSnakeIndex]*virtualSnakeEntry
 
 type virtualSnakeIndex struct {
@@ -134,7 +130,7 @@ func (s *state) _bootstrapNow() {
 	// the bootstrap routing defaults to routing towards higher keys, this should
 	// mean that the message gets forwarded up to the next highest key from ours.
 	send := getFrame()
-	send.Type = types.TypeVirtualSnakeBootstrap
+	send.Type = types.TypeBootstrap
 	send.DestinationKey = s.r.public
 	send.Source = s._coords()
 	send.Payload = append(send.Payload[:0], b[:n]...)
@@ -145,7 +141,7 @@ func (s *state) _bootstrapNow() {
 
 	// Bootstrap messages are routed using SNEK routing with special rules for
 	// bootstrap packets.
-	if p, w := s._nextHopsSNEK(send.DestinationKey, types.TypeVirtualSnakeBootstrap, send.Watermark); p != nil && p.proto != nil {
+	if p, w := s._nextHopsSNEK(send.DestinationKey, types.TypeBootstrap, send.Watermark); p != nil && p.proto != nil {
 		send.Watermark = w
 		p.proto.push(send)
 	}
@@ -167,7 +163,7 @@ type virtualSnakeNextHopParams struct {
 // _nextHopsSNEK locates the best next-hop for a given SNEK-routed frame.
 func (s *state) _nextHopsSNEK(dest types.PublicKey, frameType types.FrameType, watermark types.VirtualSnakeWatermark) (*peer, types.VirtualSnakeWatermark) {
 	return getNextHopSNEK(virtualSnakeNextHopParams{
-		frameType == types.TypeVirtualSnakeBootstrap,
+		frameType == types.TypeBootstrap,
 		dest,
 		s.r.public,
 		watermark,
@@ -196,7 +192,6 @@ func getNextHopSNEK(params virtualSnakeNextHopParams) (*peer, types.VirtualSnake
 	}
 	bestKey := params.publicKey
 	destKey := params.destinationKey
-	watermark := params.watermark
 
 	// newCandidate updates the best key and best peer with new candidates.
 	newCandidate := func(key types.PublicKey, seq types.Varu64, p *peer) {
@@ -272,7 +267,7 @@ func getNextHopSNEK(params virtualSnakeNextHopParams) (*peer, types.VirtualSnake
 		if !entry.Source.started.Load() || !entry.valid() {
 			continue
 		}
-		if entry.Watermark.WorseThan(watermark) {
+		if entry.Watermark.WorseThan(params.watermark) {
 			continue
 		}
 		newCheckedCandidate(entry.PublicKey, entry.Watermark.Sequence, entry.Source)
@@ -298,17 +293,10 @@ func getNextHopSNEK(params virtualSnakeNextHopParams) (*peer, types.VirtualSnake
 		}
 	}
 
-	// Only SNEK paths will have a sequence number higher than 0, so
-	// it's a safe bet that if it's greater than 0, we have hit upon
-	// a newly watermarkable path.
-	if bestSeq > 0 {
-		watermark = types.VirtualSnakeWatermark{
-			PublicKey: bestKey,
-			Sequence:  bestSeq,
-		}
+	return bestPeer, types.VirtualSnakeWatermark{
+		PublicKey: bestKey,
+		Sequence:  bestSeq,
 	}
-
-	return bestPeer, watermark
 }
 
 // _handleBootstrap is called in response to receiving a bootstrap packet.

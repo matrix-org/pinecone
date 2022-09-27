@@ -36,6 +36,7 @@ const (
 	PeerTypeRemote    = pineconeRouter.PeerTypeRemote
 	PeerTypeMulticast = pineconeRouter.PeerTypeMulticast
 	PeerTypeBluetooth = pineconeRouter.PeerTypeBluetooth
+	PeerTypeBonjour   = pineconeRouter.PeerTypeBonjour
 )
 
 type Pinecone struct {
@@ -49,6 +50,10 @@ type Pinecone struct {
 
 func (m *Pinecone) PeerCount(peertype int) int {
 	return m.PineconeRouter.PeerCount(peertype)
+}
+
+func (m *Pinecone) PublicKey() string {
+	return m.PineconeRouter.PublicKey().String()
 }
 
 func (m *Pinecone) SetMulticastEnabled(enabled bool) {
@@ -130,7 +135,7 @@ func (m *Pinecone) Start() {
 	m.logger = log.New(BindLogger{}, "Pinecone: ", 0)
 	m.logger.Println("Public key:", hex.EncodeToString(pk))
 
-	m.PineconeRouter = pineconeRouter.NewRouter(m.logger, sk, false)
+	m.PineconeRouter = pineconeRouter.NewRouter(m.logger, sk)
 	m.PineconeMulticast = pineconeMulticast.NewMulticast(m.logger, m.PineconeRouter)
 	m.PineconeManager = pineconeConnections.NewConnectionManager(m.PineconeRouter, nil)
 }

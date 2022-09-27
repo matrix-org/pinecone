@@ -14,14 +14,7 @@
 
 package simulator
 
-import (
-	"strings"
-)
-
-func (sim *Simulator) ReportDistance(a, b string, l int64, snek bool) {
-	if strings.Compare(a, b) > 0 {
-		a, b = b, a
-	}
+func (sim *Simulator) ReportDistance(a, b string, l int64) {
 	sim.distsMutex.Lock()
 	defer sim.distsMutex.Unlock()
 	if _, ok := sim.dists[a]; !ok {
@@ -30,11 +23,7 @@ func (sim *Simulator) ReportDistance(a, b string, l int64, snek bool) {
 	if _, ok := sim.dists[a][b]; !ok {
 		sim.dists[a][b] = &Distance{}
 	}
-	if snek {
-		sim.dists[a][b].ObservedSNEK = l
-	} else {
-		sim.dists[a][b].ObservedTree = l
-	}
+	sim.dists[a][b].Observed = l
 	if sim.dists[a][b].Real == 0 {
 		na, _ := sim.graph.GetMapping(a)
 		nb, _ := sim.graph.GetMapping(b)

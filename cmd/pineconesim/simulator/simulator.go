@@ -63,57 +63,54 @@ func (r *EventSequenceRunner) Run(sim *Simulator) {
 	}
 }
 
-type RouterCreatorFn func(log *log.Logger, sk ed25519.PrivateKey, debug bool, quit <-chan bool) SimRouter
+type RouterCreatorFn func(log *log.Logger, sk ed25519.PrivateKey, quit <-chan bool) SimRouter
 
 type pair struct{ from, to string }
 
 type Simulator struct {
-	log                      *log.Logger
-	sockets                  bool
-	pingEnabled              bool
-	pingActive               bool
-	AcceptCommands           bool
-	nodes                    map[string]*Node
-	nodesMutex               sync.RWMutex
-	nodeRunnerChannels       map[string][]chan<- bool
-	nodeRunnerChannelsMutex  sync.RWMutex
-	graph                    *dijkstra.Graph
-	maps                     map[string]int
-	wires                    map[string]map[string]net.Conn
-	wiresMutex               sync.RWMutex
-	dists                    map[string]map[string]*Distance
-	distsMutex               sync.RWMutex
-	snekPathConvergence      map[string]map[string]bool
-	snekPathConvergenceMutex sync.RWMutex
-	treePathConvergence      map[string]map[string]bool
-	treePathConvergenceMutex sync.RWMutex
-	startTime                time.Time
-	State                    *StateAccessor
-	eventPlaylist            []SimCommand
-	eventRunner              *EventSequenceRunner
-	routerCreationMap        map[APINodeType]RouterCreatorFn
-	pingControlChannel       chan<- bool
+	log                     *log.Logger
+	sockets                 bool
+	pingEnabled             bool
+	pingActive              bool
+	AcceptCommands          bool
+	nodes                   map[string]*Node
+	nodesMutex              sync.RWMutex
+	nodeRunnerChannels      map[string][]chan<- bool
+	nodeRunnerChannelsMutex sync.RWMutex
+	graph                   *dijkstra.Graph
+	maps                    map[string]int
+	wires                   map[string]map[string]net.Conn
+	wiresMutex              sync.RWMutex
+	dists                   map[string]map[string]*Distance
+	distsMutex              sync.RWMutex
+	pathConvergence         map[string]map[string]bool
+	pathConvergenceMutex    sync.RWMutex
+	startTime               time.Time
+	State                   *StateAccessor
+	eventPlaylist           []SimCommand
+	eventRunner             *EventSequenceRunner
+	routerCreationMap       map[APINodeType]RouterCreatorFn
+	pingControlChannel      chan<- bool
 }
 
 func NewSimulator(log *log.Logger, sockets, acceptCommands bool) *Simulator {
 	sim := &Simulator{
-		log:                 log,
-		sockets:             sockets,
-		pingEnabled:         false,
-		pingActive:          false,
-		AcceptCommands:      acceptCommands,
-		nodes:               make(map[string]*Node),
-		nodeRunnerChannels:  make(map[string][]chan<- bool),
-		wires:               make(map[string]map[string]net.Conn),
-		dists:               make(map[string]map[string]*Distance),
-		snekPathConvergence: make(map[string]map[string]bool),
-		treePathConvergence: make(map[string]map[string]bool),
-		startTime:           time.Now(),
-		State:               NewStateAccessor(),
-		eventPlaylist:       []SimCommand{},
-		eventRunner:         &EventSequenceRunner{_playlist: make(chan []SimCommand)},
-		routerCreationMap:   make(map[APINodeType]RouterCreatorFn, 2),
-		pingControlChannel:  make(chan<- bool),
+		log:                log,
+		sockets:            sockets,
+		pingEnabled:        false,
+		pingActive:         false,
+		AcceptCommands:     acceptCommands,
+		nodes:              make(map[string]*Node),
+		nodeRunnerChannels: make(map[string][]chan<- bool),
+		wires:              make(map[string]map[string]net.Conn),
+		dists:              make(map[string]map[string]*Distance),
+		pathConvergence:    make(map[string]map[string]bool),
+		startTime:          time.Now(),
+		State:              NewStateAccessor(),
+		eventPlaylist:      []SimCommand{},
+		eventRunner:        &EventSequenceRunner{_playlist: make(chan []SimCommand)},
+		routerCreationMap:  make(map[APINodeType]RouterCreatorFn, 2),
+		pingControlChannel: make(chan<- bool),
 	}
 
 	sim.routerCreationMap[DefaultNode] = createDefaultRouter
@@ -155,13 +152,9 @@ func (sim *Simulator) StartPinging(ping_period time.Duration) {
 				for i := 0; i < numWorkers; i++ {
 					go func() {
 						for pair := range tasks {
-							sim.log.Println("Tree ping from", pair.from, "to", pair.to)
-							if _, _, err := sim.PingTree(pair.from, pair.to); err != nil {
-								sim.log.Println("Tree ping from", pair.from, "to", pair.to, "failed:", err)
-							}
-							sim.log.Println("SNEK ping from", pair.from, "to", pair.to)
-							if _, _, err := sim.PingSNEK(pair.from, pair.to); err != nil {
-								sim.log.Println("SNEK ping from", pair.from, "to", pair.to, "failed:", err)
+							sim.log.Println("Ping from", pair.from, "to", pair.to)
+							if _, _, err := sim.Ping(pair.from, pair.to); err != nil {
+								sim.log.Println("Ping from", pair.from, "to", pair.to, "failed:", err)
 							}
 						}
 						wg.Done()
@@ -170,14 +163,12 @@ func (sim *Simulator) StartPinging(ping_period time.Duration) {
 
 				wg.Wait()
 
-				treeStretch, snekStretch := sim.CalculateStretch()
+				stretch := sim.CalculateStretch()
 				sim.State.Act(nil, func() {
 					sim.State._publish(
 						NetworkStatsUpdate{
-							TreePathConvergence:  uint64(sim.CalculateTreePathConvergence()),
-							TreeAverageStretch:   treeStretch,
-							SnakePathConvergence: uint64(sim.CalculateSNEKPathConvergence()),
-							SnakeAverageStretch:  snekStretch,
+							PathConvergence: uint64(sim.CalculatePathConvergence()),
+							AverageStretch:  stretch,
 						})
 				})
 
@@ -229,12 +220,10 @@ func (sim *Simulator) Distances() map[string]map[string]*Distance {
 	return mapcopy
 }
 
-func (sim *Simulator) CalculateStretch() (tree float64, snek float64) {
-	count := 0.0
-	treeSum := 0.0
-	snekSum := 0.0
-	tree = 0.0
-	snek = 0.0
+func (sim *Simulator) CalculateStretch() float64 {
+	var count float64
+	var sum float64
+	var stretch float64
 
 	for _, aa := range sim.Distances() {
 		for _, bb := range aa {
@@ -242,35 +231,24 @@ func (sim *Simulator) CalculateStretch() (tree float64, snek float64) {
 				// TODO : something is wrong with the distances. Real values of 0 exist...
 				continue
 			}
+			sum += float64(bb.Observed) / float64(bb.Real)
 			count += 1
-			treeStretch := float64(bb.ObservedTree) / float64(bb.Real)
-			treeSum += treeStretch
-			if treeStretch > tree {
-				tree = treeStretch
-			}
-
-			snekStretch := float64(bb.ObservedSNEK) / float64(bb.Real)
-			snekSum += snekStretch
-			if snekStretch > snek {
-				snek = snekStretch
-			}
 		}
 	}
 
-	treeRes, snekRes := 0.0, 0.0
 	if count > 0 {
-		treeRes, snekRes = treeSum/count, snekSum/count
+		stretch = sum / count
 	}
 
-	sim.log.Printf("Network Stretch :: Tree=%.2f :: SNEK=%.2f", tree, snek)
-	return treeRes, snekRes
+	sim.log.Printf("Network Stretch :: %.2f", stretch)
+	return stretch
 }
 
-func (sim *Simulator) SNEKPathConvergence() map[string]map[string]bool {
-	sim.snekPathConvergenceMutex.RLock()
-	defer sim.snekPathConvergenceMutex.RUnlock()
+func (sim *Simulator) PathConvergence() map[string]map[string]bool {
+	sim.pathConvergenceMutex.RLock()
+	defer sim.pathConvergenceMutex.RUnlock()
 	mapcopy := make(map[string]map[string]bool)
-	for a, aa := range sim.snekPathConvergence {
+	for a, aa := range sim.pathConvergence {
 		if _, ok := mapcopy[a]; !ok {
 			mapcopy[a] = make(map[string]bool)
 		}
@@ -281,45 +259,10 @@ func (sim *Simulator) SNEKPathConvergence() map[string]map[string]bool {
 	return mapcopy
 }
 
-func (sim *Simulator) CalculateSNEKPathConvergence() float64 {
+func (sim *Simulator) CalculatePathConvergence() float64 {
 	count := 0
 	successCount := 0
-	for _, aa := range sim.SNEKPathConvergence() {
-		for _, bb := range aa {
-			count++
-			if bb {
-				successCount++
-			}
-		}
-	}
-
-	sim.log.Printf("Success: %d Count: %d", successCount, count)
-	result := 0.0
-	if count > 0 {
-		result = float64(successCount) / float64(count) * 100
-	}
-	return result
-}
-
-func (sim *Simulator) TreePathConvergence() map[string]map[string]bool {
-	sim.treePathConvergenceMutex.RLock()
-	defer sim.treePathConvergenceMutex.RUnlock()
-	mapcopy := make(map[string]map[string]bool)
-	for a, aa := range sim.treePathConvergence {
-		if _, ok := mapcopy[a]; !ok {
-			mapcopy[a] = make(map[string]bool)
-		}
-		for b, bb := range aa {
-			mapcopy[a][b] = bb
-		}
-	}
-	return mapcopy
-}
-
-func (sim *Simulator) CalculateTreePathConvergence() float64 {
-	count := 0
-	successCount := 0
-	for _, aa := range sim.TreePathConvergence() {
+	for _, aa := range sim.PathConvergence() {
 		for _, bb := range aa {
 			count++
 			if bb {
@@ -348,7 +291,7 @@ func (sim *Simulator) handlePeerAdded(node string, peerID string, port int) {
 
 func (sim *Simulator) handlePeerRemoved(node string, peerID string, port int) {
 	if peerNode, err := sim.State.GetNodeName(peerID); err == nil {
-		sim.DisconnectNodes(node, peerNode)
+		_ = sim.DisconnectNodes(node, peerNode)
 		sim.State.Act(nil, func() { sim.State._removePeerConnection(node, peerNode, port) })
 	}
 }
@@ -359,15 +302,6 @@ func (sim *Simulator) handleTreeParentUpdate(node string, peerID string) {
 		peerName = peerNode
 	}
 	sim.State.Act(nil, func() { sim.State._updateParent(node, peerName) })
-}
-
-func (sim *Simulator) handleSnakeAscUpdate(node string, peerID string, pathID string) {
-	peerName := ""
-	if peerNode, err := sim.State.GetNodeName(peerID); err == nil {
-		peerName = peerNode
-	}
-
-	sim.State.Act(nil, func() { sim.State._updateAscendingPeer(node, peerName, pathID) })
 }
 
 func (sim *Simulator) handleSnakeDescUpdate(node string, peerID string, pathID string) {

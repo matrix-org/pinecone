@@ -20,7 +20,7 @@ import (
 	"time"
 )
 
-func (sim *Simulator) PingTree(from, to string) (uint16, time.Duration, error) {
+func (sim *Simulator) Ping(from, to string) (uint16, time.Duration, error) {
 	fromnode := sim.nodes[from]
 	tonode := sim.nodes[to]
 	success := false
@@ -29,47 +29,20 @@ func (sim *Simulator) PingTree(from, to string) (uint16, time.Duration, error) {
 	defer cancel()
 
 	defer func() {
-		sim.treePathConvergenceMutex.Lock()
-		if _, ok := sim.treePathConvergence[from]; !ok {
-			sim.treePathConvergence[from] = map[string]bool{}
+		sim.pathConvergenceMutex.Lock()
+		if _, ok := sim.pathConvergence[from]; !ok {
+			sim.pathConvergence[from] = map[string]bool{}
 		}
-		sim.treePathConvergence[from][to] = success
-		sim.treePathConvergenceMutex.Unlock()
-	}()
-
-	hops, rtt, err := fromnode.Ping(ctx, tonode.Coords())
-	if err != nil {
-		return 0, 0, fmt.Errorf("fromnode.TreePing: %w", err)
-	}
-
-	success = true
-	sim.ReportDistance(from, to, int64(hops), false)
-	return hops, rtt, nil
-}
-
-func (sim *Simulator) PingSNEK(from, to string) (uint16, time.Duration, error) {
-	fromnode := sim.nodes[from]
-	tonode := sim.nodes[to]
-	success := false
-
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
-	defer cancel()
-
-	defer func() {
-		sim.snekPathConvergenceMutex.Lock()
-		if _, ok := sim.snekPathConvergence[from]; !ok {
-			sim.snekPathConvergence[from] = map[string]bool{}
-		}
-		sim.snekPathConvergence[from][to] = success
-		sim.snekPathConvergenceMutex.Unlock()
+		sim.pathConvergence[from][to] = success
+		sim.pathConvergenceMutex.Unlock()
 	}()
 
 	hops, rtt, err := fromnode.Ping(ctx, tonode.PublicKey())
 	if err != nil {
-		return 0, 0, fmt.Errorf("fromnode.SNEKPing: %w", err)
+		return 0, 0, fmt.Errorf("fromnode.Ping: %w", err)
 	}
 
 	success = true
-	sim.ReportDistance(from, to, int64(hops), true)
+	sim.ReportDistance(from, to, int64(hops))
 	return hops, rtt, nil
 }

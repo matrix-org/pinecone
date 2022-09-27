@@ -18,21 +18,24 @@ type VirtualSnakeWatermark struct {
 
 func (a VirtualSnakeWatermark) WorseThan(b VirtualSnakeWatermark) bool {
 	diff := a.PublicKey.CompareTo(b.PublicKey)
-	return diff > 0 || (diff == 0 && a.Sequence < b.Sequence)
+	return diff > 0 || (diff == 0 && a.Sequence != 0 && a.Sequence < b.Sequence)
 }
 
 func (v *VirtualSnakeBootstrap) ProtectedPayload() ([]byte, error) {
-	buffer := make([]byte, ed25519.SignatureSize+v.Sequence.Length())
-	sn, err := v.Sequence.MarshalBinary(buffer[:])
+	buffer := make([]byte, v.Sequence.Length()+v.Root.Length())
+	offset := 0
+	n, err := v.Sequence.MarshalBinary(buffer[:])
 	if err != nil {
 		return nil, fmt.Errorf("v.Sequence.MarshalBinary: %w", err)
 	}
-	rn := copy(buffer[:sn], v.RootPublicKey[:])
-	rsn, err := v.RootSequence.MarshalBinary(buffer[sn+rn:])
+	offset += n
+	offset += copy(buffer[offset:], v.RootPublicKey[:])
+	n, err = v.RootSequence.MarshalBinary(buffer[offset:])
 	if err != nil {
-		return nil, fmt.Errorf("v.Sequence.MarshalBinary: %w", err)
+		return nil, fmt.Errorf("v.RootSequence.MarshalBinary: %w", err)
 	}
-	return buffer[:sn+rn+rsn], nil
+	offset += n
+	return buffer[:offset], nil
 }
 
 func (v *VirtualSnakeBootstrap) MarshalBinary(buf []byte) (int, error) {

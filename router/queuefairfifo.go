@@ -58,21 +58,17 @@ func (q *fairFIFOQueue) queuesize() int { // nolint:unused
 
 func (q *fairFIFOQueue) hash(frame *types.Frame) uint16 {
 	h := q.offset
-	switch frame.Type {
-	case types.TypeTreeRouted:
-		for _, v := range frame.Source {
-			h += uint64(v)
-		}
-		for _, v := range frame.Destination {
-			h += uint64(v)
-		}
-	case types.TypeVirtualSnakeRouted:
-		for _, v := range frame.SourceKey {
-			h += uint64(v)
-		}
-		for _, v := range frame.DestinationKey {
-			h += uint64(v)
-		}
+	for _, v := range frame.Source {
+		h += uint64(v)
+	}
+	for _, v := range frame.Destination {
+		h += uint64(v)
+	}
+	for _, v := range frame.SourceKey {
+		h += uint64(v)
+	}
+	for _, v := range frame.DestinationKey {
+		h += uint64(v)
 	}
 	return uint16(h % uint64(q.num))
 }
@@ -89,7 +85,6 @@ func (q *fairFIFOQueue) push(frame *types.Frame) bool {
 		// There is space in the queue
 		q.count++
 	default:
-		q.log.Println("Queue is full - dropping a frame from the head of the queue")
 		// The queue is full - perform a head drop
 		<-q.queues[h]
 		q.dropped++

@@ -66,7 +66,7 @@ func (sim *Simulator) CreateNode(t string, nodeType APINodeType) error {
 
 	quit := make(chan bool)
 	n := &Node{
-		SimRouter:  sim.routerCreationMap[nodeType](logger, sk, true, quit),
+		SimRouter:  sim.routerCreationMap[nodeType](logger, sk, quit),
 		l:          l,
 		ListenAddr: tcpaddr,
 		Type:       nodeType,
@@ -87,7 +87,9 @@ func (sim *Simulator) CreateNode(t string, nodeType APINodeType) error {
 				case <-quit:
 					return
 				default:
-					n.l.SetDeadline(time.Now().Add(time.Duration(500) * time.Millisecond))
+					if err := n.l.SetDeadline(time.Now().Add(time.Duration(500) * time.Millisecond)); err != nil {
+						panic(err)
+					}
 					c, err := n.l.AcceptTCP()
 					if err != nil {
 						continue
@@ -177,18 +179,19 @@ func (sim *Simulator) ConfigureFilterPeer(node string, peer string, rates advers
 	}
 }
 
-func createDefaultRouter(log *log.Logger, sk ed25519.PrivateKey, debug bool, quit <-chan bool) SimRouter {
+func createDefaultRouter(log *log.Logger, sk ed25519.PrivateKey, quit <-chan bool) SimRouter {
 	rtr := &DefaultRouter{
-		rtr: router.NewRouter(log, sk, debug),
+		rtr: router.NewRouter(log, sk),
 	}
+	rtr.rtr.InjectPacketFilter(rtr.PingFilter)
 
 	go rtr.OverlayReadHandler(quit)
 
 	return rtr
 }
 
-func createAdversaryRouter(log *log.Logger, sk ed25519.PrivateKey, debug bool, quit <-chan bool) SimRouter {
-	rtr := adversary.NewAdversaryRouter(log, sk, debug)
+func createAdversaryRouter(log *log.Logger, sk ed25519.PrivateKey, quit <-chan bool) SimRouter {
+	rtr := adversary.NewAdversaryRouter(log, sk)
 
 	go rtr.OverlayReadHandler(quit)
 

@@ -38,7 +38,9 @@ const peerKeepaliveTimeout = time.Second * 5
 
 // Lower numbers for these consts are typically faster connections.
 const ( // These need to be a simple int type for gobind/gomobile to export them...
-	PeerTypeMulticast int = iota
+	PeerTypePipe int = iota
+	PeerTypeMulticast
+	PeerTypeBonjour
 	PeerTypeRemote
 	PeerTypeBluetooth
 )
@@ -49,25 +51,28 @@ const ( // These need to be a simple int type for gobind/gomobile to export them
 // the peering). Having separate actors allows reads and writes to take
 // place concurrently.
 type peer struct {
-	reader         phony.Inbox
-	writer         phony.Inbox
-	router         *Router
-	port           types.SwitchPortID // Not mutated after peer setup.
-	context        context.Context    // Not mutated after peer setup.
-	cancel         context.CancelFunc // Not mutated after peer setup.
-	conn           net.Conn           // Not mutated after peer setup.
-	uri            ConnectionURI      // Not mutated after peer setup.
-	zone           ConnectionZone     // Not mutated after peer setup.
-	peertype       ConnectionPeerType // Not mutated after peer setup.
-	public         types.PublicKey    // Not mutated after peer setup.
-	keepalives     bool               // Not mutated after peer setup.
-	started        atomic.Bool        // Thread-safe toggle for marking a peer as down.
-	proto          queue              // Thread-safe queue for outbound protocol messages.
-	traffic        queue              // Thread-safe queue for outbound traffic messages.
-	bytesRxProto   atomic.Uint64
-	bytesRxTraffic atomic.Uint64
-	bytesTxProto   atomic.Uint64
-	bytesTxTraffic atomic.Uint64
+	reader     phony.Inbox
+	writer     phony.Inbox
+	router     *Router
+	port       types.SwitchPortID // Not mutated after peer setup.
+	context    context.Context    // Not mutated after peer setup.
+	cancel     context.CancelFunc // Not mutated after peer setup.
+	conn       net.Conn           // Not mutated after peer setup.
+	uri        ConnectionURI      // Not mutated after peer setup.
+	zone       ConnectionZone     // Not mutated after peer setup.
+	peertype   ConnectionPeerType // Not mutated after peer setup.
+	public     types.PublicKey    // Not mutated after peer setup.
+	keepalives bool               // Not mutated after peer setup.
+	started    atomic.Bool        // Thread-safe toggle for marking a peer as down.
+	proto      queue              // Thread-safe queue for outbound protocol messages.
+	traffic    queue              // Thread-safe queue for outbound traffic messages.
+	statistics struct {
+		phony.Inbox
+		_bytesRxProto   uint64
+		_bytesRxTraffic uint64
+		_bytesTxProto   uint64
+		_bytesTxTraffic uint64
+	}
 }
 
 func (p *peer) MarshalJSON() ([]byte, error) {
@@ -91,10 +96,12 @@ func (p *peer) String() string { // to make sim less ugly
 }
 
 func (p *peer) ClearBandwidthCounters() {
-	p.bytesRxProto.Store(0)
-	p.bytesRxTraffic.Store(0)
-	p.bytesTxProto.Store(0)
-	p.bytesTxTraffic.Store(0)
+	phony.Block(&p.statistics, func() {
+		p.statistics._bytesRxProto = 0
+		p.statistics._bytesRxTraffic = 0
+		p.statistics._bytesTxProto = 0
+		p.statistics._bytesTxTraffic = 0
+	})
 }
 
 // send queues a frame to be sent to this peer. It is safe to be called from
@@ -103,24 +110,16 @@ func (p *peer) ClearBandwidthCounters() {
 // will return true if the message was correctly queued or false if it was dropped,
 // i.e. due to the queue overflowing.
 func (p *peer) send(f *types.Frame) bool {
-	switch f.Type {
-	// Protocol messages
-	case types.TypeTreeAnnouncement, types.TypeKeepalive:
-		fallthrough
-	case types.TypeVirtualSnakeBootstrap:
-		if p.proto == nil {
-			// The local peer doesn't have a protocol queue so we should check
-			// for nils to prevent panics.
-			return true
-		}
-		return p.proto.push(f)
-
-	// Traffic messages
-	case types.TypeVirtualSnakeRouted, types.TypeTreeRouted:
-		return p.traffic.push(f)
+	var q queue
+	if f.Type.IsTraffic() {
+		q = p.traffic
+	} else {
+		q = p.proto
 	}
-
-	return false
+	if q == nil {
+		return false
+	}
+	return q.push(f)
 }
 
 // stop will immediately mark a port as offline, before dispatching a task to
@@ -267,10 +266,14 @@ func (p *peer) _write() {
 	}
 
 	// Write the frame to the peering.
-	if frame.Type == types.TypeTreeRouted || frame.Type == types.TypeVirtualSnakeRouted {
-		p.bytesTxTraffic.Add(uint64(n))
+	if frame.Type.IsTraffic() {
+		phony.Block(&p.statistics, func() {
+			p.statistics._bytesTxTraffic += uint64(n)
+		})
 	} else {
-		p.bytesTxProto.Add(uint64(n))
+		phony.Block(&p.statistics, func() {
+			p.statistics._bytesTxProto += uint64(n)
+		})
 	}
 	wn, err := p.conn.Write(buf[:n])
 	if err != nil {
@@ -324,21 +327,23 @@ func (p *peer) _read() {
 	// Wait for the packet to arrive from the remote peer and read only enough bytes to
 	// get the header. This will tell us how much more we need to read to get the rest
 	// of the frame.
-	isProtoTraffic := true
+	var isProtoTraffic bool
 	{
 		n, err := io.ReadFull(p.conn, b[:types.FrameHeaderLength])
 		if err != nil {
 			p.stop(fmt.Errorf("io.ReadFull: %w", err))
 			return
 		}
-		if types.FrameType(b[5]) == types.TypeTreeRouted || types.FrameType(b[5]) == types.TypeVirtualSnakeRouted {
-			isProtoTraffic = false
-		}
+		isProtoTraffic = !types.FrameType(b[5]).IsTraffic()
 
 		if isProtoTraffic {
-			p.bytesRxProto.Add(uint64(n))
+			phony.Block(&p.statistics, func() {
+				p.statistics._bytesRxProto += uint64(n)
+			})
 		} else {
-			p.bytesRxTraffic.Add(uint64(n))
+			phony.Block(&p.statistics, func() {
+				p.statistics._bytesRxTraffic += uint64(n)
+			})
 		}
 	}
 
@@ -361,9 +366,13 @@ func (p *peer) _read() {
 	}
 
 	if isProtoTraffic {
-		p.bytesRxProto.Add(uint64(n))
+		phony.Block(&p.statistics, func() {
+			p.statistics._bytesRxProto += uint64(n)
+		})
 	} else {
-		p.bytesRxTraffic.Add(uint64(n))
+		phony.Block(&p.statistics, func() {
+			p.statistics._bytesRxTraffic += uint64(n)
+		})
 	}
 
 	// If keepalives are disabled then we can reset the read deadline again.
@@ -407,21 +416,4 @@ func (p *peer) _read() {
 	// This is effectively a recursive call to queue up the next read into
 	// the actor inbox.
 	p.reader.Act(nil, p._read)
-}
-
-func (p *peer) _coords() (types.Coordinates, error) {
-	var err error
-	var coords types.Coordinates
-
-	if p == p.router.local {
-		coords = p.router.state._coords()
-	} else {
-		if announcement, ok := p.router.state._announcements[p]; ok {
-			coords = announcement.PeerCoords()
-		} else {
-			err = fmt.Errorf("no root announcement found for peer")
-		}
-	}
-
-	return coords, err
 }

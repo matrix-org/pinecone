@@ -25,7 +25,7 @@ import (
 
 // newLocalPeer returns a new local peer. It should only be called once when
 // the router is set up.
-func (r *Router) newLocalPeer() *peer {
+func (r *Router) newLocalPeer(blackhole bool) *peer {
 	peer := &peer{
 		router:   r,
 		port:     0,
@@ -36,7 +36,9 @@ func (r *Router) newLocalPeer() *peer {
 		peertype: 0,
 		public:   r.public,
 		started:  *atomic.NewBool(true),
-		traffic:  newFairFIFOQueue(trafficBuffer, r.log),
+	}
+	if !blackhole {
+		peer.traffic = newFairFIFOQueue(trafficBuffer, r.log)
 	}
 	return peer
 }
@@ -47,6 +49,11 @@ func (r *Router) newLocalPeer() *peer {
 // frame was delivered using SNEK routing) or `types.Coordinates` (if the frame
 // was delivered using tree routing).
 func (r *Router) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
+	if r.local.traffic == nil {
+		<-r.local.context.Done()
+		return 0, nil, nil
+	}
+
 	var frame *types.Frame
 	readDeadline := r._readDeadline.Load()
 	select {
@@ -60,17 +67,7 @@ func (r *Router) ReadFrom(p []byte) (n int, addr net.Addr, err error) {
 		r.local.traffic.ack()
 	}
 
-	switch frame.Type {
-	case types.TypeTreeRouted:
-		addr = frame.Source
-
-	case types.TypeVirtualSnakeRouted:
-		addr = frame.SourceKey
-
-	default:
-		return
-	}
-
+	addr = frame.SourceKey
 	n = len(frame.Payload)
 	copy(p, frame.Payload)
 	return
@@ -90,21 +87,16 @@ func (r *Router) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 	}()
 
 	switch ga := addr.(type) {
-	case types.Coordinates:
-		frame := getFrame()
-		frame.Type = types.TypeTreeRouted
-		frame.Destination = ga
-		frame.Source = r.state.coords()
-		frame.Payload = append(frame.Payload[:0], p...)
-		phony.Block(r.state, func() {
-			_ = r.state._forward(r.local, frame)
-		})
-		return len(p), nil
-
 	case types.PublicKey:
 		frame := getFrame()
-		frame.Type = types.TypeVirtualSnakeRouted
+		frame.Type = types.TypeTraffic
 		frame.DestinationKey = ga
+		phony.Block(r.state, func() {
+			if cached, ok := r.state._coordsCache[ga]; ok && time.Since(cached.lastSeen) < coordsCacheLifetime {
+				frame.Destination = cached.coordinates
+			}
+		})
+		frame.Source = r.state.coords()
 		frame.SourceKey = r.public
 		frame.Payload = append(frame.Payload[:0], p...)
 		frame.Watermark = types.VirtualSnakeWatermark{

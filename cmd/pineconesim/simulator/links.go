@@ -71,14 +71,14 @@ func (sim *Simulator) ConnectNodes(a, b string) error {
 		register(sc)
 	} else {
 		pa, pb := net.Pipe()
-		pa = &util.SlowConn{Conn: pa, ReadJitter: 5 * time.Millisecond}
-		pb = &util.SlowConn{Conn: pb, ReadJitter: 5 * time.Millisecond}
+		pa = &util.SlowConn{Conn: pa, ReadJitter: 1 * time.Millisecond}
+		pb = &util.SlowConn{Conn: pb, ReadJitter: 1 * time.Millisecond}
 		go func() {
 			if _, err := na.Connect(
 				pa,
 				router.ConnectionPublicKey(nb.PublicKey()),
 				router.ConnectionKeepalives(false),
-				router.ConnectionPeerType(router.PeerTypeRemote),
+				router.ConnectionPeerType(router.PeerTypePipe),
 			); err != nil {
 				return
 			}
@@ -88,7 +88,7 @@ func (sim *Simulator) ConnectNodes(a, b string) error {
 				pb,
 				router.ConnectionPublicKey(na.PublicKey()),
 				router.ConnectionKeepalives(false),
-				router.ConnectionPeerType(router.PeerTypeRemote),
+				router.ConnectionPeerType(router.PeerTypePipe),
 			); err != nil {
 				return
 			}
