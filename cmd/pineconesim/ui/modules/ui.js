@@ -332,7 +332,7 @@ function validateEventSequence(content) {
         validSimCommands.set("StopPings", []);
 
         let validSubcommands = new Map();
-        validSubcommands.set("DropRates", ["Overall", "Keepalive", "TreeAnnouncement", "TreeRouted", "VirtualSnakeBootstrap", "VirtualSnakeBootstrapACK", "VirtualSnakeSetup", "VirtualSnakeSetupACK", "VirtualSnakeTeardown", "VirtualSnakeRouted"]);
+        validSubcommands.set("DropRates", ["Overall", "Keepalive", "TreeAnnouncement", "VirtualSnakeBootstrap", "OverlayTraffic"]);
 
         for (let i = 0; i < content.EventSequence.length; i++) {
             let sequence = content.EventSequence;

@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"sort"
+	"time"
 
 	"github.com/Arceliar/phony"
 	"github.com/matrix-org/pinecone/types"
@@ -33,6 +34,7 @@ type manholeResponse struct {
 		Descending *virtualSnakeEntry   `json:"descending"`
 		Paths      []*virtualSnakeEntry `json:"paths"`
 	} `json:"snek"`
+	CoordCache map[string]types.Coordinates `json:"coords_cache"`
 }
 
 type manholePeer struct {
@@ -61,6 +63,13 @@ func (r *Router) ManholeHandler(w http.ResponseWriter, req *http.Request) {
 		response.Parent = r.state._parent
 		if rootAnn := r.state._rootAnnouncement(); rootAnn != nil {
 			response.Root = &rootAnn.Root
+		}
+		response.CoordCache = map[string]types.Coordinates{}
+		for k, v := range r.state._coordsCache {
+			if time.Since(v.lastSeen) > coordsCacheLifetime {
+				continue
+			}
+			response.CoordCache[k.String()] = v.coordinates
 		}
 		for _, p := range r.state._peers {
 			if p == nil || !p.started.Load() {

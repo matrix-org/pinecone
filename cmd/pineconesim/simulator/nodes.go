@@ -87,7 +87,9 @@ func (sim *Simulator) CreateNode(t string, nodeType APINodeType) error {
 				case <-quit:
 					return
 				default:
-					n.l.SetDeadline(time.Now().Add(time.Duration(500) * time.Millisecond))
+					if err := n.l.SetDeadline(time.Now().Add(time.Duration(500) * time.Millisecond)); err != nil {
+						panic(err)
+					}
 					c, err := n.l.AcceptTCP()
 					if err != nil {
 						continue
@@ -181,6 +183,7 @@ func createDefaultRouter(log *log.Logger, sk ed25519.PrivateKey, quit <-chan boo
 	rtr := &DefaultRouter{
 		rtr: router.NewRouter(log, sk),
 	}
+	rtr.rtr.InjectPacketFilter(rtr.PingFilter)
 
 	go rtr.OverlayReadHandler(quit)
 

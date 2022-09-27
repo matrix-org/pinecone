@@ -38,10 +38,11 @@ const peerKeepaliveTimeout = time.Second * 5
 
 // Lower numbers for these consts are typically faster connections.
 const ( // These need to be a simple int type for gobind/gomobile to export them...
-	PeerTypeMulticast int = iota
+	PeerTypePipe int = iota
+	PeerTypeMulticast
+	PeerTypeBonjour
 	PeerTypeRemote
 	PeerTypeBluetooth
-	PeerTypeBonjour
 )
 
 // peer contains information about a given active peering. There are two
@@ -109,29 +110,16 @@ func (p *peer) ClearBandwidthCounters() {
 // will return true if the message was correctly queued or false if it was dropped,
 // i.e. due to the queue overflowing.
 func (p *peer) send(f *types.Frame) bool {
-	switch f.Type {
-	// Protocol messages
-	case types.TypeTreeAnnouncement, types.TypeKeepalive:
-		fallthrough
-	case types.TypeVirtualSnakeBootstrap:
-		if p.proto == nil {
-			// The local peer doesn't have a protocol queue so we should check
-			// for nils to prevent panics.
-			return false
-		}
-		return p.proto.push(f)
-
-	// Traffic messages
-	case types.TypeVirtualSnakeRouted, types.TypeTreeRouted:
-		if p.traffic == nil {
-			// The local peer doesn't have a traffic queue so we should check
-			// for nils to prevent panics.
-			return false
-		}
-		return p.traffic.push(f)
+	var q queue
+	if f.Type.IsTraffic() {
+		q = p.traffic
+	} else {
+		q = p.proto
 	}
-
-	return false
+	if q == nil {
+		return false
+	}
+	return q.push(f)
 }
 
 // stop will immediately mark a port as offline, before dispatching a task to
@@ -278,7 +266,7 @@ func (p *peer) _write() {
 	}
 
 	// Write the frame to the peering.
-	if frame.Type == types.TypeTreeRouted || frame.Type == types.TypeVirtualSnakeRouted {
+	if frame.Type.IsTraffic() {
 		phony.Block(&p.statistics, func() {
 			p.statistics._bytesTxTraffic += uint64(n)
 		})
@@ -339,16 +327,14 @@ func (p *peer) _read() {
 	// Wait for the packet to arrive from the remote peer and read only enough bytes to
 	// get the header. This will tell us how much more we need to read to get the rest
 	// of the frame.
-	isProtoTraffic := true
+	var isProtoTraffic bool
 	{
 		n, err := io.ReadFull(p.conn, b[:types.FrameHeaderLength])
 		if err != nil {
 			p.stop(fmt.Errorf("io.ReadFull: %w", err))
 			return
 		}
-		if types.FrameType(b[5]) == types.TypeTreeRouted || types.FrameType(b[5]) == types.TypeVirtualSnakeRouted {
-			isProtoTraffic = false
-		}
+		isProtoTraffic = !types.FrameType(b[5]).IsTraffic()
 
 		if isProtoTraffic {
 			phony.Block(&p.statistics, func() {
@@ -430,21 +416,4 @@ func (p *peer) _read() {
 	// This is effectively a recursive call to queue up the next read into
 	// the actor inbox.
 	p.reader.Act(nil, p._read)
-}
-
-func (p *peer) _coords() (types.Coordinates, error) {
-	var err error
-	var coords types.Coordinates
-
-	if p == p.router.local {
-		coords = p.router.state._coords()
-	} else {
-		if announcement, ok := p.router.state._announcements[p]; ok {
-			coords = announcement.PeerCoords()
-		} else {
-			err = fmt.Errorf("no root announcement found for peer")
-		}
-	}
-
-	return coords, err
 }
