@@ -41,7 +41,7 @@ func main() {
 		log:    log.New(os.Stdout, "", 0),
 	}
 
-	n.router = router.NewRouter(n.log, sk, false)
+	n.router = router.NewRouter(n.log, sk)
 	n.sessions = sessions.NewSessions(n.log, n.router, []string{"matrix"})
 	n.multicast = multicast.NewMulticast(n.log, n.router)
 	n.multicast.Start()
