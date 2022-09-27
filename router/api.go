@@ -38,11 +38,64 @@ type PeerInfo struct {
 	Zone      string
 }
 
+type NodeState struct {
+	PeerID           string
+	Connections      map[int]string
+	Parent           string
+	Coords           []uint64
+	Announcement     types.SwitchAnnouncement
+	AnnouncementTime uint64
+	AscendingPeer    string
+	AscendingPathID  string
+	DescendingPeer   string
+	DescendingPathID string
+}
+
 // Subscribe registers a subscriber to this node's events
-func (r *Router) Subscribe(ch chan<- events.Event) {
+func (r *Router) Subscribe(ch chan<- events.Event) NodeState {
+	var stateCopy NodeState
 	phony.Block(r, func() {
 		r._subscribers[ch] = &phony.Inbox{}
+		stateCopy.PeerID = r.public.String()
+		connections := map[int]string{}
+		for _, p := range r.state._peers {
+			if p == nil {
+				continue
+			}
+			connections[int(p.port)] = p.public.String()
+		}
+		stateCopy.Connections = connections
+		parent := ""
+		if r.state._parent != nil {
+			parent = r.state._parent.public.String()
+		}
+		stateCopy.Parent = parent
+		coords := []uint64{}
+		for _, coord := range r.Coords() {
+			coords = append(coords, uint64(coord))
+		}
+		stateCopy.Coords = coords
+		announcement := r.state._rootAnnouncement()
+		stateCopy.Announcement = announcement.SwitchAnnouncement
+		stateCopy.AnnouncementTime = uint64(announcement.receiveTime.UnixNano())
+		asc := ""
+		ascPath := ""
+		if r.state._ascending != nil {
+			asc = r.state._ascending.PublicKey.String()
+			ascPath = hex.EncodeToString(r.state._ascending.PathID[:])
+		}
+		stateCopy.AscendingPeer = asc
+		stateCopy.AscendingPathID = ascPath
+		desc := ""
+		descPath := ""
+		if r.state._descending != nil {
+			desc = r.state._descending.PublicKey.String()
+			descPath = hex.EncodeToString(r.state._descending.PathID[:])
+		}
+		stateCopy.DescendingPeer = desc
+		stateCopy.DescendingPathID = descPath
 	})
+	return stateCopy
 }
 
 func (r *Router) Coords() types.Coordinates {
