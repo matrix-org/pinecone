@@ -73,7 +73,7 @@ func (r *DefaultRouter) Ping(ctx context.Context, destination types.PublicKey) (
 	payload := PingPayload{
 		origin:      r.PublicKey(),
 		destination: destination,
-		hops:        0,
+		hops:        1,
 	}
 
 	p := make([]byte, pingSize)
