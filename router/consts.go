@@ -46,3 +46,7 @@ const virtualSnakeNeighExpiryPeriod = virtualSnakeBootstrapInterval * 2
 // coordsCacheLifetime is how long we'll keep entries in
 // the coords cache for switching to tree routing.
 const coordsCacheLifetime = time.Minute
+
+// coordsCacheMaintainInterval is how often we will clean
+// out stale entries from the coords cache.
+const coordsCacheMaintainInterval = time.Minute

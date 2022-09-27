@@ -95,7 +95,7 @@ func (s *state) _start() {
 
 	s._maintainTreeIn(0)
 	s._maintainSnakeIn(0)
-	time.AfterFunc(time.Minute, func() {
+	time.AfterFunc(coordsCacheMaintainInterval, func() {
 		s.Act(nil, s._cleanCachedCoords)
 	})
 }
@@ -131,7 +131,7 @@ func (s *state) _cleanCachedCoords() {
 			delete(s._coordsCache, k)
 		}
 	}
-	time.AfterFunc(time.Minute, func() {
+	time.AfterFunc(coordsCacheMaintainInterval, func() {
 		s.Act(nil, s._cleanCachedCoords)
 	})
 }
