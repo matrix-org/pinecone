@@ -236,7 +236,7 @@ func (r *Router) Disconnect(i types.SwitchPortID, err error) {
 		return
 	}
 	phony.Block(r.state, func() {
-		if p := r.state._peers[i]; p != nil && p.started.Load() {
+		if p := r.state._peers[i]; p != nil && p.started.Load() && p != r.local {
 			p.stop(err)
 		}
 	})
