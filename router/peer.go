@@ -158,8 +158,12 @@ func (p *peer) stop(err error) {
 
 		// Drop all of the frames that are sitting in this peer's queues, since there
 		// is no way to send them at this point.
-		p.proto.reset()
-		p.traffic.reset()
+		if p.proto != nil {
+			p.proto.reset()
+		}
+		if p.traffic != nil {
+			p.traffic.reset()
+		}
 
 		// Notify the tree and SNEK that the port was disconnected.: This triggers
 		// tearing down of paths and possible tree re-parenting.
