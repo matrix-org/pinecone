@@ -202,7 +202,7 @@ func (r *Router) Connect(conn net.Conn, options ...ConnectionOption) (types.Swit
 			conn.Close()
 			return 0, fmt.Errorf("mismatched node version")
 		}
-		if theirCapabilities := binary.BigEndian.Uint32(handshake[4:8]); theirCapabilities&ourCapabilities != ourCapabilities {
+		if theirCapabilities := binary.BigEndian.Uint32(handshake[4:8]); theirCapabilities != ourCapabilities {
 			conn.Close()
 			return 0, fmt.Errorf("mismatched node capabilities")
 		}
