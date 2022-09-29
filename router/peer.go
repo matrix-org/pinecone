@@ -154,7 +154,9 @@ func (p *peer) stop(err error) {
 	// Next we'll send a message to the state inbox in order to clean up.
 	p.router.state.Act(nil, func() {
 		// Make sure that the connection is closed.
-		_ = p.conn.Close()
+		if p.conn != nil {
+			_ = p.conn.Close()
+		}
 
 		// Drop all of the frames that are sitting in this peer's queues, since there
 		// is no way to send them at this point.
