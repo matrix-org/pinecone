@@ -103,10 +103,8 @@ type PingStateUpdate struct {
 func (e PingStateUpdate) isEvent() {}
 
 type NetworkStatsUpdate struct {
-	TreePathConvergence  uint64
-	TreeAverageStretch   float64
-	SnakePathConvergence uint64
-	SnakeAverageStretch  float64
+	PathConvergence uint64
+	AverageStretch  float64
 }
 
 // Tag NetworkStatsUpdate as an Event

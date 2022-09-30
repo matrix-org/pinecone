@@ -54,7 +54,7 @@ func main() {
 
 	listener := net.ListenConfig{}
 
-	pineconeRouter := router.NewRouter(logger, sk, false)
+	pineconeRouter := router.NewRouter(logger, sk, router.RouterOptionBlackhole(true))
 	pineconeMulticast := multicast.NewMulticast(logger, pineconeRouter)
 	pineconeMulticast.Start()
 	pineconeManager := connections.NewConnectionManager(pineconeRouter, nil)
@@ -62,6 +62,7 @@ func main() {
 	listentcp := flag.String("listen", ":0", "address to listen for TCP connections")
 	listenws := flag.String("listenws", ":0", "address to listen for WebSockets connections")
 	connect := flag.String("connect", "", "peer to connect to")
+	manhole := flag.Bool("manhole", false, "enable the manhole (requires WebSocket listener to be active)")
 	flag.Parse()
 
 	if connect != nil && *connect != "" {
@@ -84,11 +85,19 @@ func main() {
 					router.ConnectionPeerType(router.PeerTypeRemote),
 					router.ConnectionZone("websocket"),
 				); err != nil {
-					panic(err)
+					fmt.Println("Inbound WS connection", conn.RemoteAddr(), "error:", err)
+					_ = conn.Close()
+				} else {
+					fmt.Println("Inbound WS connection", conn.RemoteAddr(), "is connected")
 				}
-
-				fmt.Println("Inbound WS connection", conn.RemoteAddr(), "is connected")
 			})
+
+			if *manhole {
+				fmt.Println("Enabling manhole on HTTP listener")
+				http.DefaultServeMux.HandleFunc("/manhole", func(w http.ResponseWriter, r *http.Request) {
+					pineconeRouter.ManholeHandler(w, r)
+				})
+			}
 
 			listener, err := listener.Listen(context.Background(), "tcp", *listenws)
 			if err != nil {
@@ -123,10 +132,11 @@ func main() {
 					router.ConnectionURI(conn.RemoteAddr().String()),
 					router.ConnectionPeerType(router.PeerTypeRemote),
 				); err != nil {
-					panic(err)
+					fmt.Println("Inbound TCP connection", conn.RemoteAddr(), "error:", err)
+					_ = conn.Close()
+				} else {
+					fmt.Println("Inbound TCP connection", conn.RemoteAddr(), "is connected")
 				}
-
-				fmt.Println("Inbound TCP connection", conn.RemoteAddr(), "is connected")
 			}
 		}()
 	}

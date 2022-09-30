@@ -53,6 +53,14 @@ type state struct {
 	_waiting        bool                               // Is the tree waiting to reparent?
 	_filterPacket   FilterFn                           // Function called when forwarding packets
 	_bandwidthTimer *time.Timer
+	_coordsCache    coordsCacheTable
+}
+
+type coordsCacheTable map[types.PublicKey]coordsCacheEntry
+
+type coordsCacheEntry struct {
+	coordinates []types.SwitchPortID
+	lastSeen    time.Time
 }
 
 // _start resets the state and starts tree and virtual snake maintenance.
@@ -65,6 +73,7 @@ func (s *state) _start() {
 
 	s._announcements = make(announcementTable, portCount)
 	s._table = virtualSnakeTable{}
+	s._coordsCache = coordsCacheTable{}
 	s._seenBroadcasts = make(map[types.PublicKey]BroadcastEntry)
 
 	if s._treetimer == nil {
@@ -95,6 +104,9 @@ func (s *state) _start() {
 
 	s._maintainTreeIn(0)
 	s._maintainSnakeIn(0)
+	time.AfterFunc(coordsCacheMaintainInterval, func() {
+		s.Act(nil, s._cleanCachedCoords)
+	})
 }
 
 // _maintainTreeIn resets the tree maintenance timer to the specified
@@ -119,6 +131,18 @@ func (s *state) _maintainSnakeIn(d time.Duration) {
 		}
 	}
 	s._snaketimer.Reset(d)
+}
+
+// _cleanCachedCoords clears old entries out of the coordinate cache.
+func (s *state) _cleanCachedCoords() {
+	for k, v := range s._coordsCache {
+		if time.Since(v.lastSeen) >= coordsCacheLifetime {
+			delete(s._coordsCache, k)
+		}
+	}
+	time.AfterFunc(coordsCacheMaintainInterval, func() {
+		s.Act(nil, s._cleanCachedCoords)
+	})
 }
 
 // _sendBroadcastIn resets the wakeup broadcast maintenance timer to the
@@ -156,20 +180,26 @@ func (s *state) _reportBandwidth() {
 	peerBandwidth := make(map[string]events.PeerBandwidthUsage)
 	for _, peer := range s._peers {
 		if peer != nil && peer != s.r.local && peer.started.Load() {
+			var txProto, txTraffic uint64
+			var rxProto, rxTraffic uint64
+			phony.Block(&peer.statistics, func() {
+				txProto, txTraffic = peer.statistics._bytesTxProto, peer.statistics._bytesTxTraffic
+				rxProto, rxTraffic = peer.statistics._bytesRxProto, peer.statistics._bytesRxTraffic
+			})
 			peerBandwidth[peer.public.String()] = events.PeerBandwidthUsage{
 				Protocol: struct {
 					Rx uint64
 					Tx uint64
 				}{
-					Rx: peer.bytesRxProto.Load(),
-					Tx: peer.bytesTxProto.Load(),
+					Rx: rxProto,
+					Tx: txProto,
 				},
 				Overlay: struct {
 					Rx uint64
 					Tx uint64
 				}{
-					Rx: peer.bytesRxTraffic.Load(),
-					Tx: peer.bytesTxTraffic.Load(),
+					Rx: rxTraffic,
+					Tx: txTraffic,
 				},
 			}
 			peer.ClearBandwidthCounters()
@@ -241,7 +271,12 @@ func (s *state) _removePeer(port types.SwitchPortID) {
 }
 
 func (s *state) _setParent(peer *peer) {
+	oldAnnouncement := s._rootAnnouncement()
 	s._parent = peer
+
+	if s._rootAnnouncement().RootPublicKey != oldAnnouncement.RootPublicKey {
+		s._rootChanged()
+	}
 
 	s.r.Act(nil, func() {
 		peerID := ""
@@ -251,6 +286,14 @@ func (s *state) _setParent(peer *peer) {
 
 		s.r._publish(events.TreeParentUpdate{PeerID: peerID})
 	})
+}
+
+func (s *state) _rootChanged() {
+	// If the root has changed then it stands to reason that our cached
+	// coordinates are no longer valid, so clear those out.
+	for k := range s._coordsCache {
+		delete(s._coordsCache, k)
+	}
 }
 
 func (s *state) _setDescendingNode(node *virtualSnakeEntry) {
@@ -333,32 +376,4 @@ func (s *state) _portDisconnected(peer *peer) {
 	if s._parent == peer && s._selectNewParent() {
 		s._bootstrapSoon()
 	}
-}
-
-// _lookupPeerForAddr finds and returns the peer corresponding to the provided
-// net.Addr if such a peer exists.
-func (s *state) _lookupPeerForAddr(addr net.Addr) *peer {
-	var result *peer
-
-	for _, p := range s._peers {
-		if p == nil || !p.started.Load() {
-			continue
-		}
-
-		switch fromAddr := addr.(type) {
-		case types.Coordinates:
-			coords, err := p._coords()
-			if err == nil && fromAddr.EqualTo(coords) {
-				result = p
-				break
-			}
-		case types.PublicKey:
-			if fromAddr == p.public {
-				result = p
-				break
-			}
-		}
-	}
-
-	return result
 }

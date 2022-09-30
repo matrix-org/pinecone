@@ -71,48 +71,28 @@ export function createNodeOptionsGeneralAdversary() {
             "Overall": 0,
             "Keepalive": 0,
             "TreeAnnouncement": 0,
-            "TreeRouted": 0,
             "VirtualSnakeBootstrap": 0,
-            "VirtualSnakeBootstrapACK": 0,
-            "VirtualSnakeSetup": 0,
-            "VirtualSnakeSetupACK": 0,
-            "VirtualSnakeTeardown": 0,
-            "VirtualSnakeRouted": 0,
+            "OverlayTraffic": 0,
         },
         "BlockTreeProtoTraffic": {
             "Overall": 0,
             "Keepalive": 0,
             "TreeAnnouncement": 100,
-            "TreeRouted": 0,
             "VirtualSnakeBootstrap": 0,
-            "VirtualSnakeBootstrapACK": 0,
-            "VirtualSnakeSetup": 0,
-            "VirtualSnakeSetupACK": 0,
-            "VirtualSnakeTeardown": 0,
-            "VirtualSnakeRouted": 0,
+            "OverlayTraffic": 0,
         },
         "BlockSNEKProtoTraffic": {
             "Overall": 0,
             "Keepalive": 0,
             "TreeAnnouncement": 0,
-            "TreeRouted": 0,
             "VirtualSnakeBootstrap": 100,
-            "VirtualSnakeBootstrapACK": 100,
-            "VirtualSnakeSetup": 100,
-            "VirtualSnakeSetupACK": 100,
-            "VirtualSnakeTeardown": 100,
-            "VirtualSnakeRouted": 0,
+            "OverlayTraffic": 0,
         },
         "BlockOverlayTraffic": {
             "Keepalive": 0,
             "TreeAnnouncement": 0,
-            "TreeRouted": 0,
             "VirtualSnakeBootstrap": 0,
-            "VirtualSnakeBootstrapACK": 0,
-            "VirtualSnakeSetup": 0,
-            "VirtualSnakeSetupACK": 0,
-            "VirtualSnakeTeardown": 0,
-            "VirtualSnakeRouted": 100,
+            "OverlayTraffic": 100,
         },
     };
 
@@ -151,24 +131,12 @@ export function createNodeOptionsGeneralAdversary() {
 
     let tree1 = generateSliderRow("Tree Announcement", "TreeAnnouncement");
     nodeOptions.appendChild(tree1);
-    let tree2 = generateSliderRow("Tree Routed", "TreeRouted");
-    nodeOptions.appendChild(tree2);
 
     let snek1 = generateSliderRow("SNEK Bootstrap", "VirtualSnakeBootstrap");
     nodeOptions.appendChild(snek1);
-    let snek3 = generateSliderRow("SNEK Bootstrap ACK", "VirtualSnakeBootstrapACK");
-    nodeOptions.appendChild(snek3);
 
-    let snek4 = generateSliderRow("SNEK Setup", "VirtualSnakeSetup");
-    nodeOptions.appendChild(snek4);
-    let snek5 = generateSliderRow("SNEK Setup ACK", "VirtualSnakeSetupACK");
-    nodeOptions.appendChild(snek5);
-
-    let snek6 = generateSliderRow("SNEK Teardown", "VirtualSnakeTeardown");
-    nodeOptions.appendChild(snek6);
-
-    let snek2 = generateSliderRow("SNEK Routed", "VirtualSnakeRouted");
-    nodeOptions.appendChild(snek2);
+    let traffic = generateSliderRow("Overlay Traffic", "OverlayTraffic");
+    nodeOptions.appendChild(traffic);
 
     return nodeOptions;
 }

@@ -32,7 +32,7 @@ type SimRouter interface {
 	PublicKey() types.PublicKey
 	Connect(conn net.Conn, options ...router.ConnectionOption) (types.SwitchPortID, error)
 	Subscribe(ch chan events.Event)
-	Ping(ctx context.Context, a net.Addr) (uint16, time.Duration, error)
+	Ping(ctx context.Context, a types.PublicKey) (uint16, time.Duration, error)
 	Coords() types.Coordinates
 	ConfigureFilterDefaults(rates adversary.DropRates)
 	ConfigureFilterPeer(peer types.PublicKey, rates adversary.DropRates)
@@ -80,45 +80,21 @@ func (r *DefaultRouter) ManholeHandler(w http.ResponseWriter, req *http.Request)
 	r.rtr.ManholeHandler(w, req)
 }
 
-func (r *DefaultRouter) Ping(ctx context.Context, a net.Addr) (uint16, time.Duration, error) {
-	id := a.String()
-
-	var origin net.Addr
-	var frameType types.FrameType
-	var pingType PingType
-
-	switch a.(type) {
-	case types.Coordinates:
-		origin = r.Coords()
-		frameType = types.TypeTreeRouted
-		pingType = TreePing
-	case types.PublicKey:
-		origin = r.PublicKey()
-		frameType = types.TypeVirtualSnakeRouted
-		pingType = SNEKPing
-	default:
-		return 0, 0, fmt.Errorf("invalid destination address")
-	}
-
+func (r *DefaultRouter) Ping(ctx context.Context, destination types.PublicKey) (uint16, time.Duration, error) {
+	id := destination.String()
 	payload := PingPayload{
-		pingType:    pingType,
-		origin:      origin,
-		destination: a,
+		origin:      r.PublicKey(),
+		destination: destination,
 		hops:        1,
 	}
 
-	nexthop := r.rtr.NextHop(nil, frameType, a)
-	if nexthop == nil {
-		return 0, 0, fmt.Errorf("no valid nexthop for ping")
-	}
-
-	p := make([]byte, 256)
+	p := make([]byte, pingSize)
 	_, err := payload.MarshalBinary(p)
 	if err != nil {
 		return 0, 0, fmt.Errorf("failed marshalling ping payload: %w", err)
 	}
 
-	_, writeErr := r.rtr.WriteTo(p, nexthop)
+	_, writeErr := r.rtr.WriteTo(p, destination)
 	if writeErr != nil {
 		return 0, 0, fmt.Errorf("failed sending ping to node: %w", writeErr)
 	}
@@ -138,8 +114,27 @@ func (r *DefaultRouter) Ping(ctx context.Context, a net.Addr) (uint16, time.Dura
 	}
 }
 
+func (r *DefaultRouter) PingFilter(from types.PublicKey, f *types.Frame) bool {
+	if !f.Type.IsTraffic() {
+		return false
+	}
+
+	payload := PingPayload{}
+	if _, err := payload.UnmarshalBinary(f.Payload); err != nil {
+		return false
+	}
+	if payload.pingType == Ping {
+		payload.hops++
+		if _, err := payload.MarshalBinary(f.Payload); err != nil {
+			return true
+		}
+	}
+
+	return false
+}
+
 func (r *DefaultRouter) OverlayReadHandler(quit <-chan bool) {
-	buf := make([]byte, 256)
+	buf := make([]byte, types.MaxPayloadSize)
 	for {
 		select {
 		case <-quit:
@@ -147,116 +142,51 @@ func (r *DefaultRouter) OverlayReadHandler(quit <-chan bool) {
 		default:
 		}
 
-		r.rtr.SetReadDeadline(time.Now().Add(time.Millisecond * 300))
-		n, addr, err := r.rtr.ReadFrom(buf)
+		if err := r.rtr.SetReadDeadline(time.Now().Add(time.Millisecond * 300)); err != nil {
+			panic(err)
+		}
+		n, _, err := r.rtr.ReadFrom(buf)
 		if err != nil || n == 0 {
 			continue
 		}
 
 		payload := PingPayload{}
-		_, pingErr := payload.UnmarshalBinary(buf)
-		if pingErr != nil {
-			println(pingErr.Error())
+		if _, err = payload.UnmarshalBinary(buf[:n]); err != nil {
 			continue
 		}
 
-		pingAtDest := false
-		var frameType types.FrameType
 		switch payload.pingType {
-		case TreePing:
-			switch dest := (payload.destination).(type) {
-			case types.Coordinates:
-				frameType = types.TypeTreeRouted
-				if dest.EqualTo(r.Coords()) {
-					pingAtDest = true
-				}
+		case Ping:
+			if payload.destination == r.PublicKey() {
+				payload.pingType = Pong
+			} else {
+				println("PING: hit deadend at:", r.PublicKey().String(), "for:", payload.origin.String(), "to:", payload.destination.String())
+				continue
 			}
-		case TreePong:
-			switch orig := (payload.origin).(type) {
-			case types.Coordinates:
-				frameType = types.TypeTreeRouted
-				if orig.EqualTo(r.Coords()) {
-					id := payload.destination.String()
-					v, ok := r.pings.Load(id)
-					if !ok {
-						continue
-					}
-					ch := v.(chan uint16)
-					ch <- payload.hops
-					close(ch)
-					r.pings.Delete(id)
+		case Pong:
+			if payload.origin == r.PublicKey() {
+				id := payload.destination.String()
+				v, ok := r.pings.Load(id)
+				if !ok {
 					continue
 				}
-			}
-		case SNEKPing:
-			switch dest := (payload.destination).(type) {
-			case types.PublicKey:
-				frameType = types.TypeVirtualSnakeRouted
-				if dest == r.PublicKey() {
-					pingAtDest = true
-				}
-			}
-		case SNEKPong:
-			switch orig := (payload.origin).(type) {
-			case types.PublicKey:
-				frameType = types.TypeVirtualSnakeRouted
-				if orig == r.PublicKey() {
-					id := payload.destination.String()
-					v, ok := r.pings.Load(id)
-					if !ok {
-						continue
-					}
-					ch := v.(chan uint16)
-					ch <- payload.hops
-					close(ch)
-					r.pings.Delete(id)
-					continue
-				}
+				ch := v.(chan uint16)
+				ch <- payload.hops
+				close(ch)
+				r.pings.Delete(id)
+				continue
+			} else {
+				println("PONG: hit deadend at:", r.PublicKey().String(), "for:", payload.origin.String(), "to:", payload.destination.String())
+				continue
 			}
 		default:
 			continue
 		}
 
-		var fromAddr net.Addr
-		fromAddr = addr
-		if payload.pingType == TreePing || payload.pingType == SNEKPing {
-			if !pingAtDest {
-				payload.hops++
-
-				// NOTE: manually track hop limiting since pings work by sending
-				// single hop destined packets between the two nodes.
-				if payload.hops > types.MaxHopLimit {
-					// Drop the packet if the max hop limit has been reached
-					continue
-				}
-				// TODO: this doesnt limit hop count for the response pongs...
-			} else {
-				fromAddr = nil
-				if frameType == types.TypeTreeRouted {
-					payload.pingType = TreePong
-				} else {
-					payload.pingType = SNEKPong
-				}
-			}
-		}
-
-		_, pErr := payload.MarshalBinary(buf)
-		if pErr != nil {
+		if n, err = payload.MarshalBinary(buf); err != nil {
 			continue
 		}
-
-		var nexthop net.Addr
-		if payload.pingType == TreePing || payload.pingType == SNEKPing {
-			nexthop = r.rtr.NextHop(fromAddr, frameType, payload.destination)
-		} else {
-			nexthop = r.rtr.NextHop(fromAddr, frameType, payload.origin)
-		}
-		if nexthop == nil {
-			continue
-		}
-
-		_, writeErr := r.rtr.WriteTo(buf, nexthop)
-		if writeErr != nil {
+		if _, err = r.rtr.WriteTo(buf[:n], payload.origin); err != nil {
 			continue
 		}
 	}

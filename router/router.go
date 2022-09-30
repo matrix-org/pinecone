@@ -23,7 +23,6 @@ import (
 	"io"
 	"io/ioutil"
 	"log"
-	"math"
 	"net"
 	"os"
 	"sync"
@@ -34,9 +33,6 @@ import (
 	"github.com/matrix-org/pinecone/types"
 	"go.uber.org/atomic"
 )
-
-const portCount = math.MaxUint8 - 1
-const trafficBuffer = math.MaxUint8 - 1
 
 type Router struct {
 	phony.Inbox
@@ -54,9 +50,16 @@ type Router struct {
 	_subscribers  map[chan<- events.Event]*phony.Inbox
 }
 
-func NewRouter(logger types.Logger, sk ed25519.PrivateKey, debug bool) *Router {
+func NewRouter(logger types.Logger, sk ed25519.PrivateKey, opts ...RouterOption) *Router {
 	if logger == nil {
 		logger = log.New(ioutil.Discard, "", 0)
+	}
+	blackhole := false
+	for _, opt := range opts {
+		switch v := opt.(type) {
+		case RouterOptionBlackhole:
+			blackhole = bool(v)
+		}
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	_, insecure := os.LookupEnv("PINECONE_DISABLE_SIGNATURES")
@@ -80,7 +83,7 @@ func NewRouter(logger types.Logger, sk ed25519.PrivateKey, debug bool) *Router {
 		_filterPacket: nil,
 	}
 	// Create a new local peer and wire it into port 0.
-	r.local = r.newLocalPeer()
+	r.local = r.newLocalPeer(blackhole)
 	r.state._peers[0] = r.local
 	// Start the state actor.
 	r.state.Act(nil, r.state._start)
@@ -155,22 +158,6 @@ func (r *Router) Addr() net.Addr {
 	return r.PublicKey()
 }
 
-type ConnectionOption interface {
-	isConnectionOption()
-}
-
-type ConnectionPublicKey types.PublicKey
-type ConnectionURI string
-type ConnectionZone string
-type ConnectionPeerType int
-type ConnectionKeepalives bool
-
-func (w ConnectionPublicKey) isConnectionOption()  {}
-func (w ConnectionURI) isConnectionOption()        {}
-func (w ConnectionZone) isConnectionOption()       {}
-func (w ConnectionPeerType) isConnectionOption()   {}
-func (w ConnectionKeepalives) isConnectionOption() {}
-
 // Connect takes a connection and attaches it to the switch as a peering. This
 // function takes one or more ConnectionOptions to configure the peer. If no
 // ConnectionPublicKey is specified, the connection will autonegotiate with the
@@ -211,7 +198,7 @@ func (r *Router) Connect(conn net.Conn, options ...ConnectionOption) (types.Swit
 		binary.BigEndian.PutUint32(handshake[4:8], ourCapabilities)
 		handshake = append(handshake, r.public[:ed25519.PublicKeySize]...)
 		handshake = append(handshake, ed25519.Sign(r.private[:], handshake)...)
-		if err := conn.SetDeadline(time.Now().Add(peerKeepaliveInterval)); err != nil {
+		if err := conn.SetDeadline(time.Now().Add(time.Second * 10)); err != nil {
 			return 0, fmt.Errorf("conn.SetDeadline: %w", err)
 		}
 		if _, err := conn.Write(handshake); err != nil {
@@ -229,7 +216,7 @@ func (r *Router) Connect(conn net.Conn, options ...ConnectionOption) (types.Swit
 			conn.Close()
 			return 0, fmt.Errorf("mismatched node version")
 		}
-		if theirCapabilities := binary.BigEndian.Uint32(handshake[4:8]); theirCapabilities&ourCapabilities != ourCapabilities {
+		if theirCapabilities := binary.BigEndian.Uint32(handshake[4:8]); theirCapabilities != ourCapabilities {
 			conn.Close()
 			return 0, fmt.Errorf("mismatched node capabilities")
 		}
@@ -249,7 +236,7 @@ func (r *Router) Connect(conn net.Conn, options ...ConnectionOption) (types.Swit
 		port, err = r.state._addPeer(conn, public, uri, zone, peertype, keepalives)
 	})
 	if err != nil {
-		return types.SwitchPortID(0), err
+		return types.SwitchPortID(0), fmt.Errorf("_addPeer: %w", err)
 	}
 	return port, nil
 }
@@ -263,7 +250,7 @@ func (r *Router) Disconnect(i types.SwitchPortID, err error) {
 		return
 	}
 	phony.Block(r.state, func() {
-		if p := r.state._peers[i]; p != nil && p.started.Load() {
+		if p := r.state._peers[i]; p != nil && p.started.Load() && p != r.local {
 			p.stop(err)
 		}
 	})

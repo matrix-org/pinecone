@@ -18,7 +18,6 @@ import (
 	"crypto/ed25519"
 	"encoding/binary"
 	"fmt"
-	"net"
 
 	"github.com/matrix-org/pinecone/types"
 )
@@ -26,85 +25,47 @@ import (
 type PingType uint8
 
 const (
-	TreePing PingType = iota
-	TreePong
-	SNEKPing
-	SNEKPong
+	Ping PingType = iota
+	Pong
 )
+
+const pingPreamble = "pineping"
+const pingSize = len(pingPreamble) + (ed25519.PublicKeySize * 2) + 3
 
 type PingPayload struct {
 	pingType    PingType
-	origin      net.Addr
-	destination net.Addr
+	origin      types.PublicKey
+	destination types.PublicKey
 	hops        uint16
 }
 
 func (p *PingPayload) MarshalBinary(buffer []byte) (int, error) {
-	offset := 0
-	buffer[offset] = byte(p.pingType)
-	offset += 1
+	if len(buffer) < pingSize {
+		return 0, fmt.Errorf("buffer too small")
+	}
+	offset := copy(buffer, []byte(pingPreamble))
+	buffer[offset] = uint8(p.pingType)
+	offset++
 	binary.BigEndian.PutUint16(buffer[offset:offset+2], p.hops)
 	offset += 2
-
-	switch orig := p.origin.(type) {
-	case types.Coordinates:
-		on, err := orig.MarshalBinary(buffer[offset:])
-		if err != nil {
-			return 0, fmt.Errorf("f.Destination.MarshalBinary: %w", err)
-		}
-		offset += on
-	case types.PublicKey:
-		offset += copy(buffer[offset:], orig[:ed25519.PublicKeySize])
-	}
-
-	switch dest := p.destination.(type) {
-	case types.Coordinates:
-		dn, err := dest.MarshalBinary(buffer[offset:])
-		if err != nil {
-			return 0, fmt.Errorf("f.Destination.MarshalBinary: %w", err)
-		}
-		offset += dn
-	case types.PublicKey:
-		offset += copy(buffer[offset:], dest[:ed25519.PublicKeySize])
-	}
-
+	offset += copy(buffer[offset:], p.origin[:ed25519.PublicKeySize])
+	offset += copy(buffer[offset:], p.destination[:ed25519.PublicKeySize])
 	return offset, nil
 }
 
-func (p *PingPayload) UnmarshalBinary(data []byte) (int, error) {
-	offset := 0
-	p.pingType = PingType(data[0])
-	p.hops = binary.BigEndian.Uint16(data[1:3])
-	offset += 3
-
-	switch p.pingType {
-	case TreePing, TreePong:
-		orig := types.Coordinates{}
-		oriLen, oriErr := orig.UnmarshalBinary(data[offset:])
-		if oriErr != nil {
-			return 0, fmt.Errorf("p.orig.UnmarshalBinary: %w", oriErr)
-		}
-		offset += oriLen
-		p.origin = net.Addr(orig)
-
-		dest := types.Coordinates{}
-		dstLen, dstErr := dest.UnmarshalBinary(data[offset:])
-		if dstErr != nil {
-			return 0, fmt.Errorf("p.dest.UnmarshalBinary: %w", dstErr)
-		}
-		offset += dstLen
-		p.destination = net.Addr(dest)
-	case SNEKPing, SNEKPong:
-		tempKey := types.PublicKey{}
-		offset += copy(tempKey[:], data[offset:])
-		p.origin = net.Addr(tempKey)
-
-		tempKey = types.PublicKey{}
-		offset += copy(tempKey[:], data[offset:])
-		p.destination = net.Addr(tempKey)
-	default:
-		return 0, fmt.Errorf("received invalid ping type")
+func (p *PingPayload) UnmarshalBinary(buffer []byte) (int, error) {
+	if len(buffer) < pingSize {
+		return 0, fmt.Errorf("buffer too small")
 	}
-
+	if string(buffer[:len(pingPreamble)]) != pingPreamble {
+		return 0, fmt.Errorf("not a ping")
+	}
+	offset := len(pingPreamble)
+	p.pingType = PingType(buffer[offset])
+	offset++
+	p.hops = binary.BigEndian.Uint16(buffer[offset : offset+2])
+	offset += 2
+	offset += copy(p.origin[:], buffer[offset:])
+	offset += copy(p.destination[:], buffer[offset:])
 	return offset, nil
 }

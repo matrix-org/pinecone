@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"sort"
+	"time"
 
 	"github.com/Arceliar/phony"
 	"github.com/matrix-org/pinecone/types"
@@ -33,6 +34,7 @@ type manholeResponse struct {
 		Descending *virtualSnakeEntry   `json:"descending"`
 		Paths      []*virtualSnakeEntry `json:"paths"`
 	} `json:"snek"`
+	CoordCache map[string]types.Coordinates `json:"coords_cache"`
 }
 
 type manholePeer struct {
@@ -42,6 +44,10 @@ type manholePeer struct {
 	PeerType     ConnectionPeerType `json:"type,omitempty"`
 	PeerZone     ConnectionZone     `json:"zone,omitempty"`
 	PeerURI      ConnectionURI      `json:"uri,omitempty"`
+	RXProto      uint64             `json:"rx_proto_bytes"`
+	TXProto      uint64             `json:"tx_proto_bytes"`
+	RXTraffic    uint64             `json:"rx_traffic_bytes"`
+	TXTraffic    uint64             `json:"tx_traffic_bytes"`
 	ProtoQueue   queue              `json:"proto_queue"`
 	TrafficQueue queue              `json:"traffic_queue"`
 }
@@ -58,6 +64,13 @@ func (r *Router) ManholeHandler(w http.ResponseWriter, req *http.Request) {
 		if rootAnn := r.state._rootAnnouncement(); rootAnn != nil {
 			response.Root = &rootAnn.Root
 		}
+		response.CoordCache = map[string]types.Coordinates{}
+		for k, v := range r.state._coordsCache {
+			if time.Since(v.lastSeen) > coordsCacheLifetime {
+				continue
+			}
+			response.CoordCache[k.String()] = v.coordinates
+		}
 		for _, p := range r.state._peers {
 			if p == nil || !p.started.Load() {
 				continue
@@ -70,6 +83,10 @@ func (r *Router) ManholeHandler(w http.ResponseWriter, req *http.Request) {
 				ProtoQueue:   p.proto,
 				TrafficQueue: p.traffic,
 			}
+			phony.Block(&p.statistics, func() {
+				info.RXProto, info.RXTraffic = p.statistics._bytesRxProto, p.statistics._bytesRxTraffic
+				info.TXProto, info.TXTraffic = p.statistics._bytesTxProto, p.statistics._bytesTxTraffic
+			})
 			if ann := r.state._announcements[p]; ann != nil {
 				info.Coords = ann.Coords()
 				info.Order = ann.receiveOrder

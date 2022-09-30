@@ -19,7 +19,6 @@ package router
 
 import (
 	"encoding/hex"
-	"net"
 
 	"github.com/Arceliar/phony"
 	"github.com/matrix-org/pinecone/router/events"
@@ -74,46 +73,4 @@ func (r *Router) EnableHopLimiting() {
 
 func (r *Router) DisableHopLimiting() {
 	r._hopLimiting.Store(false)
-}
-
-func (r *Router) NextHop(from net.Addr, frameType types.FrameType, dest net.Addr) net.Addr {
-	var fromPeer *peer
-	var nexthop net.Addr
-	if from != nil {
-		phony.Block(r.state, func() {
-			fromPeer = r.state._lookupPeerForAddr(from)
-		})
-
-		if fromPeer == nil {
-			r.log.Println("could not find peer info for previous peer")
-			return nil
-		}
-	}
-
-	var nextPeer *peer
-	phony.Block(r.state, func() {
-		nextPeer, _ = r.state._nextHopsFor(fromPeer, frameType, dest, types.VirtualSnakeWatermark{PublicKey: types.FullMask})
-	})
-
-	if nextPeer != nil {
-		switch (dest).(type) {
-		case types.Coordinates:
-			var err error
-			coords := types.Coordinates{}
-			phony.Block(r.state, func() {
-				coords, err = nextPeer._coords()
-			})
-
-			if err != nil {
-				r.log.Println("failed retrieving coords for nexthop: %w")
-				return nil
-			}
-
-			nexthop = coords
-		case types.PublicKey:
-			nexthop = nextPeer.public
-		}
-	}
-
-	return nexthop
 }

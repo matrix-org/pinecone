@@ -557,7 +557,7 @@ func TestTreeNextHopCandidate(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.desc, func(t *testing.T) {
-			actual := isBetterNextHopCandidate(tc.peerDist, tc.bestDist, tc.peerOrder, tc.bestOrder, tc.candidateExists)
+			actual := isBetterNextHopCandidate(0, tc.peerDist, tc.peerOrder, 0, tc.bestDist, tc.bestOrder, tc.candidateExists)
 			if actual != tc.expected {
 				t.Fatalf("expected: %t got: %t", tc.expected, actual)
 			}

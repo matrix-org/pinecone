@@ -16,15 +16,9 @@ package simulator
 
 import (
 	"math"
-	"strings"
 )
 
-func (sim *Simulator) ReportDistance(a, b string, l int64, snek bool) {
-	// TODO: why is this 0 compare here?
-	if strings.Compare(a, b) > 0 {
-		a, b = b, a
-	}
-
+func (sim *Simulator) ReportDistance(a, b string, l int64) {
 	sim.distsMutex.Lock()
 	defer sim.distsMutex.Unlock()
 
@@ -36,11 +30,7 @@ func (sim *Simulator) ReportDistance(a, b string, l int64, snek bool) {
 		sim.dists[a][b] = &Distance{}
 	}
 
-	if snek {
-		sim.dists[a][b].ObservedSNEK = l
-	} else {
-		sim.dists[a][b].ObservedTree = l
-	}
+	sim.dists[a][b].Observed = l
 }
 
 func (sim *Simulator) UpdateRealDistances() {

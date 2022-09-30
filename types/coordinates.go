@@ -62,12 +62,15 @@ func (p Coordinates) MarshalBinary(buf []byte) (int, error) {
 
 func (p *Coordinates) UnmarshalBinary(b []byte) (int, error) {
 	l := int(binary.BigEndian.Uint16(b[:2]))
-	ports := make(Coordinates, 0, 16)
+	if l == 0 {
+		return 2, nil
+	}
 	if rl := len(b); rl < 2+l {
 		return 0, fmt.Errorf("expecting %d bytes but got %d bytes", 2+l, rl)
 	}
+	ports := make(Coordinates, 0, l)
 	read := 2
-	b = b[read : 2+l]
+	b = b[read : l+2]
 	for {
 		if len(b) < 1 {
 			break

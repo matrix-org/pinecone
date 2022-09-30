@@ -34,13 +34,16 @@ type FrameVersion uint8
 type FrameType uint8
 
 const (
-	TypeKeepalive             FrameType = iota // protocol frame, direct to peers only
-	TypeTreeAnnouncement                       // protocol frame, bypasses queues
-	TypeTreeRouted                             // traffic frame, forwarded using tree routing
-	TypeVirtualSnakeBootstrap                  // protocol frame, forwarded using SNEK
-	TypeVirtualSnakeRouted                     // traffic frame, forwarded using SNEK
+	TypeKeepalive        FrameType = iota // protocol frame, direct to peers only
+	TypeTreeAnnouncement                  // protocol frame, bypasses queues
+	TypeBootstrap                         // protocol frame, forwarded using SNEK
+	TypeTraffic                           // traffic frame, forwarded using tree or SNEK
 	TypeWakeupBroadcast                        // protocol frame, special broadcast forwarding
 )
+
+func (t FrameType) IsTraffic() bool {
+	return t == TypeTraffic
+}
 
 const (
 	Version0 FrameVersion = iota
@@ -100,28 +103,11 @@ func (f *Frame) MarshalBinary(buffer []byte) (int, error) {
 	buffer[7] = f.HopLimit
 	offset := FrameHeaderLength
 	switch f.Type {
-	case TypeVirtualSnakeBootstrap: // destination = key, source = coords
+	case TypeBootstrap: // destination = key, source = coords
 		payloadLen := len(f.Payload)
 		binary.BigEndian.PutUint16(buffer[offset+0:offset+2], uint16(payloadLen))
 		offset += 2
 		offset += copy(buffer[offset:], f.DestinationKey[:ed25519.PublicKeySize])
-		offset += copy(buffer[offset:], f.Watermark.PublicKey[:ed25519.PublicKeySize])
-		n, err := f.Watermark.Sequence.MarshalBinary(buffer[offset:])
-		if err != nil {
-			return 0, fmt.Errorf("f.WatermarkSeq.MarshalBinary: %w", err)
-		}
-		offset += n
-		if f.Payload != nil {
-			f.Payload = f.Payload[:payloadLen]
-			offset += copy(buffer[offset:], f.Payload[:payloadLen])
-		}
-
-	case TypeVirtualSnakeRouted: // destination = key, source = key
-		payloadLen := len(f.Payload)
-		binary.BigEndian.PutUint16(buffer[offset+0:offset+2], uint16(payloadLen))
-		offset += 2
-		offset += copy(buffer[offset:], f.DestinationKey[:ed25519.PublicKeySize])
-		offset += copy(buffer[offset:], f.SourceKey[:ed25519.PublicKeySize])
 		offset += copy(buffer[offset:], f.Watermark.PublicKey[:ed25519.PublicKeySize])
 		n, err := f.Watermark.Sequence.MarshalBinary(buffer[offset:])
 		if err != nil {
@@ -145,7 +131,16 @@ func (f *Frame) MarshalBinary(buffer []byte) (int, error) {
 
 	case TypeKeepalive:
 
-	default: // destination = coords, source = coords
+	case TypeTreeAnnouncement:
+		payloadLen := len(f.Payload)
+		binary.BigEndian.PutUint16(buffer[offset+0:offset+2], uint16(payloadLen))
+		offset += 2
+		if f.Payload != nil {
+			f.Payload = f.Payload[:payloadLen]
+			offset += copy(buffer[offset:], f.Payload[:payloadLen])
+		}
+
+	case TypeTraffic:
 		payloadLen := len(f.Payload)
 		binary.BigEndian.PutUint16(buffer[offset+0:offset+2], uint16(payloadLen))
 		dn, err := f.Destination.MarshalBinary(buffer[offset+2:])
@@ -160,10 +155,23 @@ func (f *Frame) MarshalBinary(buffer []byte) (int, error) {
 			return 0, fmt.Errorf("frame contents too large")
 		}
 		offset += 2 + dn + sn
+		offset += copy(buffer[offset:], f.DestinationKey[:ed25519.PublicKeySize])
+		offset += copy(buffer[offset:], f.SourceKey[:ed25519.PublicKeySize])
+		if len(f.Destination) == 0 {
+			offset += copy(buffer[offset:], f.Watermark.PublicKey[:ed25519.PublicKeySize])
+			n, err := f.Watermark.Sequence.MarshalBinary(buffer[offset:])
+			if err != nil {
+				return 0, fmt.Errorf("f.WatermarkSeq.MarshalBinary: %w", err)
+			}
+			offset += n
+		}
 		if f.Payload != nil {
 			f.Payload = f.Payload[:payloadLen]
 			offset += copy(buffer[offset:], f.Payload[:payloadLen])
 		}
+
+	default:
+		return 0, nil
 	}
 
 	binary.BigEndian.PutUint16(buffer[FrameHeaderLength-2:FrameHeaderLength], uint16(offset))
@@ -187,31 +195,13 @@ func (f *Frame) UnmarshalBinary(data []byte) (int, error) {
 	}
 	offset := FrameHeaderLength
 	switch f.Type {
-	case TypeVirtualSnakeBootstrap: // destination = key, source = coords
+	case TypeBootstrap: // destination = key, source = coords
 		payloadLen := int(binary.BigEndian.Uint16(data[offset+0 : offset+2]))
 		if payloadLen > cap(f.Payload) {
 			return 0, fmt.Errorf("payload length exceeds frame capacity")
 		}
 		offset += 2
 		offset += copy(f.DestinationKey[:], data[offset:])
-		offset += copy(f.Watermark.PublicKey[:], data[offset:])
-		n, err := f.Watermark.Sequence.UnmarshalBinary(data[offset:])
-		if err != nil {
-			return 0, fmt.Errorf("f.WatermarkSeq.UnmarshalBinary: %w", err)
-		}
-		offset += n
-		f.Payload = f.Payload[:payloadLen]
-		offset += copy(f.Payload[:payloadLen], data[offset:])
-		return offset, nil
-
-	case TypeVirtualSnakeRouted: // destination = key, source = key
-		payloadLen := int(binary.BigEndian.Uint16(data[offset+0 : offset+2]))
-		if payloadLen > cap(f.Payload) {
-			return 0, fmt.Errorf("payload length exceeds frame capacity")
-		}
-		offset += 2
-		offset += copy(f.DestinationKey[:], data[offset:])
-		offset += copy(f.SourceKey[:], data[offset:])
 		offset += copy(f.Watermark.PublicKey[:], data[offset:])
 		n, err := f.Watermark.Sequence.UnmarshalBinary(data[offset:])
 		if err != nil {
@@ -236,7 +226,17 @@ func (f *Frame) UnmarshalBinary(data []byte) (int, error) {
 	case TypeKeepalive:
 		return offset, nil
 
-	default: // destination = coords, source = coords
+	case TypeTreeAnnouncement:
+		payloadLen := int(binary.BigEndian.Uint16(data[offset+0 : offset+2]))
+		if payloadLen > cap(f.Payload) {
+			return 0, fmt.Errorf("payload length exceeds frame capacity")
+		}
+		offset += 2
+		f.Payload = f.Payload[:payloadLen]
+		offset += copy(f.Payload, data[offset:])
+		return offset + payloadLen, nil
+
+	case TypeTraffic:
 		payloadLen := int(binary.BigEndian.Uint16(data[offset+0 : offset+2]))
 		if payloadLen > cap(f.Payload) {
 			return 0, fmt.Errorf("payload length exceeds frame capacity")
@@ -252,12 +252,29 @@ func (f *Frame) UnmarshalBinary(data []byte) (int, error) {
 			return 0, fmt.Errorf("f.Source.UnmarshalBinary: %w", srcErr)
 		}
 		offset += srcLen
+		offset += copy(f.DestinationKey[:], data[offset:])
+		offset += copy(f.SourceKey[:], data[offset:])
+		f.Watermark = VirtualSnakeWatermark{
+			PublicKey: FullMask,
+			Sequence:  0,
+		}
+		if len(f.Destination) == 0 {
+			offset += copy(f.Watermark.PublicKey[:], data[offset:])
+			n, err := f.Watermark.Sequence.UnmarshalBinary(data[offset:])
+			if err != nil {
+				return 0, fmt.Errorf("f.WatermarkSeq.UnmarshalBinary: %w", err)
+			}
+			offset += n
+		}
 		if size := offset + payloadLen; len(data) != int(size) {
 			return 0, fmt.Errorf("frame expecting %d total bytes, got %d bytes", size, len(data))
 		}
 		f.Payload = f.Payload[:payloadLen]
 		offset += copy(f.Payload, data[offset:])
 		return offset + payloadLen, nil
+
+	default:
+		return 0, nil
 	}
 }
 
@@ -265,14 +282,14 @@ func (t FrameType) String() string {
 	switch t {
 	case TypeTreeAnnouncement:
 		return "TreeAnnouncement"
-	case TypeTreeRouted:
-		return "TreeRouted"
-	case TypeVirtualSnakeBootstrap:
+	case TypeBootstrap:
 		return "VirtualSnakeBootstrap"
-	case TypeVirtualSnakeRouted:
-		return "VirtualSnakeRouted"
+	case TypeTraffic:
+		return "OverlayTraffic"
 	case TypeKeepalive:
 		return "Keepalive"
+	case TypeWakeupBroadcast:
+		return "WakeupBroadcast"
 	default:
 		return "Unknown"
 	}

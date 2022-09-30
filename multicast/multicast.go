@@ -21,6 +21,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net"
+	"strings"
 	"sync"
 	"time"
 
@@ -35,19 +36,37 @@ const MulticastIPv4GroupAddr = "224.0.0.114"
 const MulticastIPv6GroupAddr = "[ff02::114]"
 const MulticastGroupPort = 60606
 
+type InterfaceInfo struct {
+	Name         string
+	Index        int
+	Mtu          int
+	Up           bool
+	Broadcast    bool
+	Loopback     bool
+	PointToPoint bool
+	Multicast    bool
+	Addrs        string
+}
+
+type AltInterface struct {
+	iface net.Interface
+	addrs []net.Addr
+}
+
 type Multicast struct {
-	r          *router.Router
-	log        types.Logger
-	ctx        context.Context
-	cancel     context.CancelFunc
-	id         string
-	started    atomic.Bool
-	interfaces sync.Map // -> *multicastInterface
-	dialling   sync.Map
-	listener   net.Listener
-	dialer     net.Dialer
-	tcpLC      net.ListenConfig
-	udpLC      net.ListenConfig
+	r             *router.Router
+	log           types.Logger
+	ctx           context.Context
+	cancel        context.CancelFunc
+	id            string
+	started       atomic.Bool
+	interfaces    sync.Map // -> *multicastInterface
+	dialling      sync.Map
+	listener      net.Listener
+	dialer        net.Dialer
+	tcpLC         net.ListenConfig
+	udpLC         net.ListenConfig
+	altInterfaces []AltInterface
 }
 
 type multicastInterface struct {
@@ -78,6 +97,45 @@ func NewMulticast(
 	return m
 }
 
+func (m *Multicast) RegisterInterface(info InterfaceInfo) {
+	iface := AltInterface{
+		net.Interface{
+			Name:  info.Name,
+			Index: info.Index,
+			MTU:   info.Mtu,
+		},
+		[]net.Addr{},
+	}
+
+	if info.Up {
+		iface.iface.Flags |= net.FlagUp
+	}
+	if info.Broadcast {
+		iface.iface.Flags |= net.FlagBroadcast
+	}
+	if info.Loopback {
+		iface.iface.Flags |= net.FlagLoopback
+	}
+	if info.PointToPoint {
+		iface.iface.Flags |= net.FlagPointToPoint
+	}
+	if info.Multicast {
+		iface.iface.Flags |= net.FlagMulticast
+	}
+
+	info.Addrs = strings.Trim(info.Addrs, " \n")
+	for _, addr := range strings.Split(info.Addrs, " ") {
+		addr = strings.Split(addr, "/")[0]
+		ip, err := net.ResolveIPAddr("ip", addr)
+		if err == nil {
+			iface.addrs = append(iface.addrs, ip)
+		}
+	}
+
+	m.altInterfaces = append(m.altInterfaces, iface)
+	m.log.Println("Registered interface ", iface.iface.Name)
+}
+
 func (m *Multicast) Start() {
 	if !m.started.CAS(false, true) {
 		return
@@ -101,9 +159,16 @@ func (m *Multicast) Start() {
 			default:
 			}
 
-			intfs, err := net.Interfaces()
-			if err != nil {
-				panic(err)
+			intfs := []net.Interface{}
+			if len(m.altInterfaces) > 0 {
+				for _, iface := range m.altInterfaces {
+					intfs = append(intfs, iface.iface)
+				}
+			} else {
+				intfs, err = net.Interfaces()
+				if err != nil {
+					return
+				}
 			}
 
 			for _, intf := range intfs {
@@ -190,38 +255,53 @@ func (m *Multicast) startIPv4(intf *multicastInterface) {
 	groupAddrPort := fmt.Sprintf("%s:%d", MulticastIPv4GroupAddr, MulticastGroupPort)
 	addr, err := net.ResolveUDPAddr("udp4", groupAddrPort)
 	if err != nil {
-		//m.log.Printf("net.ResolveUDPAddr (%s): %s, ignoring interface\n", intf.Name, err)
+		// m.log.Printf("net.ResolveUDPAddr (%s): %s, ignoring interface\n", intf.Name, err)
 		return
 	}
 	listenString := fmt.Sprintf("0.0.0.0:%d", MulticastGroupPort)
 	conn, err := m.udpLC.ListenPacket(m.ctx, "udp4", listenString)
 	if err != nil {
-		//m.log.Printf("lc.ListenPacket (%s): %s, ignoring interface\n", intf.Name, err)
+		// m.log.Printf("lc.ListenPacket (%s): %s, ignoring interface\n", intf.Name, err)
 		return
 	}
 	sock := ipv4.NewPacketConn(conn)
 	if err := sock.JoinGroup(&intf.Interface, addr); err != nil {
-		//m.log.Printf("sock.JoinGroup (%s): %s, ignoring interface\n", intf.Name, err)
+		// m.log.Printf("sock.JoinGroup (%s): %s, ignoring interface\n", intf.Name, err)
 		return
 	}
 	addr.Zone = intf.Name
-	ifaddrs, err := intf.Addrs()
-	if err != nil {
-		//m.log.Printf("intf.Addrs (%s): %s, ignoring interface\n", intf.Name, err)
-		return
+	ifaddrs := []net.Addr{}
+	for _, v := range m.altInterfaces {
+		if v.iface.Name == intf.Name {
+			ifaddrs = v.addrs
+			break
+		}
+	}
+	if len(ifaddrs) == 0 {
+		ifaddrs, err = intf.Addrs()
+		if err != nil {
+			// m.log.Printf("intf.Addrs (%s): %s, ignoring interface\n", intf.Name, err)
+			return
+		}
 	}
 	var srcaddr net.IP
 	for _, ifaddr := range ifaddrs {
 		srcaddr, _, err = net.ParseCIDR(ifaddr.String())
 		if err != nil {
-			continue
+			srcaddr = net.ParseIP(strings.Split(ifaddr.String(), "%")[0])
+			if srcaddr == nil {
+				// m.log.Println("Failed parsing ifaddr", err)
+				continue
+			}
 		}
 		if !srcaddr.IsGlobalUnicast() || srcaddr.To4() == nil {
+			srcaddr = nil
 			continue
 		}
 		break
 	}
 	if srcaddr == nil {
+		// m.log.Println("No valid srcaddr found for iface", intf.Name)
 		return
 	}
 	m.log.Printf("Multicast discovery enabled on %s (%s)\n", intf.Name, srcaddr.String())
@@ -252,21 +332,36 @@ func (m *Multicast) startIPv6(intf *multicastInterface) {
 		return
 	}
 	addr.Zone = intf.Name
-	ifaddrs, err := intf.Addrs()
-	if err != nil {
-		//m.log.Printf("intf.Addrs (%s): %s, ignoring interface\n", intf.Name, err)
-		return
+	ifaddrs := []net.Addr{}
+	for _, v := range m.altInterfaces {
+		if v.iface.Name == intf.Name {
+			ifaddrs = v.addrs
+			break
+		}
+	}
+	if len(ifaddrs) == 0 {
+		ifaddrs, err = intf.Addrs()
+		if err != nil {
+			//m.log.Printf("intf.Addrs (%s): %s, ignoring interface\n", intf.Name, err)
+			return
+		}
 	}
 	var srcaddr net.IP
 	for _, ifaddr := range ifaddrs {
 		srcaddr, _, err = net.ParseCIDR(ifaddr.String())
 		if err != nil {
-			continue
+			srcaddr = net.ParseIP(strings.Split(ifaddr.String(), "%")[0])
+			if srcaddr == nil {
+				// m.log.Println("Failed parsing ifaddr", err)
+				continue
+			}
 		}
 		if !srcaddr.IsLinkLocalUnicast() || srcaddr.To4() != nil {
+			srcaddr = nil
 			continue
 		}
 		break
+
 	}
 	if srcaddr == nil {
 		return
@@ -332,7 +427,7 @@ func (m *Multicast) listen(intf *multicastInterface, conn net.PacketConn, srcadd
 
 		n, addr, err := conn.ReadFrom(buf)
 		if err != nil || n < ed25519.PublicKeySize+2 {
-			//m.log.Println("conn.ReadFrom:", err)
+			// m.log.Println("conn.ReadFrom:", err)
 			intf.cancel()
 			continue
 		}
@@ -371,7 +466,7 @@ func (m *Multicast) listen(intf *multicastInterface, conn net.PacketConn, srcadd
 
 			conn, err := dialer.Dial("tcp", straddr)
 			if err != nil {
-				//m.log.Println("dialer.Dial:", err)
+				// m.log.Println("dialer.Dial:", err)
 				return
 			}
 
