@@ -13,9 +13,21 @@ Pinecone separates frames into two types: **protocol frames** and **traffic fram
 
 Protocol frames often have specific rules governing their behaviour, including inspecting and processing the protocol control messages at intermediate or destination hops, and which routing scheme should be used to forward them onwards.
 
-Traffic frames, on the other hand, are always forwarded using SNEK routing or tree routing (typically the former) and are not required to be otherwise inspected by an intermediate node.
+Traffic frames, on the other hand, are always forwarded using SNEK routing or tree routing and are not required to be otherwise inspected by an intermediate node.
 
 If a suitable next-hop is identified, the frame will be forwarded to the chosen next-hop peer.
+
+## Hybrid Traffic Routing
+
+**Traffic frames** are forwarded using a combination of both SNEK routing and tree routing. This is done to reduce the overall network stretch while still providing a reliable transport mechanism during times of high network churn.
+
+Traffic is initially routed using SNEK routing to the destination and the frame header is populated with the sending node's tree coordinates. Upon reaching the destination, the receiving node caches the sending node's tree coordinates.
+
+When sending traffic, a node will check for matching cached tree coordinates and populate that information in the frame header if possible. The presence of destination coordinates in a traffic frame lets other nodes know to attempt forwarding using tree routing.
+
+When forwarding traffic frames using tree routing, if any node along the path fails to find a suitable next-hop then the destination coordinates should be removed from the header and SNEK forwarding should be attempted to reach the destination.
+
+To assist with adjusting to changing network conditions, individual cached coordinates should be removed if they ever become too old. Also, all cached coordinates should be removed if the tree root changes. 
 
 ## Watermarks
 
