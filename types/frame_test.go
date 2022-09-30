@@ -40,7 +40,7 @@ func TestMarshalUnmarshalFrameTreeRouted(t *testing.T) {
 		byte(TypeTraffic), // type greedy
 		0,                 // extra
 		0,                 // hop limit
-		0, 97, // frame length
+		0, 97,             // frame length
 		0, 7, // payload len
 		0, 6, 1, 2, 3, 4, 167, 8, // destination (2+6 bytes but 5 ports!)
 		0, 4, 4, 3, 2, 1, // source (2+4 bytes)
@@ -116,19 +116,14 @@ func TestMarshalUnmarshalFrameSnekRouted(t *testing.T) {
 	copy(input.Watermark.PublicKey[:], src)
 	expected := []byte{
 		0x70, 0x69, 0x6e, 0x65, // magic bytes
-		0,                               // version 0
-		byte(TypeVirtualSnakeBootstrap), // type greedy
-		0,                               // extra
-		0,                               // hop limit
-		0, 82, // frame length
-		0, 5, // payload length
-	}
-	expected = append(expected, pk...)
-	expected = append(expected, wpk...)
-	var seq [4]byte
-	n, err := input.Watermark.Sequence.MarshalBinary(seq[:])
-	if err != nil {
-		t.Fatal(err)
+		0,                 // version 0
+		byte(TypeTraffic), // type greedy
+		0,                 // extra
+		0,                 // hop limit
+		0, 124,            // frame length
+		0, 7, // payload len
+		0, 0, // destination (2+0 bytes)
+		0, 4, 4, 3, 2, 1, // source (2+4 bytes)
 	}
 	expected = append(expected, dst...) // destination
 	expected = append(expected, src...) // source
@@ -208,15 +203,14 @@ func TestMarshalUnmarshalSNEKBootstrapFrame(t *testing.T) {
 	input.Watermark.Sequence = 100
 	expected := []byte{
 		0x70, 0x69, 0x6e, 0x65, // magic bytes
-		0,                            // version 0
-		byte(TypeVirtualSnakeRouted), // type greedy
-		0,                            // extra
-		0,                            // hop limit
-		0, 115, // frame length
-		0, 6, // payload length
+		0,                   // version 0
+		byte(TypeBootstrap), // type greedy
+		0,                   // extra
+		0,                   // hop limit
+		0, 82,               // frame length
+		0, 5, // payload length
 	}
-	expected = append(expected, pk2...)
-	expected = append(expected, pk1...)
+	expected = append(expected, pk...)
 	expected = append(expected, wpk...)
 	var seq [4]byte
 	n, err := input.Watermark.Sequence.MarshalBinary(seq[:])
