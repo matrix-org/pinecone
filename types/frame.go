@@ -38,7 +38,7 @@ const (
 	TypeTreeAnnouncement                  // protocol frame, bypasses queues
 	TypeBootstrap                         // protocol frame, forwarded using SNEK
 	TypeTraffic                           // traffic frame, forwarded using tree or SNEK
-	TypeWakeupBroadcast                        // protocol frame, special broadcast forwarding
+	TypeWakeupBroadcast                   // protocol frame, special broadcast forwarding
 )
 
 func (t FrameType) IsTraffic() bool {

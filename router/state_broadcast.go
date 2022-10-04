@@ -23,7 +23,7 @@ import (
 	"github.com/matrix-org/pinecone/types"
 )
 
-type BroadcastEntry struct {
+type broadcastEntry struct {
 	Sequence types.Varu64
 	LastSeen time.Time
 }
@@ -31,7 +31,7 @@ type BroadcastEntry struct {
 // valid returns true if the broadcast hasn't expired, or false if it has. It is
 // required for broadcasts to time out eventually, in the case that nodes leave
 // the network and return later.
-func (e *BroadcastEntry) valid() bool {
+func (e *broadcastEntry) valid() bool {
 	return time.Since(e.LastSeen) < broadcastExpiryPeriod
 }
 
@@ -59,7 +59,7 @@ func (s *state) _maintainBroadcasts() {
 	s._sendWakeupBroadcasts()
 }
 
-func (s *state) _sendWakeupBroadcasts() {
+func (s *state) _createBroadcastFrame() (*types.Frame, error) {
 	// Construct the broadcast packet.
 	b := frameBufferPool.Get().(*[types.MaxFrameSize]byte)
 	defer frameBufferPool.Put(b)
@@ -70,7 +70,7 @@ func (s *state) _sendWakeupBroadcasts() {
 	if s.r.secure {
 		protected, err := broadcast.ProtectedPayload()
 		if err != nil {
-			return
+			return nil, err
 		}
 		copy(
 			broadcast.Signature[:],
@@ -79,7 +79,7 @@ func (s *state) _sendWakeupBroadcasts() {
 	}
 	n, err := broadcast.MarshalBinary(b[:])
 	if err != nil {
-		return
+		return nil, err
 	}
 
 	// Construct the frame.
@@ -89,7 +89,16 @@ func (s *state) _sendWakeupBroadcasts() {
 	send.HopLimit = types.NetworkHorizonDistance
 	send.Payload = append(send.Payload[:0], b[:n]...)
 
-	s._flood(s.r.local, send, ClassicFlood)
+	return send, nil
+}
+
+func (s *state) _sendWakeupBroadcasts() {
+	broadcast, err := s._createBroadcastFrame()
+	if err != nil {
+		s.r.log.Println("Failed creating broadcast frame:", err)
+	}
+
+	s._flood(s.r.local, broadcast, ClassicFlood)
 }
 
 func (s *state) _handleBroadcast(p *peer, f *types.Frame) error {
@@ -131,7 +140,7 @@ func (s *state) _handleBroadcast(p *peer, f *types.Frame) error {
 			return nil
 		}
 	}
-	s._seenBroadcasts[f.SourceKey] = BroadcastEntry{
+	s._seenBroadcasts[f.SourceKey] = broadcastEntry{
 		Sequence: broadcast.Sequence,
 		LastSeen: time.Now(),
 	}

@@ -48,7 +48,7 @@ type state struct {
 	_treetimer      *time.Timer                        // Tree maintenance timer
 	_snaketimer     *time.Timer                        // Virtual snake maintenance timer
 	_broadcastTimer *time.Timer                        // Wakeup Broadcast maintenance timer
-	_seenBroadcasts map[types.PublicKey]BroadcastEntry // Cache of previously seen wakeup broadcasts
+	_seenBroadcasts map[types.PublicKey]broadcastEntry // Cache of previously seen wakeup broadcasts
 	_lastbootstrap  time.Time                          // When did we last bootstrap?
 	_waiting        bool                               // Is the tree waiting to reparent?
 	_filterPacket   FilterFn                           // Function called when forwarding packets
@@ -74,7 +74,7 @@ func (s *state) _start() {
 	s._announcements = make(announcementTable, portCount)
 	s._table = virtualSnakeTable{}
 	s._coordsCache = coordsCacheTable{}
-	s._seenBroadcasts = make(map[types.PublicKey]BroadcastEntry)
+	s._seenBroadcasts = make(map[types.PublicKey]broadcastEntry)
 
 	if s._treetimer == nil {
 		s._treetimer = time.AfterFunc(announcementInterval, func() {
@@ -251,6 +251,9 @@ func (s *state) _addPeer(conn net.Conn, public types.PublicKey, uri ConnectionUR
 		new.started.Store(true)
 		new.reader.Act(nil, new._read)
 		new.writer.Act(nil, new._write)
+
+		broadcast, _ := s._createBroadcastFrame()
+		new.send(broadcast)
 
 		s.r.Act(nil, func() {
 			s.r._publish(events.PeerAdded{Port: types.SwitchPortID(i), PeerID: new.public.String()})
