@@ -23,9 +23,6 @@ import (
 	"github.com/matrix-org/pinecone/types"
 )
 
-const WakeupBroadcastInterval = time.Minute
-const broadcastExpiryPeriod = WakeupBroadcastInterval * 3
-
 type BroadcastEntry struct {
 	Sequence types.Varu64
 	LastSeen time.Time
@@ -48,7 +45,7 @@ func (s *state) _maintainBroadcasts() {
 	case <-s.r.context.Done():
 		return
 	default:
-		defer s._sendBroadcastIn(WakeupBroadcastInterval)
+		defer s._sendBroadcastIn(wakeupBroadcastInterval)
 	}
 
 	// Clean up any broadcasts that are older than the expiry period.

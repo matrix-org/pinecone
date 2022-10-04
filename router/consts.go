@@ -50,3 +50,11 @@ const coordsCacheLifetime = time.Minute
 // coordsCacheMaintainInterval is how often we will clean
 // out stale entries from the coords cache.
 const coordsCacheMaintainInterval = time.Minute
+
+// wakeupBroadcastInterval is how often we will aim
+// to send broadcast messages into the network.
+const wakeupBroadcastInterval = time.Minute
+
+// broadcastExpiryPeriod is how long we'll wait to
+// expire a seen broadcast.
+const broadcastExpiryPeriod = wakeupBroadcastInterval * 3

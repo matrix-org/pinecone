@@ -89,7 +89,7 @@ func (s *state) _start() {
 	}
 
 	if s._broadcastTimer == nil {
-		s._broadcastTimer = time.AfterFunc(WakeupBroadcastInterval, func() {
+		s._broadcastTimer = time.AfterFunc(wakeupBroadcastInterval, func() {
 			s.Act(nil, s._maintainBroadcasts)
 		})
 	}
