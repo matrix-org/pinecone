@@ -110,7 +110,7 @@ func (s *state) _handleBroadcast(p *peer, f *types.Frame) error {
 			return fmt.Errorf("broadcast payload invalid: %w", err)
 		}
 		if !ed25519.Verify(
-			f.DestinationKey[:],
+			f.SourceKey[:],
 			protected,
 			broadcast.Signature[:],
 		) {
