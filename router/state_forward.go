@@ -163,6 +163,7 @@ func (s *state) _forward(p *peer, f *types.Frame) error {
 // Classic flooding works by sending frames to all other peers.
 // Tree flooding works by only sending frames to peers on the same branch.
 func (s *state) _flood(from *peer, f *types.Frame, floodType FloodType) {
+	floodCandidates := make(map[types.PublicKey]*peer)
 	for _, p := range s._peers {
 		if p == nil || p.proto == nil || !p.started.Load() {
 			continue
@@ -183,11 +184,22 @@ func (s *state) _flood(from *peer, f *types.Frame, floodType FloodType) {
 			}
 		}
 
+		if p, ok := floodCandidates[p.public]; ok {
+			if p.peertype <= from.peertype {
+				// We already know of a faster connection to this peer.
+				continue
+			}
+		}
+
 		if s._filterPacket != nil && s._filterPacket(p.public, f) {
 			s.r.log.Printf("Packet of type %s destined for port %d [%s] was dropped due to filter rules", f.Type.String(), p.port, p.public.String()[:8])
 			continue
 		}
 
+		floodCandidates[p.public] = p
+	}
+
+	for _, p := range floodCandidates {
 		frame := getFrame()
 		f.CopyInto(frame)
 		p.send(frame)
