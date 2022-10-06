@@ -303,12 +303,16 @@ func (s *state) _handleTreeAnnouncement(p *peer, f *types.Frame) error {
 		return fmt.Errorf("update sanity checks failed: %w", err)
 	}
 
+	isFirstAnnouncement := false
+
 	// If the peer is replaying an old sequence number to us then we
 	// assume that they are up to no good.
 	if ann := s._announcements[p]; ann != nil {
 		if newUpdate.RootPublicKey == ann.RootPublicKey && newUpdate.RootSequence < ann.RootSequence {
 			return fmt.Errorf("update replays old sequence number")
 		}
+	} else {
+		isFirstAnnouncement = true
 	}
 
 	// Get the key of our current root and then work out if the root
@@ -361,7 +365,9 @@ func (s *state) _handleTreeAnnouncement(p *peer, f *types.Frame) error {
 				})
 			})
 		case InformPeerOfStrongerRoot:
-			s.sendTreeAnnouncementToPeer(lastParentUpdate, p)
+			if !isFirstAnnouncement {
+				s.sendTreeAnnouncementToPeer(lastParentUpdate, p)
+			}
 		}
 	}
 
