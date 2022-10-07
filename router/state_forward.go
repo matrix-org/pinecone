@@ -85,6 +85,11 @@ func (s *state) _forward(p *peer, f *types.Frame) error {
 	deadend := nexthop == nil || nexthop == p.router.local
 
 	switch f.Type {
+	case types.TypeKeepalive:
+		// Keepalives are sent on a peering and are never forwarded.
+		framePool.Put(f)
+		return nil
+
 	case types.TypeTreeAnnouncement:
 		// Tree announcements are a special case. The _handleTreeAnnouncement function
 		// will generate new tree announcements and send them to peers if needed.
@@ -92,11 +97,6 @@ func (s *state) _forward(p *peer, f *types.Frame) error {
 		if err := s._handleTreeAnnouncement(p, f); err != nil {
 			return fmt.Errorf("s._handleTreeAnnouncement (port %d): %w", p.port, err)
 		}
-		return nil
-
-	case types.TypeKeepalive:
-		// Keepalives are sent on a peering and are never forwarded.
-		framePool.Put(f)
 		return nil
 
 	case types.TypeBootstrap:
