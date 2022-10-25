@@ -106,13 +106,21 @@ func (m *Multicast) RegisterNetworkCallback(intfCallback func() []InterfaceInfo)
 
 	m.callbackMutex.Lock()
 	defer m.callbackMutex.Unlock()
+	// Assign the callback function used to obtain current interface information.
 	m.interfaceCallback = func() {
+		// Save a reference to the previously registered interfaces.
 		oldInterfaces := m.altInterfaces
+		// Clear out any previously registered interfaces.
 		m.altInterfaces = make(map[string]AltInterface)
+
+		// Register each returned interface.
 		for _, intf := range intfCallback() {
 			m.registerInterface(intf)
 		}
 
+		// If any of the previously registered interfaces were being used for
+		// multicast discovery, cancel their context/s so they are cleaned up
+		// appropriately.
 		for _, intf := range oldInterfaces {
 			if _, ok := m.altInterfaces[intf.iface.Name]; !ok {
 				if v, ok := m.interfaces.Load(intf.iface.Name); ok {
