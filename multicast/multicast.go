@@ -118,9 +118,9 @@ func (m *Multicast) RegisterNetworkCallback(intfCallback func() []InterfaceInfo)
 			m.registerInterface(intf)
 		}
 
-		// If any of the previously registered interfaces were being used for
-		// multicast discovery, cancel their context/s so they are cleaned up
-		// appropriately.
+		// If any of the previously registered interfaces that were being used for
+		// multicast discovery are no longer present, cancel their context/s so they
+		// are cleaned up appropriately.
 		for _, intf := range oldInterfaces {
 			if _, ok := m.altInterfaces[intf.iface.Name]; !ok {
 				if v, ok := m.interfaces.Load(intf.iface.Name); ok {
