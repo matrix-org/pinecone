@@ -56,10 +56,6 @@ func (m *Pinecone) PublicKey() string {
 	return m.PineconeRouter.PublicKey().String()
 }
 
-func (m *Pinecone) RegisterNetworkCallback(intfCallback func() []pineconeMulticast.InterfaceInfo) {
-	m.RegisterNetworkCallback(intfCallback)
-}
-
 func (m *Pinecone) SetMulticastEnabled(enabled bool) {
 	if enabled {
 		m.PineconeMulticast.Start()
