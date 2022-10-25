@@ -1,0 +1,27 @@
+FROM docker.io/golang:alpine AS base
+
+RUN apk --update --no-cache add bash build-base git
+
+WORKDIR /build
+
+COPY . /build
+
+RUN mkdir -p bin
+RUN go build -trimpath -o bin/ ./cmd/pineconesim
+
+FROM alpine:latest
+LABEL org.opencontainers.image.title="Pinecone Simulator"
+LABEL org.opencontainers.image.description="All-in-one Pinecone Simulator"
+LABEL org.opencontainers.image.source="https://github.com/matrix-org/pinecone"
+LABEL org.opencontainers.image.licenses="Apache-2.0"
+
+RUN mkdir -p /cmd/pineconesim/graphs/
+
+COPY --from=base /build/bin/* /usr/bin/
+COPY --from=base /build/cmd/pineconesim/ui /cmd/pineconesim/ui
+COPY --from=base /build/cmd/pineconesim/page.html /cmd/pineconesim/
+COPY --from=base /build/cmd/pineconesim/graphs/*.txt /cmd/pineconesim/graphs/
+
+EXPOSE 65432/tcp
+
+ENTRYPOINT ["/usr/bin/pineconesim"]
