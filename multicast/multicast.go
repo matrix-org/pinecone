@@ -19,6 +19,7 @@ import (
 	"crypto/ed25519"
 	"encoding/binary"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"net"
 	"strings"
@@ -213,7 +214,9 @@ func (m *Multicast) accept(listener net.Listener) {
 	for {
 		conn, err := m.listener.Accept()
 		if err != nil {
-			m.log.Println("m.listener.Accept:", err)
+			if !errors.Is(err, net.ErrClosed) {
+				m.log.Println("m.listener.Accept:", err)
+			}
 			return
 		}
 
