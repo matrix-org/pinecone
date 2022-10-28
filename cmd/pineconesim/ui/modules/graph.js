@@ -776,7 +776,7 @@ class Graph {
     addBroadcast(id, peer) {
         if (Nodes.has(id)) {
             let node = Nodes.get(id);
-            node.broadcasts.set(peer, Date.now() * 1000);
+            node.broadcasts.set(peer, Date.now() * 1000 * 1000);
             this.updateUI(id);
         }
     }
