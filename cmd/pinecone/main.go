@@ -23,6 +23,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"net/http"
@@ -61,12 +62,14 @@ func main() {
 
 	listentcp := flag.String("listen", ":0", "address to listen for TCP connections")
 	listenws := flag.String("listenws", ":0", "address to listen for WebSockets connections")
-	connect := flag.String("connect", "", "peer to connect to")
+	connect := flag.String("connect", "", "peers to connect to")
 	manhole := flag.Bool("manhole", false, "enable the manhole (requires WebSocket listener to be active)")
 	flag.Parse()
 
 	if connect != nil && *connect != "" {
-		pineconeManager.AddPeer(*connect)
+		for _, uri := range strings.Split(*connect, ",") {
+			pineconeManager.AddPeer(strings.TrimSpace(uri))
+		}
 	}
 
 	if listenws != nil && *listenws != "" {
