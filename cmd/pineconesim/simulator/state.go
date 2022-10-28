@@ -299,6 +299,8 @@ func (s *StateAccessor) _updateBroadcastCache(node string, peerID string) {
 			s._state.Nodes[node].ExpectedBroadcasts[peerID] = true
 		}
 	}
+
+	s._publish(BroadcastReceived{Node: node, PeerID: peerID})
 }
 
 func (s *StateAccessor) _updatePeerBandwidthUsage(node string, captureTime uint64, peers map[string]PeerBandwidthUsage) {

@@ -89,6 +89,8 @@ function handleSimMessage(msg) {
         case APIUpdateID.NetworkStatsUpdated:
             graph.updateNetworkStats(event.PathConvergence, event.AverageStretch);
             break;
+        case APIUpdateID.BroadcastReceived:
+            break;
         case APIUpdateID.BandwidthReport:
             graph.addBandwidthReport(event.Node, event.Bandwidth);
             break;

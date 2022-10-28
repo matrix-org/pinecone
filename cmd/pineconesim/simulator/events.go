@@ -127,6 +127,14 @@ type SnakeEntryRemoved struct {
 // Tag SnakeEntryRemoved as an Event
 func (e SnakeEntryRemoved) isEvent() {}
 
+type BroadcastReceived struct {
+	Node   string
+	PeerID string
+}
+
+// Tag BroadcastReceived as an Event
+func (e BroadcastReceived) isEvent() {}
+
 type BandwidthReport struct {
 	Node      string
 	Bandwidth BandwidthSnapshot

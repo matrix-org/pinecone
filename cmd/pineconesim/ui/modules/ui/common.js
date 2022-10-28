@@ -72,6 +72,7 @@ export function createNodeOptionsGeneralAdversary() {
             "Keepalive": 0,
             "TreeAnnouncement": 0,
             "VirtualSnakeBootstrap": 0,
+            "WakeupBroadcast": 0,
             "OverlayTraffic": 0,
         },
         "BlockTreeProtoTraffic": {
@@ -79,6 +80,7 @@ export function createNodeOptionsGeneralAdversary() {
             "Keepalive": 0,
             "TreeAnnouncement": 100,
             "VirtualSnakeBootstrap": 0,
+            "WakeupBroadcast": 0,
             "OverlayTraffic": 0,
         },
         "BlockSNEKProtoTraffic": {
@@ -86,12 +88,14 @@ export function createNodeOptionsGeneralAdversary() {
             "Keepalive": 0,
             "TreeAnnouncement": 0,
             "VirtualSnakeBootstrap": 100,
+            "WakeupBroadcast": 0,
             "OverlayTraffic": 0,
         },
         "BlockOverlayTraffic": {
             "Keepalive": 0,
             "TreeAnnouncement": 0,
             "VirtualSnakeBootstrap": 0,
+            "WakeupBroadcast": 0,
             "OverlayTraffic": 100,
         },
     };
@@ -134,6 +138,9 @@ export function createNodeOptionsGeneralAdversary() {
 
     let snek1 = generateSliderRow("SNEK Bootstrap", "VirtualSnakeBootstrap");
     nodeOptions.appendChild(snek1);
+
+    let broadcast = generateSliderRow("Wakeup Broadcast", "WakeupBroadcast");
+    nodeOptions.appendChild(broadcast);
 
     let traffic = generateSliderRow("Overlay Traffic", "OverlayTraffic");
     nodeOptions.appendChild(traffic);

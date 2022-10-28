@@ -381,6 +381,8 @@ func handleSimEvents(log *log.Logger, conn *websocket.Conn, ch <-chan simulator.
 			eventType = simulator.SimPingStateUpdated
 		case simulator.NetworkStatsUpdate:
 			eventType = simulator.SimNetworkStatsUpdated
+		case simulator.BroadcastReceived:
+			eventType = simulator.SimBroadcastReceived
 		case simulator.BandwidthReport:
 			eventType = simulator.SimBandwidthReport
 		}

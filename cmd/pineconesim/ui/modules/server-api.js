@@ -23,7 +23,8 @@ export const APIUpdateID = {
     SnakeEntryRemoved: 10,
     PingStateUpdated: 11,
     NetworkStatsUpdated: 12,
-    BandwidthReport: 13,
+    BroadcastReceived: 13,
+    BandwidthReport: 14,
 };
 
 export const APICommandID = {

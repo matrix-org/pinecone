@@ -88,6 +88,7 @@ func defaultFrameCount() PeerFrameCount {
 	frameCount[types.TypeKeepalive] = atomic.NewUint64(0)
 	frameCount[types.TypeTreeAnnouncement] = atomic.NewUint64(0)
 	frameCount[types.TypeBootstrap] = atomic.NewUint64(0)
+	frameCount[types.TypeWakeupBroadcast] = atomic.NewUint64(0)
 	frameCount[types.TypeTraffic] = atomic.NewUint64(0)
 
 	peerFrameCount := PeerFrameCount{

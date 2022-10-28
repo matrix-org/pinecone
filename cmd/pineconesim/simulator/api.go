@@ -45,6 +45,7 @@ const (
 	SimSnakeEntryRemoved
 	SimPingStateUpdated
 	SimNetworkStatsUpdated
+	SimBroadcastReceived
 	SimBandwidthReport
 )
 
