@@ -103,6 +103,17 @@ func (f *Frame) MarshalBinary(buffer []byte) (int, error) {
 	buffer[7] = f.HopLimit
 	offset := FrameHeaderLength
 	switch f.Type {
+	case TypeKeepalive:
+
+	case TypeTreeAnnouncement:
+		payloadLen := len(f.Payload)
+		binary.BigEndian.PutUint16(buffer[offset+0:offset+2], uint16(payloadLen))
+		offset += 2
+		if f.Payload != nil {
+			f.Payload = f.Payload[:payloadLen]
+			offset += copy(buffer[offset:], f.Payload[:payloadLen])
+		}
+
 	case TypeBootstrap: // destination = key, source = coords
 		payloadLen := len(f.Payload)
 		binary.BigEndian.PutUint16(buffer[offset+0:offset+2], uint16(payloadLen))
@@ -114,27 +125,6 @@ func (f *Frame) MarshalBinary(buffer []byte) (int, error) {
 			return 0, fmt.Errorf("f.WatermarkSeq.MarshalBinary: %w", err)
 		}
 		offset += n
-		if f.Payload != nil {
-			f.Payload = f.Payload[:payloadLen]
-			offset += copy(buffer[offset:], f.Payload[:payloadLen])
-		}
-
-	case TypeWakeupBroadcast: // source = key
-		payloadLen := len(f.Payload)
-		binary.BigEndian.PutUint16(buffer[offset+0:offset+2], uint16(payloadLen))
-		offset += 2
-		offset += copy(buffer[offset:], f.SourceKey[:ed25519.PublicKeySize])
-		if f.Payload != nil {
-			f.Payload = f.Payload[:payloadLen]
-			offset += copy(buffer[offset:], f.Payload[:payloadLen])
-		}
-
-	case TypeKeepalive:
-
-	case TypeTreeAnnouncement:
-		payloadLen := len(f.Payload)
-		binary.BigEndian.PutUint16(buffer[offset+0:offset+2], uint16(payloadLen))
-		offset += 2
 		if f.Payload != nil {
 			f.Payload = f.Payload[:payloadLen]
 			offset += copy(buffer[offset:], f.Payload[:payloadLen])
@@ -195,6 +185,19 @@ func (f *Frame) UnmarshalBinary(data []byte) (int, error) {
 	}
 	offset := FrameHeaderLength
 	switch f.Type {
+	case TypeKeepalive:
+		return offset, nil
+
+	case TypeTreeAnnouncement:
+		payloadLen := int(binary.BigEndian.Uint16(data[offset+0 : offset+2]))
+		if payloadLen > cap(f.Payload) {
+			return 0, fmt.Errorf("payload length exceeds frame capacity")
+		}
+		offset += 2
+		f.Payload = f.Payload[:payloadLen]
+		offset += copy(f.Payload, data[offset:])
+		return offset + payloadLen, nil
+
 	case TypeBootstrap: // destination = key, source = coords
 		payloadLen := int(binary.BigEndian.Uint16(data[offset+0 : offset+2]))
 		if payloadLen > cap(f.Payload) {
@@ -222,19 +225,6 @@ func (f *Frame) UnmarshalBinary(data []byte) (int, error) {
 		f.Payload = f.Payload[:payloadLen]
 		offset += copy(f.Payload[:payloadLen], data[offset:])
 		return offset, nil
-
-	case TypeKeepalive:
-		return offset, nil
-
-	case TypeTreeAnnouncement:
-		payloadLen := int(binary.BigEndian.Uint16(data[offset+0 : offset+2]))
-		if payloadLen > cap(f.Payload) {
-			return 0, fmt.Errorf("payload length exceeds frame capacity")
-		}
-		offset += 2
-		f.Payload = f.Payload[:payloadLen]
-		offset += copy(f.Payload, data[offset:])
-		return offset + payloadLen, nil
 
 	case TypeTraffic:
 		payloadLen := int(binary.BigEndian.Uint16(data[offset+0 : offset+2]))
@@ -280,14 +270,14 @@ func (f *Frame) UnmarshalBinary(data []byte) (int, error) {
 
 func (t FrameType) String() string {
 	switch t {
+	case TypeKeepalive:
+		return "Keepalive"
 	case TypeTreeAnnouncement:
 		return "TreeAnnouncement"
 	case TypeBootstrap:
 		return "VirtualSnakeBootstrap"
 	case TypeTraffic:
 		return "OverlayTraffic"
-	case TypeKeepalive:
-		return "Keepalive"
 	case TypeWakeupBroadcast:
 		return "WakeupBroadcast"
 	default:
