@@ -259,6 +259,11 @@ func userProxyReporter(conn *websocket.Conn, connID uint64, sim *simulator.Simul
 			snakeEntries = append(snakeEntries, simulator.SnakeRouteEntry{EntryID: entry, PeerID: peer})
 		}
 
+		var broadcastEntries []simulator.BroadcastEntry
+		for entry, timestamp := range node.BroadcastsReceived {
+			broadcastEntries = append(broadcastEntries, simulator.BroadcastEntry{PeerID: entry, Time: timestamp})
+		}
+
 		var bandwidthReports simulator.BandwidthReports
 		for _, report := range node.BandwidthReports {
 			if report.ReceiveTime != 0 {
@@ -275,14 +280,15 @@ func userProxyReporter(conn *websocket.Conn, connID uint64, sim *simulator.Simul
 				AnnTime:     node.Announcement.Time,
 				Coords:      node.Coords,
 			},
-			Peers:            peerConns,
-			TreeParent:       node.Parent,
-			SnakeAsc:         node.AscendingPeer,
-			SnakeAscPath:     node.AscendingPathID,
-			SnakeDesc:        node.DescendingPeer,
-			SnakeDescPath:    node.DescendingPathID,
-			SnakeEntries:     snakeEntries,
-			BandwidthReports: bandwidthReports,
+			Peers:              peerConns,
+			TreeParent:         node.Parent,
+			SnakeAsc:           node.AscendingPeer,
+			SnakeAscPath:       node.AscendingPathID,
+			SnakeDesc:          node.DescendingPeer,
+			SnakeDescPath:      node.DescendingPathID,
+			SnakeEntries:       snakeEntries,
+			BroadcastsReceived: broadcastEntries,
+			BandwidthReports:   bandwidthReports,
 		}
 
 		if batchSize == int(maxBatchSize) || end {

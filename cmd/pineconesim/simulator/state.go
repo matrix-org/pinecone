@@ -17,6 +17,7 @@ package simulator
 import (
 	"fmt"
 	"reflect"
+	"time"
 
 	"github.com/Arceliar/phony"
 	"github.com/matrix-org/pinecone/types"
@@ -60,6 +61,7 @@ type NodeState struct {
 	DescendingPeer     string
 	DescendingPathID   string
 	SnakeEntries       map[string]string
+	BroadcastsReceived map[string]uint64
 	BandwidthReports   BandwidthReports
 	NextReportIndex    uint
 	ExpectedBroadcasts ExpectedBroadcasts
@@ -80,6 +82,7 @@ func NewNodeState(peerID string, nodeType APINodeType) *NodeState {
 		DescendingPeer:     "",
 		DescendingPathID:   "",
 		SnakeEntries:       make(map[string]string),
+		BroadcastsReceived: make(map[string]uint64),
 		BandwidthReports:   make(BandwidthReports, MaxBandwidthReports),
 		NextReportIndex:    0,
 		ExpectedBroadcasts: make(ExpectedBroadcasts),
@@ -295,6 +298,7 @@ func (s *StateAccessor) _removeSnakeEntry(node string, entryID string) {
 
 func (s *StateAccessor) _updateBroadcastCache(node string, peerID string) {
 	if _, ok := s._state.Nodes[node]; ok {
+		s._state.Nodes[node].BroadcastsReceived[peerID] = uint64(time.Now().UnixNano())
 		if _, ok := s._state.Nodes[node].ExpectedBroadcasts[peerID]; ok {
 			s._state.Nodes[node].ExpectedBroadcasts[peerID] = true
 		}
