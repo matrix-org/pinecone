@@ -17,7 +17,6 @@ package simulator
 import (
 	"fmt"
 	"reflect"
-	"time"
 
 	"github.com/Arceliar/phony"
 	"github.com/matrix-org/pinecone/types"
@@ -296,15 +295,15 @@ func (s *StateAccessor) _removeSnakeEntry(node string, entryID string) {
 	s._publish(SnakeEntryRemoved{Node: node, EntryID: entryID})
 }
 
-func (s *StateAccessor) _updateBroadcastCache(node string, peerID string) {
+func (s *StateAccessor) _updateBroadcastCache(node string, peerID string, timestamp uint64) {
 	if _, ok := s._state.Nodes[node]; ok {
-		s._state.Nodes[node].BroadcastsReceived[peerID] = uint64(time.Now().UnixNano())
+		s._state.Nodes[node].BroadcastsReceived[peerID] = timestamp
 		if _, ok := s._state.Nodes[node].ExpectedBroadcasts[peerID]; ok {
 			s._state.Nodes[node].ExpectedBroadcasts[peerID] = true
 		}
 	}
 
-	s._publish(BroadcastReceived{Node: node, PeerID: peerID})
+	s._publish(BroadcastReceived{Node: node, PeerID: peerID, Time: timestamp})
 }
 
 func (s *StateAccessor) _updatePeerBandwidthUsage(node string, captureTime uint64, peers map[string]PeerBandwidthUsage) {

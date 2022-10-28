@@ -79,6 +79,7 @@ func (e SnakeEntryRemoved) isEvent() {}
 
 type BroadcastReceived struct {
 	PeerID string
+	Time   uint64
 }
 
 // Tag BroadcastReceived as an Event

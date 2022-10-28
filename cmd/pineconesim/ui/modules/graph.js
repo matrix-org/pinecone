@@ -773,10 +773,10 @@ class Graph {
         handleStatsPanelUpdate();
     }
 
-    addBroadcast(id, peer) {
+    addBroadcast(id, peer, time) {
         if (Nodes.has(id)) {
             let node = Nodes.get(id);
-            node.broadcasts.set(peer, Date.now() * 1000 * 1000);
+            node.broadcasts.set(peer, time);
             this.updateUI(id);
         }
     }

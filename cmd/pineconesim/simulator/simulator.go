@@ -346,9 +346,9 @@ func (sim *Simulator) handleSnakeEntryRemoved(node string, entryID string) {
 	sim.State.Act(nil, func() { sim.State._removeSnakeEntry(node, entryName) })
 }
 
-func (sim *Simulator) handleBroadcastReceived(node string, peerID string) {
+func (sim *Simulator) handleBroadcastReceived(node string, peerID string, timestamp uint64) {
 	if peerNode, err := sim.State.GetNodeName(peerID); err == nil {
-		sim.State.Act(nil, func() { sim.State._updateBroadcastCache(node, peerNode) })
+		sim.State.Act(nil, func() { sim.State._updateBroadcastCache(node, peerNode, timestamp) })
 	}
 }
 

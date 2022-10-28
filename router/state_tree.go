@@ -385,6 +385,7 @@ func (s *state) _handleTreeAnnouncement(p *peer, f *types.Frame) error {
 	}
 
 	if shouldSendBroadcast {
+		s.r.log.Println("Sending initial peering broadcast")
 		if broadcast, err := s._createBroadcastFrame(); err == nil {
 			p.send(broadcast)
 		}

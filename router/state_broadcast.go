@@ -147,7 +147,7 @@ func (s *state) _handleBroadcast(p *peer, f *types.Frame) error {
 
 	// send event to subscribers about discovered node
 	s.r.Act(nil, func() {
-		s.r._publish(events.BroadcastReceived{PeerID: f.SourceKey.String()})
+		s.r._publish(events.BroadcastReceived{PeerID: f.SourceKey.String(), Time: uint64(time.Now().UnixNano())})
 	})
 
 	if f.HopLimit > 1 {

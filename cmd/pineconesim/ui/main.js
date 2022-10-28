@@ -36,7 +36,7 @@ function handleSimMessage(msg) {
 
             if (value.BroadcastsReceived) {
                 for (let i = 0; i < value.BroadcastsReceived.length; i++) {
-                    graph.addBroadcast(key, value.BroadcastsReceived[i].PeerID);
+                    graph.addBroadcast(key, value.BroadcastsReceived[i].PeerID, value.BroadcastsReceived[i].Time);
                 }
             }
 
@@ -96,7 +96,7 @@ function handleSimMessage(msg) {
             graph.updateNetworkStats(event.PathConvergence, event.AverageStretch);
             break;
         case APIUpdateID.BroadcastReceived:
-            graph.addBroadcast(event.Node, event.PeerID);
+            graph.addBroadcast(event.Node, event.PeerID, event.Time);
             break;
         case APIUpdateID.BandwidthReport:
             graph.addBandwidthReport(event.Node, event.Bandwidth);
