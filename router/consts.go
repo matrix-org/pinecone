@@ -22,6 +22,16 @@ import (
 const portCount = math.MaxUint8 - 1
 const trafficBuffer = math.MaxUint8 - 1
 
+// peerKeepaliveInterval is the frequency at which this
+// node will send keepalive packets to other peers if no
+// other packets have been sent within the peerKeepaliveInterval.
+const peerKeepaliveInterval = time.Second * 3
+
+// peerKeepaliveTimeout is the amount of time that must
+// pass without receiving any packet before we
+// will assume that the peer is dead.
+const peerKeepaliveTimeout = time.Second * 5
+
 // announcementInterval is the frequency at which this
 // node will send root announcements to other peers.
 const announcementInterval = time.Minute * 30
