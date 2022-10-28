@@ -247,13 +247,11 @@ func (s *state) _addPeer(conn net.Conn, public types.PublicKey, uri ConnectionUR
 		s.r.log.Println("Connected to peer", new.public.String(), "on port", new.port)
 		v, _ := s.r.active.LoadOrStore(hex.EncodeToString(new.public[:])+string(zone), atomic.NewUint64(0))
 		v.(*atomic.Uint64).Inc()
+
 		new.proto.push(s.r.state._rootAnnouncement().forPeer(new))
 		new.started.Store(true)
 		new.reader.Act(nil, new._read)
 		new.writer.Act(nil, new._write)
-
-		broadcast, _ := s._createBroadcastFrame()
-		new.send(broadcast)
 
 		s.r.Act(nil, func() {
 			s.r._publish(events.PeerAdded{Port: types.SwitchPortID(i), PeerID: new.public.String()})

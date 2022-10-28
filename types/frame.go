@@ -37,8 +37,8 @@ const (
 	TypeKeepalive        FrameType = iota // protocol frame, direct to peers only
 	TypeTreeAnnouncement                  // protocol frame, bypasses queues
 	TypeBootstrap                         // protocol frame, forwarded using SNEK
-	TypeTraffic                           // traffic frame, forwarded using tree or SNEK
 	TypeWakeupBroadcast                   // protocol frame, special broadcast forwarding
+	TypeTraffic                           // traffic frame, forwarded using tree or SNEK
 )
 
 func (t FrameType) IsTraffic() bool {
@@ -125,6 +125,16 @@ func (f *Frame) MarshalBinary(buffer []byte) (int, error) {
 			return 0, fmt.Errorf("f.WatermarkSeq.MarshalBinary: %w", err)
 		}
 		offset += n
+		if f.Payload != nil {
+			f.Payload = f.Payload[:payloadLen]
+			offset += copy(buffer[offset:], f.Payload[:payloadLen])
+		}
+
+	case TypeWakeupBroadcast: // source = key
+		payloadLen := len(f.Payload)
+		binary.BigEndian.PutUint16(buffer[offset+0:offset+2], uint16(payloadLen))
+		offset += 2
+		offset += copy(buffer[offset:], f.SourceKey[:ed25519.PublicKeySize])
 		if f.Payload != nil {
 			f.Payload = f.Payload[:payloadLen]
 			offset += copy(buffer[offset:], f.Payload[:payloadLen])
@@ -276,10 +286,10 @@ func (t FrameType) String() string {
 		return "TreeAnnouncement"
 	case TypeBootstrap:
 		return "VirtualSnakeBootstrap"
-	case TypeTraffic:
-		return "OverlayTraffic"
 	case TypeWakeupBroadcast:
 		return "WakeupBroadcast"
+	case TypeTraffic:
+		return "OverlayTraffic"
 	default:
 		return "Unknown"
 	}

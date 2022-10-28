@@ -19,8 +19,8 @@ local frame_types = {
     [0] = "Keepalive",
     [1] = "Tree Announcement",
     [2] = "Bootstrap",
-    [3] = "Traffic",
-    [4] = "Broadcast"
+    [3] = "Broadcast"
+    [4] = "Traffic",
 }
 
 header_size = 10
@@ -194,7 +194,7 @@ local function do_pinecone_dissect(buffer, pinfo, tree)
         pinfo.cols.info:set(frame_types[2])
         pinfo.cols.info:append(" " .. short_pk(dstkey:bytes():raw()) .. " → ")
 
-elseif ftype == 4 then
+    elseif ftype == 3 then
         -- Broadcast
         local plen = buffer(f_payload_idx, 2):uint()
         local srckey = buffer(f_payload_idx + 2, 32)
