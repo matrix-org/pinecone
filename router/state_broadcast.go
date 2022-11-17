@@ -51,7 +51,6 @@ func (s *state) _maintainBroadcasts() {
 	// Clean up any broadcasts that are older than the expiry period.
 	for k, v := range s._seenBroadcasts {
 		if !v.valid() {
-			s.r.log.Println("delete old broadcast")
 			delete(s._seenBroadcasts, k)
 		}
 	}
