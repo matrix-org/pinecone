@@ -123,9 +123,7 @@ func (s *state) _forward(p *peer, f *types.Frame) error {
 
 	case types.TypeTraffic:
 		// Traffic type packets are forwarded normally by falling through unless hop
-		// are no special rules to apply to these packets, regardless of whether
 		// limiting is enabled.
-		// they are SNEK-routed or tree-routed.
 		if s.r._hopLimiting.Load() {
 			if f.HopLimit > 1 {
 				f.HopLimit -= 1
