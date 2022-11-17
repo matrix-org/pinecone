@@ -22,6 +22,16 @@ import (
 const portCount = math.MaxUint8 - 1
 const trafficBuffer = math.MaxUint8 - 1
 
+// peerKeepaliveInterval is the frequency at which this
+// node will send keepalive packets to other peers if no
+// other packets have been sent within the peerKeepaliveInterval.
+const peerKeepaliveInterval = time.Second * 3
+
+// peerKeepaliveTimeout is the amount of time that must
+// pass without receiving any packet before we
+// will assume that the peer is dead.
+const peerKeepaliveTimeout = time.Second * 5
+
 // announcementInterval is the frequency at which this
 // node will send root announcements to other peers.
 const announcementInterval = time.Minute * 30
@@ -50,3 +60,17 @@ const coordsCacheLifetime = time.Minute
 // coordsCacheMaintainInterval is how often we will clean
 // out stale entries from the coords cache.
 const coordsCacheMaintainInterval = time.Minute
+
+// wakeupBroadcastInterval is how often we will aim
+// to send broadcast messages into the network.
+const wakeupBroadcastInterval = time.Minute
+
+// broadcastExpiryPeriod is how long we'll wait to
+// expire a seen broadcast.
+const broadcastExpiryPeriod = wakeupBroadcastInterval * 3
+
+// broadcastFilterTime is how much time must pass
+// before we'll accept a new broadcast from this node.
+// This helps to prevent broadcasts from flooding the
+// network.
+const broadcastFilterTime = wakeupBroadcastInterval / 2

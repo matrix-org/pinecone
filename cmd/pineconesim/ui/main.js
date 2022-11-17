@@ -34,6 +34,12 @@ function handleSimMessage(msg) {
                 }
             }
 
+            if (value.BroadcastsReceived) {
+                for (let i = 0; i < value.BroadcastsReceived.length; i++) {
+                    graph.addBroadcast(key, value.BroadcastsReceived[i].PeerID, value.BroadcastsReceived[i].Time);
+                }
+            }
+
             if (value.BandwidthReports) {
                 for (let i = 0; i < value.BandwidthReports.length; i++) {
                     graph.addBandwidthReport(key, value.BandwidthReports[i]);
@@ -88,6 +94,9 @@ function handleSimMessage(msg) {
             break;
         case APIUpdateID.NetworkStatsUpdated:
             graph.updateNetworkStats(event.PathConvergence, event.AverageStretch);
+            break;
+        case APIUpdateID.BroadcastReceived:
+            graph.addBroadcast(event.Node, event.PeerID, event.Time);
             break;
         case APIUpdateID.BandwidthReport:
             graph.addBandwidthReport(event.Node, event.Bandwidth);

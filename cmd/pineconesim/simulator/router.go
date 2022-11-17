@@ -60,6 +60,18 @@ func (r *DefaultRouter) Coords() types.Coordinates {
 	return r.rtr.Coords()
 }
 
+func (r *DefaultRouter) EnableHopLimiting() {
+	r.rtr.EnableHopLimiting()
+}
+
+func (r *DefaultRouter) EnableWakeupBroadcasts() {
+	r.rtr.EnableWakeupBroadcasts()
+}
+
+func (r *DefaultRouter) DisableWakeupBroadcasts() {
+	r.rtr.DisableWakeupBroadcasts()
+}
+
 func (r *DefaultRouter) ConfigureFilterDefaults(rates adversary.DropRates) {}
 
 func (r *DefaultRouter) ConfigureFilterPeer(peer types.PublicKey, rates adversary.DropRates) {}

@@ -773,6 +773,14 @@ class Graph {
         handleStatsPanelUpdate();
     }
 
+    addBroadcast(id, peer, time) {
+        if (Nodes.has(id)) {
+            let node = Nodes.get(id);
+            node.broadcasts.set(peer, time);
+            this.updateUI(id);
+        }
+    }
+
     addBandwidthReport(id, report) {
         if (Nodes.has(id)) {
             let node = Nodes.get(id);
@@ -807,6 +815,7 @@ function newNode(key, type) {
         snekDescPath: "",
         snekEntries: new Map(),
         nextReportIndex: 0,
+        broadcasts: new Map(),
         bandwidthReports: new Array(10).fill({
             ReceiveTime: 0,
             Peers: new Map(),
@@ -837,7 +846,7 @@ function handleNodeHoverUpdate() {
 
     let hoverPanel = document.getElementById('nodePopupText');
     if (hoverPanel) {
-        let time = node.announcement.time.toString();
+        let date = new Date(node.announcement.time / 1000000) // ns to ms conversion
         hoverPanel.innerHTML = "<u><b>Node " + hoverNode + "</b></u>" +
             "<br>Key: " + node.key.slice(0, 16).replace(/\"/g, "").toUpperCase() +
             "<br>Type: " + ConvertNodeTypeToString(node.nodeType) +
@@ -849,7 +858,7 @@ function handleNodeHoverUpdate() {
             "<br><br><u>Announcement</u>" +
             "<br>Root: Node " + node.announcement.root +
             "<br>Sequence: " + node.announcement.sequence +
-            "<br>Time: " + time.slice(0, time.length - 3) + " ms";
+            "<br>Time: " + date.toLocaleTimeString();
     }
 }
 
@@ -903,6 +912,12 @@ function handleNodePanelUpdate() {
             snekTable += "<tr><td><code>" + entry + "</code></td><td><code>" + peer + "</code></td></tr>";
         }
 
+        let broadcasts = node.broadcasts;
+        let bcastTable = "";
+        for (var [entry, time] of broadcasts.entries()) {
+            let date = new Date(time / 1000000) // ns to ms conversion
+            bcastTable += "<tr><td><code>" + entry + "</code></td><td><code>" + date.toLocaleString() + "</code></td></tr>";
+        }
 
         if (nodePanel) {
             nodePanel.innerHTML +=
@@ -926,8 +941,13 @@ function handleNodePanelUpdate() {
                 "</table>" +
                 "<hr><h4><u>SNEK Routes (" + routes.size + ")</u></h4>" +
                 "<table>" +
-                "<tr><th>Name</th><th>Peer</th></tr>" +
+                "<tr><th>Dest</th><th>Peer</th></tr>" +
                 snekTable +
+                "</table>" +
+                "<hr><h4><u>Broadcasts Received</u></h4>" +
+                "<table>" +
+                "<tr><th>Name</th><th>Time</th></tr>" +
+                bcastTable +
                 "</table><hr><br>";
         }
     }

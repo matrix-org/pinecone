@@ -304,6 +304,7 @@ func (s *state) _handleTreeAnnouncement(p *peer, f *types.Frame) error {
 	}
 
 	isFirstAnnouncement := false
+	shouldSendBroadcast := false
 
 	// If the peer is replaying an old sequence number to us then we
 	// assume that they are up to no good.
@@ -313,6 +314,18 @@ func (s *state) _handleTreeAnnouncement(p *peer, f *types.Frame) error {
 		}
 	} else {
 		isFirstAnnouncement = true
+		shouldSendBroadcast = true
+
+		for peer, ann := range s._announcements {
+			if ann != nil {
+				if peer.public.CompareTo(p.public) == 0 {
+					// We already have an established connection with this peer so sending another
+					// broadcast would be redundant.
+					shouldSendBroadcast = false
+					break
+				}
+			}
+		}
 	}
 
 	// Get the key of our current root and then work out if the root
@@ -368,6 +381,12 @@ func (s *state) _handleTreeAnnouncement(p *peer, f *types.Frame) error {
 			if !isFirstAnnouncement {
 				s.sendTreeAnnouncementToPeer(lastParentUpdate, p)
 			}
+		}
+	}
+
+	if shouldSendBroadcast {
+		if broadcast, err := s._createBroadcastFrame(); err == nil {
+			p.send(broadcast)
 		}
 	}
 

@@ -45,6 +45,7 @@ const (
 	SimSnakeEntryRemoved
 	SimPingStateUpdated
 	SimNetworkStatsUpdated
+	SimBroadcastReceived
 	SimBandwidthReport
 )
 
@@ -71,17 +72,18 @@ const (
 )
 
 type InitialNodeState struct {
-	PublicKey        string
-	NodeType         APINodeType
-	RootState        RootState
-	Peers            []PeerInfo
-	TreeParent       string
-	SnakeAsc         string
-	SnakeAscPath     string
-	SnakeDesc        string
-	SnakeDescPath    string
-	SnakeEntries     []SnakeRouteEntry
-	BandwidthReports []BandwidthSnapshot
+	PublicKey          string
+	NodeType           APINodeType
+	RootState          RootState
+	Peers              []PeerInfo
+	TreeParent         string
+	SnakeAsc           string
+	SnakeAscPath       string
+	SnakeDesc          string
+	SnakeDescPath      string
+	SnakeEntries       []SnakeRouteEntry
+	BroadcastsReceived []BroadcastEntry
+	BandwidthReports   []BandwidthSnapshot
 }
 
 type RootState struct {
@@ -99,6 +101,11 @@ type PeerInfo struct {
 type SnakeRouteEntry struct {
 	EntryID string
 	PeerID  string
+}
+
+type BroadcastEntry struct {
+	PeerID string
+	Time   uint64
 }
 
 type SimEventMsg struct {

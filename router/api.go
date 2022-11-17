@@ -66,3 +66,11 @@ func (r *Router) Peers() []PeerInfo {
 	})
 	return infos
 }
+
+func (r *Router) EnableHopLimiting() {
+	r._hopLimiting.Store(true)
+}
+
+func (r *Router) DisableHopLimiting() {
+	r._hopLimiting.Store(false)
+}

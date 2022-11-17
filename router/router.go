@@ -45,6 +45,7 @@ type Router struct {
 	local         *peer
 	state         *state
 	secure        bool
+	_hopLimiting  *atomic.Bool
 	_readDeadline *atomic.Time
 	_subscribers  map[chan<- events.Event]*phony.Inbox
 }
@@ -67,6 +68,7 @@ func NewRouter(logger types.Logger, sk ed25519.PrivateKey, opts ...RouterOption)
 		context:       ctx,
 		cancel:        cancel,
 		secure:        !insecure,
+		_hopLimiting:  atomic.NewBool(false),
 		_readDeadline: atomic.NewTime(time.Now().Add(time.Hour * 24 * 365 * 100)), // ~100 years
 		_subscribers:  make(map[chan<- events.Event]*phony.Inbox),
 	}
@@ -93,6 +95,20 @@ func NewRouter(logger types.Logger, sk ed25519.PrivateKey, opts ...RouterOption)
 func (r *Router) InjectPacketFilter(fn FilterFn) {
 	phony.Block(r.state, func() {
 		r.state._filterPacket = fn
+	})
+}
+
+func (r *Router) EnableWakeupBroadcasts() {
+	r.state.Act(r.state, func() {
+		r.state._sendBroadcastIn(0)
+	})
+}
+
+func (r *Router) DisableWakeupBroadcasts() {
+	r.state.Act(r.state, func() {
+		if !r.state._broadcastTimer.Stop() {
+			<-r.state._broadcastTimer.C
+		}
 	})
 }
 

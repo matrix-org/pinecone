@@ -61,6 +61,7 @@
                     "Keepalive": "0",
 	                  "TreeAnnouncement": "0",
 	                  "VirtualSnakeBootstrap": "100",
+	                  "WakeupBroadcast": "100",
 	                  "OverlayTraffic": "100"
                 }
             }
@@ -89,6 +90,7 @@
                     "Keepalive": "0",
 	                  "TreeAnnouncement": "0",
 	                  "VirtualSnakeBootstrap": "0",
+	                  "WakeupBroadcast": "0",
 	                  "OverlayTraffic": "0"
                 }
             }
