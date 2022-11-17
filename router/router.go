@@ -106,7 +106,9 @@ func (r *Router) EnableWakeupBroadcasts() {
 
 func (r *Router) DisableWakeupBroadcasts() {
 	r.state.Act(r.state, func() {
-		r.state._broadcastTimer.Stop()
+		if !r.state._broadcastTimer.Stop() {
+			<-r.state._broadcastTimer.C
+		}
 	})
 }
 
