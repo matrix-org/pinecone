@@ -134,8 +134,9 @@ func (s *state) _handleBroadcast(p *peer, f *types.Frame) error {
 	// If we have seen a higher sequence number before then there is no need
 	// to continue forwarding it.
 	if existing, ok := s._seenBroadcasts[f.SourceKey]; ok {
-		// TODO : add timestamp filtering to prevent flooding DoS attacks
-		if broadcast.Sequence <= existing.Sequence {
+		sendingTooFast := time.Since(existing.LastSeen) < broadcastFilterTime
+		repeatedSequence := broadcast.Sequence <= existing.Sequence
+		if sendingTooFast || repeatedSequence {
 			return nil
 		}
 	}

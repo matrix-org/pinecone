@@ -68,3 +68,9 @@ const wakeupBroadcastInterval = time.Minute
 // broadcastExpiryPeriod is how long we'll wait to
 // expire a seen broadcast.
 const broadcastExpiryPeriod = wakeupBroadcastInterval * 3
+
+// broadcastFilterTime is how much time must pass
+// before we'll accept a new broadcast from this node.
+// This helps to prevent broadcasts from flooding the
+// network.
+const broadcastFilterTime = wakeupBroadcastInterval / 2
