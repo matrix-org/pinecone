@@ -14,7 +14,7 @@ Pinecone is incredibly experimental still. There might be bugs, vulnerabilities 
 
 ## Requirements
 
-Go 1.14 or later.
+Go 1.18 or later.
 
 ## Questions
 
