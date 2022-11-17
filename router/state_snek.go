@@ -328,9 +328,7 @@ func (s *state) _handleBootstrap(from, to *peer, rx *types.Frame) bool {
 	// current root, otherwise we won't be able to route back to them using
 	// tree routing anyway. If they don't match, silently drop the bootstrap.
 	root := s._rootAnnouncement()
-	// TODO : Don't compare to root sequence here.
-	// if !root.Root.EqualTo(&bootstrap.Root) {
-	if root.RootPublicKey.CompareTo(bootstrap.RootPublicKey) != 0 {
+	if !root.Root.EqualTo(&bootstrap.Root) {
 		return false
 	}
 
