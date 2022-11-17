@@ -162,17 +162,22 @@ func (s *state) _forward(p *peer, f *types.Frame) error {
 // Tree flooding works by only sending frames to peers on the same branch.
 func (s *state) _flood(from *peer, f *types.Frame, floodType FloodType) {
 	floodCandidates := make(map[types.PublicKey]*peer)
-	for _, p := range s._peers {
-		if p == nil || p.proto == nil || !p.started.Load() {
+	for _, newCandidate := range s._peers {
+		if newCandidate == nil || newCandidate.proto == nil || !newCandidate.started.Load() {
 			continue
 		}
 
-		if p == from || p == s.r.local {
+		if newCandidate == from || newCandidate == s.r.local {
+			continue
+		}
+
+		if s._filterPacket != nil && s._filterPacket(newCandidate.public, f) {
+			s.r.log.Printf("Packet of type %s destined for port %d [%s] was dropped due to filter rules", f.Type.String(), newCandidate.port, newCandidate.public.String()[:8])
 			continue
 		}
 
 		if floodType == TreeFlood {
-			if coords, err := p._coords(); err == nil {
+			if coords, err := newCandidate._coords(); err == nil {
 				if coords.DistanceTo(s._coords()) != 1 {
 					// This peer is not directly on the same branch.
 					continue
@@ -182,19 +187,24 @@ func (s *state) _flood(from *peer, f *types.Frame, floodType FloodType) {
 			}
 		}
 
-		if p, ok := floodCandidates[p.public]; ok {
-			if p.peertype <= from.peertype {
-				// We already know of a faster connection to this peer.
+		if existingCandidate, ok := floodCandidates[newCandidate.public]; ok {
+			fasterNewPeerType := newCandidate.peertype < existingCandidate.peertype
+			lowerLatencyNewCandidate := false
+			if existingAnnouncement, ok := s._announcements[existingCandidate]; ok {
+				if newAnnouncement, ok := s._announcements[newCandidate]; ok {
+					if newAnnouncement.receiveOrder < existingAnnouncement.receiveOrder {
+						lowerLatencyNewCandidate = true
+					}
+				}
+			}
+
+			betterCandidate := fasterNewPeerType || lowerLatencyNewCandidate
+			if !betterCandidate {
 				continue
 			}
 		}
 
-		if s._filterPacket != nil && s._filterPacket(p.public, f) {
-			s.r.log.Printf("Packet of type %s destined for port %d [%s] was dropped due to filter rules", f.Type.String(), p.port, p.public.String()[:8])
-			continue
-		}
-
-		floodCandidates[p.public] = p
+		floodCandidates[newCandidate.public] = newCandidate
 	}
 
 	for _, p := range floodCandidates {
