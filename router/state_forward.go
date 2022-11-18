@@ -132,6 +132,10 @@ func (s *state) _forward(p *peer, f *types.Frame) error {
 				return nil
 			}
 		}
+
+	default:
+		// We don't know what type of packet this is so drop it.
+		return nil
 	}
 
 	// If the packet's watermark is higher than the previous one or we are
