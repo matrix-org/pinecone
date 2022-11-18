@@ -37,8 +37,8 @@ const (
 	TypeKeepalive        FrameType = iota // protocol frame, direct to peers only
 	TypeTreeAnnouncement                  // protocol frame, bypasses queues
 	TypeBootstrap                         // protocol frame, forwarded using SNEK
-	TypeWakeupBroadcast                   // protocol frame, special broadcast forwarding
 	TypeTraffic                           // traffic frame, forwarded using tree or SNEK
+	TypeWakeupBroadcast                   // protocol frame, special broadcast forwarding
 )
 
 func (t FrameType) IsTraffic() bool {
