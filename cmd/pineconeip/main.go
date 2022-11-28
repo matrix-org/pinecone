@@ -27,7 +27,6 @@ import (
 	"time"
 
 	"net/http"
-	_ "net/http/pprof"
 
 	"github.com/matrix-org/pinecone/cmd/pineconeip/tun"
 	"github.com/matrix-org/pinecone/connections"

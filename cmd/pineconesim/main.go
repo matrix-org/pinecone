@@ -32,7 +32,6 @@ import (
 	"go.uber.org/atomic"
 
 	"net/http"
-	_ "net/http/pprof"
 )
 
 const maxBatchSize int = 50

@@ -27,7 +27,6 @@ import (
 	"syscall"
 
 	"net/http"
-	_ "net/http/pprof"
 
 	"github.com/gorilla/websocket"
 	"github.com/matrix-org/pinecone/connections"
