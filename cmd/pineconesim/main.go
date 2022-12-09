@@ -47,6 +47,7 @@ func main() {
 	sockets := flag.Bool("sockets", false, "use real TCP sockets to connect simulated nodes")
 	chaos := flag.Int("chaos", 0, "randomly connect and disconnect a certain number of links")
 	acceptCommands := flag.Bool("acceptCommands", true, "whether the sim can be commanded from the ui")
+	hopLimiting := flag.Bool("hopLimiting", false, "whether to enable hop limiting for protocol and overlay frames")
 	flag.Parse()
 
 	file, err := os.Open(*filename)
@@ -78,7 +79,7 @@ func main() {
 	}
 
 	log := log.New(os.Stdout, "\u001b[36m***\u001b[0m ", 0)
-	sim := simulator.NewSimulator(log, *sockets, *acceptCommands)
+	sim := simulator.NewSimulator(log, *sockets, *acceptCommands, *hopLimiting)
 	configureHTTPRouting(log, sim)
 
 	for n := range nodes {

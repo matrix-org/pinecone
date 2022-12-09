@@ -64,13 +64,19 @@ func (r *EventSequenceRunner) Run(sim *Simulator) {
 	}
 }
 
-type RouterCreatorFn func(log *log.Logger, sk ed25519.PrivateKey, quit <-chan bool) SimRouter
+type RouterCreatorFn func(
+	log *log.Logger,
+	sk ed25519.PrivateKey,
+	routerConfig RouterConfig,
+	quit <-chan bool,
+) SimRouter
 
 type pair struct{ from, to string }
 
 type Simulator struct {
 	log                     *log.Logger
 	sockets                 bool
+	hopLimitingEnabled      bool
 	pingEnabled             bool
 	pingActive              bool
 	AcceptCommands          bool
@@ -94,10 +100,11 @@ type Simulator struct {
 	pingControlChannel      chan<- bool
 }
 
-func NewSimulator(log *log.Logger, sockets, acceptCommands bool) *Simulator {
+func NewSimulator(log *log.Logger, sockets, acceptCommands, hopLimiting bool) *Simulator {
 	sim := &Simulator{
 		log:                log,
 		sockets:            sockets,
+		hopLimitingEnabled: hopLimiting,
 		pingEnabled:        false,
 		pingActive:         false,
 		AcceptCommands:     acceptCommands,
