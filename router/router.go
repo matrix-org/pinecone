@@ -277,3 +277,11 @@ func (r *Router) PeerCount(peertype int) (count int) {
 	})
 	return
 }
+
+// TotalPeerCount returns the total number of nodes that are directly connected
+// to this Pinecone node.
+func (r *Router) TotalPeerCount() (count int) {
+	// PeerCount treats values < 0 specially, returning the count of all connected
+	// peers, regardless of type.
+	return r.PeerCount(-1)
+}
