@@ -17,6 +17,7 @@ package main
 import (
 	"context"
 	"crypto/ed25519"
+	"encoding/hex"
 	"flag"
 	"fmt"
 	"log"
@@ -39,9 +40,27 @@ func main() {
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 
-	_, sk, err := ed25519.GenerateKey(nil)
-	if err != nil {
-		panic(err)
+	listentcp := flag.String("listen", ":0", "address to listen for TCP connections")
+	listenws := flag.String("listenws", ":0", "address to listen for WebSockets connections")
+	connect := flag.String("connect", "", "peers to connect to")
+	secretkey := flag.String("secretkey", "", "hexadecimal encoded ed25519 key")
+	manhole := flag.Bool("manhole", false, "enable the manhole (requires WebSocket listener to be active)")
+	flag.Parse()
+
+	var sk ed25519.PrivateKey
+	if len(*secretkey) != 0 {
+		secretkeyHex, err := hex.DecodeString(*secretkey)
+		if err != nil {
+			panic(err)
+		}
+
+		sk = ed25519.NewKeyFromSeed(secretkeyHex)
+	} else {
+		var err error
+		_, sk, err = ed25519.GenerateKey(nil)
+		if err != nil {
+			panic(err)
+		}
 	}
 
 	logger := log.New(os.Stdout, "", 0)
@@ -58,12 +77,6 @@ func main() {
 	pineconeMulticast := multicast.NewMulticast(logger, pineconeRouter)
 	pineconeMulticast.Start()
 	pineconeManager := connections.NewConnectionManager(pineconeRouter, nil)
-
-	listentcp := flag.String("listen", ":0", "address to listen for TCP connections")
-	listenws := flag.String("listenws", ":0", "address to listen for WebSockets connections")
-	connect := flag.String("connect", "", "peers to connect to")
-	manhole := flag.Bool("manhole", false, "enable the manhole (requires WebSocket listener to be active)")
-	flag.Parse()
 
 	if connect != nil && *connect != "" {
 		for _, uri := range strings.Split(*connect, ",") {
