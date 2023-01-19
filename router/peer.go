@@ -33,9 +33,6 @@ import (
 // NOTE: Functions prefixed with an underscore (_) are only safe to be called
 // from the actor that owns them, in order to prevent data races.
 
-const peerKeepaliveInterval = time.Second * 3
-const peerKeepaliveTimeout = time.Second * 5
-
 // Lower numbers for these consts are typically faster connections.
 const ( // These need to be a simple int type for gobind/gomobile to export them...
 	PeerTypePipe int = iota
@@ -281,6 +278,7 @@ func (p *peer) _write() {
 			p.statistics._bytesTxProto += uint64(n)
 		})
 	}
+
 	wn, err := p.conn.Write(buf[:n])
 	if err != nil {
 		p.stop(fmt.Errorf("p.conn.Write: %w", err))
@@ -337,7 +335,7 @@ func (p *peer) _read() {
 	{
 		n, err := io.ReadFull(p.conn, b[:types.FrameHeaderLength])
 		if err != nil {
-			p.stop(fmt.Errorf("io.ReadFull: %w", err))
+			p.stop(fmt.Errorf("io.ReadFull Initial: %w", err))
 			return
 		}
 		isProtoTraffic = !types.FrameType(b[5]).IsTraffic()
@@ -367,7 +365,7 @@ func (p *peer) _read() {
 	expecting := int(binary.BigEndian.Uint16(b[types.FrameHeaderLength-2 : types.FrameHeaderLength]))
 	n, err := io.ReadFull(p.conn, b[types.FrameHeaderLength:expecting])
 	if err != nil {
-		p.stop(fmt.Errorf("io.ReadFull: %w", err))
+		p.stop(fmt.Errorf("io.ReadFull Remaining: %w", err))
 		return
 	}
 
@@ -422,4 +420,21 @@ func (p *peer) _read() {
 	// This is effectively a recursive call to queue up the next read into
 	// the actor inbox.
 	p.reader.Act(nil, p._read)
+}
+
+func (p *peer) _coords() (types.Coordinates, error) {
+	var err error
+	var coords types.Coordinates
+
+	if p == p.router.local {
+		coords = p.router.state._coords()
+	} else {
+		if announcement, ok := p.router.state._announcements[p]; ok {
+			coords = announcement.PeerCoords()
+		} else {
+			err = fmt.Errorf("no root announcement found for peer")
+		}
+	}
+
+	return coords, err
 }

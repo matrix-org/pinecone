@@ -26,6 +26,7 @@ import (
 	"github.com/Arceliar/phony"
 	"github.com/RyanCarrier/dijkstra"
 	"github.com/matrix-org/pinecone/router/events"
+	"github.com/matrix-org/pinecone/types"
 	"go.uber.org/atomic"
 )
 
@@ -63,13 +64,19 @@ func (r *EventSequenceRunner) Run(sim *Simulator) {
 	}
 }
 
-type RouterCreatorFn func(log *log.Logger, sk ed25519.PrivateKey, quit <-chan bool) SimRouter
+type RouterCreatorFn func(
+	log *log.Logger,
+	sk ed25519.PrivateKey,
+	routerConfig RouterConfig,
+	quit <-chan bool,
+) SimRouter
 
 type pair struct{ from, to string }
 
 type Simulator struct {
 	log                     *log.Logger
 	sockets                 bool
+	hopLimitingEnabled      bool
 	pingEnabled             bool
 	pingActive              bool
 	AcceptCommands          bool
@@ -93,10 +100,11 @@ type Simulator struct {
 	pingControlChannel      chan<- bool
 }
 
-func NewSimulator(log *log.Logger, sockets, acceptCommands bool) *Simulator {
+func NewSimulator(log *log.Logger, sockets, acceptCommands, hopLimiting bool) *Simulator {
 	sim := &Simulator{
 		log:                log,
 		sockets:            sockets,
+		hopLimitingEnabled: hopLimiting,
 		pingEnabled:        false,
 		pingActive:         false,
 		AcceptCommands:     acceptCommands,
@@ -135,11 +143,14 @@ func (sim *Simulator) StartPinging(ping_period time.Duration) {
 				sim.log.Println("Starting pings...")
 
 				tasks := make(chan pair, 2*(len(sim.nodes)*len(sim.nodes)))
+
 				for from, fromNode := range sim.nodes {
 					if fromNode.Type == DefaultNode {
 						for to, toNode := range sim.nodes {
 							if toNode.Type == DefaultNode {
-								tasks <- pair{from, to}
+								if sim.dists[from][to].Real <= int64(types.NetworkHorizonDistance) {
+									tasks <- pair{from, to}
+								}
 							}
 						}
 					}
@@ -340,6 +351,12 @@ func (sim *Simulator) handleSnakeEntryRemoved(node string, entryID string) {
 	}
 
 	sim.State.Act(nil, func() { sim.State._removeSnakeEntry(node, entryName) })
+}
+
+func (sim *Simulator) handleBroadcastReceived(node string, peerID string, timestamp uint64) {
+	if peerNode, err := sim.State.GetNodeName(peerID); err == nil {
+		sim.State.Act(nil, func() { sim.State._updateBroadcastCache(node, peerNode, timestamp) })
+	}
 }
 
 func (sim *Simulator) handleBandwidthReport(node string, captureTime uint64, peers map[string]events.PeerBandwidthUsage) {

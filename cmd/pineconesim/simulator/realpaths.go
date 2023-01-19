@@ -15,17 +15,10 @@
 package simulator
 
 import (
-	"sync"
-
 	"github.com/RyanCarrier/dijkstra"
 )
 
-var calculateShortest sync.Mutex
-
-func (sim *Simulator) CalculateShortestPaths() {
-	calculateShortest.Lock()
-	defer calculateShortest.Unlock()
-
+func (sim *Simulator) GenerateNetworkGraph() {
 	sim.log.Println("Building graph")
 	sim.graph = dijkstra.NewGraph()
 	sim.maps = make(map[string]int)

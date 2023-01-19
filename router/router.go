@@ -45,6 +45,7 @@ type Router struct {
 	local         *peer
 	state         *state
 	secure        bool
+	_hopLimiting  *atomic.Bool
 	_readDeadline *atomic.Time
 	_subscribers  map[chan<- events.Event]*phony.Inbox
 }
@@ -67,6 +68,7 @@ func NewRouter(logger types.Logger, sk ed25519.PrivateKey, opts ...RouterOption)
 		context:       ctx,
 		cancel:        cancel,
 		secure:        !insecure,
+		_hopLimiting:  atomic.NewBool(false),
 		_readDeadline: atomic.NewTime(time.Now().Add(time.Hour * 24 * 365 * 100)), // ~100 years
 		_subscribers:  make(map[chan<- events.Event]*phony.Inbox),
 	}
@@ -93,6 +95,20 @@ func NewRouter(logger types.Logger, sk ed25519.PrivateKey, opts ...RouterOption)
 func (r *Router) InjectPacketFilter(fn FilterFn) {
 	phony.Block(r.state, func() {
 		r.state._filterPacket = fn
+	})
+}
+
+func (r *Router) EnableWakeupBroadcasts() {
+	r.state.Act(r.state, func() {
+		r.state._sendBroadcastIn(0)
+	})
+}
+
+func (r *Router) DisableWakeupBroadcasts() {
+	r.state.Act(r.state, func() {
+		if !r.state._broadcastTimer.Stop() {
+			<-r.state._broadcastTimer.C
+		}
 	})
 }
 
@@ -260,4 +276,12 @@ func (r *Router) PeerCount(peertype int) (count int) {
 		}
 	})
 	return
+}
+
+// TotalPeerCount returns the total number of nodes that are directly connected
+// to this Pinecone node.
+func (r *Router) TotalPeerCount() (count int) {
+	// PeerCount treats values < 0 specially, returning the count of all connected
+	// peers, regardless of type.
+	return r.PeerCount(-1)
 }

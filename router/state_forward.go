@@ -22,6 +22,13 @@ import (
 	"github.com/matrix-org/pinecone/types"
 )
 
+type FloodType int
+
+const (
+	ClassicFlood FloodType = iota
+	TreeFlood
+)
+
 // _nextHopsFor returns the next-hop for the given frame. It will examine the packet
 // type and use the correct routing algorithm to determine the next-hop. It is possible
 // for this function to return `nil` if there is no suitable candidate.
@@ -106,10 +113,29 @@ func (s *state) _forward(p *peer, f *types.Frame) error {
 			return nil
 		}
 
+	case types.TypeWakeupBroadcast:
+		// Broadcasts are a special case. The _handleBroadcast function will handle
+		// forwarding broadcasts as appropriate.
+		if err := s._handleBroadcast(p, f); err != nil {
+			return fmt.Errorf("s._handleBroadcast (port %d): %w", p.port, err)
+		}
+		return nil
+
 	case types.TypeTraffic:
-		// Traffic type packets are forwarded normally by falling through. There
-		// are no special rules to apply to these packets, regardless of whether
-		// they are SNEK-routed or tree-routed.
+		// Traffic type packets are forwarded normally by falling through unless hop
+		// limiting is enabled.
+		if s.r._hopLimiting.Load() {
+			if f.HopLimit > 1 {
+				f.HopLimit -= 1
+			} else {
+				// The packet has reached the hop limit and shouldn't be forwarded.
+				return nil
+			}
+		}
+
+	default:
+		// We don't know what type of packet this is so drop it.
+		return nil
 	}
 
 	// If the packet's watermark is higher than the previous one or we are
@@ -132,4 +158,62 @@ func (s *state) _forward(p *peer, f *types.Frame) error {
 	}
 
 	return nil
+}
+
+// _flood sends a frame to all of our connected peers. This is used for
+// flooding the wakeup broadcast to all of our direct peers.
+// Classic flooding works by sending frames to all other peers.
+// Tree flooding works by only sending frames to peers on the same branch.
+func (s *state) _flood(from *peer, f *types.Frame, floodType FloodType) {
+	floodCandidates := make(map[types.PublicKey]*peer)
+	for _, newCandidate := range s._peers {
+		if newCandidate == nil || newCandidate.proto == nil || !newCandidate.started.Load() {
+			continue
+		}
+
+		if newCandidate == from || newCandidate == s.r.local {
+			continue
+		}
+
+		if s._filterPacket != nil && s._filterPacket(newCandidate.public, f) {
+			s.r.log.Printf("Packet of type %s destined for port %d [%s] was dropped due to filter rules", f.Type.String(), newCandidate.port, newCandidate.public.String()[:8])
+			continue
+		}
+
+		if floodType == TreeFlood {
+			if coords, err := newCandidate._coords(); err == nil {
+				if coords.DistanceTo(s._coords()) != 1 {
+					// This peer is not directly on the same branch.
+					continue
+				}
+			} else {
+				continue
+			}
+		}
+
+		if existingCandidate, ok := floodCandidates[newCandidate.public]; ok {
+			fasterNewPeerType := newCandidate.peertype < existingCandidate.peertype
+			lowerLatencyNewCandidate := false
+			if existingAnnouncement, ok := s._announcements[existingCandidate]; ok {
+				if newAnnouncement, ok := s._announcements[newCandidate]; ok {
+					if newAnnouncement.receiveOrder < existingAnnouncement.receiveOrder {
+						lowerLatencyNewCandidate = true
+					}
+				}
+			}
+
+			betterCandidate := fasterNewPeerType || lowerLatencyNewCandidate
+			if !betterCandidate {
+				continue
+			}
+		}
+
+		floodCandidates[newCandidate.public] = newCandidate
+	}
+
+	for _, p := range floodCandidates {
+		frame := getFrame()
+		f.CopyInto(frame)
+		p.send(frame)
+	}
 }

@@ -131,6 +131,12 @@ func UnmarshalCommandJSON(command *SimCommandMsg) (SimCommand, error) {
 			} else {
 				err = fmt.Errorf("%sConfigureAdversaryDefaults.DropRates.VirtualSnakeBootstrap field doesn't exist", FAILURE_PREAMBLE)
 			}
+			if subVal, subOk := val.(map[string]interface{})["WakeupBroadcast"]; subOk {
+				intVal, _ := strconv.Atoi(subVal.(string))
+				dropRates.Frames[types.TypeWakeupBroadcast] = uint64(intVal)
+			} else {
+				err = fmt.Errorf("%sConfigureAdversaryDefaults.DropRates.WakeupBroadcast field doesn't exist", FAILURE_PREAMBLE)
+			}
 			if subVal, subOk := val.(map[string]interface{})["OverlayTraffic"]; subOk {
 				intVal, _ := strconv.Atoi(subVal.(string))
 				dropRates.Frames[types.TypeTraffic] = uint64(intVal)
@@ -180,6 +186,12 @@ func UnmarshalCommandJSON(command *SimCommandMsg) (SimCommand, error) {
 				dropRates.Frames[types.TypeBootstrap] = uint64(intVal)
 			} else {
 				err = fmt.Errorf("%sConfigureAdversaryPeer.DropRates.VirtualSnakeBootstrap field doesn't exist", FAILURE_PREAMBLE)
+			}
+			if subVal, subOk := val.(map[string]interface{})["WakeupBroadcast"]; subOk {
+				intVal, _ := strconv.Atoi(subVal.(string))
+				dropRates.Frames[types.TypeWakeupBroadcast] = uint64(intVal)
+			} else {
+				err = fmt.Errorf("%sConfigureAdversaryPeer.DropRates.WakeupBroadcast field doesn't exist", FAILURE_PREAMBLE)
 			}
 			if subVal, subOk := val.(map[string]interface{})["OverlayTraffic"]; subOk {
 				intVal, _ := strconv.Atoi(subVal.(string))
@@ -301,6 +313,8 @@ func (c AddPeer) Run(log *log.Logger, sim *Simulator) {
 	if err := sim.ConnectNodes(c.Node, c.Peer); err != nil {
 		log.Printf("Failed connecting node %s to node %s: %s", c.Node, c.Peer, err)
 	}
+	sim.GenerateNetworkGraph()
+	sim.UpdateRealDistances()
 }
 
 func (c AddPeer) String() string {
@@ -318,6 +332,8 @@ func (c RemovePeer) Run(log *log.Logger, sim *Simulator) {
 	if err := sim.DisconnectNodes(c.Node, c.Peer); err != nil {
 		log.Printf("Failed disconnecting node %s and node %s: %s", c.Node, c.Peer, err)
 	}
+	sim.GenerateNetworkGraph()
+	sim.UpdateRealDistances()
 }
 
 func (c RemovePeer) String() string {

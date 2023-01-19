@@ -29,3 +29,7 @@ type Distance struct {
 	Real     int64
 	Observed int64
 }
+
+type RouterConfig struct {
+	HopLimiting bool
+}

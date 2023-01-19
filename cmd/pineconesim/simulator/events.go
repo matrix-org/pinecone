@@ -127,6 +127,15 @@ type SnakeEntryRemoved struct {
 // Tag SnakeEntryRemoved as an Event
 func (e SnakeEntryRemoved) isEvent() {}
 
+type BroadcastReceived struct {
+	Node   string
+	PeerID string
+	Time   uint64
+}
+
+// Tag BroadcastReceived as an Event
+func (e BroadcastReceived) isEvent() {}
+
 type BandwidthReport struct {
 	Node      string
 	Bandwidth BandwidthSnapshot
@@ -161,6 +170,8 @@ func (h eventHandler) Run(quit <-chan bool, sim *Simulator) {
 				sim.handleSnakeEntryAdded(h.node, e.EntryID, e.PeerID)
 			case events.SnakeEntryRemoved:
 				sim.handleSnakeEntryRemoved(h.node, e.EntryID)
+			case events.BroadcastReceived:
+				sim.handleBroadcastReceived(h.node, e.PeerID, e.Time)
 			case events.BandwidthReport:
 				sim.handleBandwidthReport(h.node, e.CaptureTime, e.Peers)
 			default:

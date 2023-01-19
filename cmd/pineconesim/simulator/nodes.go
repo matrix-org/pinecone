@@ -65,8 +65,9 @@ func (sim *Simulator) CreateNode(t string, nodeType APINodeType) error {
 	logger := log.New(sim.log.Writer(), fmt.Sprintf("\033[%dmNode %s:\033[0m ", color, t), 0)
 
 	quit := make(chan bool)
+	routerConfig := RouterConfig{HopLimiting: sim.hopLimitingEnabled}
 	n := &Node{
-		SimRouter:  sim.routerCreationMap[nodeType](logger, sk, quit),
+		SimRouter:  sim.routerCreationMap[nodeType](logger, sk, routerConfig, quit),
 		l:          l,
 		ListenAddr: tcpaddr,
 		Type:       nodeType,
@@ -120,8 +121,6 @@ func (sim *Simulator) CreateNode(t string, nodeType APINodeType) error {
 		sim.log.Printf("Created node %q\n", t)
 	}
 
-	sim.CalculateShortestPaths()
-
 	return nil
 }
 
@@ -157,8 +156,6 @@ func (sim *Simulator) RemoveNode(node string) {
 	sim.nodesMutex.Unlock()
 
 	phony.Block(sim.State, func() { sim.State._removeNode(node) })
-
-	sim.CalculateShortestPaths()
 }
 
 func (sim *Simulator) ConfigureFilterDefaults(node string, rates adversary.DropRates) {
@@ -179,18 +176,32 @@ func (sim *Simulator) ConfigureFilterPeer(node string, peer string, rates advers
 	}
 }
 
-func createDefaultRouter(log *log.Logger, sk ed25519.PrivateKey, quit <-chan bool) SimRouter {
+func createDefaultRouter(
+	log *log.Logger,
+	sk ed25519.PrivateKey,
+	options RouterConfig,
+	quit <-chan bool,
+) SimRouter {
 	rtr := &DefaultRouter{
 		rtr: router.NewRouter(log, sk),
 	}
 	rtr.rtr.InjectPacketFilter(rtr.PingFilter)
 
+	if options.HopLimiting {
+		rtr.EnableHopLimiting()
+	}
+	rtr.EnableWakeupBroadcasts()
 	go rtr.OverlayReadHandler(quit)
 
 	return rtr
 }
 
-func createAdversaryRouter(log *log.Logger, sk ed25519.PrivateKey, quit <-chan bool) SimRouter {
+func createAdversaryRouter(
+	log *log.Logger,
+	sk ed25519.PrivateKey,
+	options RouterConfig,
+	quit <-chan bool,
+) SimRouter {
 	rtr := adversary.NewAdversaryRouter(log, sk)
 
 	go rtr.OverlayReadHandler(quit)

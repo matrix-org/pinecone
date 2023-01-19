@@ -38,6 +38,7 @@ const (
 	TypeTreeAnnouncement                  // protocol frame, bypasses queues
 	TypeBootstrap                         // protocol frame, forwarded using SNEK
 	TypeTraffic                           // traffic frame, forwarded using tree or SNEK
+	TypeWakeupBroadcast                   // protocol frame, special broadcast forwarding
 )
 
 func (t FrameType) IsTraffic() bool {
@@ -53,10 +54,16 @@ var FrameMagicBytes = []byte{0x70, 0x69, 0x6e, 0x65}
 // 4 magic bytes, 1 byte version, 1 byte type, 2 bytes extra, 2 bytes frame length
 const FrameHeaderLength = 10
 
+// TODO: what should this be for the network visibility horizon to be what we desire?
+// ie. 2-hop 100%, 5-hop >90%, etc.
+const MaxHopLimit = 10
+const NetworkHorizonDistance = 5
+
 type Frame struct {
 	Version        FrameVersion
 	Type           FrameType
-	Extra          [2]byte
+	Extra          byte
+	HopLimit       uint8
 	Destination    Coordinates
 	DestinationKey PublicKey
 	Source         Coordinates
@@ -67,9 +74,8 @@ type Frame struct {
 
 func (f *Frame) Reset() {
 	f.Version, f.Type = 0, 0
-	for i := range f.Extra {
-		f.Extra[i] = 0
-	}
+	f.Extra = 0
+	f.HopLimit = 0
 	f.Destination = Coordinates{}
 	f.DestinationKey = PublicKey{}
 	f.Source = Coordinates{}
@@ -78,10 +84,23 @@ func (f *Frame) Reset() {
 	f.Payload = f.Payload[:0]
 }
 
+func (f *Frame) CopyInto(t *Frame) {
+	t.Version = f.Version
+	t.Type = f.Type
+	t.Extra = f.Extra
+	t.HopLimit = f.HopLimit
+	t.DestinationKey = f.DestinationKey
+	t.SourceKey = f.SourceKey
+	t.Watermark = f.Watermark
+	t.Payload = t.Payload[:len(f.Payload)]
+	copy(t.Payload, f.Payload)
+}
+
 func (f *Frame) MarshalBinary(buffer []byte) (int, error) {
 	copy(buffer[:4], FrameMagicBytes)
 	buffer[4], buffer[5] = byte(f.Version), byte(f.Type)
-	copy(buffer[6:], f.Extra[:])
+	buffer[6] = f.Extra
+	buffer[7] = f.HopLimit
 	offset := FrameHeaderLength
 	switch f.Type {
 	case TypeKeepalive:
@@ -106,6 +125,16 @@ func (f *Frame) MarshalBinary(buffer []byte) (int, error) {
 			return 0, fmt.Errorf("f.WatermarkSeq.MarshalBinary: %w", err)
 		}
 		offset += n
+		if f.Payload != nil {
+			f.Payload = f.Payload[:payloadLen]
+			offset += copy(buffer[offset:], f.Payload[:payloadLen])
+		}
+
+	case TypeWakeupBroadcast: // source = key
+		payloadLen := len(f.Payload)
+		binary.BigEndian.PutUint16(buffer[offset+0:offset+2], uint16(payloadLen))
+		offset += 2
+		offset += copy(buffer[offset:], f.SourceKey[:ed25519.PublicKeySize])
 		if f.Payload != nil {
 			f.Payload = f.Payload[:payloadLen]
 			offset += copy(buffer[offset:], f.Payload[:payloadLen])
@@ -158,8 +187,8 @@ func (f *Frame) UnmarshalBinary(data []byte) (int, error) {
 		return 0, fmt.Errorf("frame doesn't contain magic bytes")
 	}
 	f.Version, f.Type = FrameVersion(data[4]), FrameType(data[5])
-	f.Extra[0], f.Extra[1] = data[6], data[7]
-	copy(f.Extra[:], data[6:])
+	f.Extra = data[6]
+	f.HopLimit = data[7]
 	framelen := int(binary.BigEndian.Uint16(data[FrameHeaderLength-2 : FrameHeaderLength]))
 	if len(data) != framelen {
 		return 0, fmt.Errorf("frame length incorrect")
@@ -192,6 +221,17 @@ func (f *Frame) UnmarshalBinary(data []byte) (int, error) {
 			return 0, fmt.Errorf("f.WatermarkSeq.UnmarshalBinary: %w", err)
 		}
 		offset += n
+		f.Payload = f.Payload[:payloadLen]
+		offset += copy(f.Payload[:payloadLen], data[offset:])
+		return offset, nil
+
+	case TypeWakeupBroadcast: // source = key
+		payloadLen := int(binary.BigEndian.Uint16(data[offset+0 : offset+2]))
+		if payloadLen > cap(f.Payload) {
+			return 0, fmt.Errorf("payload length exceeds frame capacity")
+		}
+		offset += 2
+		offset += copy(f.SourceKey[:], data[offset:])
 		f.Payload = f.Payload[:payloadLen]
 		offset += copy(f.Payload[:payloadLen], data[offset:])
 		return offset, nil
@@ -246,6 +286,8 @@ func (t FrameType) String() string {
 		return "TreeAnnouncement"
 	case TypeBootstrap:
 		return "VirtualSnakeBootstrap"
+	case TypeWakeupBroadcast:
+		return "WakeupBroadcast"
 	case TypeTraffic:
 		return "OverlayTraffic"
 	default:

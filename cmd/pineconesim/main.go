@@ -32,7 +32,6 @@ import (
 	"go.uber.org/atomic"
 
 	"net/http"
-	_ "net/http/pprof"
 )
 
 const maxBatchSize int = 50
@@ -48,6 +47,7 @@ func main() {
 	sockets := flag.Bool("sockets", false, "use real TCP sockets to connect simulated nodes")
 	chaos := flag.Int("chaos", 0, "randomly connect and disconnect a certain number of links")
 	acceptCommands := flag.Bool("acceptCommands", true, "whether the sim can be commanded from the ui")
+	hopLimiting := flag.Bool("hopLimiting", false, "whether to enable hop limiting for protocol and overlay frames")
 	flag.Parse()
 
 	file, err := os.Open(*filename)
@@ -79,7 +79,7 @@ func main() {
 	}
 
 	log := log.New(os.Stdout, "\u001b[36m***\u001b[0m ", 0)
-	sim := simulator.NewSimulator(log, *sockets, *acceptCommands)
+	sim := simulator.NewSimulator(log, *sockets, *acceptCommands, *hopLimiting)
 	configureHTTPRouting(log, sim)
 
 	for n := range nodes {
@@ -103,7 +103,8 @@ func main() {
 		}
 	}
 
-	sim.CalculateShortestPaths()
+	sim.GenerateNetworkGraph()
+	sim.UpdateRealDistances()
 
 	if chaos != nil && *chaos > 0 {
 		rand.Seed(time.Now().UnixNano())
@@ -258,6 +259,11 @@ func userProxyReporter(conn *websocket.Conn, connID uint64, sim *simulator.Simul
 			snakeEntries = append(snakeEntries, simulator.SnakeRouteEntry{EntryID: entry, PeerID: peer})
 		}
 
+		var broadcastEntries []simulator.BroadcastEntry
+		for entry, timestamp := range node.BroadcastsReceived {
+			broadcastEntries = append(broadcastEntries, simulator.BroadcastEntry{PeerID: entry, Time: timestamp})
+		}
+
 		var bandwidthReports simulator.BandwidthReports
 		for _, report := range node.BandwidthReports {
 			if report.ReceiveTime != 0 {
@@ -274,14 +280,15 @@ func userProxyReporter(conn *websocket.Conn, connID uint64, sim *simulator.Simul
 				AnnTime:     node.Announcement.Time,
 				Coords:      node.Coords,
 			},
-			Peers:            peerConns,
-			TreeParent:       node.Parent,
-			SnakeAsc:         node.AscendingPeer,
-			SnakeAscPath:     node.AscendingPathID,
-			SnakeDesc:        node.DescendingPeer,
-			SnakeDescPath:    node.DescendingPathID,
-			SnakeEntries:     snakeEntries,
-			BandwidthReports: bandwidthReports,
+			Peers:              peerConns,
+			TreeParent:         node.Parent,
+			SnakeAsc:           node.AscendingPeer,
+			SnakeAscPath:       node.AscendingPathID,
+			SnakeDesc:          node.DescendingPeer,
+			SnakeDescPath:      node.DescendingPathID,
+			SnakeEntries:       snakeEntries,
+			BroadcastsReceived: broadcastEntries,
+			BandwidthReports:   bandwidthReports,
 		}
 
 		if batchSize == int(maxBatchSize) || end {
@@ -380,6 +387,8 @@ func handleSimEvents(log *log.Logger, conn *websocket.Conn, ch <-chan simulator.
 			eventType = simulator.SimPingStateUpdated
 		case simulator.NetworkStatsUpdate:
 			eventType = simulator.SimNetworkStatsUpdated
+		case simulator.BroadcastReceived:
+			eventType = simulator.SimBroadcastReceived
 		case simulator.BandwidthReport:
 			eventType = simulator.SimBandwidthReport
 		}

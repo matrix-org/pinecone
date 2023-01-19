@@ -89,6 +89,7 @@ func (r *Router) WriteTo(p []byte, addr net.Addr) (n int, err error) {
 	switch ga := addr.(type) {
 	case types.PublicKey:
 		frame := getFrame()
+		frame.HopLimit = types.MaxHopLimit
 		frame.Type = types.TypeTraffic
 		frame.DestinationKey = ga
 		phony.Block(r.state, func() {
