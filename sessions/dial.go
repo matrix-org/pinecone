@@ -24,8 +24,8 @@ import (
 	"fmt"
 	"net"
 
-	"github.com/lucas-clemente/quic-go"
 	"github.com/matrix-org/pinecone/types"
+	"github.com/quic-go/quic-go"
 )
 
 // DialContext dials a given public key using the supplied network.
