@@ -29,9 +29,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/lucas-clemente/quic-go"
 	"github.com/matrix-org/pinecone/router"
 	"github.com/matrix-org/pinecone/types"
+	"github.com/quic-go/quic-go"
 )
 
 type Sessions struct {
