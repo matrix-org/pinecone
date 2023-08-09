@@ -87,7 +87,7 @@ retry:
 			},
 		}
 
-		session.Connection, err = quic.DialContext(ctx, s.s.r, addr, addrstr, tlsConfig, s.s.quicConfig)
+		session.Connection, err = quic.Dial(ctx, s.s.r, addr, tlsConfig, s.s.quicConfig)
 		session.Unlock()
 		if err != nil {
 			if err == context.DeadlineExceeded {

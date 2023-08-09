@@ -87,11 +87,11 @@ func NewSessions(log types.Logger, r *router.Router, protos []string) *Sessions 
 		NextProtos:   protos,
 	}
 
-	var err error
-	s.quicListener, err = quic.Listen(r, s.tlsServerCfg, s.quicConfig)
+	listener, err := quic.Listen(r, s.tlsServerCfg, s.quicConfig)
 	if err != nil {
 		panic(fmt.Errorf("quic.NewSocketFromPacketConnNoClose: %w", err))
 	}
+	s.quicListener = *listener
 
 	go s.listener()
 	return s
