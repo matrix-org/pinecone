@@ -48,6 +48,7 @@ type Sessions struct {
 
 type SessionProtocol struct {
 	s         *Sessions
+	transport *quic.Transport
 	proto     string
 	streams   chan net.Conn
 	sessions  sync.Map // types.PublicKey -> *activeSession
@@ -60,6 +61,7 @@ type activeSession struct {
 }
 
 func NewSessions(log types.Logger, r *router.Router, protos []string) *Sessions {
+	transport := &quic.Transport{Conn: r}
 	ctx, cancel := context.WithCancel(context.Background())
 	s := &Sessions{
 		r:         r,
@@ -74,9 +76,10 @@ func NewSessions(log types.Logger, r *router.Router, protos []string) *Sessions 
 	}
 	for _, proto := range protos {
 		s.protocols[proto] = &SessionProtocol{
-			s:       s,
-			proto:   proto,
-			streams: make(chan net.Conn, 1),
+			s:         s,
+			transport: transport,
+			proto:     proto,
+			streams:   make(chan net.Conn, 1),
 		}
 	}
 
@@ -87,7 +90,7 @@ func NewSessions(log types.Logger, r *router.Router, protos []string) *Sessions 
 		NextProtos:   protos,
 	}
 
-	listener, err := quic.Listen(r, s.tlsServerCfg, s.quicConfig)
+	listener, err := transport.Listen(s.tlsServerCfg, s.quicConfig)
 	if err != nil {
 		panic(fmt.Errorf("quic.NewSocketFromPacketConnNoClose: %w", err))
 	}

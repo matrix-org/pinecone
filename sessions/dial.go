@@ -25,7 +25,6 @@ import (
 	"net"
 
 	"github.com/matrix-org/pinecone/types"
-	"github.com/quic-go/quic-go"
 )
 
 // DialContext dials a given public key using the supplied network.
@@ -87,7 +86,7 @@ retry:
 			},
 		}
 
-		session.Connection, err = quic.Dial(ctx, s.s.r, addr, tlsConfig, s.s.quicConfig)
+		session.Connection, err = s.transport.Dial(ctx, addr, tlsConfig, s.s.quicConfig)
 		session.Unlock()
 		if err != nil {
 			if err == context.DeadlineExceeded {
