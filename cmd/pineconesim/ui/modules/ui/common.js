@@ -4,6 +4,8 @@ nodeTypeToOptions.set("GeneralAdversary", createNodeOptionsGeneralAdversary);
 
 export let nodeOptionsIndex = 2;
 
+let DOMPURIFYSETTINGS = { USE_PROFILES: { html: false, mathMl: false, svg: false } }
+
 export function convertNodeTypeToID(nodeType) {
     let typeID = 0;
     switch(nodeType) {
@@ -108,7 +110,8 @@ export function createNodeOptionsGeneralAdversary() {
             slider.value = settings[key];
 
             let label = nodeOptions.querySelector("label[class='" + key + "-label']");
-            label.innerHTML = settings[key] + "%";
+            console.log("checkme", settings[key]);
+            label.innerHTML = DOMPurify.sanitize(settings[key], DOMPURIFYSETTINGS) + "%";
         }
     };
 

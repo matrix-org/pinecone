@@ -14,6 +14,8 @@ titleElement.style.padding = "5px";
 titleElement.style.margin = "-4px";
 titleElement.id = "nodeTooltip";
 
+let DOMPURIFYSETTINGS = { USE_PROFILES: { html: false, mathMl: false, svg: false } }
+
 let selectedNodes = null;
 let hoverNode = null;
 
@@ -847,18 +849,18 @@ function handleNodeHoverUpdate() {
     let hoverPanel = document.getElementById('nodePopupText');
     if (hoverPanel) {
         let date = new Date(node.announcement.time / 1000000) // ns to ms conversion
-        hoverPanel.innerHTML = "<u><b>Node " + hoverNode + "</b></u>" +
-            "<br>Key: " + node.key.slice(0, 16).replace(/\"/g, "").toUpperCase() +
-            "<br>Type: " + ConvertNodeTypeToString(node.nodeType) +
-            "<br>Coords: [" + node.coords + "]" +
-            "<br>Tree Parent: " + node.treeParent +
-            "<br>SNEK Desc: " + node.snekDesc +
-            "<br>SNEK Asc: " + node.snekAsc +
-            "<br>Table Size: " + node.snekEntries.size +
+        hoverPanel.innerHTML = "<u><b>Node " + DOMPurify.sanitize(hoverNode, DOMPURIFYSETTINGS) + "</b></u>" +
+            "<br>Key: " + DOMPurify.sanitize(node.key.slice(0, 16).replace(/\"/g, "").toUpperCase(), DOMPURIFYSETTINGS) +
+            "<br>Type: " + DOMPurify.sanitize(ConvertNodeTypeToString(node.nodeType), DOMPURIFYSETTINGS) +
+            "<br>Coords: [" + DOMPurify.sanitize(node.coords, DOMPURIFYSETTINGS) + "]" +
+            "<br>Tree Parent: " + DOMPurify.sanitize(node.treeParent, DOMPURIFYSETTINGS) +
+            "<br>SNEK Desc: " + DOMPurify.sanitize(node.snekDesc, DOMPURIFYSETTINGS) +
+            "<br>SNEK Asc: " + DOMPurify.sanitize(node.snekAsc, DOMPURIFYSETTINGS) +
+            "<br>Table Size: " + DOMPurify.sanitize(node.snekEntries.size, DOMPURIFYSETTINGS) +
             "<br><br><u>Announcement</u>" +
-            "<br>Root: Node " + node.announcement.root +
-            "<br>Sequence: " + node.announcement.sequence +
-            "<br>Time: " + date.toLocaleTimeString();
+            "<br>Root: Node " + DOMPurify.sanitize(node.announcement.root, DOMPURIFYSETTINGS) +
+            "<br>Sequence: " + DOMPurify.sanitize(node.announcement.sequence, DOMPURIFYSETTINGS) +
+            "<br>Time: " + DOMPurify.sanitize(date.toLocaleTimeString(), DOMPURIFYSETTINGS);
     }
 }
 
@@ -903,43 +905,43 @@ function handleNodePanelUpdate() {
                 root = peer.announcement.root.replace(/\"/g, "").toUpperCase();
                 key = peer.key.replace(/\"/g, "").toUpperCase();
             }
-            peerTable += "<tr><td><code>" + peers[i].id + "</code></td><td><code>" + key.slice(0, 8) + "</code></td><td><code>" + peers[i].port + "</code></td><td><code>" + root + "</code></td></tr>";
+            peerTable += "<tr><td><code>" + DOMPurify.sanitize(peers[i].id, DOMPURIFYSETTINGS) + "</code></td><td><code>" + DOMPurify.sanitize(key.slice(0, 8), DOMPURIFYSETTINGS) + "</code></td><td><code>" + DOMPurify.sanitize(peers[i].port, DOMPURIFYSETTINGS) + "</code></td><td><code>" + DOMPurify.sanitize(root, DOMPURIFYSETTINGS) + "</code></td></tr>";
         }
 
         let routes = node.snekEntries;
         let snekTable = "";
         for (var [entry, peer] of routes.entries()) {
-            snekTable += "<tr><td><code>" + entry + "</code></td><td><code>" + peer + "</code></td></tr>";
+            snekTable += "<tr><td><code>" + DOMPurify.sanitize(entry, DOMPURIFYSETTINGS) + "</code></td><td><code>" + DOMPurify.sanitize(peer, DOMPURIFYSETTINGS) + "</code></td></tr>";
         }
 
         let broadcasts = node.broadcasts;
         let bcastTable = "";
         for (var [entry, time] of broadcasts.entries()) {
             let date = new Date(time / 1000000) // ns to ms conversion
-            bcastTable += "<tr><td><code>" + entry + "</code></td><td><code>" + date.toLocaleString() + "</code></td></tr>";
+            bcastTable += "<tr><td><code>" + DOMPurify.sanitize(entry, DOMPURIFYSETTINGS) + "</code></td><td><code>" + DOMPurify.sanitize(date.toLocaleString(), DOMPURIFYSETTINGS) + "</code></td></tr>";
         }
 
         if (nodePanel) {
             nodePanel.innerHTML +=
-                "<h3>Node " + nodeID + "</h3>" +
+                "<h3>Node " + DOMPurify.sanitize(nodeID, DOMPURIFYSETTINGS) + "</h3>" +
                 "<hr><table>" +
-                "<tr><td>Name:</td><td>" + nodeID + "</td></tr>" +
-                "<tr><td>Type:</td><td>" + ConvertNodeTypeToString(node.nodeType) + "</td></tr>" +
-                "<tr><td>Coordinates:</td><td>[" + node.coords + "]</td></tr>" +
-                "<tr><td>Public Key:</td><td><code>" + node.key.slice(0, 16).replace(/\"/g, "").toUpperCase() + "</code></td></tr>" +
-                "<tr><td>Root Key:</td><td><code>" + getNodeKey(node.announcement.root).slice(0, 16).replace(/\"/g, "").toUpperCase() + "</code></td></tr>" +
-                "<tr><td>Tree Parent:</td><td><code>" + node.treeParent + "</code></td></tr>" +
-                "<tr><td>Descending Node:</td><td><code>" + node.snekDesc + "</code></td></tr>" +
-                "<tr><td>Descending Path:</td><td><code>" + node.snekDescPath + "</code></td></tr>" +
-                "<tr><td>Ascending Node:</td><td><code>" + node.snekAsc + "</code></td></tr>" +
-                "<tr><td>Ascending Path:</td><td><code>" + node.snekAscPath + "</code></td></tr>" +
+                "<tr><td>Name:</td><td>" + DOMPurify.sanitize(nodeID, DOMPURIFYSETTINGS) + "</td></tr>" +
+                "<tr><td>Type:</td><td>" + DOMPurify.sanitize(ConvertNodeTypeToString(node.nodeType), DOMPURIFYSETTINGS) + "</td></tr>" +
+                "<tr><td>Coordinates:</td><td>[" + DOMPurify.sanitize(node.coords, DOMPURIFYSETTINGS) + "]</td></tr>" +
+                "<tr><td>Public Key:</td><td><code>" + DOMPurify.sanitize(node.key.slice(0, 16).replace(/\"/g, "").toUpperCase(), DOMPURIFYSETTINGS) + "</code></td></tr>" +
+                "<tr><td>Root Key:</td><td><code>" + DOMPurify.sanitize(getNodeKey(node.announcement.root).slice(0, 16).replace(/\"/g, "").toUpperCase(), DOMPURIFYSETTINGS) + "</code></td></tr>" +
+                "<tr><td>Tree Parent:</td><td><code>" + DOMPurify.sanitize(node.treeParent, DOMPURIFYSETTINGS) + "</code></td></tr>" +
+                "<tr><td>Descending Node:</td><td><code>" + DOMPurify.sanitize(node.snekDesc, DOMPURIFYSETTINGS) + "</code></td></tr>" +
+                "<tr><td>Descending Path:</td><td><code>" + DOMPurify.sanitize(node.snekDescPath, DOMPURIFYSETTINGS) + "</code></td></tr>" +
+                "<tr><td>Ascending Node:</td><td><code>" + DOMPurify.sanitize(node.snekAsc, DOMPURIFYSETTINGS) + "</code></td></tr>" +
+                "<tr><td>Ascending Path:</td><td><code>" + DOMPurify.sanitize(node.snekAscPath, DOMPURIFYSETTINGS) + "</code></td></tr>" +
                 "</table>" +
-                "<hr><h4><u>Peers (" + peers.length + ")</u></h4>" +
+                "<hr><h4><u>Peers (" + DOMPurify.sanitize(peers.length, DOMPURIFYSETTINGS) + ")</u></h4>" +
                 "<table>" +
                 "<tr><th>Name</th><th>Public Key</th><th>Port</th><th>Root</th></tr>" +
                 peerTable +
                 "</table>" +
-                "<hr><h4><u>SNEK Routes (" + routes.size + ")</u></h4>" +
+                "<hr><h4><u>SNEK Routes (" + DOMPurify.sanitize(routes.size, DOMPURIFYSETTINGS) + ")</u></h4>" +
                 "<table>" +
                 "<tr><th>Dest</th><th>Peer</th></tr>" +
                 snekTable +
@@ -963,8 +965,7 @@ function handleStatsPanelUpdate() {
 
     if (graph && graph.isStarted()) {
         for (const [key, value] of Nodes.entries()) {
-            nodeTable += "<tr><td><code>" + key + "</code></td><td><code>[" + value.coords + "]</code></td><td><code>" + value.announcement.root + "</code></td><td><code>" + getNodeKey(value.snekDesc).slice(0, 4).replace(/\"/g, "").toUpperCase() + "</code></td><td><code>" + value.key.slice(0, 4).replace(/\"/g, "").toUpperCase() + "</code></td><td><code>" + getNodeKey(value.snekAsc).slice(0, 4).replace(/\"/g, "").toUpperCase() + "</code></td></tr>";
-
+            nodeTable += "<tr><td><code>" + DOMPurify.sanitize(key, DOMPURIFYSETTINGS) + "</code></td><td><code>[" + DOMPurify.sanitize(value.coords, DOMPURIFYSETTINGS) + "]</code></td><td><code>" + DOMPurify.sanitize(value.announcement.root, DOMPURIFYSETTINGS) + "</code></td><td><code>" + DOMPurify.sanitize(getNodeKey(value.snekDesc).slice(0, 4).replace(/\"/g, "").toUpperCase(), DOMPURIFYSETTINGS) + "</code></td><td><code>" + DOMPurify.sanitize(value.key.slice(0, 4).replace(/\"/g, "").toUpperCase(), DOMPURIFYSETTINGS) + "</code></td><td><code>" + DOMPurify.sanitize(getNodeKey(value.snekAsc).slice(0, 4).replace(/\"/g, "").toUpperCase(), DOMPURIFYSETTINGS) + "</code></td></tr>";
             peerLinks += value.peers.length;
             if (rootConvergence.has(value.announcement.root)) {
                 rootConvergence.set(value.announcement.root, rootConvergence.get(value.announcement.root) + 1);
@@ -974,7 +975,7 @@ function handleStatsPanelUpdate() {
         }
 
         for (const [key, value] of rootConvergence.entries()) {
-            rootTable += "<tr><td><code>" + key + "</code></td><td>" + (value / Nodes.size * 100).toFixed(2) + "%</td></tr>";
+            rootTable += "<tr><td><code>" + DOMPurify.sanitize(key, DOMPURIFYSETTINGS) + "</code></td><td>" + DOMPurify.sanitize((value / Nodes.size * 100).toFixed(2), DOMPURIFYSETTINGS) + "%</td></tr>";
         }
     }
 
@@ -999,22 +1000,22 @@ function handleStatsPanelUpdate() {
     statsPanel.innerHTML =
         "<div class=\"shift-right\"><h3>Statistics</h3></div>" +
         "<hr><table>" +
-        "<tr><td>Node Count:</td><td style=\"text-align: left;\">" + Nodes.size + "</td></tr>" +
-        "<tr><td>Path Count:</td><td style=\"text-align: left;\">" + peerLinks / 2 + "</td></tr>" +
+        "<tr><td>Node Count:</td><td style=\"text-align: left;\">" + DOMPurify.sanitize(Nodes.size, DOMPURIFYSETTINGS) + "</td></tr>" +
+        "<tr><td>Path Count:</td><td style=\"text-align: left;\">" + DOMPurify.sanitize(peerLinks / 2, DOMPURIFYSETTINGS) + "</td></tr>" +
         "<tr><td>Path Convergence:</td><td style=\"text-align: left;\">" +
-        NetworkStats.PathConvergence +
+        DOMPurify.sanitize(NetworkStats.PathConvergence, DOMPURIFYSETTINGS) +
         "%</td></tr>" +
         "<tr><td>Average Stretch:</td><td>" +
         NetworkStats.AverageStretch +
         "</td></tr>" +
         "<tr><td>SNEK Table Size (Avg):</td><td>" +
-        avgTableSize.toFixed(2) +
+        DOMPurify.sanitize(avgTableSize.toFixed(2), DOMPURIFYSETTINGS) +
         "</td></tr>" +
         "<tr><td>SNEK Table Size (Min):</td><td>" +
-        minTableSize +
+        DOMPurify.sanitize(minTableSize, DOMPURIFYSETTINGS) +
         "</td></tr>" +
         "<tr><td>SNEK Table Size (Max):</td><td>" +
-        maxTableSize +
+        DOMPurify.sanitize(maxTableSize, DOMPURIFYSETTINGS) +
         "</td></tr>" +
         "</table>" +
         "<hr><h4><u>Node Summary</u></h4>" +

@@ -163,6 +163,7 @@ func main() {
 
 func configureHTTPRouting(log *log.Logger, sim *simulator.Simulator) {
 	var upgrader = websocket.Upgrader{}
+	http.Handle("/ext/", http.StripPrefix("/ext/", http.FileServer(http.Dir("./cmd/pineconesim/ext"))))
 	http.Handle("/ui/", http.StripPrefix("/ui/", http.FileServer(http.Dir("./cmd/pineconesim/ui"))))
 
 	http.DefaultServeMux.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
