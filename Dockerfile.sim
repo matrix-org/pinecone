@@ -19,6 +19,7 @@ RUN mkdir -p /cmd/pineconesim/graphs/
 
 COPY --from=base /build/bin/* /usr/bin/
 COPY --from=base /build/cmd/pineconesim/ui /cmd/pineconesim/ui
+COPY --from=base /build/cmd/pineconesim/ext /cmd/pineconesim/ext
 COPY --from=base /build/cmd/pineconesim/page.html /cmd/pineconesim/
 COPY --from=base /build/cmd/pineconesim/graphs/*.txt /cmd/pineconesim/graphs/
 
